@@ -7,3 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+common = { path = "../common" }
+tracing = "0.1.10"
+tracing-subscriber = "0.1.6"
+ash = "0.29"
+lahar = { git = "https://github.com/Ralith/lahar", rev = "1af3d605fa938763f9f09ff74158e8ebe30fcbfe" }
+winit = "0.20.0-alpha5"
+ash-window = "0.1.0"
+directories = "2.0.2"
