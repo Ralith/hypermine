@@ -161,6 +161,22 @@ impl Base {
             })
         }
     }
+
+    pub unsafe fn set_name<T: vk::Handle>(&self, object: T, name: &CStr) {
+        let ex = match self.core.debug_utils.as_ref() {
+            Some(x) => x,
+            None => return,
+        };
+        ex.debug_utils_set_object_name(
+            self.device.handle(),
+            &vk::DebugUtilsObjectNameInfoEXT::builder()
+                .object_type(T::TYPE)
+                .object_handle(object.as_raw())
+                .object_name(name),
+        )
+            .unwrap();
+    }
+
 }
 
 pub const COLOR_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;

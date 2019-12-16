@@ -35,15 +35,22 @@ impl Draw {
                 .unwrap();
             let states = cmds
                 .into_iter()
-                .map(|cmd| State {
-                    cmd,
-                    image_acquired: device.create_semaphore(&Default::default(), None).unwrap(),
-                    fence: device
-                        .create_fence(
-                            &vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED),
-                            None,
-                        )
-                        .unwrap(),
+                .map(|cmd| {
+                    let x = State {
+                        cmd,
+                        image_acquired: device.create_semaphore(&Default::default(), None).unwrap(),
+                        fence: device
+                            .create_fence(
+                                &vk::FenceCreateInfo::builder()
+                                    .flags(vk::FenceCreateFlags::SIGNALED),
+                                None,
+                            )
+                            .unwrap(),
+                    };
+                    gfx.set_name(x.cmd, cstr!("frame"));
+                    gfx.set_name(x.image_acquired, cstr!("image acquired"));
+                    gfx.set_name(x.fence, cstr!("render complete"));
+                    x
                 })
                 .collect();
             Self {

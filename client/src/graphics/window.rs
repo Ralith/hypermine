@@ -316,6 +316,7 @@ impl SwapchainState {
                         None,
                     )
                     .unwrap();
+                gfx.set_name(view, cstr!("swapchain"));
                 let depth = DedicatedImage::new(
                     device,
                     &gfx.memory_properties,
@@ -332,6 +333,8 @@ impl SwapchainState {
                         .samples(vk::SampleCountFlags::TYPE_1)
                         .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
                 );
+                gfx.set_name(depth.handle, cstr!("depth"));
+                gfx.set_name(depth.memory, cstr!("depth"));
                 let depth_view = device
                     .create_image_view(
                         &vk::ImageViewCreateInfo::builder()
@@ -348,6 +351,9 @@ impl SwapchainState {
                         None,
                     )
                     .unwrap();
+                gfx.set_name(depth_view, cstr!("depth"));
+                let present = device.create_semaphore(&Default::default(), None).unwrap();
+                gfx.set_name(present, cstr!("present"));
                 Frame {
                     view,
                     depth,
@@ -363,7 +369,7 @@ impl SwapchainState {
                             None,
                         )
                         .unwrap(),
-                    present: device.create_semaphore(&Default::default(), None).unwrap(),
+                    present,
                 }
             })
             .collect();
