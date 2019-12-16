@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use ash::{version::DeviceV1_0, vk};
 
-use super::Base;
+use super::{Base, Sky};
 
 pub struct Draw {
     gfx: Arc<Base>,
     cmd_pool: vk::CommandPool,
     states: Vec<State>,
     next_state: usize,
+    sky: Sky,
 }
 
 /// Maximum number of simultaneous frames in flight
@@ -53,11 +54,13 @@ impl Draw {
                     x
                 })
                 .collect();
+            let sky = Sky::new(gfx.clone());
             Self {
                 gfx,
                 cmd_pool,
                 states,
                 next_state: 0,
+                sky,
             }
         }
     }
@@ -93,7 +96,6 @@ impl Draw {
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
-
         device.cmd_begin_render_pass(
             cmd,
             &vk::RenderPassBeginInfo::builder()
@@ -106,7 +108,7 @@ impl Draw {
                 .clear_values(&[
                     vk::ClearValue {
                         color: vk::ClearColorValue {
-                            float32: [0.0, 0.0, 1.0, 0.0],
+                            float32: [0.0, 0.0, 0.0, 0.0],
                         },
                     },
                     vk::ClearValue {
@@ -118,8 +120,30 @@ impl Draw {
                 ]),
             vk::SubpassContents::INLINE,
         );
-        device.cmd_end_render_pass(cmd);
 
+        // Set up common dynamic state
+        let viewports = [vk::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: extent.width as f32,
+            height: extent.height as f32,
+            min_depth: 0.0,
+            max_depth: 1.0,
+        }];
+        let scissors = [vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D {
+                width: extent.width as u32,
+                height: extent.height as u32,
+            },
+        }];
+        device.cmd_set_viewport(cmd, 0, &viewports);
+        device.cmd_set_scissor(cmd, 0, &scissors);
+
+        // Actual rendering
+        self.sky.draw(cmd);
+
+        device.cmd_end_render_pass(cmd);
         device.end_command_buffer(cmd).unwrap();
 
         device
