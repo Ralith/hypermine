@@ -1,3 +1,5 @@
+pub mod world;
+
 pub fn defer<F: FnOnce()>(f: F) -> Defer<F> {
     Defer::new(f)
 }
