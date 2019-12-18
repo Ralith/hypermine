@@ -19,9 +19,11 @@ impl Sky {
     pub fn new(gfx: Arc<Base>) -> Self {
         let device = &*gfx.device;
         unsafe {
+            // Construct the shader modules
             let vert = device
                 .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&VERT), None)
                 .unwrap();
+            // Note that these only need to live until the pipeline itself is constructed
             let v_guard = defer(|| device.destroy_shader_module(vert, None));
 
             let frag = device
@@ -29,6 +31,7 @@ impl Sky {
                 .unwrap();
             let f_guard = defer(|| device.destroy_shader_module(frag, None));
 
+            // Define the outward-facing interface of the shaders, incl. uniforms, samplers, etc.
             let pipeline_layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder().set_layouts(&[gfx.common_layout]),
@@ -111,11 +114,14 @@ impl Sky {
                 )
                 .unwrap()
                 .into_iter();
-            v_guard.invoke();
-            f_guard.invoke();
 
             let pipeline = pipelines.next().unwrap();
             gfx.set_name(pipeline, cstr!("sky"));
+
+            // Clean up the shaders explicitly, so the defer guards don't hold onto references we're
+            // moving into `Self` to be returned
+            v_guard.invoke();
+            f_guard.invoke();
 
             Self {
                 gfx,

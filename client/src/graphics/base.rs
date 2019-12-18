@@ -11,16 +11,26 @@ use ash::{
 
 use super::Core;
 
+/// Vulkan resources shared between many parts of the renderer
 pub struct Base {
     pub core: Arc<Core>,
+    /// The physical device (i.e. GPU) we're rendering with
     pub physical: vk::PhysicalDevice,
+    /// The logical device, containing functions used for rendering
     pub device: Arc<Device>,
+    /// The queue family we're rendering in
     pub queue_family: u32,
+    /// The queue used for graphics and presentation
     pub queue: vk::Queue,
+    /// Information about the types of device-visible memory that can be allocated
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
+    /// Cache used to speed up graphics pipeline construction
     pub pipeline_cache: vk::PipelineCache,
+    /// Context in which the main rendering work occurs
     pub render_pass: vk::RenderPass,
+    /// A reasonable general-purpose texture sampler
     pub linear_sampler: vk::Sampler,
+    /// Layout of common shader resourcs, such as the common uniform buffer
     pub common_layout: vk::DescriptorSetLayout,
 }
 
@@ -47,6 +57,7 @@ impl Base {
     ) -> Option<Self> {
         unsafe {
             let instance = &core.instance;
+            // Select a physical device and queue family to use for rendering
             let (physical, queue_family_index) = instance
                 .enumerate_physical_devices()
                 .unwrap()
@@ -67,8 +78,8 @@ impl Base {
                         })
                 })?;
 
+            // Create the logical device and common resources descended from it
             let device_exts = device_exts.iter().map(|x| x.as_ptr()).collect::<Vec<_>>();
-
             let device = Arc::new(
                 instance
                     .create_device(
@@ -183,6 +194,7 @@ impl Base {
         }
     }
 
+    /// Set an object's name for use in diagnostics
     pub unsafe fn set_name<T: vk::Handle>(&self, object: T, name: &CStr) {
         let ex = match self.core.debug_utils.as_ref() {
             Some(x) => x,
@@ -199,4 +211,5 @@ impl Base {
     }
 }
 
+/// The pixel format we render in
 pub const COLOR_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;

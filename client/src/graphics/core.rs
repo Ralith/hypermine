@@ -10,10 +10,16 @@ use tracing::{debug, error, info, trace, warn};
 
 use common::defer;
 
+/// The most fundamental components of a Vulkan setup
 pub struct Core {
+    /// Handle to the Vulkan dynamic library itself, used to bootstrap
     pub entry: Entry,
+    /// The Vulkan instance, containing fundamental device-independent functions
     pub instance: Instance,
 
+    /// Diagnostic infrastructure, configured if the environment supports them. Typically present
+    /// when the Vulkan validation layers are enabled or a graphics debugger is in use and absent
+    /// otherwise.
     pub debug_utils: Option<DebugUtils>,
     messenger: vk::DebugUtilsMessengerEXT,
 }
@@ -40,7 +46,6 @@ impl Core {
                 .any(|x| CStr::from_ptr(x.extension_name.as_ptr()) == DebugUtils::name());
 
             let mut exts = exts.iter().map(|x| x.as_ptr()).collect::<Vec<_>>();
-            exts.push(b"VK_KHR_get_physical_device_properties2\0".as_ptr() as _);
             if has_debug {
                 exts.push(DebugUtils::name().as_ptr());
             } else {
@@ -64,11 +69,13 @@ impl Core {
                     None,
                 )
                 .unwrap();
+            // Guards ensure we clean up gracefully if something panics
             let instance_guard = defer(|| instance.destroy_instance(None));
             let messenger_guard;
             let debug_utils;
             let messenger;
             if has_debug {
+                // Configure Vulkan diagnostic message logging
                 let utils = DebugUtils::new(&entry, &instance);
                 messenger = utils
                     .create_debug_utils_messenger(
@@ -102,6 +109,7 @@ impl Core {
                 messenger = vk::DebugUtilsMessengerEXT::null();
             }
 
+            // Setup successful, don't destroy things.
             instance_guard.cancel();
             messenger_guard.map(|x| x.cancel());
             Self {
@@ -114,12 +122,27 @@ impl Core {
     }
 }
 
+/// Callback invoked by Vulkan for diagnostic messages
+///
+/// We forward these to our `tracing` logging infrastructure.
 unsafe extern "system" fn messenger_callback(
     message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     _message_types: vk::DebugUtilsMessageTypeFlagsEXT,
     p_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
 ) -> vk::Bool32 {
+    unsafe fn fmt_labels(ptr: *const vk::DebugUtilsLabelEXT, count: u32) -> String {
+        slice::from_raw_parts(ptr, count as usize)
+            .iter()
+            .map(|label| {
+                CStr::from_ptr(label.p_label_name)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     let data = &*p_data;
     let msg_id = if data.p_message_id_name.is_null() {
         "".into()
@@ -150,16 +173,4 @@ unsafe extern "system" fn messenger_callback(
         trace!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
     }
     vk::FALSE
-}
-
-unsafe fn fmt_labels(ptr: *const vk::DebugUtilsLabelEXT, count: u32) -> String {
-    slice::from_raw_parts(ptr, count as usize)
-        .iter()
-        .map(|label| {
-            CStr::from_ptr(label.p_label_name)
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }

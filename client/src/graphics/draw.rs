@@ -6,18 +6,30 @@ use lahar::Staged;
 
 use super::{Base, Sky};
 
+/// Manages rendering, independent of what is being rendered to
 pub struct Draw {
     gfx: Arc<Base>,
+    /// Used to allocate the command buffers we render with
     cmd_pool: vk::CommandPool,
+    /// State that varies per frame in flight
     states: Vec<State>,
+    /// The index of the next element of `states` to use
     next_state: usize,
+    /// A reference time
     epoch: Instant,
+    /// The lowest common denominator between the interfaces of our graphics pipelines
+    ///
+    /// Represents e.g. the binding for common uniforms
     common_pipeline_layout: vk::PipelineLayout,
+    /// Descriptor pool from which descriptor sets shared between many pipelines are allocated
     common_descriptor_pool: vk::DescriptorPool,
+
+    /// Sky rendering
     sky: Sky,
 
-    // Reusable storage for barriers for resources that will be accessed in the next frame
+    /// Reusable storage for barriers that prevent races between image upload and read
     image_barriers: Vec<vk::ImageMemoryBarrier>,
+    /// Reusable storage for barriers that prevent races between buffer upload and read
     buffer_barriers: Vec<vk::BufferMemoryBarrier>,
 }
 
@@ -28,6 +40,7 @@ impl Draw {
     pub fn new(gfx: Arc<Base>) -> Self {
         let device = &*gfx.device;
         unsafe {
+            // Allocate a command buffer for each frame state
             let cmd_pool = device
                 .create_command_pool(
                     &vk::CommandPoolCreateInfo::builder()
@@ -51,6 +64,8 @@ impl Draw {
                 )
                 .unwrap();
 
+            // Allocate descriptor sets for data used by all graphics pipelines (e.g. common
+            // uniforms)
             let common_descriptor_pool = device
                 .create_descriptor_pool(
                     &vk::DescriptorPoolCreateInfo::builder()
@@ -62,7 +77,6 @@ impl Draw {
                     None,
                 )
                 .unwrap();
-
             let common_ds = device
                 .allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::builder()
@@ -71,6 +85,7 @@ impl Draw {
                 )
                 .unwrap();
 
+            // Construct the per-frame states
             let states = cmds
                 .into_iter()
                 .zip(common_ds)
@@ -113,6 +128,7 @@ impl Draw {
                 })
                 .collect();
 
+            // Construct the actual graphics pipelines
             let sky = Sky::new(gfx.clone());
 
             Self {
@@ -131,19 +147,30 @@ impl Draw {
         }
     }
 
-    /// Call before signaling image_acquired
+    /// Waits for a frame's worth of resources to become available for use in rendering a new frame
+    ///
+    /// Call before signaling the image_acquired semaphore.
     pub unsafe fn wait(&self) {
         let device = &*self.gfx.device;
         let fence = self.states[self.next_state].fence;
         device.wait_for_fences(&[fence], true, !0).unwrap();
     }
 
+    /// Semaphore that must be signaled when an output framebuffer can be rendered to
+    ///
     /// Don't signal until after `wait`ing; call before `draw`
     pub fn image_acquired(&self) -> vk::Semaphore {
         self.states[self.next_state].image_acquired
     }
 
-    /// Call after arranging for `image_acquired` to be signaled
+    /// Submit commands to the GPU to draw a frame
+    ///
+    /// `framebuffer` must have a color and depth buffer attached and have the dimensions specified
+    /// in `extent`. The `present` semaphore is signaled when rendering is complete and the color
+    /// image can be presented.
+    ///
+    /// Submits commands that wait on `image_acquired` before writing to `framebuffer`'s color
+    /// attachment.
     pub unsafe fn draw(
         &mut self,
         framebuffer: vk::Framebuffer,
@@ -152,8 +179,11 @@ impl Draw {
     ) {
         let device = &*self.gfx.device;
         let state = &mut self.states[self.next_state];
-        device.reset_fences(&[state.fence]).unwrap();
         let cmd = state.cmd;
+        // We're using this state again, so put the fence back in the unsignaled state and compute
+        // the next frame to use
+        device.reset_fences(&[state.fence]).unwrap();
+        self.next_state = (self.next_state + 1) % PIPELINE_DEPTH as usize;
 
         device
             .begin_command_buffer(
@@ -244,10 +274,11 @@ impl Draw {
         // Record the actual rendering commands
         self.sky.draw(cmd);
 
+        // Finish up
         device.cmd_end_render_pass(cmd);
         device.end_command_buffer(cmd).unwrap();
 
-        // Specify the uniform data before submitting the command to transfer it
+        // Specify the uniform data before actually submitting the command to transfer it
         state.uniforms.write(
             device,
             Uniforms {
@@ -269,11 +300,11 @@ impl Draw {
                 state.fence,
             )
             .unwrap();
-
-        self.next_state = (self.next_state + 1) % self.states.len();
     }
 
     /// Wait for all drawing to complete
+    ///
+    /// Useful to e.g. ensure it's safe to deallocate an image that's being rendered to
     pub fn wait_idle(&self) {
         let device = &*self.gfx.device;
         for state in &self.states {
@@ -302,16 +333,27 @@ impl Drop for Draw {
 }
 
 struct State {
+    /// Semaphore signaled by someone else to indicate that output to the framebuffer can begin
     image_acquired: vk::Semaphore,
+    /// Fence signaled when this state is no longer in use
     fence: vk::Fence,
+    /// Command buffer we record he frame's rendering onto
     cmd: vk::CommandBuffer,
+    /// Descriptor set for graphics-pipeline-independent data
     common_ds: vk::DescriptorSet,
+    /// The common uniform buffer
     uniforms: Staged<Uniforms>,
 }
 
+/// Data stored in the common uniform buffer
+///
+/// Alignment and padding must be manually managed to match the std140 ABI as expected by the
+/// shaders.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Uniforms {
+    /// Camera projection matrix
     projection: na::Projective3<f32>,
+    /// Cycles through [0,1) once per second for simple animation effects
     time: f32,
 }

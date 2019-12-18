@@ -12,6 +12,7 @@ use winit::{
 
 use super::{Base, Core, Draw};
 
+/// OS window
 pub struct EarlyWindow {
     event_loop: EventLoop<()>,
     window: WinitWindow,
@@ -27,11 +28,13 @@ impl EarlyWindow {
         Self { event_loop, window }
     }
 
+    /// Identify the Vulkan extension needed to render to this window
     pub fn required_extension(&self) -> &'static CStr {
         ash_window::enumerate_required_extension(&self.window)
     }
 }
 
+/// OS window + rendering handles
 pub struct Window {
     _core: Arc<Core>,
     _window: WinitWindow,
@@ -43,6 +46,7 @@ pub struct Window {
 }
 
 impl Window {
+    /// Finish constructing a window
     pub fn new(early: EarlyWindow, core: Arc<Core>) -> Self {
         let surface = unsafe {
             ash_window::create_surface(&core.entry, &core.instance, &early.window, None).unwrap()
@@ -60,6 +64,7 @@ impl Window {
         }
     }
 
+    /// Determine whether this window can be rendered to from a particular device and queue family
     pub fn supports(&self, physical: vk::PhysicalDevice, queue_family_index: u32) -> bool {
         unsafe {
             self.surface_fn.get_physical_device_surface_support(
@@ -70,8 +75,11 @@ impl Window {
         }
     }
 
+    /// Run the event loop until process exit
     pub fn run(mut self, gfx: Arc<Base>) -> ! {
+        // Allocate the presentable images we'll be rendering to
         self.swapchain = Some(SwapchainMgr::new(&self, gfx.clone()));
+        // Construct the core rendering object
         self.draw = Some(Draw::new(gfx));
         self.event_loop
             .take()
@@ -91,20 +99,26 @@ impl Window {
             });
     }
 
+    /// Draw a new frame
     fn draw(&mut self) {
         let swapchain = self.swapchain.as_mut().unwrap();
         let draw = self.draw.as_mut().unwrap();
         let mut needs_update;
         unsafe {
+            // Wait for a frame's worth of rendering resources to become available
             draw.wait();
+            // Get the index of the swapchain image we'll render to
             let frame_id = loop {
                 match swapchain.acquire_next_image(draw.image_acquired()) {
                     Ok((idx, sub)) => {
                         needs_update = sub;
                         break idx;
                     }
+                    // New swapchain needed immediately (usually due to resize)
                     Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                        // Wait for in-flight frames to complete so we don't have a use-after-free
                         draw.wait_idle();
+                        // Recreate the swapchain
                         swapchain.update(&self.surface_fn, self.surface);
                     }
                     Err(e) => {
@@ -113,16 +127,21 @@ impl Window {
                 }
             };
             let frame = &swapchain.state.frames[frame_id as usize];
+            // Render the frame
             draw.draw(frame.buffer, swapchain.state.extent, frame.present);
+            // Submit the frame to be presented on the window
             match swapchain.queue_present(frame_id) {
                 Ok(false) => {}
                 Ok(true) | Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                     needs_update = true;
                 }
-                Err(e) => panic!("queue_present {}", e),
+                Err(e) => panic!("queue_present: {}", e),
             };
+            // New swapchain needed (usually due to resize)
             if needs_update {
+                // Wait for in-flight frames to complete so we don't have a use-after-free
                 draw.wait_idle();
+                // Recreate the swapchain
                 swapchain.update(&self.surface_fn, self.surface);
             }
         }
@@ -145,6 +164,7 @@ struct SwapchainMgr {
 }
 
 impl SwapchainMgr {
+    /// Construct a swapchain manager for a certain window
     fn new(window: &Window, gfx: Arc<Base>) -> Self {
         let device = &*gfx.device;
         let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, &*device);
@@ -198,6 +218,7 @@ impl SwapchainMgr {
         );
     }
 
+    /// Get the index of the next frame to use
     unsafe fn acquire_next_image(&self, signal: vk::Semaphore) -> Result<(u32, bool), vk::Result> {
         self.state.swapchain_fn.acquire_next_image(
             self.state.handle,
@@ -207,6 +228,7 @@ impl SwapchainMgr {
         )
     }
 
+    /// Present a frame on the window
     unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> {
         self.state.swapchain_fn.queue_present(
             self.state.gfx.queue,
@@ -218,6 +240,7 @@ impl SwapchainMgr {
     }
 }
 
+/// Data that's replaced when the swapchain is updated
 struct SwapchainState {
     gfx: Arc<Base>,
     swapchain_fn: khr::Swapchain,
@@ -401,9 +424,14 @@ impl Drop for SwapchainState {
 }
 
 struct Frame {
+    /// Image view for an entire swapchain image
     view: vk::ImageView,
+    /// Depth buffer to use when rendering to this image
     depth: DedicatedImage,
+    /// View thereof
     depth_view: vk::ImageView,
+    /// Framebuffer referencing `view` and `depth_view`
     buffer: vk::Framebuffer,
+    /// Semaphore used to ensure the frame isn't presented until rendering completes
     present: vk::Semaphore,
 }
