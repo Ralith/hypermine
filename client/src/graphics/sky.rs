@@ -30,7 +30,10 @@ impl Sky {
             let f_guard = defer(|| device.destroy_shader_module(frag, None));
 
             let pipeline_layout = device
-                .create_pipeline_layout(&vk::PipelineLayoutCreateInfo::builder(), None)
+                .create_pipeline_layout(
+                    &vk::PipelineLayoutCreateInfo::builder().set_layouts(&[gfx.common_layout]),
+                    None,
+                )
                 .unwrap();
 
             let entry_point = cstr!("main").as_ptr();

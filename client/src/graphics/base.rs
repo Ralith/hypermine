@@ -1,6 +1,7 @@
 //! Common state shared throughout the graphics system
 
 use std::ffi::CStr;
+use std::ptr;
 use std::sync::Arc;
 
 use ash::{
@@ -20,6 +21,7 @@ pub struct Base {
     pub pipeline_cache: vk::PipelineCache,
     pub render_pass: vk::RenderPass,
     pub linear_sampler: vk::Sampler,
+    pub common_layout: vk::DescriptorSetLayout,
 }
 
 impl Drop for Base {
@@ -29,6 +31,8 @@ impl Drop for Base {
                 .destroy_pipeline_cache(self.pipeline_cache, None);
             self.device.destroy_render_pass(self.render_pass, None);
             self.device.destroy_sampler(self.linear_sampler, None);
+            self.device
+                .destroy_descriptor_set_layout(self.common_layout, None);
             self.device.destroy_device(None);
         }
     }
@@ -148,6 +152,22 @@ impl Base {
                 )
                 .unwrap();
 
+            let common_layout = device
+                .create_descriptor_set_layout(
+                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                        vk::DescriptorSetLayoutBinding {
+                            binding: 0,
+                            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                            descriptor_count: 1,
+                            stage_flags: vk::ShaderStageFlags::VERTEX
+                                | vk::ShaderStageFlags::FRAGMENT,
+                            p_immutable_samplers: ptr::null(),
+                        },
+                    ]),
+                    None,
+                )
+                .unwrap();
+
             Some(Self {
                 core,
                 physical,
@@ -158,6 +178,7 @@ impl Base {
                 pipeline_cache,
                 render_pass,
                 linear_sampler,
+                common_layout,
             })
         }
     }
@@ -174,9 +195,8 @@ impl Base {
                 .object_handle(object.as_raw())
                 .object_name(name),
         )
-            .unwrap();
+        .unwrap();
     }
-
 }
 
 pub const COLOR_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;
