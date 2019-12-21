@@ -3,25 +3,29 @@ use rand::{
     Rng,
 };
 
-pub struct World {}
+pub struct World {
+    /// Indexed by TileId
+    tiles: Vec<Tile>,
+}
 
 impl World {
-    pub fn generate(&self, tile: Tile, out: &mut [Material]) {
+    /// Returns true and writes `out` iff `tile_id` contains non-void voxels
+    pub fn generate(&self, tile_id: TileId, out: &mut [Material]) -> bool {
         assert_eq!(out.len(), SUBDIVISION_FACTOR.pow(3));
-        let fill = if tile.z >= 0 {
-            Material::Void
-        } else {
-            Material::Stone
-        };
-        for x in out {
-            *x = fill;
+        if tile_id == TileId::ROOT {
+            for x in out {
+                *x = Material::Stone;
+            }
         }
+        false
     }
 }
 
 impl Default for World {
     fn default() -> Self {
-        Self {}
+        World {
+            tiles: vec![Tile {}],
+        }
     }
 }
 
@@ -29,22 +33,22 @@ pub const SUBDIVISION_FACTOR: usize = 16;
 
 impl Distribution<World> for Standard {
     fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> World {
-        World {}
+        World {
+            tiles: vec![Tile {}],
+        }
     }
 }
 
-/// A quaternary tile in H^3
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug)]
 pub struct Tile {
-    x: i32,
-    y: i32,
-    z: i32,
+    // TODO
 }
 
-impl Tile {
-    pub fn new(x: i32, y: i32, z: i32) -> Self {
-        Self { x, y, z }
-    }
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct TileId(u32);
+
+impl TileId {
+    pub const ROOT: Self = Self(0);
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
