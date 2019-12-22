@@ -52,6 +52,7 @@ impl TileId {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[repr(u16)]
 pub enum Material {
     Void = 0,
     Stone = 1,

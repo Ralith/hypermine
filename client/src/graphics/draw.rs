@@ -4,7 +4,8 @@ use std::time::Instant;
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 
-use super::{Base, Sky};
+use super::{surface_extraction, Base, Sky, SurfaceExtraction, Voxels};
+use common::world::{Material, SUBDIVISION_FACTOR};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -26,6 +27,13 @@ pub struct Draw {
 
     /// Sky rendering
     sky: Sky,
+
+    /// Voxel chunks -> triangles
+    surface_extraction: SurfaceExtraction,
+    extraction_scratch: surface_extraction::ScratchBuffer,
+    voxel_surfaces: surface_extraction::DrawBuffer,
+    chunk: Option<surface_extraction::Chunk>,
+    voxels: Voxels,
 
     /// Reusable storage for barriers that prevent races between image upload and read
     image_barriers: Vec<vk::ImageMemoryBarrier>,
@@ -128,8 +136,17 @@ impl Draw {
                 })
                 .collect();
 
-            // Construct the actual graphics pipelines
+            // Construct the pipelines that will manage GPU work
             let sky = Sky::new(gfx.clone());
+            let surface_extraction = SurfaceExtraction::new(gfx.clone());
+            let extraction_scratch = surface_extraction::ScratchBuffer::new(
+                &surface_extraction,
+                4,
+                SUBDIVISION_FACTOR as u32,
+            );
+            let voxel_surfaces =
+                surface_extraction::DrawBuffer::new(gfx.clone(), 1024, SUBDIVISION_FACTOR as u32);
+            let voxels = Voxels::new(gfx.clone());
 
             Self {
                 gfx,
@@ -139,7 +156,14 @@ impl Draw {
                 epoch: Instant::now(),
                 common_pipeline_layout,
                 common_descriptor_pool,
+
                 sky,
+
+                surface_extraction,
+                extraction_scratch,
+                voxel_surfaces,
+                chunk: None,
+                voxels,
 
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
@@ -192,6 +216,27 @@ impl Draw {
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
+
+        // Perform surface extraction of in-range voxel chunks
+        if self.chunk.is_none() {
+            let chunk = self.voxel_surfaces.alloc().unwrap();
+            let index = 0;
+            let storage = self.extraction_scratch.storage(index);
+            // TODO: Generate from world
+            for x in storage {
+                *x = Material::Stone;
+            }
+            self.extraction_scratch.extract(
+                &self.surface_extraction,
+                index,
+                cmd,
+                self.voxel_surfaces.indirect_buffer(),
+                self.voxel_surfaces.indirect_offset(&chunk),
+                self.voxel_surfaces.vertex_buffer(),
+                self.voxel_surfaces.vertex_offset(&chunk),
+            );
+            self.chunk = Some(chunk);
+        }
 
         // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
         // before submitting the command buffer so time-sensitive values can be set with minimum
@@ -272,6 +317,9 @@ impl Draw {
         );
 
         // Record the actual rendering commands
+        self.voxels
+            .draw(cmd, &self.voxel_surfaces, self.chunk.as_ref().unwrap());
+        // Sky goes last to save fillrate
         self.sky.draw(cmd);
 
         // Finish up

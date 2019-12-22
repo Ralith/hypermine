@@ -1,0 +1,12 @@
+#version 450
+
+#include "common.h"
+
+layout(set = 0, binding = 1) writeonly restrict buffer FaceCounts {
+    uint face_counts[];
+};
+
+// Store a 1 if a face would be generated, or a 0 otherwise
+void main() {
+    face_counts[invocation_index()] = uint(face_exists());
+}

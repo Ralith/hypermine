@@ -11,6 +11,8 @@ mod base;
 mod core;
 mod draw;
 mod sky;
+mod surface_extraction;
+mod voxels;
 mod window;
 
 pub use self::{
@@ -18,6 +20,8 @@ pub use self::{
     core::Core,
     draw::Draw,
     sky::Sky,
+    surface_extraction::SurfaceExtraction,
+    voxels::Voxels,
     window::{EarlyWindow, Window},
 };
 

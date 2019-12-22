@@ -1,0 +1,49 @@
+#version 450
+
+#include "common.h"
+
+layout(set = 0, binding = 1) readonly restrict buffer FaceCounts {
+    uint face_counts[];
+};
+layout(set = 0, binding = 2) writeonly restrict buffer Indirect {
+    uint vertex_count;
+    uint instance_count;
+    uint first_vertex;
+    uint first_index;
+};
+layout(set = 0, binding = 3) writeonly restrict buffer Vertices {
+    uint out_vertices[][6];
+};
+layout(push_constant) uniform Uniforms {
+    uint vertex_offset;
+};
+
+// Faces in the negative direction along each axis with alternating winding
+const uvec3 vertices[6][6] = {
+    {{0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {0, 1, 1}, {0, 1, 0}, {0, 0, 0}}, // -X, CCW
+    {{0, 0, 0}, {0, 1, 1}, {0, 0, 1}, {0, 1, 1}, {0, 0, 0}, {0, 1, 0}}, // -X, CW
+    {{0, 0, 0}, {1, 0, 0}, {1, 0, 1}, {1, 0, 1}, {0, 0, 1}, {0, 0, 0}}, // -Y, CCW
+    {{0, 0, 0}, {1, 0, 1}, {1, 0, 0}, {1, 0, 1}, {0, 0, 0}, {0, 0, 1}}, // -Y, CW
+    {{0, 0, 0}, {0, 1, 0}, {1, 1, 0}, {1, 1, 0}, {1, 0, 0}, {0, 0, 0}}, // -Z, CCW
+    {{0, 0, 0}, {1, 1, 0}, {0, 1, 0}, {1, 1, 0}, {0, 0, 0}, {1, 0, 0}}, // -Z, CW
+};
+
+// Write out quads
+void main() {
+    uint count = face_counts[invocation_index()];
+    if (gl_GlobalInvocationID == gl_NumWorkGroups - uvec3(1)) {
+        vertex_count = count * 2 * 3;
+        instance_count = 1;
+        first_vertex = vertex_offset;
+        first_index = 0;
+    }
+
+    Face info;
+    if(!find_face(info)) return;
+
+    uvec3 face[6] = vertices[info.axis * 2 + uint(info.inward)];
+    for (int i = 0; i < 6; ++i) {
+        uvec3 v = face[i] + info.voxel;
+        out_vertices[count - 1][i] = v.x | v.y << 8 | v.z << 16;
+    }
+}
