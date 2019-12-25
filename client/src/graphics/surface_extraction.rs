@@ -382,7 +382,7 @@ impl ScratchBuffer {
             ctx.pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
-            &((vertex_offset / VERTEX_SIZE) as u32).to_ne_bytes(),
+            &((vertex_offset / FACE_SIZE) as u32).to_ne_bytes(),
         );
         device.cmd_dispatch(
             cmd,
@@ -443,7 +443,7 @@ fn dispatch_count(dimension: u32) -> vk::DeviceSize {
 
 /// Manages storage for ready-to-render voxels
 pub struct DrawBuffer {
-    gfx: Arc<Base>,
+    pub gfx: Arc<Base>,
     indirect: DedicatedBuffer,
     vertices: DedicatedBuffer,
     freelist: Vec<u32>,
@@ -537,11 +537,7 @@ impl Drop for DrawBuffer {
 // Size of the VkDrawIndirectCommand struct
 const INDIRECT_SIZE: vk::DeviceSize = 16;
 
-// Two triangles whose vertices are each encoded in 4 bytes
-const FACE_SIZE: vk::DeviceSize = 2 * 3 * VERTEX_SIZE;
-
-// R8G8B8A8
-const VERTEX_SIZE: vk::DeviceSize = 4;
+const FACE_SIZE: vk::DeviceSize = 8;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Chunk(u32);

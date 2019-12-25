@@ -146,7 +146,7 @@ impl Draw {
             );
             let voxel_surfaces =
                 surface_extraction::DrawBuffer::new(gfx.clone(), 1024, SUBDIVISION_FACTOR as u32);
-            let voxels = Voxels::new(gfx.clone());
+            let voxels = Voxels::new(&voxel_surfaces);
 
             Self {
                 gfx,

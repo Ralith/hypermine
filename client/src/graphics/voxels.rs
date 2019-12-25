@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ptr, sync::Arc};
 
 use ash::{version::DeviceV1_0, vk};
 use vk_shader_macros::include_glsl;
@@ -14,12 +14,16 @@ const FRAG: &[u32] = include_glsl!("shaders/voxels.frag");
 
 pub struct Voxels {
     gfx: Arc<Base>,
+    ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
+    descriptor_pool: vk::DescriptorPool,
+    ds: vk::DescriptorSet,
 }
 
 impl Voxels {
-    pub fn new(gfx: Arc<Base>) -> Self {
+    pub fn new(buffer: &DrawBuffer) -> Self {
+        let gfx = buffer.gfx.clone();
         let device = &*gfx.device;
         unsafe {
             // Construct the shader modules
@@ -34,10 +38,58 @@ impl Voxels {
                 .unwrap();
             let f_guard = defer(|| device.destroy_shader_module(frag, None));
 
+            let ds_layout = device
+                .create_descriptor_set_layout(
+                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                        vk::DescriptorSetLayoutBinding {
+                            binding: 0,
+                            descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
+                            descriptor_count: 1,
+                            stage_flags: vk::ShaderStageFlags::VERTEX,
+                            p_immutable_samplers: ptr::null(),
+                        },
+                    ]),
+                    None,
+                )
+                .unwrap();
+
+            let descriptor_pool = device
+                .create_descriptor_pool(
+                    &vk::DescriptorPoolCreateInfo::builder()
+                        .max_sets(1)
+                        .pool_sizes(&[vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::STORAGE_BUFFER,
+                            descriptor_count: 1,
+                        }]),
+                    None,
+                )
+                .unwrap();
+            let ds = device
+                .allocate_descriptor_sets(
+                    &vk::DescriptorSetAllocateInfo::builder()
+                        .descriptor_pool(descriptor_pool)
+                        .set_layouts(&[ds_layout]),
+                )
+                .unwrap()[0];
+            device.update_descriptor_sets(
+                &[vk::WriteDescriptorSet::builder()
+                    .dst_set(ds)
+                    .dst_binding(0)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .buffer_info(&[vk::DescriptorBufferInfo {
+                        buffer: buffer.vertex_buffer(),
+                        offset: 0,
+                        range: vk::WHOLE_SIZE,
+                    }])
+                    .build()],
+                &[],
+            );
+
             // Define the outward-facing interface of the shaders, incl. uniforms, samplers, etc.
             let pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder().set_layouts(&[gfx.common_layout]),
+                    &vk::PipelineLayoutCreateInfo::builder()
+                        .set_layouts(&[gfx.common_layout, ds_layout]),
                     None,
                 )
                 .unwrap();
@@ -61,22 +113,7 @@ impl Voxels {
                                 ..Default::default()
                             },
                         ])
-                        .vertex_input_state(
-                            &vk::PipelineVertexInputStateCreateInfo::builder()
-                                .vertex_binding_descriptions(&[vk::VertexInputBindingDescription {
-                                    binding: 0,
-                                    stride: 4,
-                                    input_rate: vk::VertexInputRate::VERTEX,
-                                }])
-                                .vertex_attribute_descriptions(&[
-                                    vk::VertexInputAttributeDescription {
-                                        location: 0,
-                                        binding: 0,
-                                        format: vk::Format::R8G8B8A8_UINT,
-                                        offset: 0,
-                                    },
-                                ]),
-                        )
+                        .vertex_input_state(&vk::PipelineVertexInputStateCreateInfo::default())
                         .input_assembly_state(
                             &vk::PipelineInputAssemblyStateCreateInfo::builder()
                                 .topology(vk::PrimitiveTopology::TRIANGLE_LIST),
@@ -143,8 +180,11 @@ impl Voxels {
 
             Self {
                 gfx,
+                ds_layout,
                 pipeline_layout,
                 pipeline,
+                descriptor_pool,
+                ds,
             }
         }
     }
@@ -152,7 +192,14 @@ impl Voxels {
     pub unsafe fn draw(&mut self, cmd: vk::CommandBuffer, buffer: &DrawBuffer, chunk: &Chunk) {
         let device = &*self.gfx.device;
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-        device.cmd_bind_vertex_buffers(cmd, 0, &[buffer.vertex_buffer()], &[0]);
+        device.cmd_bind_descriptor_sets(
+            cmd,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline_layout,
+            1,
+            &[self.ds],
+            &[],
+        );
         device.cmd_draw_indirect(
             cmd,
             buffer.indirect_buffer(),
@@ -169,6 +216,8 @@ impl Drop for Voxels {
         unsafe {
             device.destroy_pipeline(self.pipeline, None);
             device.destroy_pipeline_layout(self.pipeline_layout, None);
+            device.destroy_descriptor_set_layout(self.ds_layout, None);
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
         }
     }
 }
