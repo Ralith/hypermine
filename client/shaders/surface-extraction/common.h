@@ -15,8 +15,9 @@ uint get_voxel(uvec3 coords) {
     // We assume that all dimensions are equal, except that x occurs three times (once for each
     // face). There's also an extra dispatch per dimension to get the positive-sided border faces.
     uint dim = gl_NumWorkGroups.y - 1;
-    uint pair = voxel_pair[coords.x / 2 + coords.y * dim + coords.z * dim * dim];
-    return (coords.x & 1) == 0 ? pair & 0xFFFF : pair >> 16;
+    uint linear = coords.x + coords.y * dim + coords.z * dim * dim;
+    uint pair = voxel_pair[linear / 2];
+    return (linear % 2) == 0 ? pair & 0xFFFF : pair >> 16;
 }
 
 struct Face {
