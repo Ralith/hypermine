@@ -182,11 +182,16 @@ impl ScratchBuffer {
         let gfx = ctx.gfx.clone();
         let device = &*gfx.device;
         unsafe {
+            let mut voxels_size = concurrency * dimension.pow(3);
+            if voxels_size % 2 == 1 {
+                // Pad to even length so the shaders can safely read in 32 bit units
+                voxels_size += 1;
+            }
             let voxels = DedicatedMapping::zeroed_array(
                 device,
                 &gfx.memory_properties,
                 vk::BufferUsageFlags::STORAGE_BUFFER,
-                (concurrency * dimension.pow(3)) as usize,
+                voxels_size as usize,
             );
             gfx.set_name(voxels.buffer(), cstr!("voxels"));
 
