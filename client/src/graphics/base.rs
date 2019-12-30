@@ -1,8 +1,10 @@
 //! Common state shared throughout the graphics system
 
 use std::ffi::CStr;
-use std::ptr;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::{fs, ptr};
+use tracing::{trace, warn};
 
 use ash::{
     version::{DeviceV1_0, InstanceV1_0},
@@ -32,6 +34,7 @@ pub struct Base {
     pub linear_sampler: vk::Sampler,
     /// Layout of common shader resourcs, such as the common uniform buffer
     pub common_layout: vk::DescriptorSetLayout,
+    pipeline_cache_path: PathBuf,
 }
 
 impl Drop for Base {
@@ -51,10 +54,17 @@ impl Drop for Base {
 impl Base {
     pub fn new(
         core: Arc<Core>,
-        pipeline_cache_data: &[u8],
+        pipeline_cache_path: PathBuf,
         device_exts: &[&CStr],
         mut device_filter: impl FnMut(vk::PhysicalDevice, u32) -> bool,
     ) -> Option<Self> {
+        let pipeline_cache_data = match fs::read(&pipeline_cache_path) {
+            Ok(x) => x,
+            Err(e) => {
+                warn!(path=%pipeline_cache_path.display(), "failed to load pipeline cache: {}", e);
+                Vec::new()
+            }
+        };
         unsafe {
             let instance = &core.instance;
             // Select a physical device and queue family to use for rendering
@@ -98,7 +108,7 @@ impl Base {
             let memory_properties = instance.get_physical_device_memory_properties(physical);
             let pipeline_cache = device
                 .create_pipeline_cache(
-                    &vk::PipelineCacheCreateInfo::builder().initial_data(pipeline_cache_data),
+                    &vk::PipelineCacheCreateInfo::builder().initial_data(&pipeline_cache_data),
                     None,
                 )
                 .unwrap();
@@ -190,7 +200,26 @@ impl Base {
                 render_pass,
                 linear_sampler,
                 common_layout,
+                pipeline_cache_path,
             })
+        }
+    }
+
+    pub fn save_pipeline_cache(&self) {
+        let data = unsafe {
+            self.device
+                .get_pipeline_cache_data(self.pipeline_cache)
+                .unwrap()
+        };
+        match fs::create_dir_all(self.pipeline_cache_path.parent().unwrap())
+            .and_then(|()| fs::write(&self.pipeline_cache_path, &data))
+        {
+            Ok(()) => {
+                trace!(len = data.len(), "wrote pipeline cache");
+            }
+            Err(e) => {
+                warn!(path=%self.pipeline_cache_path.display(), "failed to save pipeline cache: {}", e);
+            }
         }
     }
 

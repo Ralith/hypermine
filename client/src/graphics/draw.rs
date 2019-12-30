@@ -148,6 +148,8 @@ impl Draw {
                 surface_extraction::DrawBuffer::new(gfx.clone(), 1024, SUBDIVISION_FACTOR as u32);
             let voxels = Voxels::new(&voxel_surfaces);
 
+            gfx.save_pipeline_cache();
+
             Self {
                 gfx,
                 cmd_pool,

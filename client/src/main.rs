@@ -1,6 +1,5 @@
 mod graphics;
 
-use std::fs;
 use std::sync::Arc;
 
 use ash::extensions::khr;
@@ -11,8 +10,6 @@ fn main() {
 
     // Read GPU driver caches
     let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
-    let pipeline_cache_path = dirs.cache_dir().join("pipeline_cache");
-    let pipeline_cache_data = fs::read(&pipeline_cache_path).unwrap_or_else(|_| vec![]);
 
     // Create the OS window
     let window = graphics::EarlyWindow::new();
@@ -28,7 +25,7 @@ fn main() {
     let gfx = Arc::new(
         graphics::Base::new(
             core,
-            &pipeline_cache_data,
+            dirs.cache_dir().join("pipeline_cache"),
             &[khr::Swapchain::name()],
             |physical, queue_family| window.supports(physical, queue_family),
         )
