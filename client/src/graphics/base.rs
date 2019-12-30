@@ -3,8 +3,8 @@
 use std::ffi::CStr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{fs, ptr};
-use tracing::{trace, warn};
+use std::{fs, io, ptr};
+use tracing::{info, trace, warn};
 
 use ash::{
     version::{DeviceV1_0, InstanceV1_0},
@@ -61,7 +61,11 @@ impl Base {
         let pipeline_cache_data = match fs::read(&pipeline_cache_path) {
             Ok(x) => x,
             Err(e) => {
-                warn!(path=%pipeline_cache_path.display(), "failed to load pipeline cache: {}", e);
+                if e.kind() == io::ErrorKind::NotFound {
+                    info!("creating fresh pipeline cache");
+                } else {
+                    warn!(path=%pipeline_cache_path.display(), "failed to load pipeline cache: {}", e);
+                }
                 Vec::new()
             }
         };
