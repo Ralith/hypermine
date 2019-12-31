@@ -161,7 +161,7 @@ impl Voxels {
                                 vk::PipelineColorBlendAttachmentState {
                                     blend_enable: vk::TRUE,
                                     src_color_blend_factor: vk::BlendFactor::ONE,
-                                    dst_color_blend_factor: vk::BlendFactor::ONE,
+                                    dst_color_blend_factor: vk::BlendFactor::ZERO,
                                     color_blend_op: vk::BlendOp::ADD,
                                     color_write_mask: vk::ColorComponentFlags::R
                                         | vk::ColorComponentFlags::G
