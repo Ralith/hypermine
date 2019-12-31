@@ -125,7 +125,8 @@ impl Voxels {
                         )
                         .rasterization_state(
                             &vk::PipelineRasterizationStateCreateInfo::builder()
-                                .cull_mode(vk::CullModeFlags::NONE)
+                                .cull_mode(vk::CullModeFlags::BACK)
+                                .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
                                 .polygon_mode(vk::PolygonMode::FILL)
                                 .line_width(1.0),
                         )
@@ -137,9 +138,7 @@ impl Voxels {
                             &vk::PipelineDepthStencilStateCreateInfo::builder()
                                 .depth_test_enable(true)
                                 .depth_write_enable(true)
-                                .depth_compare_op(vk::CompareOp::GREATER_OR_EQUAL)
-                                .front(NOOP_STENCIL_STATE)
-                                .back(NOOP_STENCIL_STATE),
+                                .depth_compare_op(vk::CompareOp::LESS),
                         )
                         .color_blend_state(
                             &vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[

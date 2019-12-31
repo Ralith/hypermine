@@ -20,10 +20,11 @@ uint get_voxel(uvec3 coords) {
     return (linear % 2) == 0 ? pair & 0xFFFF : pair >> 16;
 }
 
+// A face between a voxel and its neighbor in the -X, -Y, or -Z direction
 struct Face {
     // coordinates of the voxel
     uvec3 voxel;
-    // [0,3), indicating which axis this face is perpendicular to
+    // [0,6), indicating which axis this face is perpendicular to and whether it's facing inward
     uint axis;
     // whether the normal is facing towards the center of this voxel
     bool inward;
@@ -47,7 +48,7 @@ bool find_face(out Face info) {
     bool self_oob = any(equal(info.voxel, padding_coords));
     uint neighbor_mat = neighbor_oob ? 0 : get_voxel(neighbor);
     uint self_mat = self_oob ? 0 : get_voxel(info.voxel);
-    info.inward = self_mat == 0;
+    info.axis += 3 * uint(self_mat == 0);
     info.material = self_mat | neighbor_mat;
     return (neighbor_mat == 0) != (self_mat == 0);
 }
