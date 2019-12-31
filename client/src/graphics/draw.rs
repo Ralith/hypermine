@@ -151,7 +151,10 @@ impl Draw {
 
             let mut loader = Loader::<Pipelines>::new(gfx.clone());
             loader.spawn(
-                super::PngArray(config.data_dir.join("materials")),
+                super::PngArray {
+                    path: config.data_dir.join("materials"),
+                    size: common::world::Material::COUNT,
+                },
                 |p, x| match x {
                     Ok(x) => p.voxels.set_colors(x),
                     Err(e) => error!("failed to load tiles: {:#}", e),

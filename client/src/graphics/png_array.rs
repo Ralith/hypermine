@@ -7,22 +7,34 @@ use tracing::trace;
 
 use super::{loader, LoadFuture, Loadable};
 
-pub struct PngArray(pub PathBuf);
+pub struct PngArray {
+    pub path: PathBuf,
+    pub size: usize,
+}
 
 impl Loadable for PngArray {
     type Output = DedicatedImage;
 
     fn load<'a>(self, handle: &'a loader::Handle) -> LoadFuture<'a, Self::Output> {
         Box::pin(async move {
-            let mut paths = fs::read_dir(&self.0)
-                .with_context(|| format!("reading {}", self.0.display()))?
+            let mut paths = fs::read_dir(&self.path)
+                .with_context(|| format!("reading {}", self.path.display()))?
                 .map(|x| x.map(|x| x.path()))
                 .collect::<Result<Vec<_>, _>>()
-                .with_context(|| format!("reading {}", self.0.display()))?;
+                .with_context(|| format!("reading {}", self.path.display()))?;
             if paths.is_empty() {
-                bail!("{} is empty", self.0.display());
+                bail!("{} is empty", self.path.display());
+            }
+            if paths.len() < self.size {
+                bail!(
+                    "{}: expected {} textures, found {}",
+                    self.path.display(),
+                    self.size,
+                    paths.len()
+                );
             }
             paths.sort();
+            paths.truncate(self.size);
             let mut dims: Option<(u32, u32)> = None;
             let mut mem = None;
             for (i, path) in paths.iter().enumerate() {
@@ -48,10 +60,10 @@ impl Loadable for PngArray {
                     mem = Some(
                         handle
                             .staging
-                            .alloc(info.width as usize * info.height as usize * 4 * paths.len())
+                            .alloc(info.width as usize * info.height as usize * 4 * self.size)
                             .await
                             .ok_or_else(|| {
-                                anyhow!("{}: image array too large", self.0.display())
+                                anyhow!("{}: image array too large", self.path.display())
                             })?,
                     );
                 }
@@ -76,7 +88,7 @@ impl Loadable for PngArray {
                             depth: 1,
                         })
                         .mip_levels(1)
-                        .array_layers(paths.len() as u32)
+                        .array_layers(self.size as u32)
                         .samples(vk::SampleCountFlags::TYPE_1)
                         .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
                 );
@@ -93,7 +105,7 @@ impl Loadable for PngArray {
                                 aspect_mask: vk::ImageAspectFlags::COLOR,
                                 mip_level: 0,
                                 base_array_layer: 0,
-                                layer_count: paths.len() as u32,
+                                layer_count: self.size as u32,
                             },
                             image_extent: vk::Extent3D {
                                 width,
@@ -108,8 +120,7 @@ impl Loadable for PngArray {
                 trace!(
                     width = width,
                     height = height,
-                    len = paths.len(),
-                    path = %self.0.display(),
+                    path = %self.path.display(),
                     "loaded array"
                 );
                 Ok(image)

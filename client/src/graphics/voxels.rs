@@ -8,7 +8,7 @@ use super::{
     surface_extraction::{Chunk, DrawBuffer},
     Base,
 };
-use common::defer;
+use common::{defer, world::Material};
 
 const VERT: &[u32] = include_glsl!("shaders/voxels.vert");
 const FRAG: &[u32] = include_glsl!("shaders/voxels.frag");
@@ -242,7 +242,7 @@ impl Voxels {
                         base_mip_level: 0,
                         level_count: 1,
                         base_array_layer: 0,
-                        layer_count: 1,
+                        layer_count: Material::COUNT as u32,
                     }),
                 None,
             )
