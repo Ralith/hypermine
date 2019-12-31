@@ -11,9 +11,15 @@ common = { path = "../common" }
 tracing = "0.1.10"
 tracing-subscriber = "0.1.6"
 ash = "0.29"
-lahar = { git = "https://github.com/Ralith/lahar", rev = "c27e8ebcd25fc712befc6e43b5576651da856cf0" }
+lahar = { git = "https://github.com/Ralith/lahar", rev = "7ec87bc0fd970fb90bd4859c9c9bb4e3ced925b4" }
 winit = "0.20.0-alpha5"
 ash-window = "0.1.0"
 directories = "2.0.2"
 vk-shader-macros = "0.2.2"
 na = { package = "nalgebra", version = "0.19" }
+tokio = { version = "0.2", features = ["rt-threaded", "sync"] }
+png = "0.15.2"
+anyhow = "1.0.26"
+whoami = "0.7.0"
+serde = { version = "1.0.104", features = ["derive", "rc"] }
+toml = "0.5.5"

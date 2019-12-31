@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::{version::DeviceV1_0, vk};
 use vk_shader_macros::include_glsl;
 
-use super::{Base, NOOP_STENCIL_STATE};
+use super::Base;
 use common::defer;
 
 const VERT: &[u32] = include_glsl!("shaders/fullscreen.vert");
@@ -82,9 +82,7 @@ impl Sky {
                             &vk::PipelineDepthStencilStateCreateInfo::builder()
                                 .depth_test_enable(true)
                                 .depth_write_enable(false)
-                                .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
-                                .front(NOOP_STENCIL_STATE)
-                                .back(NOOP_STENCIL_STATE),
+                                .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL),
                         )
                         .color_blend_state(
                             &vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[

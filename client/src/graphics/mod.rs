@@ -10,6 +10,8 @@ macro_rules! cstr {
 mod base;
 mod core;
 mod draw;
+mod loader;
+mod png_array;
 mod sky;
 mod surface_extraction;
 mod voxels;
@@ -19,20 +21,10 @@ pub use self::{
     base::Base,
     core::Core,
     draw::Draw,
+    loader::{LoadFuture, Loadable, Loader},
+    png_array::PngArray,
     sky::Sky,
     surface_extraction::SurfaceExtraction,
     voxels::Voxels,
     window::{EarlyWindow, Window},
-};
-
-use ash::vk;
-
-const NOOP_STENCIL_STATE: vk::StencilOpState = vk::StencilOpState {
-    fail_op: vk::StencilOp::KEEP,
-    pass_op: vk::StencilOp::KEEP,
-    depth_fail_op: vk::StencilOp::KEEP,
-    compare_op: vk::CompareOp::ALWAYS,
-    compare_mask: 0,
-    write_mask: 0,
-    reference: 0,
 };

@@ -3,7 +3,7 @@
 #include "common.h"
 #include "surface-extraction/surface.h"
 
-layout(location = 0) out vec2 texcoords_out;
+layout(location = 0) out vec3 texcoords_out;
 
 layout(set = 1, binding = 0) readonly restrict buffer Surfaces {
     Surface surfaces[];
@@ -30,6 +30,6 @@ void main()  {
     Surface s = surfaces[index];
     uvec3 pos = get_pos(s);
     uint axis = get_axis(s);
-    texcoords_out = texcoords[axis / 3][vertex];
+    texcoords_out = vec3(texcoords[axis / 3][vertex], s.mat - 1);
     gl_Position = projection * vec4(vertices[axis][vertex] + pos, 1);
 }

@@ -1,8 +1,10 @@
 #version 450
 
-layout(location = 0) in vec2 texcoords;
+layout(location = 0) in vec3 texcoords;
 layout(location = 0) out vec4 color;
 
+layout(set = 1, binding = 1) uniform sampler2DArray textures;
+
 void main() {
-    color = vec4(texcoords.xy, 0, 0);
+    color = texture(textures, texcoords);
 }

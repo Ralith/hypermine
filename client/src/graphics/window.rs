@@ -11,6 +11,7 @@ use winit::{
 };
 
 use super::{Base, Core, Draw};
+use crate::Config;
 
 /// OS window
 pub struct EarlyWindow {
@@ -38,6 +39,7 @@ impl EarlyWindow {
 pub struct Window {
     _core: Arc<Core>,
     _window: WinitWindow,
+    config: Arc<Config>,
     event_loop: Option<EventLoop<()>>,
     surface_fn: khr::Surface,
     surface: vk::SurfaceKHR,
@@ -47,7 +49,7 @@ pub struct Window {
 
 impl Window {
     /// Finish constructing a window
-    pub fn new(early: EarlyWindow, core: Arc<Core>) -> Self {
+    pub fn new(early: EarlyWindow, core: Arc<Core>, config: Arc<Config>) -> Self {
         let surface = unsafe {
             ash_window::create_surface(&core.entry, &core.instance, &early.window, None).unwrap()
         };
@@ -56,6 +58,7 @@ impl Window {
         Self {
             _core: core,
             _window: early.window,
+            config,
             event_loop: Some(early.event_loop),
             surface,
             surface_fn,
@@ -80,7 +83,7 @@ impl Window {
         // Allocate the presentable images we'll be rendering to
         self.swapchain = Some(SwapchainMgr::new(&self, gfx.clone()));
         // Construct the core rendering object
-        self.draw = Some(Draw::new(gfx));
+        self.draw = Some(Draw::new(gfx, self.config.clone()));
         self.event_loop
             .take()
             .unwrap()
@@ -362,7 +365,7 @@ impl SwapchainState {
                     .create_image_view(
                         &vk::ImageViewCreateInfo::builder()
                             .image(depth.handle)
-                            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+                            .view_type(vk::ImageViewType::TYPE_2D)
                             .format(vk::Format::D32_SFLOAT)
                             .subresource_range(vk::ImageSubresourceRange {
                                 aspect_mask: vk::ImageAspectFlags::DEPTH,

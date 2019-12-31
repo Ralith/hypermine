@@ -1,4 +1,7 @@
+mod config;
 mod graphics;
+
+use config::Config;
 
 use std::sync::Arc;
 
@@ -8,8 +11,8 @@ fn main() {
     // Set up logging
     tracing_subscriber::fmt::init();
 
-    // Read GPU driver caches
     let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
+    let config = Arc::new(Config::load(&dirs));
 
     // Create the OS window
     let window = graphics::EarlyWindow::new();
@@ -19,7 +22,7 @@ fn main() {
         window.required_extension(),
     ]));
     // Finish creating the window, including the Vulkan resources used to render to it
-    let window = graphics::Window::new(window, core.clone());
+    let window = graphics::Window::new(window, core.clone(), config);
 
     // Initialize widely-shared graphics resources
     let gfx = Arc::new(
