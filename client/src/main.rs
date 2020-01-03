@@ -1,7 +1,9 @@
 mod config;
 mod graphics;
+mod sim;
 
 use config::Config;
+use sim::Sim;
 
 use std::sync::Arc;
 

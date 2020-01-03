@@ -1,17 +1,19 @@
+use std::f32;
 use std::ffi::CStr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use ash::{extensions::khr, version::DeviceV1_0, vk};
 use lahar::DedicatedImage;
 use tracing::info;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window as WinitWindow, WindowBuilder},
 };
 
 use super::{Base, Core, Draw};
-use crate::Config;
+use crate::{Config, Sim};
 
 /// OS window
 pub struct EarlyWindow {
@@ -45,6 +47,7 @@ pub struct Window {
     surface: vk::SurfaceKHR,
     swapchain: Option<SwapchainMgr>,
     draw: Option<Draw>,
+    sim: Sim,
 }
 
 impl Window {
@@ -64,6 +67,7 @@ impl Window {
             surface_fn,
             swapchain: None,
             draw: None,
+            sim: Sim::new(),
         }
     }
 
@@ -84,20 +88,70 @@ impl Window {
         self.swapchain = Some(SwapchainMgr::new(&self, gfx.clone()));
         // Construct the core rendering object
         self.draw = Some(Draw::new(gfx, self.config.clone()));
+        let mut forward = false;
+        let mut back = false;
+        let mut left = false;
+        let mut right = false;
+        let mut up = false;
+        let mut down = false;
+        let mut last_frame = Instant::now();
         self.event_loop
             .take()
             .unwrap()
             .run(move |event, _, control_flow| match event {
                 Event::EventsCleared => {
+                    let velocity = na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
+                        + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
+                        + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
+                    self.sim.velocity(velocity);
+                    let this_frame = Instant::now();
+                    self.sim.advance(this_frame - last_frame);
+                    last_frame = this_frame;
                     self.draw();
                 }
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    info!("exiting due to closed window");
-                    *control_flow = ControlFlow::Exit;
-                }
+                Event::DeviceEvent { event, .. } => match event {
+                    DeviceEvent::MouseMotion { delta } => {
+                        self.sim
+                            .rotate(na::Vector2::new(delta.0 as f32, delta.1 as f32) * 1e-3);
+                    }
+                    _ => {}
+                },
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::CloseRequested => {
+                        info!("exiting due to closed window");
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state,
+                                virtual_keycode: Some(key),
+                                ..
+                            },
+                        ..
+                    } => match key {
+                        VirtualKeyCode::W => {
+                            forward = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::A => {
+                            left = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::S => {
+                            back = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::D => {
+                            right = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::R => {
+                            up = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::F => {
+                            down = state == ElementState::Pressed;
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                },
                 _ => {}
             });
     }
@@ -129,9 +183,18 @@ impl Window {
                     }
                 }
             };
+            let aspect_ratio =
+                swapchain.state.extent.width as f32 / swapchain.state.extent.height as f32;
             let frame = &swapchain.state.frames[frame_id as usize];
             // Render the frame
-            draw.draw(frame.buffer, swapchain.state.extent, frame.present);
+            let vfov = f32::consts::FRAC_PI_4;
+            draw.draw(
+                frame.buffer,
+                swapchain.state.extent,
+                frame.present,
+                projection(0.05, (aspect_ratio * vfov.tan()).atan(), vfov)
+                    * self.sim.view().inverse(),
+            );
             // Submit the frame to be presented on the window
             match swapchain.queue_present(frame_id) {
                 Ok(false) => {}
@@ -437,4 +500,23 @@ struct Frame {
     buffer: vk::Framebuffer,
     /// Semaphore used to ensure the frame isn't presented until rendering completes
     present: vk::Semaphore,
+}
+
+#[rustfmt::skip]
+/// Compute right-handed y-up inverse Z projection matrix with far plane at infinity.
+fn projection(znear: f32, horizontal_half_fov: f32, vertical_half_fov: f32) -> na::Projective3<f32> {
+    let right = horizontal_half_fov.tan();
+    let left = -right;
+    let top = vertical_half_fov.tan();
+    let bottom = -top;
+    let idx = 1.0 / (right - left);
+    let idy = 1.0 / (bottom - top);
+    let sx = right + left;
+    let sy = bottom + top;
+    na::Projective3::from_matrix_unchecked(
+        na::Matrix4::new(
+            2.0 * idx,       0.0, sx * idx, 0.0,
+                  0.0, 2.0 * idy, sy * idy, 0.0,
+                  0.0,       0.0,      0.0, znear,
+                  0.0,       0.0,     -1.0, 0.0))
 }

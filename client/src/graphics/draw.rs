@@ -205,6 +205,7 @@ impl Draw {
         framebuffer: vk::Framebuffer,
         extent: vk::Extent2D,
         present: vk::Semaphore,
+        projection: na::Projective3<f32>,
     ) {
         self.loader.drive(&mut self.pipelines);
 
@@ -321,7 +322,7 @@ impl Draw {
         state.uniforms.write(
             device,
             Uniforms {
-                projection: na::Projective3::identity(),
+                projection,
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             },
         );
@@ -390,7 +391,7 @@ struct State {
 /// shaders.
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct Uniforms {
+struct Uniforms {
     /// Camera projection matrix
     projection: na::Projective3<f32>,
     /// Cycles through [0,1) once per second for simple animation effects
