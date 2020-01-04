@@ -198,7 +198,7 @@ impl Voxels {
                 "voxel materials",
                 super::PngArray {
                     path: config.data_dir.join("materials"),
-                    size: common::world::Material::COUNT,
+                    size: common::world::Material::COUNT - 1,
                 },
             );
 
@@ -236,7 +236,7 @@ impl Voxels {
                                 base_mip_level: 0,
                                 level_count: 1,
                                 base_array_layer: 0,
-                                layer_count: Material::COUNT as u32,
+                                layer_count: (Material::COUNT - 1) as u32,
                             }),
                         None,
                     )
