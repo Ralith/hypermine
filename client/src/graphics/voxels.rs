@@ -154,7 +154,7 @@ impl Voxels {
                             &vk::PipelineDepthStencilStateCreateInfo::builder()
                                 .depth_test_enable(true)
                                 .depth_write_enable(true)
-                                .depth_compare_op(vk::CompareOp::LESS),
+                                .depth_compare_op(vk::CompareOp::GREATER),
                         )
                         .color_blend_state(
                             &vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[
