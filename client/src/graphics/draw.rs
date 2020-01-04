@@ -432,8 +432,14 @@ impl Pipelines {
             let index = 0;
             let storage = self.extraction_scratch.storage(index);
             // TODO: Generate from world
-            for x in storage {
-                *x = Material::Stone;
+            for (i, x) in storage.iter_mut().enumerate() {
+                *x = if i % 2 == 0 {
+                    Material::Stone
+                } else if i % 3 == 0 {
+                    Material::Dirt
+                } else {
+                    Material::Void
+                };
             }
             unsafe {
                 self.extraction_scratch.extract(
