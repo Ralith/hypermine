@@ -23,3 +23,5 @@ anyhow = "1.0.26"
 whoami = "0.7.0"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
+fxhash = "0.2.1"
+downcast-rs = "1.1.1"

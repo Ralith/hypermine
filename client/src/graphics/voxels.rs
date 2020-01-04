@@ -6,8 +6,9 @@ use vk_shader_macros::include_glsl;
 
 use super::{
     surface_extraction::{Chunk, DrawBuffer},
-    Base,
+    Asset, Base, Loader,
 };
+use crate::Config;
 use common::{defer, world::Material};
 
 const VERT: &[u32] = include_glsl!("shaders/voxels.vert");
@@ -20,12 +21,12 @@ pub struct Voxels {
     pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
     ds: vk::DescriptorSet,
-    colors: Option<DedicatedImage>,
+    colors: Asset<DedicatedImage>,
     colors_view: vk::ImageView,
 }
 
 impl Voxels {
-    pub fn new(buffer: &DrawBuffer) -> Self {
+    pub fn new(config: &Config, loader: &mut Loader, buffer: &DrawBuffer) -> Self {
         let gfx = buffer.gfx.clone();
         let device = &*gfx.device;
         unsafe {
@@ -193,6 +194,14 @@ impl Voxels {
             v_guard.invoke();
             f_guard.invoke();
 
+            let colors = loader.load(
+                "voxel materials",
+                super::PngArray {
+                    path: config.data_dir.join("materials"),
+                    size: common::world::Material::COUNT,
+                },
+            );
+
             Self {
                 gfx,
                 ds_layout,
@@ -200,17 +209,56 @@ impl Voxels {
                 pipeline,
                 descriptor_pool,
                 ds,
-                colors: None,
+                colors,
                 colors_view: vk::ImageView::null(),
             }
         }
     }
 
-    pub unsafe fn draw(&mut self, cmd: vk::CommandBuffer, buffer: &DrawBuffer, chunk: &Chunk) {
+    pub unsafe fn draw(
+        &mut self,
+        loader: &Loader,
+        cmd: vk::CommandBuffer,
+        buffer: &DrawBuffer,
+        chunk: &Chunk,
+    ) {
         let device = &*self.gfx.device;
-        if self.colors.is_none() {
-            return;
+        if self.colors_view == vk::ImageView::null() {
+            if let Some(colors) = loader.get(self.colors) {
+                self.colors_view = device
+                    .create_image_view(
+                        &vk::ImageViewCreateInfo::builder()
+                            .image(colors.handle)
+                            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+                            .format(vk::Format::R8G8B8A8_SRGB)
+                            .subresource_range(vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                base_mip_level: 0,
+                                level_count: 1,
+                                base_array_layer: 0,
+                                layer_count: Material::COUNT as u32,
+                            }),
+                        None,
+                    )
+                    .unwrap();
+                device.update_descriptor_sets(
+                    &[vk::WriteDescriptorSet::builder()
+                        .dst_set(self.ds)
+                        .dst_binding(1)
+                        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        .image_info(&[vk::DescriptorImageInfo {
+                            sampler: vk::Sampler::null(),
+                            image_view: self.colors_view,
+                            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                        }])
+                        .build()],
+                    &[],
+                );
+            } else {
+                return;
+            }
         }
+
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
         device.cmd_bind_descriptor_sets(
             cmd,
@@ -228,40 +276,6 @@ impl Voxels {
             16,
         );
     }
-
-    pub unsafe fn set_colors(&mut self, colors: DedicatedImage) {
-        let device = &*self.gfx.device;
-        self.colors_view = device
-            .create_image_view(
-                &vk::ImageViewCreateInfo::builder()
-                    .image(colors.handle)
-                    .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
-                    .format(vk::Format::R8G8B8A8_SRGB)
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: Material::COUNT as u32,
-                    }),
-                None,
-            )
-            .unwrap();
-        self.colors = Some(colors);
-        device.update_descriptor_sets(
-            &[vk::WriteDescriptorSet::builder()
-                .dst_set(self.ds)
-                .dst_binding(1)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&[vk::DescriptorImageInfo {
-                    sampler: vk::Sampler::null(),
-                    image_view: self.colors_view,
-                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                }])
-                .build()],
-            &[],
-        );
-    }
 }
 
 impl Drop for Voxels {
@@ -272,8 +286,7 @@ impl Drop for Voxels {
             device.destroy_pipeline_layout(self.pipeline_layout, None);
             device.destroy_descriptor_set_layout(self.ds_layout, None);
             device.destroy_descriptor_pool(self.descriptor_pool, None);
-            if let Some(ref mut colors) = self.colors {
-                colors.destroy(device);
+            if self.colors_view != vk::ImageView::null() {
                 device.destroy_image_view(self.colors_view, None);
             }
         }

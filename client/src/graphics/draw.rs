@@ -3,7 +3,6 @@ use std::time::Instant;
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
-use tracing::error;
 
 use super::{surface_extraction, Base, Loader, Sky, SurfaceExtraction, Voxels};
 use crate::Config;
@@ -28,13 +27,8 @@ pub struct Draw {
     common_descriptor_pool: vk::DescriptorPool,
 
     /// Drives async asset loading
-    loader: Loader<Pipelines>,
-    /// State accessible to loader completion callbacks
-    pipelines: Pipelines,
-}
+    loader: Loader,
 
-/// State accessible to loader completion callbacks
-struct Pipelines {
     /// Sky rendering
     sky: Sky,
 
@@ -146,20 +140,20 @@ impl Draw {
                 })
                 .collect();
 
-            let pipelines = Pipelines::new(gfx.clone());
-            gfx.save_pipeline_cache();
+            let mut loader = Loader::new(gfx.clone());
 
-            let mut loader = Loader::<Pipelines>::new(gfx.clone());
-            loader.spawn(
-                super::PngArray {
-                    path: config.data_dir.join("materials"),
-                    size: common::world::Material::COUNT,
-                },
-                |p, x| match x {
-                    Ok(x) => p.voxels.set_colors(x),
-                    Err(e) => error!("failed to load tiles: {:#}", e),
-                },
+            let sky = Sky::new(gfx.clone());
+            let surface_extraction = SurfaceExtraction::new(gfx.clone());
+            let extraction_scratch = surface_extraction::ScratchBuffer::new(
+                &surface_extraction,
+                4,
+                SUBDIVISION_FACTOR as u32,
             );
+            let voxel_surfaces =
+                surface_extraction::DrawBuffer::new(gfx.clone(), 1024, SUBDIVISION_FACTOR as u32);
+            let voxels = Voxels::new(&config, &mut loader, &voxel_surfaces);
+
+            gfx.save_pipeline_cache();
 
             Self {
                 gfx,
@@ -171,7 +165,17 @@ impl Draw {
                 common_descriptor_pool,
 
                 loader,
-                pipelines,
+
+                sky,
+
+                surface_extraction,
+                extraction_scratch,
+                voxel_surfaces,
+                chunk: None,
+                voxels,
+
+                buffer_barriers: Vec::new(),
+                image_barriers: Vec::new(),
             }
         }
     }
@@ -207,7 +211,7 @@ impl Draw {
         present: vk::Semaphore,
         projection: na::Projective3<f32>,
     ) {
-        self.loader.drive(&mut self.pipelines);
+        self.loader.drive();
 
         let device = &*self.gfx.device;
         let state = &mut self.states[self.next_state];
@@ -225,13 +229,38 @@ impl Draw {
             )
             .unwrap();
 
-        self.pipelines.prepare(cmd);
+        // Perform surface extraction of in-range voxel chunks
+        if self.chunk.is_none() {
+            let chunk = self.voxel_surfaces.alloc().unwrap();
+            let index = 0;
+            let storage = self.extraction_scratch.storage(index);
+            // TODO: Generate from world
+            for (i, x) in storage.iter_mut().enumerate() {
+                *x = if i % 2 == 0 {
+                    Material::Stone
+                } else if i % 3 == 0 {
+                    Material::Dirt
+                } else {
+                    Material::Void
+                };
+            }
+            self.extraction_scratch.extract(
+                &self.surface_extraction,
+                index,
+                cmd,
+                self.voxel_surfaces.indirect_buffer(),
+                self.voxel_surfaces.indirect_offset(&chunk),
+                self.voxel_surfaces.vertex_buffer(),
+                self.voxel_surfaces.vertex_offset(&chunk),
+            );
+            self.chunk = Some(chunk);
+        }
 
         // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
         // before submitting the command buffer so time-sensitive values can be set with minimum
         // latency.
         state.uniforms.record_transfer(device, cmd);
-        self.pipelines.buffer_barriers.push(
+        self.buffer_barriers.push(
             vk::BufferMemoryBarrier::builder()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
@@ -247,11 +276,11 @@ impl Draw {
             vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
             vk::DependencyFlags::default(),
             &[],
-            &self.pipelines.buffer_barriers,
-            &self.pipelines.image_barriers,
+            &self.buffer_barriers,
+            &self.image_barriers,
         );
-        self.pipelines.buffer_barriers.clear();
-        self.pipelines.image_barriers.clear();
+        self.buffer_barriers.clear();
+        self.image_barriers.clear();
 
         device.cmd_begin_render_pass(
             cmd,
@@ -306,13 +335,14 @@ impl Draw {
         );
 
         // Record the actual rendering commands
-        self.pipelines.voxels.draw(
+        self.voxels.draw(
+            &self.loader,
             cmd,
-            &self.pipelines.voxel_surfaces,
-            self.pipelines.chunk.as_ref().unwrap(),
+            &self.voxel_surfaces,
+            self.chunk.as_ref().unwrap(),
         );
         // Sky goes last to save fillrate
-        self.pipelines.sky.draw(cmd);
+        self.sky.draw(cmd);
 
         // Finish up
         device.cmd_end_render_pass(cmd);
@@ -396,63 +426,4 @@ struct Uniforms {
     projection: na::Projective3<f32>,
     /// Cycles through [0,1) once per second for simple animation effects
     time: f32,
-}
-
-impl Pipelines {
-    fn new(gfx: Arc<Base>) -> Self {
-        let sky = Sky::new(gfx.clone());
-        let surface_extraction = SurfaceExtraction::new(gfx.clone());
-        let extraction_scratch = surface_extraction::ScratchBuffer::new(
-            &surface_extraction,
-            4,
-            SUBDIVISION_FACTOR as u32,
-        );
-        let voxel_surfaces =
-            surface_extraction::DrawBuffer::new(gfx.clone(), 1024, SUBDIVISION_FACTOR as u32);
-        let voxels = Voxels::new(&voxel_surfaces);
-
-        Self {
-            sky,
-
-            surface_extraction,
-            extraction_scratch,
-            voxel_surfaces,
-            chunk: None,
-            voxels,
-
-            buffer_barriers: Vec::new(),
-            image_barriers: Vec::new(),
-        }
-    }
-
-    fn prepare(&mut self, cmd: vk::CommandBuffer) {
-        // Perform surface extraction of in-range voxel chunks
-        if self.chunk.is_none() {
-            let chunk = self.voxel_surfaces.alloc().unwrap();
-            let index = 0;
-            let storage = self.extraction_scratch.storage(index);
-            // TODO: Generate from world
-            for (i, x) in storage.iter_mut().enumerate() {
-                *x = if i % 2 == 0 {
-                    Material::Stone
-                } else if i % 3 == 0 {
-                    Material::Dirt
-                } else {
-                    Material::Void
-                };
-            }
-            unsafe {
-                self.extraction_scratch.extract(
-                    &self.surface_extraction,
-                    index,
-                    cmd,
-                    self.voxel_surfaces.indirect_buffer(),
-                    self.voxel_surfaces.indirect_offset(&chunk),
-                    self.voxel_surfaces.vertex_buffer(),
-                    self.voxel_surfaces.vertex_offset(&chunk),
-                );
-            }
-            self.chunk = Some(chunk);
-        }
-    }
 }

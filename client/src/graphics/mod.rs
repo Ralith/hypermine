@@ -21,7 +21,7 @@ pub use self::{
     base::Base,
     core::Core,
     draw::Draw,
-    loader::{LoadFuture, Loadable, Loader},
+    loader::{Asset, LoadCtx, LoadFuture, Loadable, Loader},
     png_array::PngArray,
     sky::Sky,
     surface_extraction::SurfaceExtraction,

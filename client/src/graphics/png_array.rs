@@ -5,7 +5,7 @@ use ash::vk;
 use lahar::DedicatedImage;
 use tracing::trace;
 
-use super::{loader, LoadFuture, Loadable};
+use super::{LoadCtx, LoadFuture, Loadable};
 
 pub struct PngArray {
     pub path: PathBuf,
@@ -15,7 +15,7 @@ pub struct PngArray {
 impl Loadable for PngArray {
     type Output = DedicatedImage;
 
-    fn load<'a>(self, handle: &'a loader::Handle) -> LoadFuture<'a, Self::Output> {
+    fn load<'a>(self, handle: &'a LoadCtx) -> LoadFuture<'a, Self::Output> {
         Box::pin(async move {
             let mut paths = fs::read_dir(&self.path)
                 .with_context(|| format!("reading {}", self.path.display()))?
