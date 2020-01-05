@@ -30,5 +30,5 @@ void main() {
 
     Face info;
     if(!find_face(info)) return;
-    surfaces[count - 1] = surface(info.voxel, info.axis, info.material);
+    surfaces[count - 1] = surface(info.voxel, info.axis, info.material, uvec4(3));
 }
