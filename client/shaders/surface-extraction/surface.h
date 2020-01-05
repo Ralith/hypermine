@@ -12,7 +12,14 @@ uvec3 get_pos(Surface s) {
     return uvec3(s.pos_axis & 0xFF, (s.pos_axis >> 8) & 0xFF, (s.pos_axis >> 16) & 0xFF);
 }
 
-// [0,6), outward facing X/Y/Z followed by inward facing
+// Identifies the order in which the vertices should be rendered. The vertex positions are the same,
+// but winding and diagonal position vary. A flipped diagonal is used to ensure barycentric
+// interpolation of ambient occlusion is isotropic, and does not affect texture coordinates
+//
+// [0,3) are -X/-Y/-Z
+// [3,6) are +X/+Y/+Z
+// [6,9) are -X/-Y/-Z flipped
+// [9,12) are +X/+Y/+Z flipped
 uint get_axis(Surface s) {
     return s.pos_axis >> 24;
 }
@@ -27,6 +34,9 @@ float get_occlusion(Surface s, uvec2 texcoords) {
 
 Surface surface(uvec3 pos, uint axis, uint mat, uvec4 occlusion) {
     Surface result;
+    // Flip the quad if necessary to prevent the triangle dividing line from being parallel to the
+    // gradient of ambient occlusion, ensuring isotropy.
+    axis += 6 * uint(occlusion.y + occlusion.z > occlusion.x + occlusion.w);
     result.pos_axis = pos.x | pos.y << 8 | pos.z << 16 | axis << 24;
     result.occlusion_mat = mat | occlusion.x << 24 | occlusion.y << 26 | occlusion.z << 28 | occlusion.w << 30;
     return result;

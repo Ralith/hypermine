@@ -30,17 +30,7 @@ layout(push_constant) uniform Uniforms {
 // 2 - one neighboring voxel
 // 3 - fully exposed
 uint vertex_occlusion(bool a, bool b, bool c) {
-    const uint truth_table[8] = {
-        3,                      // 0 0 0
-        2,                      // 0 0 1
-        2,                      // 0 1 0
-        0,                      // 0 1 1
-        2,                      // 1 0 0
-        1,                      // 1 0 1
-        1,                      // 1 1 0
-        0                       // 1 1 1
-    };
-    return truth_table[uint(a) << 2 | uint(b) << 1 | uint(c)];
+    return b && c ? 0 : (3 - uint(a) - uint(b) - uint(c));
 }
 
 // Compute the occlusion state for each vertex on a surface
