@@ -95,6 +95,7 @@ impl Window {
         let mut up = false;
         let mut down = false;
         let mut last_frame = Instant::now();
+        let mut focused = false;
         self.event_loop
             .take()
             .unwrap()
@@ -110,7 +111,7 @@ impl Window {
                     self.draw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
-                    DeviceEvent::MouseMotion { delta } => {
+                    DeviceEvent::MouseMotion { delta } if focused => {
                         self.sim
                             .rotate(na::Vector2::new(delta.0 as f32, delta.1 as f32) * 1e-3);
                     }
@@ -150,6 +151,9 @@ impl Window {
                         }
                         _ => {}
                     },
+                    WindowEvent::Focused(x) => {
+                        focused = x;
+                    }
                     _ => {}
                 },
                 _ => {}
