@@ -19,6 +19,75 @@ layout(push_constant) uniform Uniforms {
     uint offset;
 };
 
+// Compute the occlusion state based on the three voxels surrounding an exposed vertex:
+//
+// a b
+// c .
+//
+// There are four occlusion states:
+// 0 - fully enclosed
+// 1 - two neighboring voxels
+// 2 - one neighboring voxel
+// 3 - fully exposed
+uint vertex_occlusion(bool a, bool b, bool c) {
+    const uint truth_table[8] = {
+        3,                      // 0 0 0
+        2,                      // 0 0 1
+        2,                      // 0 1 0
+        0,                      // 0 1 1
+        2,                      // 1 0 0
+        1,                      // 1 0 1
+        1,                      // 1 1 0
+        0                       // 1 1 1
+    };
+    return truth_table[uint(a) << 2 | uint(b) << 1 | uint(c)];
+}
+
+// Compute the occlusion state for each vertex on a surface
+uvec4 surface_occlusion(ivec3 voxel, uint axis) {
+    // Offset from voxel to the void voxel for this surface
+    const ivec3 offsets[6] = {
+        {-1,  0,  0},
+        { 0, -1,  0},
+        { 0,  0, -1},
+        {0,  0,  0},
+        {0,  0,  0},
+        {0,  0,  0},
+    };
+    // U/V axes on this surface
+    const ivec3 uvs[6][2] = {
+        {{0, 1, 0}, {0, 0, 1}},
+        {{0, 0, 1}, {1, 0, 0}},
+        {{1, 0, 0}, {0, 1, 0}},
+        {{0, 1, 0}, {0, 0, 1}},
+        {{0, 0, 1}, {1, 0, 0}},
+        {{1, 0, 0}, {0, 1, 0}},
+    };
+
+    voxel += offsets[axis];
+    ivec3 u = uvs[axis][0];
+    ivec3 v = uvs[axis][1];
+    // 0 1 2
+    // 3 . 4
+    // 5 6 7
+    bool occluders[8] = {
+        get_voxel(voxel - u - v) != 0,
+        get_voxel(voxel     - v) != 0,
+        get_voxel(voxel + u - v) != 0,
+        get_voxel(voxel - u    ) != 0,
+        get_voxel(voxel + u    ) != 0,
+        get_voxel(voxel - u + v) != 0,
+        get_voxel(voxel     + v) != 0,
+        get_voxel(voxel + u + v) != 0,
+    };
+    return uvec4(
+        vertex_occlusion(occluders[0], occluders[1], occluders[3]),
+        vertex_occlusion(occluders[2], occluders[1], occluders[4]),
+        vertex_occlusion(occluders[5], occluders[6], occluders[3]),
+        vertex_occlusion(occluders[7], occluders[6], occluders[4])
+    );
+}
+
 void main() {
     uint count = face_counts[invocation_index()];
     if (gl_GlobalInvocationID == gl_NumWorkGroups - uvec3(1)) {
@@ -30,5 +99,5 @@ void main() {
 
     Face info;
     if(!find_face(info)) return;
-    surfaces[count - 1] = surface(info.voxel, info.axis, info.material, uvec4(3));
+    surfaces[count - 1] = surface(info.voxel, info.axis, info.material, surface_occlusion(info.voxel, info.axis));
 }
