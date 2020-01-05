@@ -100,7 +100,7 @@ impl Window {
             .take()
             .unwrap()
             .run(move |event, _, control_flow| match event {
-                Event::EventsCleared => {
+                Event::MainEventsCleared => {
                     let velocity = na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
                         + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
                         + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
