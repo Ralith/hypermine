@@ -11,11 +11,14 @@ layout(set = 0, binding = 0) readonly restrict buffer Voxels {
     uint voxel_pair[];
 };
 
-uint get_voxel(uvec3 coords) {
-    // We assume that all dimensions are equal, except that x occurs three times (once for each
-    // face). There's also an extra dispatch per dimension to get the positive-sided border faces.
-    uint dim = gl_NumWorkGroups.y - 1;
-    uint linear = coords.x + coords.y * dim + coords.z * dim * dim;
+uint get_voxel(ivec3 coords) {
+    // We assume that all dimensions are equal, except that gl_NumWorkGroups.x is three times larger
+    // (yielding one invocation per negative-facing face). Each coordinate is offset by 1 to account
+    // for the margin on the negative-facing sides of the chunk.
+
+    // There's a margin of 1 on each side of each dimension, only half of which is dispatched over
+    uint dim = gl_NumWorkGroups.y + 1;
+    uint linear = (coords.x + 1) + (coords.y + 1) * dim + (coords.z + 1) * dim * dim;
     uint pair = voxel_pair[linear / 2];
     return (linear % 2) == 0 ? pair & 0xFFFF : pair >> 16;
 }
@@ -23,7 +26,7 @@ uint get_voxel(uvec3 coords) {
 // A face between a voxel and its neighbor in the -X, -Y, or -Z direction
 struct Face {
     // coordinates of the voxel
-    uvec3 voxel;
+    ivec3 voxel;
     // [0,6), indicating which axis this face is perpendicular to and whether it's facing inward
     uint axis;
     // whether the normal is facing towards the center of this voxel
@@ -40,14 +43,14 @@ bool find_face(out Face info) {
         { 0, -1,  0},
         { 0,  0, -1},
     };
+    const ivec3 padding_coord = ivec3(gl_NumWorkGroups.y - 1);
     info.voxel = ivec3(gl_GlobalInvocationID.x % gl_NumWorkGroups.y, gl_GlobalInvocationID.yz);
     info.axis = gl_GlobalInvocationID.x / gl_NumWorkGroups.y;
-    ivec3 padding_coords = ivec3(gl_NumWorkGroups.x / 3, gl_NumWorkGroups.yz) - ivec3(1);
-    ivec3 neighbor = ivec3(info.voxel) + offsets[info.axis];
-    bool neighbor_oob = any(lessThan(neighbor, ivec3(0))) || any(equal(neighbor, padding_coords));
-    bool self_oob = any(equal(info.voxel, padding_coords));
-    uint neighbor_mat = neighbor_oob ? 0 : get_voxel(neighbor);
-    uint self_mat = self_oob ? 0 : get_voxel(info.voxel);
+    ivec3 neighbor = info.voxel + offsets[info.axis];
+    // Don't generate faces between out-of-bounds voxels
+    if (any(equal(info.voxel, padding_coord)) && any(equal(neighbor, padding_coord))) return false;
+    uint neighbor_mat = get_voxel(neighbor);
+    uint self_mat = get_voxel(info.voxel);
     info.axis += 3 * uint(self_mat == 0);
     info.material = self_mat | neighbor_mat;
     return (neighbor_mat == 0) != (self_mat == 0);

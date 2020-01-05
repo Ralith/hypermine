@@ -11,7 +11,7 @@ common = { path = "../common" }
 tracing = "0.1.10"
 tracing-subscriber = "0.1.6"
 ash = "0.29"
-lahar = { git = "https://github.com/Ralith/lahar", rev = "7ec87bc0fd970fb90bd4859c9c9bb4e3ced925b4" }
+lahar = { git = "https://github.com/Ralith/lahar", rev = "b70cecccd000c4cdf3d654b65fa339c59a6fb416" }
 winit = "0.20.0-alpha5"
 ash-window = "0.1.0"
 directories = "2.0.2"

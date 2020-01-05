@@ -182,7 +182,8 @@ impl ScratchBuffer {
         let gfx = ctx.gfx.clone();
         let device = &*gfx.device;
         unsafe {
-            let mut voxels_size = concurrency * dimension.pow(3);
+            // Padded by 2 on each dimension so each voxel of interest has a full neighborhood
+            let mut voxels_size = concurrency * (dimension + 2).pow(3);
             if voxels_size % 2 == 1 {
                 // Pad to even length so the shaders can safely read in 32 bit units
                 voxels_size += 1;
@@ -237,8 +238,9 @@ impl ScratchBuffer {
         }
     }
 
+    /// Includes a one-voxel margin around the entire volume
     pub fn storage(&mut self, index: usize) -> &mut [Material] {
-        let size = self.dimension.pow(3) as usize;
+        let size = (self.dimension + 2).pow(3) as usize;
         &mut self.voxels[size * index..size * (index + 1)]
     }
 
@@ -254,11 +256,10 @@ impl ScratchBuffer {
     ) {
         let device = &*self.gfx.device;
 
-        let voxel_count = self.dimension.pow(3) as usize;
+        let voxel_count = (self.dimension + 2).pow(3) as usize;
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
         let dispatch_count = dispatch_count(self.dimension);
-        self.voxels
-            .flush_elts(device, voxel_count * index..voxel_count * (index + 1));
+        self.voxels.flush(device);
 
         let counts_offset = (dispatch_count as usize * index * 4) as vk::DeviceSize;
         let counts_range = dispatch_count as vk::DeviceSize * 4;
@@ -340,8 +341,8 @@ impl ScratchBuffer {
                     src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                     dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                     buffer: self.counts.handle,
-                    offset: (voxel_count * index * 4) as vk::DeviceSize,
-                    size: voxel_count as vk::DeviceSize * 4,
+                    offset: counts_offset,
+                    size: counts_range,
                     ..Default::default()
                 }],
                 &[],
@@ -374,8 +375,8 @@ impl ScratchBuffer {
                 src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                 dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                 buffer: self.counts.handle,
-                offset: (voxel_count * index * 4) as vk::DeviceSize,
-                size: voxel_count as vk::DeviceSize * 4,
+                offset: counts_offset,
+                size: counts_range,
                 ..Default::default()
             }],
             &[],
@@ -481,9 +482,7 @@ impl DrawBuffer {
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
                     .size((count * max_faces) as vk::DeviceSize * FACE_SIZE)
-                    .usage(
-                        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::VERTEX_BUFFER,
-                    )
+                    .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
             );
