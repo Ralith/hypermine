@@ -247,6 +247,8 @@ impl Draw {
                             Material::Stone
                         } else if y % 2 == 0 {
                             Material::Dirt
+                        } else if z % 4 == 0 {
+                            Material::Sand
                         } else {
                             Material::Void
                         };

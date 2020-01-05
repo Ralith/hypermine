@@ -31,7 +31,7 @@ void main()  {
     Surface s = surfaces[index];
     uvec3 pos = get_pos(s);
     uint axis = get_axis(s);
-    uvec2 uv = texcoords[axis / 3][vertex];
+    uvec2 uv = texcoords[uint(axis >= 3)][vertex];
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
     gl_Position = projection * vec4(vertices[axis][vertex] + pos, 1);
