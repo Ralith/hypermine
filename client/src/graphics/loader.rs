@@ -43,7 +43,10 @@ pub struct Loader {
 
 impl Loader {
     pub fn new(gfx: Arc<Base>) -> Self {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let runtime = tokio::runtime::Builder::new()
+            .threaded_scheduler()
+            .build()
+            .unwrap();
         let (send, recv) = mpsc::unbounded_channel();
         let staging =
             StagingBuffer::new(gfx.device.clone(), &gfx.memory_properties, 32 * 1024 * 1024);
