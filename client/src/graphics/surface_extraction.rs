@@ -171,7 +171,8 @@ impl Drop for SurfaceExtraction {
 pub struct ScratchBuffer {
     gfx: Arc<Base>,
     dimension: u32,
-    voxels: DedicatedMapping<[Material]>,
+    voxels_staging: DedicatedMapping<[Material]>,
+    voxels: DedicatedBuffer,
     counts: DedicatedBuffer,
     descriptor_pool: vk::DescriptorPool,
     descriptor_sets: Vec<vk::DescriptorSet>,
@@ -188,13 +189,26 @@ impl ScratchBuffer {
                 // Pad to even length so the shaders can safely read in 32 bit units
                 voxels_size += 1;
             }
-            let voxels = DedicatedMapping::zeroed_array(
+            let voxels_staging = DedicatedMapping::zeroed_array(
                 device,
                 &gfx.memory_properties,
-                vk::BufferUsageFlags::STORAGE_BUFFER,
+                vk::BufferUsageFlags::TRANSFER_SRC,
                 voxels_size as usize,
             );
-            gfx.set_name(voxels.buffer(), cstr!("voxels"));
+            gfx.set_name(voxels_staging.buffer(), cstr!("voxels staging"));
+
+            let voxels = DedicatedBuffer::new(
+                device,
+                &gfx.memory_properties,
+                &vk::BufferCreateInfo::builder()
+                    .size(voxels_size as vk::DeviceSize)
+                    .usage(
+                        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                    )
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            );
+            gfx.set_name(voxels.handle, cstr!("voxels"));
 
             let dispatch_count = dispatch_count(dimension);
             let counts = DedicatedBuffer::new(
@@ -230,6 +244,7 @@ impl ScratchBuffer {
             Self {
                 gfx,
                 dimension,
+                voxels_staging,
                 voxels,
                 counts,
                 descriptor_pool,
@@ -241,7 +256,7 @@ impl ScratchBuffer {
     /// Includes a one-voxel margin around the entire volume
     pub fn storage(&mut self, index: usize) -> &mut [Material] {
         let size = (self.dimension + 2).pow(3) as usize;
-        &mut self.voxels[size * index..size * (index + 1)]
+        &mut self.voxels_staging[size * index..size * (index + 1)]
     }
 
     pub unsafe fn extract(
@@ -259,10 +274,13 @@ impl ScratchBuffer {
         let voxel_count = (self.dimension + 2).pow(3) as usize;
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
         let dispatch_count = dispatch_count(self.dimension);
-        self.voxels.flush(device);
+        self.voxels_staging.flush(device);
 
         let counts_offset = (dispatch_count as usize * index * 4) as vk::DeviceSize;
         let counts_range = dispatch_count as vk::DeviceSize * 4;
+
+        let voxels_offset = (voxel_count * index * 2) as vk::DeviceSize;
+        let voxels_range = voxel_count as vk::DeviceSize * 2;
 
         device.update_descriptor_sets(
             &[
@@ -271,9 +289,9 @@ impl ScratchBuffer {
                     .dst_binding(0)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                     .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: self.voxels.buffer(),
-                        offset: (voxel_count * index * 2) as vk::DeviceSize,
-                        range: voxel_count as vk::DeviceSize * 2,
+                        buffer: self.voxels.handle,
+                        offset: voxels_offset,
+                        range: voxels_range,
                     }])
                     .build(),
                 vk::WriteDescriptorSet::builder()
@@ -309,6 +327,37 @@ impl ScratchBuffer {
             ],
             &[],
         );
+
+        device.cmd_copy_buffer(
+            cmd,
+            self.voxels_staging.buffer(),
+            self.voxels.handle,
+            &[vk::BufferCopy {
+                src_offset: voxels_offset,
+                dst_offset: voxels_offset,
+                size: voxels_range,
+            }],
+        );
+
+        device.cmd_pipeline_barrier(
+            cmd,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            Default::default(),
+            &[],
+            &[vk::BufferMemoryBarrier {
+                src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                dst_access_mask: vk::AccessFlags::SHADER_READ,
+                src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                buffer: self.voxels.handle,
+                offset: voxels_offset,
+                size: voxels_range,
+                ..Default::default()
+            }],
+            &[],
+        );
+
         device.cmd_bind_descriptor_sets(
             cmd,
             vk::PipelineBindPoint::COMPUTE,
@@ -435,6 +484,7 @@ impl Drop for ScratchBuffer {
         let device = &*self.gfx.device;
         unsafe {
             device.destroy_descriptor_pool(self.descriptor_pool, None);
+            self.voxels_staging.destroy(device);
             self.voxels.destroy(device);
             self.counts.destroy(device);
         }
