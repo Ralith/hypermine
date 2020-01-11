@@ -85,9 +85,10 @@ impl Base {
                             let supports_graphic_and_surface =
                                 info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
                                     && device_filter(physical, queue_family_index as u32);
-                            match supports_graphic_and_surface {
-                                true => Some((physical, queue_family_index as u32)),
-                                _ => None,
+                            if supports_graphic_and_surface {
+                                Some((physical, queue_family_index as u32))
+                            } else {
+                                None
                             }
                         })
                 })?;

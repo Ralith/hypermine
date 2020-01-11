@@ -26,7 +26,7 @@ impl Cleanup for DedicatedImage {
 
 pub trait Loadable: Send + 'static {
     type Output: Send + 'static + Cleanup;
-    fn load<'a>(self, ctx: &'a LoadCtx) -> LoadFuture<'a, Self::Output>;
+    fn load(self, ctx: &LoadCtx) -> LoadFuture<'_, Self::Output>;
 }
 
 pub type LoadFuture<'a, T> =
@@ -187,9 +187,9 @@ impl<T: 'static + Cleanup> AnyTable for Table<T> {
     }
 
     fn cleanup(self: Box<Self>, gfx: &Base) {
-        for x in self.data {
+        for x in self.data.into_iter().filter_map(|x| x) {
             unsafe {
-                x.map(|x| x.cleanup(gfx));
+                x.cleanup(gfx);
             }
         }
     }

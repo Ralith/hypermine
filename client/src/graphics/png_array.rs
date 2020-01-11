@@ -15,7 +15,7 @@ pub struct PngArray {
 impl Loadable for PngArray {
     type Output = DedicatedImage;
 
-    fn load<'a>(self, handle: &'a LoadCtx) -> LoadFuture<'a, Self::Output> {
+    fn load(self, handle: &LoadCtx) -> LoadFuture<'_, Self::Output> {
         Box::pin(async move {
             let mut paths = fs::read_dir(&self.path)
                 .with_context(|| format!("reading {}", self.path.display()))?

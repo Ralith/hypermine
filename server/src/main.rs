@@ -44,7 +44,7 @@ async fn run() -> Result<()> {
             warn!("generating self-signed certificate");
             let cert = rcgen::generate_simple_self_signed(vec![cfg
                 .server_name
-                .map(|x| Ok(x.into()))
+                .map(Ok)
                 .unwrap_or_else(|| {
                     hostname::get().context("getting hostname").and_then(|x| {
                         x.into_string()

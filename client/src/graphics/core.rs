@@ -71,7 +71,6 @@ impl Core {
                 .unwrap();
             // Guards ensure we clean up gracefully if something panics
             let instance_guard = defer(|| instance.destroy_instance(None));
-            let messenger_guard;
             let debug_utils;
             let messenger;
             if has_debug {
@@ -97,21 +96,13 @@ impl Core {
                     )
                     .unwrap();
                 debug_utils = Some(utils);
-                messenger_guard = Some(defer(|| {
-                    debug_utils
-                        .as_ref()
-                        .unwrap()
-                        .destroy_debug_utils_messenger(messenger, None)
-                }));
             } else {
                 debug_utils = None;
-                messenger_guard = None;
                 messenger = vk::DebugUtilsMessengerEXT::null();
             }
 
             // Setup successful, don't destroy things.
             instance_guard.cancel();
-            messenger_guard.map(|x| x.cancel());
             Self {
                 entry,
                 instance,
