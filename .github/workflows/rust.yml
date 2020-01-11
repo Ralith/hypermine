@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: ['master']
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Install shaderc
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          wget -nv -r -nd -A install.tgz 'https://storage.googleapis.com/shaderc/badges/build_link_linux_clang_release.html'
+          tar xf install.tgz
+          export SHADERC_LIB_DIR="$PWD/install/lib"
+
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --workspace --all-targets
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - uses: actions-rs/cargo@v1
+        if: always()
+        with:
+          command: clippy
+          args: --workspace --all-targets -- -D warnings
