@@ -1,4 +1,4 @@
-use std::{ptr, sync::Arc};
+use std::{mem, ptr, sync::Arc};
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::{DedicatedBuffer, DedicatedMapping};
@@ -201,7 +201,10 @@ impl ScratchBuffer {
                 device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
-                    .size(voxels_size as vk::DeviceSize)
+                    .size(
+                        mem::size_of::<Material>() as vk::DeviceSize
+                            * voxels_size as vk::DeviceSize,
+                    )
                     .usage(
                         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
                     )
@@ -279,8 +282,10 @@ impl ScratchBuffer {
         let counts_offset = (dispatch_count as usize * index * 4) as vk::DeviceSize;
         let counts_range = dispatch_count as vk::DeviceSize * 4;
 
-        let voxels_offset = (voxel_count * index * 2) as vk::DeviceSize;
-        let voxels_range = voxel_count as vk::DeviceSize * 2;
+        let voxels_offset =
+            (voxel_count * index) as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
+        let voxels_range =
+            voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
 
         device.update_descriptor_sets(
             &[
