@@ -57,7 +57,10 @@ impl Draw {
                 .create_command_pool(
                     &vk::CommandPoolCreateInfo::builder()
                         .queue_family_index(gfx.queue_family)
-                        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
+                        .flags(
+                            vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER
+                                | vk::CommandPoolCreateFlags::TRANSIENT,
+                        ),
                     None,
                 )
                 .unwrap();
