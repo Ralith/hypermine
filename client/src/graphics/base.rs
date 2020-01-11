@@ -3,7 +3,7 @@
 use std::ffi::CStr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{fs, io, ptr};
+use std::{fs, io, mem, ptr};
 use tracing::{info, trace, warn};
 
 use ash::{
@@ -34,6 +34,8 @@ pub struct Base {
     pub linear_sampler: vk::Sampler,
     /// Layout of common shader resourcs, such as the common uniform buffer
     pub common_layout: vk::DescriptorSetLayout,
+    pub limits: vk::PhysicalDeviceLimits,
+    pub timestamp_bits: u32,
     pipeline_cache_path: Option<PathBuf>,
 }
 
@@ -76,26 +78,37 @@ impl Base {
         unsafe {
             let instance = &core.instance;
             // Select a physical device and queue family to use for rendering
-            let (physical, queue_family_index) = instance
+            let (physical, queue_family_index, queue_family_properties) = instance
                 .enumerate_physical_devices()
                 .unwrap()
                 .into_iter()
                 .find_map(|physical| {
                     instance
                         .get_physical_device_queue_family_properties(physical)
-                        .iter()
+                        .into_iter()
                         .enumerate()
-                        .find_map(|(queue_family_index, ref info)| {
+                        .filter_map(|(queue_family_index, info)| {
                             let supports_graphic_and_surface =
                                 info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
                                     && device_filter(physical, queue_family_index as u32);
                             if supports_graphic_and_surface {
-                                Some((physical, queue_family_index as u32))
+                                Some((physical, queue_family_index as u32, info))
                             } else {
                                 None
                             }
                         })
+                        .next()
                 })?;
+            let physical_properties = instance.get_physical_device_properties(physical);
+            let name = std::str::from_utf8(mem::transmute::<_, &[u8]>(
+                &physical_properties.device_name[..physical_properties
+                    .device_name
+                    .iter()
+                    .position(|&x| x == 0)
+                    .unwrap()],
+            ))
+            .unwrap();
+            info!(name, "selected device");
 
             // Create the logical device and common resources descended from it
             let device_exts = device_exts.iter().map(|x| x.as_ptr()).collect::<Vec<_>>();
@@ -210,6 +223,8 @@ impl Base {
                 linear_sampler,
                 common_layout,
                 pipeline_cache_path,
+                limits: physical_properties.limits,
+                timestamp_bits: queue_family_properties.timestamp_valid_bits,
             })
         }
     }

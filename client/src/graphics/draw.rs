@@ -1,8 +1,9 @@
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
+use tracing::info;
 
 use super::{surface_extraction, Base, Loader, Sky, SurfaceExtraction, Voxels};
 use crate::Config;
@@ -13,12 +14,16 @@ pub struct Draw {
     gfx: Arc<Base>,
     /// Used to allocate the command buffers we render with
     cmd_pool: vk::CommandPool,
+    /// Allows accurate frame timing information to be recorded
+    timestamp_pool: vk::QueryPool,
     /// State that varies per frame in flight
     states: Vec<State>,
     /// The index of the next element of `states` to use
     next_state: usize,
     /// A reference time
     epoch: Instant,
+    /// Average duration of a frame, in nanoseconds
+    frame_time: Option<f32>,
     /// The lowest common denominator between the interfaces of our graphics pipelines
     ///
     /// Represents e.g. the binding for common uniforms
@@ -47,6 +52,7 @@ pub struct Draw {
 
 /// Maximum number of simultaneous frames in flight
 const PIPELINE_DEPTH: u32 = 2;
+const TIMESTAMPS_PER_FRAME: u32 = 2;
 
 impl Draw {
     pub fn new(gfx: Arc<Base>, config: Arc<Config>) -> Self {
@@ -71,6 +77,16 @@ impl Draw {
                         .command_buffer_count(PIPELINE_DEPTH),
                 )
                 .unwrap();
+
+            let timestamp_pool = device
+                .create_query_pool(
+                    &vk::QueryPoolCreateInfo::builder()
+                        .query_type(vk::QueryType::TIMESTAMP)
+                        .query_count(TIMESTAMPS_PER_FRAME * PIPELINE_DEPTH),
+                    None,
+                )
+                .unwrap();
+            gfx.set_name(timestamp_pool, cstr!("timestamp pool"));
 
             let common_pipeline_layout = device
                 .create_pipeline_layout(
@@ -134,6 +150,7 @@ impl Draw {
                             )
                             .unwrap(),
                         uniforms,
+                        used: false,
                     };
                     gfx.set_name(x.cmd, cstr!("frame"));
                     gfx.set_name(x.image_acquired, cstr!("image acquired"));
@@ -161,9 +178,11 @@ impl Draw {
             Self {
                 gfx,
                 cmd_pool,
+                timestamp_pool,
                 states,
                 next_state: 0,
                 epoch: Instant::now(),
+                frame_time: None,
                 common_pipeline_layout,
                 common_descriptor_pool,
 
@@ -185,7 +204,7 @@ impl Draw {
 
     /// Waits for a frame's worth of resources to become available for use in rendering a new frame
     ///
-    /// Call before signaling the image_acquired semaphore.
+    /// Call before signaling the image_acquired semaphore or invoking `draw`.
     pub unsafe fn wait(&self) {
         let device = &*self.gfx.device;
         let fence = self.states[self.next_state].fence;
@@ -217,12 +236,35 @@ impl Draw {
         self.loader.drive();
 
         let device = &*self.gfx.device;
+        let state_index = self.next_state;
         let state = &mut self.states[self.next_state];
         let cmd = state.cmd;
         // We're using this state again, so put the fence back in the unsignaled state and compute
         // the next frame to use
         device.reset_fences(&[state.fence]).unwrap();
         self.next_state = (self.next_state + 1) % PIPELINE_DEPTH as usize;
+        let first_query = state_index as u32 * TIMESTAMPS_PER_FRAME;
+
+        if state.used {
+            // Collect timestamps from the last time we drew this frame
+            let mut queries = [0u64; TIMESTAMPS_PER_FRAME as usize];
+            // `WAIT` is guaranteed not to block here because `Self::draw` is only called after
+            // `Self::wait` ensures that the prior instance of this frame is complete.
+            device
+                .get_query_pool_results(
+                    self.timestamp_pool,
+                    first_query,
+                    TIMESTAMPS_PER_FRAME,
+                    &mut queries,
+                    vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                )
+                .unwrap();
+            let dt = self.gfx.limits.timestamp_period * (queries[1] - queries[0]) as f32;
+            self.frame_time = Some(match self.frame_time {
+                None => dt,
+                Some(prev) => prev * 0.9 + dt * 0.1,
+            });
+        }
 
         device
             .begin_command_buffer(
@@ -231,6 +273,15 @@ impl Draw {
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
+        device.cmd_reset_query_pool(cmd, self.timestamp_pool, first_query, TIMESTAMPS_PER_FRAME);
+        let mut timestamp_index = first_query;
+        device.cmd_write_timestamp(
+            cmd,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            self.timestamp_pool,
+            timestamp_index,
+        );
+        timestamp_index += 1;
 
         // Perform surface extraction of in-range voxel chunks
         if self.chunk.is_none() {
@@ -360,6 +411,12 @@ impl Draw {
 
         // Finish up
         device.cmd_end_render_pass(cmd);
+        device.cmd_write_timestamp(
+            cmd,
+            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+            self.timestamp_pool,
+            timestamp_index,
+        );
         device.end_command_buffer(cmd).unwrap();
 
         // Specify the uniform data before actually submitting the command to transfer it
@@ -384,6 +441,7 @@ impl Draw {
                 state.fence,
             )
             .unwrap();
+        state.used = true;
     }
 
     /// Wait for all drawing to complete
@@ -397,10 +455,16 @@ impl Draw {
             }
         }
     }
+
+    /// Moving average of how long it takes the GPU to render a frame
+    pub fn frame_time(&self) -> Duration {
+        Duration::from_nanos(self.frame_time.map_or(0, |x| x as u64))
+    }
 }
 
 impl Drop for Draw {
     fn drop(&mut self) {
+        info!("average frame time: {:?}", self.frame_time());
         let device = &*self.gfx.device;
         unsafe {
             for state in &mut self.states {
@@ -410,6 +474,7 @@ impl Drop for Draw {
                 state.uniforms.destroy(device);
             }
             device.destroy_command_pool(self.cmd_pool, None);
+            device.destroy_query_pool(self.timestamp_pool, None);
             device.destroy_descriptor_pool(self.common_descriptor_pool, None);
             device.destroy_pipeline_layout(self.common_pipeline_layout, None);
         }
@@ -427,6 +492,10 @@ struct State {
     common_ds: vk::DescriptorSet,
     /// The common uniform buffer
     uniforms: Staged<Uniforms>,
+    /// Whether this state has been previously used
+    ///
+    /// Indicates that e.g. valid timestamps are associated with this query
+    used: bool,
 }
 
 /// Data stored in the common uniform buffer
