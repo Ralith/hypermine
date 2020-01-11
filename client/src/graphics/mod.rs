@@ -17,6 +17,9 @@ mod surface_extraction;
 mod voxels;
 mod window;
 
+#[cfg(test)]
+mod tests;
+
 pub use self::{
     base::Base,
     core::Core,

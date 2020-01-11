@@ -30,7 +30,7 @@ fn main() {
     let gfx = Arc::new(
         graphics::Base::new(
             core,
-            dirs.cache_dir().join("pipeline_cache"),
+            Some(dirs.cache_dir().join("pipeline_cache")),
             &[khr::Swapchain::name()],
             |physical, queue_family| window.supports(physical, queue_family),
         )
