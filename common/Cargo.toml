@@ -8,3 +8,8 @@ edition = "2018"
 
 [dependencies]
 rand = "0.7.2"
+serde = { version = "1.0.104", features = ["derive"] }
+na = { package = "nalgebra", version = "0.19", features = ["serde-serialize"] }
+bincode = "1.2.1"
+anyhow = "1.0.26"
+quinn = { git = "https://github.com/djc/quinn.git", rev = "8f319924f652808641c25ae5bb3bf1419b99bbb9", default-features = false }

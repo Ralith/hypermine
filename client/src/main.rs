@@ -1,8 +1,10 @@
 mod config;
 mod graphics;
+mod net;
 mod sim;
 
 use config::Config;
+use net::Net;
 use sim::Sim;
 
 use std::sync::Arc;
@@ -23,8 +25,12 @@ fn main() {
         khr::Surface::name(),
         window.required_extension(),
     ]));
+
+    // Kick off networking
+    let net = net::spawn();
+
     // Finish creating the window, including the Vulkan resources used to render to it
-    let window = graphics::Window::new(window, core.clone(), config);
+    let window = graphics::Window::new(window, core.clone(), config, Sim::new(net));
 
     // Initialize widely-shared graphics resources
     let gfx = Arc::new(

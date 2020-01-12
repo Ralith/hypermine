@@ -52,7 +52,7 @@ pub struct Window {
 
 impl Window {
     /// Finish constructing a window
-    pub fn new(early: EarlyWindow, core: Arc<Core>, config: Arc<Config>) -> Self {
+    pub fn new(early: EarlyWindow, core: Arc<Core>, config: Arc<Config>, sim: Sim) -> Self {
         let surface = unsafe {
             ash_window::create_surface(&core.entry, &core.instance, &early.window, None).unwrap()
         };
@@ -67,7 +67,7 @@ impl Window {
             surface_fn,
             swapchain: None,
             draw: None,
-            sim: Sim::new(),
+            sim,
         }
     }
 
@@ -106,7 +106,7 @@ impl Window {
                         + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
                     self.sim.velocity(velocity);
                     let this_frame = Instant::now();
-                    self.sim.advance(this_frame - last_frame);
+                    self.sim.step(this_frame - last_frame);
                     last_frame = this_frame;
                     self.draw();
                 }

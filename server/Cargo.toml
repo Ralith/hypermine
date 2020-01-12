@@ -10,11 +10,16 @@ edition = "2018"
 common = { path = "../common" }
 tracing = "0.1.10"
 tracing-subscriber = "0.1.6"
-tokio = { version = "0.2", features = ["rt-threaded", "udp", "time", "macros"] }
-quinn = { git = "https://github.com/djc/quinn.git", rev = "621060442d1efce759c61b6905296a4c86e79afa", default-features = false }
+tokio = { version = "0.2", features = ["rt-threaded", "time", "macros", "stream", "sync"] }
+quinn = { git = "https://github.com/djc/quinn.git", rev = "8f319924f652808641c25ae5bb3bf1419b99bbb9", default-features = false }
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
 anyhow = "1.0.26"
 rcgen = { version = "0.7.0", default-features = false }
 hostname = "0.3.0"
 futures = "0.3.1"
+hecs = "0.2.7"
+rand = { version = "0.7.2", features = [ "small_rng" ] }
+fxhash = "0.2.1"
+na = { package = "nalgebra", version = "0.19" }
+slotmap = "0.4.0"

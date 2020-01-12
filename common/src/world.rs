@@ -4,8 +4,8 @@ use rand::{
 };
 
 pub struct World {
-    /// Indexed by TileId
-    tiles: Vec<Tile>,
+    ///// Indexed by TileId
+//tiles: Vec<Tile>,
 }
 
 impl World {
@@ -24,7 +24,7 @@ impl World {
 impl Default for World {
     fn default() -> Self {
         World {
-            tiles: vec![Tile {}],
+            //tiles: vec![Tile {}],
         }
     }
 }
@@ -34,7 +34,7 @@ pub const SUBDIVISION_FACTOR: usize = 16;
 impl Distribution<World> for Standard {
     fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> World {
         World {
-            tiles: vec![Tile {}],
+            //tiles: vec![Tile {}],
         }
     }
 }
@@ -44,8 +44,13 @@ pub struct Tile {
     // TODO
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TileId(u32);
+mkid!(TileId: u32);
+
+impl std::fmt::Display for TileId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:x}", self.0)
+    }
+}
 
 impl TileId {
     pub const ROOT: Self = Self(0);
