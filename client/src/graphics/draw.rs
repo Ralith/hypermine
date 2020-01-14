@@ -277,7 +277,7 @@ impl Draw {
         let mut timestamp_index = first_query;
         device.cmd_write_timestamp(
             cmd,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
             self.timestamp_pool,
             timestamp_index,
         );
