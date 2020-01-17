@@ -37,6 +37,14 @@ const uvec2 texcoords[4][6] = {
     {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {0, 1}, {1, 0}},
 };
 
+// a is half extent, point is [0,1]^3
+// returns affine klein coordinates
+vec4 cube_vertex(float a, vec3 point) {
+    const float w = sqrt(3*pow(a,2)+1);
+    point = point * 2 - 1;
+    return vec4(point * vec3(a, a, a), w);
+}
+
 void main()  {
     uint index = gl_VertexIndex / 6;
     uint vertex = gl_VertexIndex % 6;
@@ -46,5 +54,6 @@ void main()  {
     uvec2 uv = texcoords[axis / 3][vertex];
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
-    gl_Position = projection * vec4(vertices[axis][vertex] + pos, 1);
+    vec3 relative_coords = vertices[axis][vertex] + pos;
+    gl_Position = projection * cube_vertex(1, relative_coords / 16);
 }

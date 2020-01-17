@@ -197,7 +197,7 @@ impl Window {
                 swapchain.state.extent,
                 frame.present,
                 projection(0.05, (aspect_ratio * vfov.tan()).atan(), vfov)
-                    * self.sim.view().inverse(),
+                    * self.sim.view().try_inverse().unwrap(),
             );
             // Submit the frame to be presented on the window
             match swapchain.queue_present(frame_id) {
@@ -511,7 +511,7 @@ struct Frame {
 
 #[rustfmt::skip]
 /// Compute right-handed y-up inverse Z projection matrix with far plane at infinity.
-fn projection(znear: f32, horizontal_half_fov: f32, vertical_half_fov: f32) -> na::Projective3<f32> {
+fn projection(znear: f32, horizontal_half_fov: f32, vertical_half_fov: f32) -> na::Matrix4<f32> {
     let right = horizontal_half_fov.tan();
     let left = -right;
     let top = vertical_half_fov.tan();
@@ -520,10 +520,9 @@ fn projection(znear: f32, horizontal_half_fov: f32, vertical_half_fov: f32) -> n
     let idy = 1.0 / (bottom - top);
     let sx = right + left;
     let sy = bottom + top;
-    na::Projective3::from_matrix_unchecked(
-        na::Matrix4::new(
-            2.0 * idx,       0.0, sx * idx, 0.0,
-                  0.0, 2.0 * idy, sy * idy, 0.0,
-                  0.0,       0.0,      0.0, znear,
-                  0.0,       0.0,     -1.0, 0.0))
+    na::Matrix4::new(
+        2.0 * idx,       0.0, sx * idx, 0.0,
+              0.0, 2.0 * idy, sy * idy, 0.0,
+              0.0,       0.0,      0.0, znear,
+              0.0,       0.0,     -1.0, 0.0)
 }

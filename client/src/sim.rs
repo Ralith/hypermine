@@ -3,10 +3,11 @@ use std::time::Duration;
 use tracing::{debug, error};
 
 use crate::Net;
+use common::math;
 
 /// Game state
 pub struct Sim {
-    view: na::Isometry3<f32>,
+    view: na::Matrix4<f32>,
     velocity: na::Vector3<f32>,
     net: Net,
 }
@@ -14,15 +15,16 @@ pub struct Sim {
 impl Sim {
     pub fn new(net: Net) -> Self {
         Self {
-            view: na::Isometry3::translation(0.0, 0.0, 32.0),
+            view: na::Matrix4::identity(),
             velocity: na::zero(),
             net,
         }
     }
 
     pub fn rotate(&mut self, delta: na::Vector2<f32>) {
-        self.view *= na::UnitQuaternion::from_axis_angle(&na::Vector3::y_axis(), -delta.x)
-            * na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), -delta.y);
+        self.view = self.view
+            * na::Matrix4::from_axis_angle(&na::Vector3::y_axis(), -delta.x)
+            * na::Matrix4::from_axis_angle(&na::Vector3::x_axis(), -delta.y);
     }
 
     pub fn velocity(&mut self, v: na::Vector3<f32>) {
@@ -42,10 +44,14 @@ impl Sim {
             }
         }
 
-        self.view *= na::Translation3::from(self.velocity * dt.as_secs_f32() * 10.0);
+        let dx = self.velocity * dt.as_secs_f32();
+        self.view *= math::translate(
+            &na::Vector4::new(0.0, 0.0, 0.0, 1.0),
+            &na::Vector4::new(dx.x, dx.y, dx.z, 1.0),
+        );
     }
 
-    pub fn view(&self) -> na::Isometry3<f32> {
+    pub fn view(&self) -> na::Matrix4<f32> {
         self.view
     }
 }

@@ -231,7 +231,7 @@ impl Draw {
         framebuffer: vk::Framebuffer,
         extent: vk::Extent2D,
         present: vk::Semaphore,
-        projection: na::Projective3<f32>,
+        projection: na::Matrix4<f32>,
     ) {
         self.loader.drive();
 
@@ -506,7 +506,7 @@ struct State {
 #[derive(Copy, Clone)]
 struct Uniforms {
     /// Camera projection matrix
-    projection: na::Projective3<f32>,
+    projection: na::Matrix4<f32>,
     /// Cycles through [0,1) once per second for simple animation effects
     time: f32,
 }
