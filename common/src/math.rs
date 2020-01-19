@@ -1,9 +1,42 @@
 //! From "Visualizing Hyperbolic Space: Unusual Uses of 4x4 Matrices." Phillips, Gunn.
 //!
-//! Arguments are 4D vectors that pass through the positive sheet of the 3-hyperboloid and whose
-//! length is not meaningful.
+//! Vector4 values are assumed to be homogeneous Klein model coordinates unless otherwise
+//! stated. Note that Minkowski model coordinates are valid Klein coordinates, but not vis versa.
 
-use na::RealField;
+use std::f64;
+
+use na::{RealField, Scalar};
+use serde::{Deserialize, Serialize};
+
+/// A point on the surface of the 3D hyperboloid in Minkowski coordinates with an implicit w
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[repr(C)]
+pub struct HPoint<N: Scalar>(na::Vector3<N>);
+
+impl<N: Scalar> HPoint<N> {
+    pub fn new(x: N, y: N, z: N) -> Self {
+        Self(na::Vector3::new(x, y, z))
+    }
+
+    /// Construct from Minkowski coordinates
+    pub fn from_homogeneous(v: na::Vector4<N>) -> Self {
+        Self(v.xyz())
+    }
+}
+
+impl<N: RealField> HPoint<N> {
+    pub fn origin() -> Self {
+        Self::new(na::zero(), na::zero(), na::zero())
+    }
+
+    /// Convert to Minkowski coordinates
+    pub fn to_homogeneous(self) -> na::Vector4<N> {
+        // x^2 + y^2 + z^2 - w^2 = -1
+        // sqrt(x^2 + y^2 + z^2 + 1) = w
+        let w = (self.0.x.powi(2) + self.0.y.powi(2) + self.0.z.powi(2) + na::one()).sqrt();
+        na::Vector4::new(self.0.x, self.0.y, self.0.z, w)
+    }
+}
 
 pub fn reflect<N: RealField>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()
@@ -11,12 +44,33 @@ pub fn reflect<N: RealField>(p: &na::Vector4<N>) -> na::Matrix4<N> {
 }
 
 pub fn translate<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Matrix4<N> {
-    let midpoint = a * (mip(b, b) * mip(a, b)).sqrt() + b * (mip(a, a) * mip(a, b)).sqrt();
-    reflect(&midpoint) * reflect(a)
+    reflect(&midpoint(a, b)) * reflect(a)
+}
+
+pub fn midpoint<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
+    a * (mip(b, b) * mip(a, b)).sqrt() + b * (mip(a, a) * mip(a, b)).sqrt()
 }
 
 pub fn distance<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     na::convert::<_, N>(2.0) * (mip(a, b).powi(2) / (mip(a, a) * mip(b, b))).sqrt().acosh()
+}
+
+/// Computes `a` in `(±a, ±a, ±a, sqrt(3a^2+1))`, the vertices of a cube centered on the origin
+pub fn cubic_tiling_coordinate() -> f64 {
+    // cosh a = cos A / sin B
+    // subdivide the square into 8 congruent triangles around a vertex at the center
+    // angle at center vertex is necessarily 2π/8
+    // angles at the edge are 2π/4 and 2π/10
+    // distance from the center of a face to the center of a neighboring edge:
+    // acosh(cos(2π/8) / sin(2π/10)) = acosh(cos(π/4) / sin(π/5))
+    let face_center_to_edge =
+        (f64::consts::FRAC_PI_4.cos() / (f64::consts::PI / 5.0).sin()).acosh();
+    // solve for edge length using property of hyperbolic lambert quadrilateral: tanh AF = cosh OA tanh OB
+    let half_edge = (face_center_to_edge.cosh() * face_center_to_edge.tanh()).atanh();
+    // edge length = 2 * acosh(2 * a^2 + 1)
+    // cosh(edge length / 2) = 2 * a^2 + 1
+    // sqrt(cosh(edge length / 2) - 1) / 2 = a
+    (half_edge.cosh() - 1.0).sqrt() / 2.0
 }
 
 /// Minkowski inner product, aka <a, b>_h
@@ -86,5 +140,21 @@ mod tests {
         let a = na::Vector4::new(0.2, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(-0.5, -0.5, 0.0, 1.0);
         assert_abs_diff_eq!(distance(&a, &b), 2.074, epsilon = 1e-3);
+    }
+
+    #[test]
+    fn distance_commutative() {
+        let p = HPoint::new(-1.0, -1.0, 0.0).to_homogeneous();
+        let q = HPoint::new(1.0, -1.0, 0.0).to_homogeneous();
+        assert_abs_diff_eq!(distance(&p, &q), distance(&q, &p));
+    }
+
+    #[test]
+    fn midpoint_distance() {
+        let p = HPoint::new(-1.0, -1.0, 0.0).to_homogeneous();
+        let q = HPoint::new(1.0, -1.0, 0.0).to_homogeneous();
+        let m = midpoint(&p, &q);
+        assert_abs_diff_eq!(distance(&p, &m), distance(&m, &q), epsilon = 1e-5);
+        assert_abs_diff_eq!(distance(&p, &m) * 2.0, distance(&p, &q), epsilon = 1e-5);
     }
 }

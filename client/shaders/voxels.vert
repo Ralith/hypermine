@@ -37,12 +37,11 @@ const uvec2 texcoords[4][6] = {
     {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {0, 1}, {1, 0}},
 };
 
-// a is half extent, point is [0,1]^3
-// returns affine klein coordinates
-vec4 cube_vertex(float a, vec3 point) {
+// Map [0,1]^3 to a point in a cubic tile
+vec4 cube_vertex(vec3 point) {
+    const float a = 0.29368223640863744; // Computed by common::math::cubic_tiling_coordinate
     const float w = sqrt(3*pow(a,2)+1);
-    point = point * 2 - 1;
-    return vec4(point * vec3(a, a, a), w);
+    return vec4((point * 2 - 1) * vec3(a, a, a), w);
 }
 
 void main()  {
@@ -55,5 +54,5 @@ void main()  {
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
     vec3 relative_coords = vertices[axis][vertex] + pos;
-    gl_Position = projection * cube_vertex(1, relative_coords / 16);
+    gl_Position = projection * cube_vertex(relative_coords / 16); // TODO: Don't hardcode chunk dimension to 16
 }

@@ -44,7 +44,7 @@ impl Sim {
             }
         }
 
-        let dx = self.velocity * dt.as_secs_f32();
+        let dx = self.velocity * dt.as_secs_f32() * 0.5;
         self.view *= math::translate(
             &na::Vector4::new(0.0, 0.0, 0.0, 1.0),
             &na::Vector4::new(dx.x, dx.y, dx.z, 1.0),

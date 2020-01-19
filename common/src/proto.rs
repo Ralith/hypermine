@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{world::TileId, EntityId, Step};
+use crate::{math::HPoint, world::TileId, EntityId, Step};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientHello {}
@@ -19,7 +19,7 @@ pub struct Tile {
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub struct Position {
     pub tile: TileId,
-    pub local: na::Point3<f32>,
+    pub local: HPoint<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
