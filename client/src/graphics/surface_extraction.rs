@@ -507,7 +507,9 @@ pub struct DrawBuffer {
     pub gfx: Arc<Base>,
     indirect: DedicatedBuffer,
     vertices: DedicatedBuffer,
+    transforms: DedicatedBuffer,
     freelist: Vec<u32>,
+    dimension: u32,
 }
 
 impl DrawBuffer {
@@ -543,11 +545,26 @@ impl DrawBuffer {
             );
             gfx.set_name(vertices.handle, cstr!("vertices"));
 
+            let transforms = DedicatedBuffer::new(
+                device,
+                &gfx.memory_properties,
+                &vk::BufferCreateInfo::builder()
+                    .size(count as vk::DeviceSize * TRANSFORM_SIZE)
+                    .usage(
+                        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                    )
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            );
+            gfx.set_name(transforms.handle, cstr!("transforms"));
+
             Self {
                 gfx,
                 indirect,
                 vertices,
+                transforms,
                 freelist: (0..count).rev().collect(),
+                dimension,
             }
         }
     }
@@ -572,6 +589,11 @@ impl DrawBuffer {
         self.indirect.handle
     }
 
+    /// Buffer containing per-chunk transform matrices
+    pub fn transform_buffer(&self) -> vk::Buffer {
+        self.transforms.handle
+    }
+
     /// The offset into the vertex buffer at which a chunk's vertex data can be found
     pub fn vertex_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
         vk::DeviceSize::from(chunk.0) * FACE_SIZE
@@ -581,6 +603,11 @@ impl DrawBuffer {
     pub fn indirect_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
         vk::DeviceSize::from(chunk.0) * INDIRECT_SIZE
     }
+
+    /// Number of voxels along a chunk edge
+    pub fn dimension(&self) -> u32 {
+        self.dimension
+    }
 }
 
 impl Drop for DrawBuffer {
@@ -589,6 +616,7 @@ impl Drop for DrawBuffer {
         unsafe {
             self.indirect.destroy(device);
             self.vertices.destroy(device);
+            self.transforms.destroy(device);
         }
     }
 }
@@ -598,5 +626,8 @@ const INDIRECT_SIZE: vk::DeviceSize = 16;
 
 const FACE_SIZE: vk::DeviceSize = 8;
 
+// 4x4 f32 matrix
+pub const TRANSFORM_SIZE: vk::DeviceSize = 64;
+
 #[derive(Debug, Eq, PartialEq)]
-pub struct Chunk(u32);
+pub struct Chunk(pub u32);

@@ -1,3 +1,4 @@
+use std::mem;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -7,6 +8,7 @@ use tracing::info;
 
 use super::{surface_extraction, Base, Loader, Sky, SurfaceExtraction, Voxels};
 use crate::Config;
+use common::graph::{self, Graph};
 use common::world::{Material, SUBDIVISION_FACTOR};
 
 /// Manages rendering, independent of what is being rendered to
@@ -41,8 +43,8 @@ pub struct Draw {
     surface_extraction: SurfaceExtraction,
     extraction_scratch: surface_extraction::ScratchBuffer,
     voxel_surfaces: surface_extraction::DrawBuffer,
-    chunk: Option<surface_extraction::Chunk>,
     voxels: Voxels,
+    graph: Graph<surface_extraction::Chunk>,
 
     /// Reusable storage for barriers that prevent races between image upload and read
     image_barriers: Vec<vk::ImageMemoryBarrier>,
@@ -193,8 +195,8 @@ impl Draw {
                 surface_extraction,
                 extraction_scratch,
                 voxel_surfaces,
-                chunk: None,
                 voxels,
+                graph: Graph::new(),
 
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
@@ -284,41 +286,44 @@ impl Draw {
         timestamp_index += 1;
 
         // Perform surface extraction of in-range voxel chunks
-        if self.chunk.is_none() {
-            let chunk = self.voxel_surfaces.alloc().unwrap();
-            let index = 0;
-            let storage = self.extraction_scratch.storage(index);
-            // TODO: Generate from world
-            for x in &mut storage[..] {
-                *x = Material::Void;
-            }
-            for z in 0..SUBDIVISION_FACTOR {
-                for y in 0..SUBDIVISION_FACTOR {
-                    for x in 0..SUBDIVISION_FACTOR {
-                        storage[(x + 1)
-                            + (y + 1) * (SUBDIVISION_FACTOR + 2)
-                            + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if x % 2 == 0 {
-                            Material::Stone
-                        } else if y % 2 == 0 {
-                            Material::Dirt
-                        } else if z % 4 == 0 {
-                            Material::Sand
-                        } else {
-                            Material::Void
-                        };
+        if self.graph.len() == 1 {
+            let mut node = graph::NodeId::ROOT;
+            for (index, side) in graph::Side::iter().enumerate().take(4) {
+                let chunk = self.voxel_surfaces.alloc().unwrap();
+                let storage = self.extraction_scratch.storage(index);
+                // TODO: Generate from world
+                for x in &mut storage[..] {
+                    *x = Material::Void;
+                }
+                for z in 0..SUBDIVISION_FACTOR {
+                    for y in 0..SUBDIVISION_FACTOR {
+                        for x in 0..SUBDIVISION_FACTOR {
+                            storage[(x + 1)
+                                + (y + 1) * (SUBDIVISION_FACTOR + 2)
+                                + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if x % 2 == 0 {
+                                Material::Stone
+                            } else if y % 2 == 0 {
+                                Material::Dirt
+                            } else if z % 4 == 0 {
+                                Material::Sand
+                            } else {
+                                Material::Void
+                            };
+                        }
                     }
                 }
+                self.extraction_scratch.extract(
+                    &self.surface_extraction,
+                    index,
+                    cmd,
+                    self.voxel_surfaces.indirect_buffer(),
+                    self.voxel_surfaces.indirect_offset(&chunk),
+                    self.voxel_surfaces.vertex_buffer(),
+                    self.voxel_surfaces.vertex_offset(&chunk),
+                );
+                *self.graph.get_mut(node) = Some(chunk);
+                node = self.graph.ensure_neighbor(node, side);
             }
-            self.extraction_scratch.extract(
-                &self.surface_extraction,
-                index,
-                cmd,
-                self.voxel_surfaces.indirect_buffer(),
-                self.voxel_surfaces.indirect_offset(&chunk),
-                self.voxel_surfaces.vertex_buffer(),
-                self.voxel_surfaces.vertex_offset(&chunk),
-            );
-            self.chunk = Some(chunk);
         }
 
         // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
@@ -330,6 +335,30 @@ impl Draw {
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
                 .buffer(state.uniforms.buffer())
+                .size(vk::WHOLE_SIZE)
+                .build(),
+        );
+
+        // Transfer node transforms
+        let chunks = self
+            .graph
+            .nearby(graph::NodeId::ROOT, 4)
+            .into_iter()
+            .filter_map(|(x, y, z)| Some((x.as_ref()?, y, z)))
+            .collect::<Vec<_>>();
+        for &(chunk, _, ref transform) in &chunks {
+            device.cmd_update_buffer(
+                cmd,
+                self.voxel_surfaces.transform_buffer(),
+                chunk.0 as vk::DeviceSize * surface_extraction::TRANSFORM_SIZE,
+                &mem::transmute::<_, [u8; surface_extraction::TRANSFORM_SIZE as usize]>(*transform),
+            );
+        }
+        self.buffer_barriers.push(
+            vk::BufferMemoryBarrier::builder()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .buffer(self.voxel_surfaces.transform_buffer())
                 .size(vk::WHOLE_SIZE)
                 .build(),
         );
@@ -400,12 +429,16 @@ impl Draw {
         );
 
         // Record the actual rendering commands
-        self.voxels.draw(
-            &self.loader,
-            cmd,
-            &self.voxel_surfaces,
-            self.chunk.as_ref().unwrap(),
-        );
+        for &(chunk, reflected, _) in &chunks {
+            self.voxels.draw(
+                &self.loader,
+                state.common_ds,
+                cmd,
+                &self.voxel_surfaces,
+                chunk,
+                reflected,
+            );
+        }
         // Sky goes last to save fillrate
         self.sky.draw(cmd);
 

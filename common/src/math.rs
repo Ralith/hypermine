@@ -38,6 +38,25 @@ impl<N: RealField> HPoint<N> {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct HIsometry<N: RealField> {
+    position: na::Vector4<N>,
+    orientation: na::UnitQuaternion<N>,
+}
+
+impl<N: RealField> HIsometry<N> {
+    pub fn identity() -> Self {
+        Self {
+            position: na::zero(),
+            orientation: na::one(),
+        }
+    }
+
+    pub fn to_homogeneous(&self) -> na::Matrix4<N> {
+        translate(&na::zero(), &self.position) * self.orientation.to_homogeneous()
+    }
+}
+
 pub fn reflect<N: RealField>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()
         - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(&p, &p)
@@ -47,12 +66,30 @@ pub fn translate<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Ma
     reflect(&midpoint(a, b)) * reflect(a)
 }
 
+/// 4D reflection around a normal vector; length is not significant (so long as it's nonzero)
+pub fn euclidean_reflect<N: RealField>(v: &na::Vector4<N>) -> na::Matrix4<N> {
+    na::Matrix4::identity() - v * v.transpose() * (na::convert::<_, N>(2.0) / v.norm_squared())
+}
+
 pub fn midpoint<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
     a * (mip(b, b) * mip(a, b)).sqrt() + b * (mip(a, a) * mip(a, b)).sqrt()
 }
 
 pub fn distance<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     na::convert::<_, N>(2.0) * (mip(a, b).powi(2) / (mip(a, a) * mip(b, b))).sqrt().acosh()
+}
+
+pub fn origin<N: RealField>() -> na::Vector4<N> {
+    na::Vector4::new(na::zero(), na::zero(), na::zero(), na::one())
+}
+
+pub fn lorentz_normalize<N: RealField>(v: &na::Vector4<N>) -> na::Vector4<N> {
+    let sf2 = mip(v, v);
+    if sf2 == na::zero() {
+        return origin();
+    }
+    let sf = sf2.abs().sqrt();
+    na::Vector4::new(v.x / sf, v.y / sf, v.z / sf, v.w / sf)
 }
 
 /// Computes `a` in `(±a, ±a, ±a, sqrt(3a^2+1))`, the vertices of a cube centered on the origin

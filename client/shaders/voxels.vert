@@ -10,6 +10,16 @@ layout(set = 1, binding = 0) readonly restrict buffer Surfaces {
     Surface surfaces[];
 };
 
+layout(set = 1, binding = 1) readonly restrict buffer Transforms {
+    mat4 transform[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint draw_index;
+    uint dimension;
+    bool reflected;
+};
+
 const uvec3 vertices[12][6] = {
     {{0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {0, 0, 0}, {0, 1, 1}, {0, 1, 0}}, // -X
     {{0, 0, 0}, {1, 0, 0}, {1, 0, 1}, {0, 0, 0}, {1, 0, 1}, {0, 0, 1}}, // -Y
@@ -47,6 +57,9 @@ vec4 cube_vertex(vec3 point) {
 void main()  {
     uint index = gl_VertexIndex / 6;
     uint vertex = gl_VertexIndex % 6;
+    if (reflected) {
+        vertex = 6 - vertex;
+    }
     Surface s = surfaces[index];
     uvec3 pos = get_pos(s);
     uint axis = get_axis(s);
@@ -54,5 +67,5 @@ void main()  {
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
     vec3 relative_coords = vertices[axis][vertex] + pos;
-    gl_Position = projection * cube_vertex(relative_coords / 16); // TODO: Don't hardcode chunk dimension to 16
+    gl_Position = projection * transform[draw_index] * cube_vertex(relative_coords / dimension);
 }

@@ -54,6 +54,13 @@ impl Voxels {
                         },
                         vk::DescriptorSetLayoutBinding {
                             binding: 1,
+                            descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
+                            descriptor_count: 1,
+                            stage_flags: vk::ShaderStageFlags::VERTEX,
+                            p_immutable_samplers: ptr::null(),
+                        },
+                        vk::DescriptorSetLayoutBinding {
+                            binding: 2,
                             descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::FRAGMENT,
@@ -71,7 +78,7 @@ impl Voxels {
                         .pool_sizes(&[
                             vk::DescriptorPoolSize {
                                 ty: vk::DescriptorType::STORAGE_BUFFER,
-                                descriptor_count: 1,
+                                descriptor_count: 2,
                             },
                             vk::DescriptorPoolSize {
                                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -89,16 +96,28 @@ impl Voxels {
                 )
                 .unwrap()[0];
             device.update_descriptor_sets(
-                &[vk::WriteDescriptorSet::builder()
-                    .dst_set(ds)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: buffer.vertex_buffer(),
-                        offset: 0,
-                        range: vk::WHOLE_SIZE,
-                    }])
-                    .build()],
+                &[
+                    vk::WriteDescriptorSet::builder()
+                        .dst_set(ds)
+                        .dst_binding(0)
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(&[vk::DescriptorBufferInfo {
+                            buffer: buffer.vertex_buffer(),
+                            offset: 0,
+                            range: vk::WHOLE_SIZE,
+                        }])
+                        .build(),
+                    vk::WriteDescriptorSet::builder()
+                        .dst_set(ds)
+                        .dst_binding(1)
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(&[vk::DescriptorBufferInfo {
+                            buffer: buffer.transform_buffer(),
+                            offset: 0,
+                            range: vk::WHOLE_SIZE,
+                        }])
+                        .build(),
+                ],
                 &[],
             );
 
@@ -106,7 +125,12 @@ impl Voxels {
             let pipeline_layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&[gfx.common_layout, ds_layout]),
+                        .set_layouts(&[gfx.common_layout, ds_layout])
+                        .push_constant_ranges(&[vk::PushConstantRange {
+                            stage_flags: vk::ShaderStageFlags::VERTEX,
+                            offset: 0,
+                            size: 12,
+                        }]),
                     None,
                 )
                 .unwrap();
@@ -218,9 +242,11 @@ impl Voxels {
     pub unsafe fn draw(
         &mut self,
         loader: &Loader,
+        common_ds: vk::DescriptorSet,
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
         chunk: &Chunk,
+        reflected: bool,
     ) {
         let device = &*self.gfx.device;
         if self.colors_view == vk::ImageView::null() {
@@ -244,7 +270,7 @@ impl Voxels {
                 device.update_descriptor_sets(
                     &[vk::WriteDescriptorSet::builder()
                         .dst_set(self.ds)
-                        .dst_binding(1)
+                        .dst_binding(2)
                         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                         .image_info(&[vk::DescriptorImageInfo {
                             sampler: vk::Sampler::null(),
@@ -264,9 +290,20 @@ impl Voxels {
             cmd,
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_layout,
-            1,
-            &[self.ds],
+            0,
+            &[common_ds, self.ds],
             &[],
+        );
+        let mut push_constants = [0; 12];
+        push_constants[0..4].copy_from_slice(&chunk.0.to_ne_bytes());
+        push_constants[4..8].copy_from_slice(&buffer.dimension().to_ne_bytes());
+        push_constants[8..12].copy_from_slice(&u32::from(reflected).to_ne_bytes());
+        device.cmd_push_constants(
+            cmd,
+            self.pipeline_layout,
+            vk::ShaderStageFlags::VERTEX,
+            0,
+            &push_constants,
         );
         device.cmd_draw_indirect(
             cmd,
