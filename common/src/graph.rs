@@ -58,12 +58,12 @@ impl<T> Graph<T> {
     pub fn nearby(&self, node: NodeId, distance: u32) -> Vec<(&Option<T>, bool, na::Matrix4<f32>)> {
         let mut result = Vec::new();
         let mut pending = Vec::<(NodeId, bool, na::Matrix4<f64>)>::new();
-        let mut visited = FxHashSet::default();
+        let mut visited = FxHashSet::<NodeId>::default();
 
         pending.push((node, false, na::Matrix4::identity()));
+        visited.insert(node);
 
         while let Some((node, reflected, transform)) = pending.pop() {
-            visited.insert(node);
             result.push((
                 &self.nodes[node.idx()].value,
                 reflected,
@@ -79,6 +79,7 @@ impl<T> Graph<T> {
                 }
                 let neighbor_xf = transform * REFLECTIONS[side as usize];
                 pending.push((neighbor, !reflected, neighbor_xf));
+                visited.insert(neighbor);
             }
         }
 
