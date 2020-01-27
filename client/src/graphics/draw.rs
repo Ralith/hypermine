@@ -168,7 +168,7 @@ impl Draw {
             let surface_extraction = SurfaceExtraction::new(gfx.clone());
             let extraction_scratch = surface_extraction::ScratchBuffer::new(
                 &surface_extraction,
-                4,
+                12,
                 SUBDIVISION_FACTOR as u32,
             );
             let voxel_surfaces =
@@ -288,7 +288,7 @@ impl Draw {
         // Perform surface extraction of in-range voxel chunks
         if self.graph.len() == 1 {
             let mut node = graph::NodeId::ROOT;
-            for (index, side) in graph::Side::iter().enumerate().take(4) {
+            for (index, side) in graph::Side::iter().enumerate().take(12) {
                 let chunk = self.voxel_surfaces.alloc().unwrap();
                 let storage = self.extraction_scratch.storage(index);
                 // TODO: Generate from world
@@ -322,7 +322,7 @@ impl Draw {
                     self.voxel_surfaces.face_offset(&chunk),
                 );
                 *self.graph.get_mut(node) = Some(chunk);
-                node = self.graph.ensure_neighbor(node, side);
+                node = self.graph.ensure_neighbor(graph::NodeId::ROOT, side);
             }
         }
 
