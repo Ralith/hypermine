@@ -596,7 +596,8 @@ impl DrawBuffer {
 
     /// The offset into the vertex buffer at which a chunk's vertex data can be found
     pub fn vertex_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
-        vk::DeviceSize::from(chunk.0) * FACE_SIZE
+        let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
+        vk::DeviceSize::from(chunk.0) * max_faces as vk::DeviceSize * FACE_SIZE
     }
 
     /// The offset into the indirect buffer at which a chunk's vertex data can be found
