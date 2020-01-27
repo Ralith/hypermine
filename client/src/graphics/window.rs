@@ -101,9 +101,9 @@ impl Window {
             .unwrap()
             .run(move |event, _, control_flow| match event {
                 Event::MainEventsCleared => {
-                    let velocity = na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
-                        + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
-                        + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
+                    let velocity = na::Vector3::x() * (right as u8 as f64 - left as u8 as f64)
+                        + na::Vector3::y() * (up as u8 as f64 - down as u8 as f64)
+                        + na::Vector3::z() * (back as u8 as f64 - forward as u8 as f64);
                     self.sim.velocity(velocity);
                     let this_frame = Instant::now();
                     self.sim.step(this_frame - last_frame);
@@ -112,8 +112,7 @@ impl Window {
                 }
                 Event::DeviceEvent { event, .. } => match event {
                     DeviceEvent::MouseMotion { delta } if focused => {
-                        self.sim
-                            .rotate(na::Vector2::new(delta.0 as f32, delta.1 as f32) * 1e-3);
+                        self.sim.rotate(na::Vector2::new(delta.0, delta.1) * 1e-3);
                     }
                     _ => {}
                 },

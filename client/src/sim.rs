@@ -7,8 +7,8 @@ use common::math;
 
 /// Game state
 pub struct Sim {
-    view: na::Matrix4<f32>,
-    velocity: na::Vector3<f32>,
+    view: na::Matrix4<f64>,
+    velocity: na::Vector3<f64>,
     net: Net,
 }
 
@@ -21,13 +21,13 @@ impl Sim {
         }
     }
 
-    pub fn rotate(&mut self, delta: na::Vector2<f32>) {
+    pub fn rotate(&mut self, delta: na::Vector2<f64>) {
         self.view = self.view
             * na::Matrix4::from_axis_angle(&na::Vector3::y_axis(), -delta.x)
             * na::Matrix4::from_axis_angle(&na::Vector3::x_axis(), -delta.y);
     }
 
-    pub fn velocity(&mut self, v: na::Vector3<f32>) {
+    pub fn velocity(&mut self, v: na::Vector3<f64>) {
         self.velocity = v;
     }
 
@@ -44,7 +44,7 @@ impl Sim {
             }
         }
 
-        let dx = self.velocity * dt.as_secs_f32() * 0.5;
+        let dx = na::convert::<_, na::Vector3<f64>>(self.velocity) * dt.as_secs_f64() * 0.5;
         self.view *= math::translate(
             &na::Vector4::new(0.0, 0.0, 0.0, 1.0),
             &na::Vector4::new(dx.x, dx.y, dx.z, 1.0),
@@ -52,6 +52,6 @@ impl Sim {
     }
 
     pub fn view(&self) -> na::Matrix4<f32> {
-        self.view
+        na::convert(self.view)
     }
 }
