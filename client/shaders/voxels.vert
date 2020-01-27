@@ -62,7 +62,7 @@ void main()  {
     uint index = gl_VertexIndex / 6;
     uint vertex = gl_VertexIndex % 6;
     if (reflected) {
-        vertex = 6 - vertex;
+        vertex = 5 - vertex;
     }
     Surface s = surfaces[index];
     uvec3 pos = get_pos(s);
