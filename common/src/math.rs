@@ -66,6 +66,24 @@ pub fn translate<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Ma
     reflect(&midpoint(a, b)) * reflect(a)
 }
 
+#[rustfmt::skip]
+pub fn translate_along<N: RealField>(v: &na::Unit<na::Vector3<N>>, distance: N) -> na::Matrix4<N> {
+    if distance == na::zero() {
+        return na::Matrix4::identity();
+    }
+    // g = Lorentz gamma factor
+    let g = distance.cosh();
+    let one = na::one::<N>();
+    let gm = g - one;
+    let bg = distance.sinh();
+    // TODO: Make this more elegant
+    na::Matrix4::new(
+        one + gm * v.x * v.x,       gm * v.x * v.y,       gm * v.x * v.z, bg * v.x,
+              gm * v.y * v.x, one + gm * v.y * v.y,       gm * v.y * v.z, bg * v.y,
+              gm * v.z * v.x,       gm * v.z * v.y, one + gm * v.z * v.z, bg * v.z,
+              bg * v.x,                   bg * v.y,             bg * v.z,        g)
+}
+
 /// 4D reflection around a normal vector; length is not significant (so long as it's nonzero)
 pub fn euclidean_reflect<N: RealField>(v: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::identity() - v * v.transpose() * (na::convert::<_, N>(2.0) / v.norm_squared())
@@ -90,6 +108,21 @@ pub fn lorentz_normalize<N: RealField>(v: &na::Vector4<N>) -> na::Vector4<N> {
     }
     let sf = sf2.abs().sqrt();
     na::Vector4::new(v.x / sf, v.y / sf, v.z / sf, v.w / sf)
+}
+
+pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
+    let dest = m * na::Vector4::new(na::zero(), na::zero(), na::zero(), na::one());
+    let norm = dest.xyz().norm();
+    let boost_length = (dest.w + norm).ln();
+    let direction = na::Unit::new_unchecked(dest.xyz() / norm);
+    let inverse_boost = translate_along(&direction, -boost_length);
+    let mut rotation = na::Rotation3::from_matrix_unchecked(
+        (inverse_boost * m)
+            .fixed_slice::<na::U3, na::U3>(0, 0)
+            .clone_owned(),
+    );
+    rotation.renormalize();
+    translate_along(&direction, boost_length) * rotation.to_homogeneous()
 }
 
 /// Minkowski inner product, aka <a, b>_h
@@ -175,5 +208,14 @@ mod tests {
         let m = midpoint(&p, &q);
         assert_abs_diff_eq!(distance(&p, &m), distance(&m, &q), epsilon = 1e-5);
         assert_abs_diff_eq!(distance(&p, &m) * 2.0, distance(&p, &q), epsilon = 1e-5);
+    }
+
+    #[test]
+    fn renormalize_noop() {
+        let mat = translate(
+            &na::Vector4::new(-0.5, -0.5, 0.0, 1.0),
+            &na::Vector4::new(0.3, -0.7, 0.0, 1.0),
+        );
+        assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
     }
 }

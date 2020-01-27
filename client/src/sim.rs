@@ -44,11 +44,9 @@ impl Sim {
             }
         }
 
-        let dx = na::convert::<_, na::Vector3<f64>>(self.velocity) * dt.as_secs_f64() * 0.5;
-        self.view *= math::translate(
-            &na::Vector4::new(0.0, 0.0, 0.0, 1.0),
-            &na::Vector4::new(dx.x, dx.y, dx.z, 1.0),
-        );
+        let (dir, rate) = na::Unit::new_and_get(na::convert::<_, na::Vector3<f64>>(self.velocity));
+        let distance = rate * dt.as_secs_f64() * 0.5;
+        self.view = math::renormalize_isometry(&self.view) * math::translate_along(&dir, distance);
     }
 
     pub fn view(&self) -> na::Matrix4<f32> {
