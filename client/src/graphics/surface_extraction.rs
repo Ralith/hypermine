@@ -269,8 +269,8 @@ impl ScratchBuffer {
         cmd: vk::CommandBuffer,
         indirect: vk::Buffer,
         indirect_offset: vk::DeviceSize,
-        vertex: vk::Buffer,
-        vertex_offset: vk::DeviceSize,
+        face: vk::Buffer,
+        face_offset: vk::DeviceSize,
     ) {
         let device = &*self.gfx.device;
 
@@ -324,8 +324,8 @@ impl ScratchBuffer {
                     .dst_binding(3)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                     .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: vertex,
-                        offset: vertex_offset,
+                        buffer: face,
+                        offset: face_offset,
                         range: max_faces as vk::DeviceSize * FACE_SIZE,
                     }])
                     .build(),
@@ -442,7 +442,7 @@ impl ScratchBuffer {
             ctx.pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
-            &((vertex_offset / FACE_SIZE) as u32).to_ne_bytes(),
+            &((face_offset / FACE_SIZE) as u32).to_ne_bytes(),
         );
         device.cmd_dispatch(
             cmd,
@@ -463,8 +463,8 @@ impl ScratchBuffer {
                     dst_access_mask: vk::AccessFlags::SHADER_READ,
                     src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                     dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    buffer: vertex,
-                    offset: vertex_offset,
+                    buffer: face,
+                    offset: face_offset,
                     size: max_faces as vk::DeviceSize * FACE_SIZE,
                     ..Default::default()
                 },
@@ -506,7 +506,7 @@ fn dispatch_count(dimension: u32) -> vk::DeviceSize {
 pub struct DrawBuffer {
     pub gfx: Arc<Base>,
     indirect: DedicatedBuffer,
-    vertices: DedicatedBuffer,
+    faces: DedicatedBuffer,
     transforms: DedicatedBuffer,
     freelist: Vec<u32>,
     dimension: u32,
@@ -534,7 +534,7 @@ impl DrawBuffer {
             gfx.set_name(indirect.handle, cstr!("indirect"));
 
             let max_faces = 3 * (dimension.pow(3) + dimension.pow(2));
-            let vertices = DedicatedBuffer::new(
+            let faces = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
@@ -543,7 +543,7 @@ impl DrawBuffer {
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
             );
-            gfx.set_name(vertices.handle, cstr!("vertices"));
+            gfx.set_name(faces.handle, cstr!("faces"));
 
             let transforms = DedicatedBuffer::new(
                 device,
@@ -561,7 +561,7 @@ impl DrawBuffer {
             Self {
                 gfx,
                 indirect,
-                vertices,
+                faces,
                 transforms,
                 freelist: (0..count).rev().collect(),
                 dimension,
@@ -579,12 +579,12 @@ impl DrawBuffer {
         self.freelist.push(chunk.0);
     }
 
-    /// Buffer containing vertex data
-    pub fn vertex_buffer(&self) -> vk::Buffer {
-        self.vertices.handle
+    /// Buffer containing face data
+    pub fn face_buffer(&self) -> vk::Buffer {
+        self.faces.handle
     }
 
-    /// Buffer containing vertex counts for use with cmd_draw_indirect
+    /// Buffer containing face counts for use with cmd_draw_indirect
     pub fn indirect_buffer(&self) -> vk::Buffer {
         self.indirect.handle
     }
@@ -594,13 +594,13 @@ impl DrawBuffer {
         self.transforms.handle
     }
 
-    /// The offset into the vertex buffer at which a chunk's vertex data can be found
-    pub fn vertex_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
+    /// The offset into the face buffer at which a chunk's face data can be found
+    pub fn face_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
         vk::DeviceSize::from(chunk.0) * max_faces as vk::DeviceSize * FACE_SIZE
     }
 
-    /// The offset into the indirect buffer at which a chunk's vertex data can be found
+    /// The offset into the indirect buffer at which a chunk's face data can be found
     pub fn indirect_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
         vk::DeviceSize::from(chunk.0) * INDIRECT_SIZE
     }
@@ -616,7 +616,7 @@ impl Drop for DrawBuffer {
         let device = &*self.gfx.device;
         unsafe {
             self.indirect.destroy(device);
-            self.vertices.destroy(device);
+            self.faces.destroy(device);
             self.transforms.destroy(device);
         }
     }

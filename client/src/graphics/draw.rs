@@ -318,8 +318,8 @@ impl Draw {
                     cmd,
                     self.voxel_surfaces.indirect_buffer(),
                     self.voxel_surfaces.indirect_offset(&chunk),
-                    self.voxel_surfaces.vertex_buffer(),
-                    self.voxel_surfaces.vertex_offset(&chunk),
+                    self.voxel_surfaces.face_buffer(),
+                    self.voxel_surfaces.face_offset(&chunk),
                 );
                 *self.graph.get_mut(node) = Some(chunk);
                 node = self.graph.ensure_neighbor(node, side);

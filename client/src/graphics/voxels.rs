@@ -102,7 +102,7 @@ impl Voxels {
                         .dst_binding(0)
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                         .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: buffer.vertex_buffer(),
+                            buffer: buffer.face_buffer(),
                             offset: 0,
                             range: vk::WHOLE_SIZE,
                         }])
