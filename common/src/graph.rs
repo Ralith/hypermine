@@ -188,7 +188,7 @@ lazy_static! {
 
     /// Transform that moves from a neighbor to a reference node, for each side
     static ref REFLECTIONS: [na::Matrix4<f64>; 12] = {
-        let phi = 1.25f64.sqrt() + 0.5;
+        let phi = 1.25f64.sqrt() + 0.5; // golden ratio
         let root_phi = phi.sqrt();
         let f = math::lorentz_normalize(&na::Vector4::new(root_phi, phi * root_phi, 0.0, phi + 2.0));
 

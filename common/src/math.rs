@@ -92,24 +92,6 @@ pub fn lorentz_normalize<N: RealField>(v: &na::Vector4<N>) -> na::Vector4<N> {
     na::Vector4::new(v.x / sf, v.y / sf, v.z / sf, v.w / sf)
 }
 
-/// Computes `a` in `(±a, ±a, ±a, sqrt(3a^2+1))`, the vertices of a cube centered on the origin
-pub fn cubic_tiling_coordinate() -> f64 {
-    // cosh a = cos A / sin B
-    // subdivide the square into 8 congruent triangles around a vertex at the center
-    // angle at center vertex is necessarily 2π/8
-    // angles at the edge are 2π/4 and 2π/10
-    // distance from the center of a face to the center of a neighboring edge:
-    // acosh(cos(2π/8) / sin(2π/10)) = acosh(cos(π/4) / sin(π/5))
-    let face_center_to_edge =
-        (f64::consts::FRAC_PI_4.cos() / (f64::consts::PI / 5.0).sin()).acosh();
-    // solve for edge length using property of hyperbolic lambert quadrilateral: tanh AF = cosh OA tanh OB
-    let half_edge = (face_center_to_edge.cosh() * face_center_to_edge.tanh()).atanh();
-    // edge length = 2 * acosh(2 * a^2 + 1)
-    // cosh(edge length / 2) = 2 * a^2 + 1
-    // sqrt(cosh(edge length / 2) - 1) / 2 = a
-    (half_edge.cosh() - 1.0).sqrt() / 2.0
-}
-
 /// Minkowski inner product, aka <a, b>_h
 fn mip<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     a.x * b.x + a.y * b.y + a.z * b.z - a.w * b.w

@@ -49,7 +49,7 @@ const uvec2 texcoords[4][6] = {
 
 // Map [0,1]^3 to a point in a cubic tile
 vec4 cube_vertex(vec3 point) {
-    const float a = 0.29368223640863744; // Computed by common::math::cubic_tiling_coordinate
+    const float a = sqrt(1+sqrt(5))/2;
     const float w = sqrt(3*pow(a,2)+1);
     return vec4((point * 2 - 1) * vec3(a, a, a), w);
 }
