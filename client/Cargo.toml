@@ -12,7 +12,7 @@ tracing = "0.1.10"
 tracing-subscriber = "0.1.6"
 ash = "0.29"
 lahar = { git = "https://github.com/Ralith/lahar", rev = "b70cecccd000c4cdf3d654b65fa339c59a6fb416" }
-winit = "0.20.0"
+winit = { git = "https://github.com/Osspial/winit", rev = "808a6b72d270dea01d255f646a6c815b631a4f69" }
 ash-window = "0.1.0"
 directories = "2.0.2"
 vk-shader-macros = "0.2.2"
