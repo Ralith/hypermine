@@ -168,7 +168,7 @@ impl Draw {
             let surface_extraction = SurfaceExtraction::new(gfx.clone());
             let extraction_scratch = surface_extraction::ScratchBuffer::new(
                 &surface_extraction,
-                12,
+                927, // Number of dodecahedra in distance 0-3 to a given one
                 SUBDIVISION_FACTOR as u32,
             );
             let voxel_surfaces =
@@ -287,8 +287,10 @@ impl Draw {
 
         // Perform surface extraction of in-range voxel chunks
         if self.graph.len() == 1 {
-            let mut node = graph::NodeId::ROOT;
-            for (index, side) in graph::Side::iter().enumerate().take(12) {
+            let mut index: usize = 0;
+            let nearby_nodes = self.graph.ensure_nearby(graph::NodeId::ROOT, 3);
+            eprintln!("Number of chunks to create: {}", nearby_nodes.len());
+            for node in nearby_nodes {
                 let chunk = self.voxel_surfaces.alloc().unwrap();
                 let storage = self.extraction_scratch.storage(index);
                 // TODO: Generate from world
@@ -322,7 +324,7 @@ impl Draw {
                     self.voxel_surfaces.face_offset(&chunk),
                 );
                 *self.graph.get_mut(node) = Some(chunk);
-                node = self.graph.ensure_neighbor(graph::NodeId::ROOT, side);
+                index += 1;
             }
         }
 
