@@ -111,7 +111,7 @@ pub fn lorentz_normalize<N: RealField>(v: &na::Vector4<N>) -> na::Vector4<N> {
 }
 
 pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
-    let dest = m * na::Vector4::new(na::zero(), na::zero(), na::zero(), na::one());
+    let dest = m.index((.., 3));
     let norm = dest.xyz().norm();
     let boost_length = (dest.w + norm).ln();
     let direction = na::Unit::new_unchecked(dest.xyz() / norm);
