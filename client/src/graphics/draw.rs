@@ -6,7 +6,7 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 use tracing::info;
 
-use super::{surface_extraction, Base, Loader, Sky, SurfaceExtraction, Voxels};
+use super::{surface_extraction, voxels, Base, Loader, Sky, SurfaceExtraction, Voxels};
 use crate::Config;
 use common::graph::{self, Graph};
 use common::world::{Material, SUBDIVISION_FACTOR};
@@ -118,6 +118,15 @@ impl Draw {
                 )
                 .unwrap();
 
+            let mut loader = Loader::new(gfx.clone());
+
+            let voxel_surfaces = surface_extraction::DrawBuffer::new(
+                gfx.clone(),
+                MAX_CHUNKS as u32,
+                SUBDIVISION_FACTOR as u32,
+            );
+            let voxels = Voxels::new(&config, &mut loader, &voxel_surfaces, PIPELINE_DEPTH);
+
             // Construct the per-frame states
             let states = cmds
                 .into_iter()
@@ -153,6 +162,8 @@ impl Draw {
                             .unwrap(),
                         uniforms,
                         used: false,
+
+                        voxels: voxels::Frame::new(&voxels, MAX_CHUNKS),
                     };
                     gfx.set_name(x.cmd, cstr!("frame"));
                     gfx.set_name(x.image_acquired, cstr!("image acquired"));
@@ -162,8 +173,6 @@ impl Draw {
                 })
                 .collect();
 
-            let mut loader = Loader::new(gfx.clone());
-
             let sky = Sky::new(gfx.clone());
             let surface_extraction = SurfaceExtraction::new(gfx.clone());
             let extraction_scratch = surface_extraction::ScratchBuffer::new(
@@ -171,9 +180,6 @@ impl Draw {
                 12,
                 SUBDIVISION_FACTOR as u32,
             );
-            let voxel_surfaces =
-                surface_extraction::DrawBuffer::new(gfx.clone(), 1024, SUBDIVISION_FACTOR as u32);
-            let voxels = Voxels::new(&config, &mut loader, &voxel_surfaces);
 
             gfx.save_pipeline_cache();
 
@@ -349,16 +355,16 @@ impl Draw {
         for &(chunk, _, ref transform) in &chunks {
             device.cmd_update_buffer(
                 cmd,
-                self.voxel_surfaces.transform_buffer(),
-                chunk.0 as vk::DeviceSize * surface_extraction::TRANSFORM_SIZE,
-                &mem::transmute::<_, [u8; surface_extraction::TRANSFORM_SIZE as usize]>(*transform),
+                state.voxels.transforms(),
+                chunk.0 as vk::DeviceSize * voxels::TRANSFORM_SIZE,
+                &mem::transmute::<_, [u8; voxels::TRANSFORM_SIZE as usize]>(*transform),
             );
         }
         self.buffer_barriers.push(
             vk::BufferMemoryBarrier::builder()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                .buffer(self.voxel_surfaces.transform_buffer())
+                .buffer(state.voxels.transforms())
                 .size(vk::WHOLE_SIZE)
                 .build(),
         );
@@ -435,6 +441,7 @@ impl Draw {
                 state.common_ds,
                 cmd,
                 &self.voxel_surfaces,
+                &state.voxels,
                 chunk,
                 reflected,
             );
@@ -505,6 +512,7 @@ impl Drop for Draw {
                 device.destroy_semaphore(state.image_acquired, None);
                 device.destroy_fence(state.fence, None);
                 state.uniforms.destroy(device);
+                state.voxels.destroy(device);
             }
             device.destroy_command_pool(self.cmd_pool, None);
             device.destroy_query_pool(self.timestamp_pool, None);
@@ -529,6 +537,9 @@ struct State {
     ///
     /// Indicates that e.g. valid timestamps are associated with this query
     used: bool,
+
+    // Per-pipeline states
+    voxels: voxels::Frame,
 }
 
 /// Data stored in the common uniform buffer
@@ -543,3 +554,6 @@ struct Uniforms {
     /// Cycles through [0,1) once per second for simple animation effects
     time: f32,
 }
+
+/// Maximum number of concurrently drawn voxel chunks
+const MAX_CHUNKS: vk::DeviceSize = 1024;

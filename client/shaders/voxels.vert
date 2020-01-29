@@ -10,7 +10,7 @@ layout(set = 1, binding = 0) readonly restrict buffer Surfaces {
     Surface surfaces[];
 };
 
-layout(set = 1, binding = 1) readonly restrict buffer Transforms {
+layout(set = 2, binding = 0) readonly restrict buffer Transforms {
     mat4 transform[];
 };
 

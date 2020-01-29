@@ -1,7 +1,7 @@
 use std::{ptr, sync::Arc};
 
-use ash::{version::DeviceV1_0, vk};
-use lahar::DedicatedImage;
+use ash::{version::DeviceV1_0, vk, Device};
+use lahar::{DedicatedBuffer, DedicatedImage};
 use vk_shader_macros::include_glsl;
 
 use super::{
@@ -16,7 +16,8 @@ const FRAG: &[u32] = include_glsl!("shaders/voxels.frag");
 
 pub struct Voxels {
     gfx: Arc<Base>,
-    ds_layout: vk::DescriptorSetLayout,
+    static_ds_layout: vk::DescriptorSetLayout,
+    frame_ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
@@ -26,7 +27,7 @@ pub struct Voxels {
 }
 
 impl Voxels {
-    pub fn new(config: &Config, loader: &mut Loader, buffer: &DrawBuffer) -> Self {
+    pub fn new(config: &Config, loader: &mut Loader, buffer: &DrawBuffer, frames: u32) -> Self {
         let gfx = buffer.gfx.clone();
         let device = &*gfx.device;
         unsafe {
@@ -42,7 +43,7 @@ impl Voxels {
                 .unwrap();
             let f_guard = defer(|| device.destroy_shader_module(frag, None));
 
-            let ds_layout = device
+            let static_ds_layout = device
                 .create_descriptor_set_layout(
                     &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
                         vk::DescriptorSetLayoutBinding {
@@ -54,13 +55,6 @@ impl Voxels {
                         },
                         vk::DescriptorSetLayoutBinding {
                             binding: 1,
-                            descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
-                            descriptor_count: 1,
-                            stage_flags: vk::ShaderStageFlags::VERTEX,
-                            p_immutable_samplers: ptr::null(),
-                        },
-                        vk::DescriptorSetLayoutBinding {
-                            binding: 2,
                             descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::FRAGMENT,
@@ -70,15 +64,29 @@ impl Voxels {
                     None,
                 )
                 .unwrap();
+            let frame_ds_layout = device
+                .create_descriptor_set_layout(
+                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                        vk::DescriptorSetLayoutBinding {
+                            binding: 0,
+                            descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
+                            descriptor_count: 1,
+                            stage_flags: vk::ShaderStageFlags::VERTEX,
+                            p_immutable_samplers: ptr::null(),
+                        },
+                    ]),
+                    None,
+                )
+                .unwrap();
 
             let descriptor_pool = device
                 .create_descriptor_pool(
                     &vk::DescriptorPoolCreateInfo::builder()
-                        .max_sets(1)
+                        .max_sets(1 + frames)
                         .pool_sizes(&[
                             vk::DescriptorPoolSize {
                                 ty: vk::DescriptorType::STORAGE_BUFFER,
-                                descriptor_count: 2,
+                                descriptor_count: 1 + frames,
                             },
                             vk::DescriptorPoolSize {
                                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -92,32 +100,20 @@ impl Voxels {
                 .allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::builder()
                         .descriptor_pool(descriptor_pool)
-                        .set_layouts(&[ds_layout]),
+                        .set_layouts(&[static_ds_layout]),
                 )
                 .unwrap()[0];
             device.update_descriptor_sets(
-                &[
-                    vk::WriteDescriptorSet::builder()
-                        .dst_set(ds)
-                        .dst_binding(0)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: buffer.face_buffer(),
-                            offset: 0,
-                            range: vk::WHOLE_SIZE,
-                        }])
-                        .build(),
-                    vk::WriteDescriptorSet::builder()
-                        .dst_set(ds)
-                        .dst_binding(1)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: buffer.transform_buffer(),
-                            offset: 0,
-                            range: vk::WHOLE_SIZE,
-                        }])
-                        .build(),
-                ],
+                &[vk::WriteDescriptorSet::builder()
+                    .dst_set(ds)
+                    .dst_binding(0)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .buffer_info(&[vk::DescriptorBufferInfo {
+                        buffer: buffer.face_buffer(),
+                        offset: 0,
+                        range: vk::WHOLE_SIZE,
+                    }])
+                    .build()],
                 &[],
             );
 
@@ -125,7 +121,7 @@ impl Voxels {
             let pipeline_layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&[gfx.common_layout, ds_layout])
+                        .set_layouts(&[gfx.common_layout, static_ds_layout, frame_ds_layout])
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::VERTEX,
                             offset: 0,
@@ -228,7 +224,8 @@ impl Voxels {
 
             Self {
                 gfx,
-                ds_layout,
+                static_ds_layout,
+                frame_ds_layout,
                 pipeline_layout,
                 pipeline,
                 descriptor_pool,
@@ -245,6 +242,7 @@ impl Voxels {
         common_ds: vk::DescriptorSet,
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
+        frame: &Frame,
         chunk: &Chunk,
         reflected: bool,
     ) {
@@ -270,7 +268,7 @@ impl Voxels {
                 device.update_descriptor_sets(
                     &[vk::WriteDescriptorSet::builder()
                         .dst_set(self.ds)
-                        .dst_binding(2)
+                        .dst_binding(1)
                         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                         .image_info(&[vk::DescriptorImageInfo {
                             sampler: vk::Sampler::null(),
@@ -291,7 +289,7 @@ impl Voxels {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_layout,
             0,
-            &[common_ds, self.ds],
+            &[common_ds, self.ds, frame.ds],
             &[],
         );
         let mut push_constants = [0; 12];
@@ -321,7 +319,8 @@ impl Drop for Voxels {
         unsafe {
             device.destroy_pipeline(self.pipeline, None);
             device.destroy_pipeline_layout(self.pipeline_layout, None);
-            device.destroy_descriptor_set_layout(self.ds_layout, None);
+            device.destroy_descriptor_set_layout(self.static_ds_layout, None);
+            device.destroy_descriptor_set_layout(self.frame_ds_layout, None);
             device.destroy_descriptor_pool(self.descriptor_pool, None);
             if self.colors_view != vk::ImageView::null() {
                 device.destroy_image_view(self.colors_view, None);
@@ -329,3 +328,65 @@ impl Drop for Voxels {
         }
     }
 }
+
+pub struct Frame {
+    transforms: DedicatedBuffer,
+    ds: vk::DescriptorSet,
+}
+
+impl Frame {
+    pub fn new(parent: &Voxels, count: vk::DeviceSize) -> Self {
+        let gfx = &parent.gfx;
+        unsafe {
+            let transforms = DedicatedBuffer::new(
+                &gfx.device,
+                &gfx.memory_properties,
+                &vk::BufferCreateInfo::builder()
+                    .size(count * TRANSFORM_SIZE)
+                    .usage(
+                        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                    )
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            );
+            gfx.set_name(transforms.handle, cstr!("voxel transforms"));
+
+            let ds = gfx
+                .device
+                .allocate_descriptor_sets(
+                    &vk::DescriptorSetAllocateInfo::builder()
+                        .descriptor_pool(parent.descriptor_pool)
+                        .set_layouts(&[parent.frame_ds_layout]),
+                )
+                .unwrap()[0];
+            gfx.device.update_descriptor_sets(
+                &[vk::WriteDescriptorSet::builder()
+                    .dst_set(ds)
+                    .dst_binding(0)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .buffer_info(&[vk::DescriptorBufferInfo {
+                        buffer: transforms.handle,
+                        offset: 0,
+                        range: vk::WHOLE_SIZE,
+                    }])
+                    .build()],
+                &[],
+            );
+
+            Self { transforms, ds }
+        }
+    }
+
+    pub fn transforms(&self) -> vk::Buffer {
+        self.transforms.handle
+    }
+}
+
+impl Frame {
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        self.transforms.destroy(device);
+    }
+}
+
+// 4x4 f32 matrix
+pub const TRANSFORM_SIZE: vk::DeviceSize = 64;

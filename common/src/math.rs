@@ -38,25 +38,6 @@ impl<N: RealField> HPoint<N> {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct HIsometry<N: RealField> {
-    position: na::Vector4<N>,
-    orientation: na::UnitQuaternion<N>,
-}
-
-impl<N: RealField> HIsometry<N> {
-    pub fn identity() -> Self {
-        Self {
-            position: na::zero(),
-            orientation: na::one(),
-        }
-    }
-
-    pub fn to_homogeneous(&self) -> na::Matrix4<N> {
-        translate(&na::zero(), &self.position) * self.orientation.to_homogeneous()
-    }
-}
-
 pub fn reflect<N: RealField>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()
         - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(&p, &p)
