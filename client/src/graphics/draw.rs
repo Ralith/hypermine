@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
-use tracing::info;
+use tracing::{info, trace};
 
 use super::{surface_extraction, voxels, Base, Loader, Sky, SurfaceExtraction, Voxels};
 use crate::Config;
@@ -294,9 +294,9 @@ impl Draw {
         // Perform surface extraction of in-range voxel chunks
         if self.graph.len() == 1 {
             let mut index: usize = 0;
-            let nearby_nodes = self.graph.ensure_nearby(graph::NodeId::ROOT, 3);
-            eprintln!("Number of chunks to create: {}", nearby_nodes.len());
-            for node in nearby_nodes {
+            self.graph.ensure_nearby(graph::NodeId::ROOT, 1);
+            trace!("populating {} nodes", self.graph.fresh().len());
+            for node in self.graph.fresh().to_vec() {
                 let chunk = self.voxel_surfaces.alloc().unwrap();
                 let storage = self.extraction_scratch.storage(index);
                 // TODO: Generate from world

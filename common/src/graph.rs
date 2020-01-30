@@ -86,8 +86,8 @@ impl<T> Graph<T> {
         result
     }
 
-    pub fn ensure_nearby(&mut self, node: NodeId, distance: u32) -> Vec<NodeId> {
-        let mut result = Vec::new();
+    /// Ensure all nodes within `distance` links of `node` exist
+    pub fn ensure_nearby(&mut self, node: NodeId, distance: u32) {
         let mut pending = Vec::<NodeId>::new();
         let mut visited = FxHashSet::<NodeId>::default();
 
@@ -95,7 +95,6 @@ impl<T> Graph<T> {
         visited.insert(node);
 
         while let Some(node) = pending.pop() {
-            result.push(node);
             for side in Side::iter() {
                 let neighbor = self.ensure_neighbor(node, side);
                 if visited.contains(&neighbor) || self.nodes[neighbor.idx()].length > distance {
@@ -105,8 +104,6 @@ impl<T> Graph<T> {
                 visited.insert(neighbor);
             }
         }
-
-        result
     }
 
     pub fn get(&self, node: NodeId) -> &Option<T> {
