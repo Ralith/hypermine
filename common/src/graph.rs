@@ -50,12 +50,17 @@ impl<T> Graph<T> {
         self.fresh.clear();
     }
 
-    /// Compute reflectedness and `node`-relative transforms for all nodes within `distance` links
+    /// Compute reflectedness and `node`-relative transforms for all cube-bearing nodes within
+    /// `distance` links
     ///
     /// Because we relate nodes to their neighbors with reflection transforms, a flag indicating
     /// whether a given node is reached via an odd number of reflections allows us to render with
     /// correct vertex winding.
-    pub fn nearby(&self, node: NodeId, distance: u32) -> Vec<(&Option<T>, bool, na::Matrix4<f32>)> {
+    pub fn nearby_cubes(
+        &self,
+        node: NodeId,
+        distance: u32,
+    ) -> Vec<(&Option<T>, bool, na::Matrix4<f32>)> {
         let mut result = Vec::new();
         let mut pending = Vec::<(NodeId, bool, na::Matrix4<f64>)>::new();
         let mut visited = FxHashSet::<NodeId>::default();
@@ -64,11 +69,13 @@ impl<T> Graph<T> {
         visited.insert(node);
 
         while let Some((node, reflected, transform)) = pending.pop() {
-            result.push((
-                &self.nodes[node.idx()].value,
-                reflected,
-                na::convert(transform),
-            ));
+            if let Some(xf) = self.cube_to_node(node) {
+                result.push((
+                    &self.nodes[node.idx()].value,
+                    reflected,
+                    na::convert(transform * xf),
+                ));
+            }
             for side in Side::iter() {
                 let neighbor = match self.nodes[node.idx()].neighbors[side as usize] {
                     None => continue,
@@ -84,6 +91,53 @@ impl<T> Graph<T> {
         }
 
         result
+    }
+
+    pub fn is_cube(&self, node: NodeId) -> bool {
+        let node = &self.nodes[node.idx()];
+        let mut iter = Side::iter().filter(|&side| {
+            let neighbor = match node.neighbors[side as usize] {
+                None => return false,
+                Some(x) => x,
+            };
+            self.nodes[neighbor.idx()].length < node.length
+        });
+        for _ in 0..3 {
+            if iter.next().is_none() {
+                return false;
+            }
+        }
+        debug_assert!(
+            iter.next().is_none(),
+            "at most 3 neighbors of any node have shorter length"
+        );
+        true
+    }
+
+    /// Compute the transform from cube space to dodecahedron space, if this node represents a cube
+    fn cube_to_node(&self, node: NodeId) -> Option<na::Matrix4<f64>> {
+        let node = &self.nodes[node.idx()];
+        let mut iter = Side::iter().filter(|&side| {
+            let neighbor = match node.neighbors[side as usize] {
+                None => return false,
+                Some(x) => x,
+            };
+            self.nodes[neighbor.idx()].length < node.length
+        });
+        let mut shorter = [iter.next()?, iter.next()?, iter.next()?];
+        debug_assert!(
+            iter.next().is_none(),
+            "at most 3 neighbors of any node have shorter length"
+        );
+        shorter.sort_unstable();
+        let [a, b, c] = shorter;
+        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+        Some(na::Matrix4::from_columns(&[
+            REFLECTIONS[a as usize].column(3) - origin,
+            REFLECTIONS[b as usize].column(3) - origin,
+            REFLECTIONS[c as usize].column(3) - origin,
+            origin,
+        ]))
     }
 
     /// Ensure all nodes within `distance` links of `node` exist
@@ -242,7 +296,7 @@ enum NeighborType {
 }
 
 /// Labeled dodecahedron sides
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Side {
     A,
     B,
@@ -354,5 +408,14 @@ mod tests {
             .next()
             .unwrap();
         assert_eq!(graph.nodes[other.idx()].length, 2);
+    }
+
+    #[test]
+    fn cube_to_node_sanity() {
+        let mut graph = Graph::<()>::new();
+        graph.ensure_nearby(NodeId::ROOT, 1);
+        assert_eq!(graph.cube_to_node(NodeId::ROOT), None);
+        let node = graph.ensure_neighbor(NodeId::ROOT, Side::A);
+        assert_eq!(graph.cube_to_node(node), None);
     }
 }

@@ -11,6 +11,7 @@ layout(set = 1, binding = 0) readonly restrict buffer Surfaces {
 };
 
 layout(set = 2, binding = 0) readonly restrict buffer Transforms {
+    // Maps from cube space ([0..1]^3) to view space
     mat4 transform[];
 };
 
@@ -51,13 +52,6 @@ const uvec2 texcoords[4][6] = {
     {{0, 1}, {0, 0}, {1, 0}, {1, 0}, {1, 1}, {0, 1}},
 };
 
-// Map [0,1]^3 to a point in a cubic tile
-vec4 cube_vertex(vec3 point) {
-    const float a = sqrt(1+sqrt(5))/2;
-    const float w = sqrt(3*pow(a,2)+1);
-    return vec4((point * 2 - 1) * vec3(a, a, a), w);
-}
-
 void main()  {
     uint index = gl_VertexIndex / 6;
     uint vertex = gl_VertexIndex % 6;
@@ -71,5 +65,5 @@ void main()  {
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
     vec3 relative_coords = vertices[axis][vertex] + pos;
-    gl_Position = projection * transform[draw_index] * cube_vertex(relative_coords / dimension);
+    gl_Position = projection * transform[draw_index] * vec4(relative_coords / dimension, 1);
 }
