@@ -15,6 +15,7 @@ anyhow = "1.0.26"
 quinn = { git = "https://github.com/djc/quinn.git", rev = "5f81b5cf317305093b048d2211317f296b46a0e8", default-features = false }
 lazy_static = "1.4.0"
 fxhash = "0.2.1"
+tracing = "0.1.10"
 
 [dev-dependencies]
 approx = "0.3.2"

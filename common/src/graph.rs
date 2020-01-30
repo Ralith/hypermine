@@ -4,6 +4,7 @@ use std::num::NonZeroU32;
 
 use fxhash::FxHashSet;
 use lazy_static::lazy_static;
+use tracing::trace;
 
 use crate::math;
 
@@ -158,6 +159,7 @@ impl<T> Graph<T> {
                 visited.insert(neighbor);
             }
         }
+        trace!("visited {}, fresh {}", visited.len(), self.fresh.len());
     }
 
     pub fn get(&self, node: NodeId) -> &Option<T> {
@@ -245,7 +247,7 @@ lazy_static! {
         for i in 0..12 {
             for j in 0..12 {
                 let cosh_distance = (REFLECTIONS[i] * REFLECTIONS[j])[(3, 3)];
-                // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), ORDER.70820 = 6+3*sqrt(5);
+                // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
                 result[i][j] = if cosh_distance < 2.0 {
                     // current == next
                     false
@@ -344,6 +346,7 @@ impl fmt::Debug for NodeId {
 struct Node<T> {
     value: Option<T>,
     parent_side: Option<Side>,
+    /// Distance to origin via parents
     length: u32,
     neighbors: [Option<NodeId>; 12],
 }
