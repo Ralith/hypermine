@@ -70,10 +70,10 @@ impl<T> Graph<T> {
         visited.insert(node);
 
         while let Some((node, reflected, transform)) = pending.pop() {
-            if let Some(xf) = self.cube_to_node(node) {
+            if let Some((xf, flipped)) = self.cube_to_node(node) {
                 result.push((
                     &self.nodes[node.idx()].value,
-                    reflected,
+                    reflected ^ flipped,
                     na::convert(transform * xf),
                 ));
             }
@@ -116,7 +116,7 @@ impl<T> Graph<T> {
     }
 
     /// Compute the transform from cube space to dodecahedron space, if this node represents a cube
-    fn cube_to_node(&self, node: NodeId) -> Option<na::Matrix4<f64>> {
+    fn cube_to_node(&self, node: NodeId) -> Option<(na::Matrix4<f64>, bool)> {
         let node = &self.nodes[node.idx()];
         let mut iter = Side::iter().filter(|&side| {
             let neighbor = match node.neighbors[side as usize] {
@@ -133,12 +133,16 @@ impl<T> Graph<T> {
         shorter.sort_unstable();
         let [a, b, c] = shorter;
         let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-        Some(na::Matrix4::from_columns(&[
-            REFLECTIONS[a as usize].column(3) - origin,
-            REFLECTIONS[b as usize].column(3) - origin,
-            REFLECTIONS[c as usize].column(3) - origin,
-            origin,
-        ]))
+        let flipped = CUBE_TO_NODE_DETERMINANT_NEGATIVE[a as usize][b as usize][c as usize];
+        Some((
+            na::Matrix4::from_columns(&[
+                REFLECTIONS[a as usize].column(3) - origin,
+                REFLECTIONS[b as usize].column(3) - origin,
+                REFLECTIONS[c as usize].column(3) - origin,
+                origin,
+            ]),
+            flipped,
+        ))
     }
 
     /// Ensure all nodes within `distance` links of `node` exist
@@ -287,6 +291,28 @@ lazy_static! {
                 i += 1;
             }
         }
+        result
+    };
+
+    static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [[[bool; 12]; 12]; 12] = {
+        let mut result = [[[false; 12]; 12]; 12];
+
+        for a in Side::iter() {
+            for b in Side::iter() {
+                for c in Side::iter() {
+                    let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+                    let m = na::Matrix4::from_columns(&[
+                        REFLECTIONS[a as usize].column(3) - origin,
+                        REFLECTIONS[b as usize].column(3) - origin,
+                        REFLECTIONS[c as usize].column(3) - origin,
+                        origin,
+                    ]);
+                    let lu = na::LU::new(m);
+                    result[a as usize][b as usize][c as usize] = lu.determinant() < 0.0;
+                }
+            }
+        }
+
         result
     };
 }
