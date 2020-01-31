@@ -294,7 +294,7 @@ impl Draw {
         // Perform surface extraction of in-range voxel chunks
         if self.graph.len() == 1 {
             let mut index: usize = 0;
-            self.graph.ensure_nearby(graph::NodeId::ROOT, 2);
+            self.graph.ensure_nearby(graph::NodeId::ROOT, 3);
             let mut nodes = Vec::new();
             for &node in self.graph.fresh() {
                 if self.graph.is_cube(node) {
@@ -356,7 +356,7 @@ impl Draw {
         // Transfer node transforms
         let chunks = self
             .graph
-            .nearby_cubes(graph::NodeId::ROOT, 4)
+            .nearby_cubes(graph::NodeId::ROOT, 3)
             .into_iter()
             .filter_map(|(x, y, z)| Some((x.as_ref()?, y, z)))
             .collect::<Vec<_>>();

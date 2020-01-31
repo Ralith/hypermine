@@ -156,11 +156,13 @@ impl<T> Graph<T> {
         while let Some(node) = pending.pop() {
             for side in Side::iter() {
                 let neighbor = self.ensure_neighbor(node, side);
-                if visited.contains(&neighbor) || self.nodes[neighbor.idx()].length > distance {
+                if visited.contains(&neighbor) {
                     continue;
                 }
-                pending.push(neighbor);
                 visited.insert(neighbor);
+                if self.nodes[neighbor.idx()].length < distance {
+                    pending.push(neighbor);
+                }
             }
         }
         trace!("visited {}, fresh {}", visited.len(), self.fresh.len());
