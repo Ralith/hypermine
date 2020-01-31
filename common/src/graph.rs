@@ -4,6 +4,7 @@ use std::num::NonZeroU32;
 
 use fxhash::FxHashSet;
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use tracing::trace;
 
 use crate::math;
@@ -349,7 +350,7 @@ impl Side {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct NodeId(NonZeroU32);
 
 impl NodeId {

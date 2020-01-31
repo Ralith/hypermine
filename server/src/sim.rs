@@ -7,9 +7,9 @@ use rand::{Rng, SeedableRng};
 use tracing::error_span;
 
 use common::{
+    graph::NodeId,
     math::HPoint,
     proto::{ClientHello, Command, Component, Position, Spawns, StateDelta},
-    world::TileId,
     EntityId, Step,
 };
 
@@ -37,7 +37,7 @@ impl Sim {
     pub fn spawn_character(&mut self, _hello: ClientHello) -> (EntityId, Entity) {
         let id = self.new_id();
         let position = Position {
-            tile: TileId::ROOT,
+            tile: NodeId::ROOT,
             local: HPoint::origin(),
         };
         let entity = self.world.spawn((id, position));
