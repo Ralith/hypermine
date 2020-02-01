@@ -113,13 +113,9 @@ async fn handle_unordered(
     uni_streams: quinn::IncomingUniStreams,
 ) -> Result<()> {
     let mut msgs = uni_streams
-        .map(|stream| {
-            async {
-                let stream = stream?;
-                Ok::<_, Error>(
-                    codec::recv_whole::<proto::StateDelta>(2usize.pow(16), stream).await?,
-                )
-            }
+        .map(|stream| async {
+            let stream = stream?;
+            Ok::<_, Error>(codec::recv_whole::<proto::StateDelta>(2usize.pow(16), stream).await?)
         })
         .buffer_unordered(128);
     // TODO: Don't silently die on parse errors

@@ -228,12 +228,8 @@ async fn drive_recv(
     let _ = send.send((id, ClientEvent::Hello(hello))).await;
 
     let mut cmds = streams
-        .map(|stream| {
-            async {
-                Ok::<_, Error>(
-                    codec::recv_whole::<proto::Command>(MAX_CLIENT_MSG_SIZE, stream?).await?,
-                )
-            }
+        .map(|stream| async {
+            Ok::<_, Error>(codec::recv_whole::<proto::Command>(MAX_CLIENT_MSG_SIZE, stream?).await?)
         })
         .buffer_unordered(16); // Allow a modest amount of out-of-order completion
     while let Some(msg) = cmds.try_next().await? {
