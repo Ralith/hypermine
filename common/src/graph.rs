@@ -23,7 +23,7 @@ impl<T> Graph<T> {
                 value: None,
                 parent_side: None,
                 length: 0,
-                neighbors: [None; 12],
+                neighbors: [None; SIDES],
             }],
             fresh: Vec::new(),
         }
@@ -33,7 +33,7 @@ impl<T> Graph<T> {
         self.nodes.len() as u32
     }
 
-    pub fn get_neighbors(&self, node: NodeId) -> &[Option<NodeId>; 12] {
+    pub fn get_neighbors(&self, node: NodeId) -> &[Option<NodeId>; SIDES] {
         &self.nodes[node.idx()].neighbors
     }
 
@@ -126,15 +126,16 @@ impl<T> Graph<T> {
             };
             self.nodes[neighbor.idx()].length < node.length
         });
-        let mut shorter = [iter.next()?, iter.next()?, iter.next()?];
+        let a = iter.next()?;
+        let b = iter.next()?;
+        let c = iter.next()?;
         debug_assert!(
             iter.next().is_none(),
             "at most 3 neighbors of any node have shorter length"
         );
-        shorter.sort_unstable();
-        let [a, b, c] = shorter;
+        let v = SIDES_TO_VERTEX[a as usize][b as usize][c as usize];
+        let flipped = CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize];
         let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-        let flipped = CUBE_TO_NODE_DETERMINANT_NEGATIVE[a as usize][b as usize][c as usize];
         Some((
             na::Matrix4::from_columns(&[
                 REFLECTIONS[a as usize].column(3) - origin,
@@ -190,7 +191,7 @@ impl<T> Graph<T> {
         }
         // Create a new neighbor
         if v.parent_side.map_or(true, |parent_side| {
-            (side != parent_side && !ADJACENCY[side as usize][parent_side as usize])
+            (side != parent_side && !ADJACENT[side as usize][parent_side as usize])
                 || !self.is_near_side(v.neighbors[parent_side as usize].unwrap(), side)
         }) {
             // New neighbor will be further from the origin
@@ -220,7 +221,7 @@ impl<T> Graph<T> {
             value: None,
             parent_side: Some(side),
             length,
-            neighbors: [None; 12],
+            neighbors: [None; SIDES],
         });
         self.link_neighbors(id, parent, side);
         for side in Side::iter() {
@@ -249,10 +250,10 @@ impl<T> Default for Graph<T> {
 
 lazy_static! {
     /// Whether two sides share an edge
-    static ref ADJACENCY: [[bool; 12]; 12] = {
-        let mut result = [[false; 12]; 12];
-        for i in 0..12 {
-            for j in 0..12 {
+    static ref ADJACENT: [[bool; SIDES]; SIDES] = {
+        let mut result = [[false; SIDES]; SIDES];
+        for i in 0..SIDES {
+            for j in 0..SIDES {
                 let cosh_distance = (REFLECTIONS[i] * REFLECTIONS[j])[(3, 3)];
                 // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
                 result[i][j] = if cosh_distance < 2.0 {
@@ -271,12 +272,12 @@ lazy_static! {
     };
 
     /// Transform that moves from a neighbor to a reference node, for each side
-    static ref REFLECTIONS: [na::Matrix4<f64>; 12] = {
+    static ref REFLECTIONS: [na::Matrix4<f64>; SIDES] = {
         let phi = 1.25f64.sqrt() + 0.5; // golden ratio
         let root_phi = phi.sqrt();
         let f = math::lorentz_normalize(&na::Vector4::new(root_phi, phi * root_phi, 0.0, phi + 2.0));
 
-        let mut result = [na::zero(); 12];
+        let mut result = [na::zero(); SIDES];
         let mut i = 0;
         for (x, y, z, w) in [
             (f.x, f.y, f.z, f.w),
@@ -297,23 +298,66 @@ lazy_static! {
         result
     };
 
-    static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [[[bool; 12]; 12]; 12] = {
-        let mut result = [[[false; 12]; 12]; 12];
-
-        for a in Side::iter() {
-            for b in Side::iter() {
-                for c in Side::iter() {
-                    let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-                    let m = na::Matrix4::from_columns(&[
-                        REFLECTIONS[a as usize].column(3) - origin,
-                        REFLECTIONS[b as usize].column(3) - origin,
-                        REFLECTIONS[c as usize].column(3) - origin,
-                        origin,
-                    ]);
-                    let lu = na::LU::new(m);
-                    result[a as usize][b as usize][c as usize] = lu.determinant() < 0.0;
+    /// Sides incident to a vertex, in canonical order
+    static ref VERTEX_SIDES: [[Side; 3]; VERTICES] = {
+        let mut result = [[Side::A; 3]; VERTICES];
+        let mut vertex = 0;
+        // Kind of a hack, but working this out by hand isn't any fun.
+        for a in 0..SIDES {
+            for b in (a+1)..SIDES {
+                for c in (b+1)..SIDES {
+                    if !ADJACENT[a][b] || !ADJACENT[b][c] || !ADJACENT[c][a] {
+                        continue;
+                    }
+                    result[vertex] = [Side::VALUES[a], Side::VALUES[b], Side::VALUES[c]];
+                    vertex += 1;
                 }
             }
+        }
+        assert_eq!(vertex, 20);
+        result
+    };
+
+    /// Vertex shared by 3 sides
+    static ref SIDES_TO_VERTEX: [[[Vertex; SIDES]; SIDES]; SIDES] = {
+        let mut result = [[[Vertex::A; SIDES]; SIDES]; SIDES];
+        let mut vertex = Vertex::iter();
+        // Kind of a hack, but working this out by hand isn't any fun.
+        for a in 0..SIDES {
+            for b in (a+1)..SIDES {
+                for c in (b+1)..SIDES {
+                    if !ADJACENT[a][b] || !ADJACENT[b][c] || !ADJACENT[c][a] {
+                        continue;
+                    }
+                    let v = vertex.next().unwrap();
+                    result[a][b][c] = v;
+                    result[a][c][b] = v;
+                    result[b][a][c] = v;
+                    result[b][c][a] = v;
+                    result[c][a][b] = v;
+                    result[c][b][a] = v;
+                }
+            }
+        }
+        assert_eq!(vertex.next(), None);
+        result
+    };
+
+    /// Whether the determinant of the cube-to-node transform is negative
+    static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [bool; VERTICES] = {
+        let mut result = [false; VERTICES];
+
+        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+        for v in Vertex::iter() {
+            let [a, b, c] = VERTEX_SIDES[v as usize];
+            let m = na::Matrix4::from_columns(&[
+                REFLECTIONS[a as usize].column(3) - origin,
+                REFLECTIONS[b as usize].column(3) - origin,
+                REFLECTIONS[c as usize].column(3) - origin,
+                origin,
+            ]);
+            let lu = na::LU::new(m);
+            result[v as usize] = lu.determinant() < 0.0;
         }
 
         result
@@ -327,7 +371,7 @@ enum NeighborType {
 }
 
 /// Labeled dodecahedron sides
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Side {
     A,
     B,
@@ -344,6 +388,21 @@ pub enum Side {
 }
 
 impl Side {
+    const VALUES: [Self; SIDES] = [
+        Self::A,
+        Self::B,
+        Self::C,
+        Self::D,
+        Self::E,
+        Self::F,
+        Self::G,
+        Self::H,
+        Self::I,
+        Self::J,
+        Self::K,
+        Self::L,
+    ];
+
     pub fn iter() -> impl ExactSizeIterator<Item = Self> {
         use Side::*;
         [A, B, C, D, E, F, G, H, I, J, K, L].iter().cloned()
@@ -377,7 +436,7 @@ struct Node<T> {
     parent_side: Option<Side>,
     /// Distance to origin via parents
     length: u32,
-    neighbors: [Option<NodeId>; 12],
+    neighbors: [Option<NodeId>; SIDES],
 }
 
 impl<T> Node<T> {
@@ -385,6 +444,43 @@ impl<T> Node<T> {
         Some(self.neighbors[self.parent_side? as usize].expect("parent edge unpopulated"))
     }
 }
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum Vertex {
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+}
+
+impl Vertex {
+    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
+        use Vertex::*;
+        [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
+            .iter()
+            .cloned()
+    }
+}
+
+// Properties of dodecahedrons
+const VERTICES: usize = 20;
+const SIDES: usize = 12;
 
 #[cfg(test)]
 mod tests {
@@ -449,5 +545,33 @@ mod tests {
         assert_eq!(graph.cube_to_node(NodeId::ROOT), None);
         let node = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         assert_eq!(graph.cube_to_node(node), None);
+    }
+
+    #[test]
+    fn vertex_sides() {
+        use std::collections::HashSet;
+        let triples = VERTEX_SIDES.iter().collect::<HashSet<_>>();
+        assert_eq!(triples.len(), VERTICES);
+        for &triple in &*VERTEX_SIDES {
+            let mut sorted = triple;
+            sorted.sort_unstable();
+            assert_eq!(triple, sorted);
+            assert!(ADJACENT[triple[0] as usize][triple[1] as usize]);
+            assert!(ADJACENT[triple[1] as usize][triple[2] as usize]);
+            assert!(ADJACENT[triple[2] as usize][triple[0] as usize]);
+        }
+    }
+
+    #[test]
+    fn sides_to_vertex() {
+        for v in Vertex::iter() {
+            let [a, b, c] = VERTEX_SIDES[v as usize];
+            assert_eq!(v, SIDES_TO_VERTEX[a as usize][b as usize][c as usize]);
+            assert_eq!(v, SIDES_TO_VERTEX[a as usize][c as usize][b as usize]);
+            assert_eq!(v, SIDES_TO_VERTEX[b as usize][a as usize][c as usize]);
+            assert_eq!(v, SIDES_TO_VERTEX[b as usize][c as usize][a as usize]);
+            assert_eq!(v, SIDES_TO_VERTEX[c as usize][a as usize][b as usize]);
+            assert_eq!(v, SIDES_TO_VERTEX[c as usize][b as usize][a as usize]);
+        }
     }
 }
