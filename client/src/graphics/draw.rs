@@ -317,11 +317,11 @@ impl Draw {
                         for x in 0..SUBDIVISION_FACTOR {
                             storage[(x + 1)
                                 + (y + 1) * (SUBDIVISION_FACTOR + 2)
-                                + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if (x + 1) % 2 == 0 {
+                                + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if x % 2 == 0 {
                                 Material::Stone
-                            } else if (y + 1) % 2 == 0 {
+                            } else if y % 2 == 0 {
                                 Material::Dirt
-                            } else if (z + 1) % 4 == 0 {
+                            } else if z % 4 == 0 {
                                 Material::Sand
                             } else {
                                 Material::Void
