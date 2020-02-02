@@ -34,10 +34,6 @@ impl<T> Graph<T> {
         self.nodes.len() as u32
     }
 
-    pub fn get_neighbors(&self, node: NodeId) -> &[Option<NodeId>; SIDES] {
-        &self.nodes[node.idx()].neighbors
-    }
-
     /// Look up the ID of a node's neighbor, creating nearby nodes if necessary
     pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
         self.ensure_neighbor_inner(node, side, NeighborType::Any)
@@ -293,7 +289,7 @@ lazy_static! {
                     if !ADJACENT[a][b] || !ADJACENT[b][c] || !ADJACENT[c][a] {
                         continue;
                     }
-                    result[vertex] = [Side::VALUES[a], Side::VALUES[b], Side::VALUES[c]];
+                    result[vertex] = [Side::from_index(a), Side::from_index(b), Side::from_index(c)];
                     vertex += 1;
                 }
             }
@@ -364,20 +360,12 @@ pub enum Side {
 }
 
 impl Side {
-    const VALUES: [Self; SIDES] = [
-        Self::A,
-        Self::B,
-        Self::C,
-        Self::D,
-        Self::E,
-        Self::F,
-        Self::G,
-        Self::H,
-        Self::I,
-        Self::J,
-        Self::K,
-        Self::L,
-    ];
+    #[inline]
+    pub fn from_index(x: usize) -> Self {
+        use Side::*;
+        const VALUES: [Side; SIDES] = [A, B, C, D, E, F, G, H, I, J, K, L];
+        VALUES[x]
+    }
 
     pub fn iter() -> impl ExactSizeIterator<Item = Self> {
         use Side::*;
