@@ -29,6 +29,7 @@ impl<T> Graph<T> {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> u32 {
         self.nodes.len() as u32
     }
@@ -44,10 +45,12 @@ impl<T> Graph<T> {
     }
 
     /// Nodes created since the last call to `clear_fresh`
+    #[inline]
     pub fn fresh(&self) -> &[NodeId] {
         &self.fresh
     }
 
+    #[inline]
     pub fn clear_fresh(&mut self) {
         self.fresh.clear();
     }
@@ -149,10 +152,12 @@ impl<T> Graph<T> {
         trace!("visited {}, fresh {}", visited.len(), self.fresh.len());
     }
 
+    #[inline]
     pub fn get(&self, node: NodeId, cube: Vertex) -> &Option<T> {
         &self.nodes[node.idx()].cubes[cube as usize]
     }
 
+    #[inline]
     pub fn get_mut(&mut self, node: NodeId, cube: Vertex) -> &mut Option<T> {
         &mut self.nodes[node.idx()].cubes[cube as usize]
     }
