@@ -5,6 +5,7 @@ use rand::{
 
 #[macro_use]
 mod id;
+mod dodeca;
 
 pub mod codec;
 pub mod cursor;

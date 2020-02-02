@@ -1,4 +1,5 @@
-use crate::graph::{Graph, NodeId, Side, Vertex};
+use crate::dodeca::{Side, Vertex, SIDE_COUNT};
+use crate::graph::{Graph, NodeId};
 
 use lazy_static::lazy_static;
 
@@ -89,8 +90,8 @@ impl std::ops::Neg for Dir {
 
 lazy_static! {
     /// Maps every (A, B, C) sharing a vertex to A', the side that shares edges with B and C but not A
-    static ref NEIGHBORS: [[[Option<Side>; 12]; 12]; 12] = {
-        let mut result = [[[None; 12]; 12]; 12];
+    static ref NEIGHBORS: [[[Option<Side>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT] = {
+        let mut result = [[[None; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT];
         for a in Side::iter() {
             for b in Side::iter() {
                 for c in Side::iter() {
@@ -120,7 +121,7 @@ mod tests {
     #[test]
     fn neighbor_sanity() {
         for v in Vertex::iter() {
-            let [a, b, c] = VERTEX_SIDES[v as usize];
+            let [a, b, c] = v.canonical_sides();
             assert_eq!(
                 NEIGHBORS[a as usize][b as usize][c as usize],
                 NEIGHBORS[a as usize][c as usize][b as usize]

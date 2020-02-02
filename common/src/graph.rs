@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
-use crate::math;
+use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
 
 /// Graph of the right dodecahedral tiling of H^3
 #[derive(Debug, Clone)]
@@ -23,7 +23,7 @@ impl<T> Graph<T> {
                 cubes: Default::default(),
                 parent_side: None,
                 length: 0,
-                neighbors: [None; SIDES],
+                neighbors: [None; SIDE_COUNT],
             }],
             fresh: Vec::new(),
         }
@@ -87,7 +87,7 @@ impl<T> Graph<T> {
                 result.push((
                     &node.cubes[v as usize],
                     current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
-                    na::convert(current.transform * v.cube_to_node()),
+                    na::convert(current.transform * cube_to_node(v)),
                 ));
             }
             if current.distance == distance {
@@ -105,7 +105,7 @@ impl<T> Graph<T> {
                     id: neighbor,
                     parity: !current.parity,
                     distance: current.distance + 1,
-                    transform: current.transform * REFLECTIONS[side as usize],
+                    transform: current.transform * side.reflection(),
                 });
                 visited.insert(neighbor);
             }
@@ -118,7 +118,7 @@ impl<T> Graph<T> {
         let mut exists = [false; 20];
         let node = &self.nodes[node.idx()];
         for v in Vertex::iter() {
-            exists[v as usize] = VERTEX_SIDES[v as usize].iter().all(|&side| {
+            exists[v as usize] = v.canonical_sides().iter().all(|&side| {
                 let neighbor = match node.neighbors[side as usize] {
                     None => return true,
                     Some(x) => x,
@@ -183,7 +183,7 @@ impl<T> Graph<T> {
         }
         // Create a new neighbor
         if v.parent_side.map_or(true, |parent_side| {
-            (side != parent_side && !ADJACENT[side as usize][parent_side as usize])
+            (side != parent_side && !side.adjacent_to(parent_side))
                 || !self.is_near_side(v.neighbors[parent_side as usize].unwrap(), side)
         }) {
             // New neighbor will be further from the origin
@@ -213,7 +213,7 @@ impl<T> Graph<T> {
             cubes: Default::default(),
             parent_side: Some(side),
             length,
-            neighbors: [None; SIDES],
+            neighbors: [None; SIDE_COUNT],
         });
         self.link_neighbors(id, parent, side);
         for side in Side::iter() {
@@ -240,160 +240,10 @@ impl<T> Default for Graph<T> {
     }
 }
 
-lazy_static! {
-    /// Whether two sides share an edge
-    static ref ADJACENT: [[bool; SIDES]; SIDES] = {
-        let mut result = [[false; SIDES]; SIDES];
-        for i in 0..SIDES {
-            for j in 0..SIDES {
-                let cosh_distance = (REFLECTIONS[i] * REFLECTIONS[j])[(3, 3)];
-                // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
-                result[i][j] = if cosh_distance < 2.0 {
-                    // current == next
-                    false
-                } else if cosh_distance < 5.0 {
-                    // current adjacent to next
-                    true
-                } else {
-                    // current not adjacent
-                    false
-                }
-            }
-        }
-        result
-    };
-
-    /// Transform that moves from a neighbor to a reference node, for each side
-    static ref REFLECTIONS: [na::Matrix4<f64>; SIDES] = {
-        let phi = 1.25f64.sqrt() + 0.5; // golden ratio
-        let root_phi = phi.sqrt();
-        let f = math::lorentz_normalize(&na::Vector4::new(root_phi, phi * root_phi, 0.0, phi + 2.0));
-
-        let mut result = [na::zero(); SIDES];
-        let mut i = 0;
-        for (x, y, z, w) in [
-            (f.x, f.y, f.z, f.w),
-            (-f.x, f.y, -f.z, f.w),
-            (f.x, -f.y, -f.z, f.w),
-            (-f.x, -f.y, f.z, f.w),
-        ]
-            .iter()
-            .cloned()
-        {
-            for (x, y, z, w) in [(x, y, z, w), (y, z, x, w), (z, x, y, w)].iter().cloned() {
-                result[i] = math::translate(&math::origin(), &na::Vector4::new(x, y, z, w))
-                    * math::euclidean_reflect(&na::Vector4::new(x, y, z, 0.0))
-                    * math::translate(&math::origin(), &na::Vector4::new(-x, -y, -z, w));
-                i += 1;
-            }
-        }
-        result
-    };
-
-    /// Sides incident to a vertex, in canonical order
-    static ref VERTEX_SIDES: [[Side; 3]; VERTICES] = {
-        let mut result = [[Side::A; 3]; VERTICES];
-        let mut vertex = 0;
-        // Kind of a hack, but working this out by hand isn't any fun.
-        for a in 0..SIDES {
-            for b in (a+1)..SIDES {
-                for c in (b+1)..SIDES {
-                    if !ADJACENT[a][b] || !ADJACENT[b][c] || !ADJACENT[c][a] {
-                        continue;
-                    }
-                    result[vertex] = [Side::from_index(a), Side::from_index(b), Side::from_index(c)];
-                    vertex += 1;
-                }
-            }
-        }
-        assert_eq!(vertex, 20);
-        result
-    };
-
-    /// Whether the determinant of the cube-to-node transform is negative
-    static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [bool; VERTICES] = {
-        let mut result = [false; VERTICES];
-
-        for v in Vertex::iter() {
-            let lu = na::LU::new(v.cube_to_node());
-            result[v as usize] = lu.determinant() < 0.0;
-        }
-
-        result
-    };
-
-    /// Vertex shared by 3 sides
-    static ref SIDES_TO_VERTEX: [[[Option<Vertex>; SIDES]; SIDES]; SIDES] = {
-        let mut result = [[[None; SIDES]; SIDES]; SIDES];
-        let mut vertex = Vertex::iter();
-        // Kind of a hack, but working this out by hand isn't any fun.
-        for a in 0..SIDES {
-            for b in (a+1)..SIDES {
-                for c in (b+1)..SIDES {
-                    if !Side::from_index(a).adjacent_to(Side::from_index(b)) ||
-                        !Side::from_index(b).adjacent_to(Side::from_index(c)) ||
-                        !Side::from_index(c).adjacent_to(Side::from_index(a))
-                    {
-                        continue;
-                    }
-                    let v = Some(vertex.next().unwrap());
-                    result[a][b][c] = v;
-                    result[a][c][b] = v;
-                    result[b][a][c] = v;
-                    result[b][c][a] = v;
-                    result[c][a][b] = v;
-                    result[c][b][a] = v;
-                }
-            }
-        }
-        assert_eq!(vertex.next(), None);
-        result
-    };
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum NeighborType {
     Shorter,
     Any,
-}
-
-/// Labeled dodecahedron sides
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Side {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
-    J,
-    K,
-    L,
-}
-
-impl Side {
-    #[inline]
-    pub fn from_index(x: usize) -> Self {
-        use Side::*;
-        const VALUES: [Side; SIDES] = [A, B, C, D, E, F, G, H, I, J, K, L];
-        VALUES[x]
-    }
-
-    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        use Side::*;
-        [A, B, C, D, E, F, G, H, I, J, K, L].iter().cloned()
-    }
-
-    /// Whether `self` and `other` share an edge
-    ///
-    /// `false` when `self == other`.
-    #[inline]
-    pub fn adjacent_to(self, other: Side) -> bool {
-        ADJACENT[self as usize][other as usize]
-    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -419,11 +269,11 @@ impl fmt::Debug for NodeId {
 
 #[derive(Debug, Clone)]
 struct Node<T> {
-    cubes: [Option<T>; VERTICES],
+    cubes: [Option<T>; VERTEX_COUNT],
     parent_side: Option<Side>,
     /// Distance to origin via parents
     length: u32,
-    neighbors: [Option<NodeId>; SIDES],
+    neighbors: [Option<NodeId>; SIDE_COUNT],
 }
 
 impl<T> Node<T> {
@@ -432,63 +282,30 @@ impl<T> Node<T> {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Vertex {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
-    J,
-    K,
-    L,
-    M,
-    N,
-    O,
-    P,
-    Q,
-    R,
-    S,
-    T,
+fn cube_to_node(v: Vertex) -> na::Matrix4<f64> {
+    let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+    let [a, b, c] = v.canonical_sides();
+    na::Matrix4::from_columns(&[
+        a.reflection().column(3) - origin,
+        b.reflection().column(3) - origin,
+        c.reflection().column(3) - origin,
+        origin,
+    ])
 }
 
-impl Vertex {
-    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        use Vertex::*;
-        [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
-            .iter()
-            .cloned()
-    }
+lazy_static! {
+    /// Whether the determinant of the cube-to-node transform is negative
+    static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [bool; VERTEX_COUNT] = {
+        let mut result = [false; VERTEX_COUNT];
 
-    #[inline]
-    pub fn from_sides(a: Side, b: Side, c: Side) -> Option<Self> {
-        SIDES_TO_VERTEX[a as usize][b as usize][c as usize]
-    }
+        for v in Vertex::iter() {
+            let lu = na::LU::new(cube_to_node(v));
+            result[v as usize] = lu.determinant() < 0.0;
+        }
 
-    #[inline]
-    pub fn canonical_sides(self) -> [Side; 3] {
-        VERTEX_SIDES[self as usize]
-    }
-
-    fn cube_to_node(self) -> na::Matrix4<f64> {
-        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-        let [a, b, c] = VERTEX_SIDES[self as usize];
-        na::Matrix4::from_columns(&[
-            REFLECTIONS[a as usize].column(3) - origin,
-            REFLECTIONS[b as usize].column(3) - origin,
-            REFLECTIONS[c as usize].column(3) - origin,
-            origin,
-        ])
-    }
+        result
+    };
 }
-
-// Properties of dodecahedrons
-const VERTICES: usize = 20;
-const SIDES: usize = 12;
 
 #[cfg(test)]
 mod tests {
@@ -544,33 +361,5 @@ mod tests {
             .next()
             .unwrap();
         assert_eq!(graph.nodes[other.idx()].length, 2);
-    }
-
-    #[test]
-    fn vertex_sides() {
-        use std::collections::HashSet;
-        let triples = VERTEX_SIDES.iter().collect::<HashSet<_>>();
-        assert_eq!(triples.len(), VERTICES);
-        for &triple in &*VERTEX_SIDES {
-            let mut sorted = triple;
-            sorted.sort_unstable();
-            assert_eq!(triple, sorted);
-            assert!(ADJACENT[triple[0] as usize][triple[1] as usize]);
-            assert!(ADJACENT[triple[1] as usize][triple[2] as usize]);
-            assert!(ADJACENT[triple[2] as usize][triple[0] as usize]);
-        }
-    }
-
-    #[test]
-    fn sides_to_vertex() {
-        for v in Vertex::iter() {
-            let [a, b, c] = VERTEX_SIDES[v as usize];
-            assert_eq!(v, Vertex::from_sides(a, b, c).unwrap());
-            assert_eq!(v, Vertex::from_sides(a, c, b).unwrap());
-            assert_eq!(v, Vertex::from_sides(b, a, c).unwrap());
-            assert_eq!(v, Vertex::from_sides(b, c, a).unwrap());
-            assert_eq!(v, Vertex::from_sides(c, a, b).unwrap());
-            assert_eq!(v, Vertex::from_sides(c, b, a).unwrap());
-        }
     }
 }
