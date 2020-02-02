@@ -7,6 +7,7 @@ use rand::{
 mod id;
 
 pub mod codec;
+pub mod cursor;
 pub mod graph;
 pub mod math;
 pub mod proto;
