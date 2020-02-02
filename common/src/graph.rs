@@ -20,7 +20,7 @@ impl<T> Graph<T> {
     pub fn new() -> Self {
         Self {
             nodes: vec![Node {
-                value: None,
+                cubes: Default::default(),
                 parent_side: None,
                 length: 0,
                 neighbors: [None; SIDES],
@@ -70,16 +70,17 @@ impl<T> Graph<T> {
         pending.push((node, false, na::Matrix4::identity()));
         visited.insert(node);
 
-        while let Some((node, reflected, transform)) = pending.pop() {
-            if let Some((xf, flipped)) = self.cube_to_node(node) {
+        while let Some((node_id, reflected, transform)) = pending.pop() {
+            let node = &self.nodes[node.idx()];
+            for v in self.cubes_at(node_id) {
                 result.push((
-                    &self.nodes[node.idx()].value,
-                    reflected ^ flipped,
-                    na::convert(transform * xf),
+                    &node.cubes[v as usize],
+                    reflected ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
+                    na::convert(transform * v.cube_to_node()),
                 ));
             }
             for side in Side::iter() {
-                let neighbor = match self.nodes[node.idx()].neighbors[side as usize] {
+                let neighbor = match node.neighbors[side as usize] {
                     None => continue,
                     Some(x) => x,
                 };
@@ -95,56 +96,17 @@ impl<T> Graph<T> {
         result
     }
 
-    pub fn is_cube(&self, node: NodeId) -> bool {
+    pub fn cubes_at(&self, node: NodeId) -> impl Iterator<Item = Vertex> + '_ {
         let node = &self.nodes[node.idx()];
-        let mut iter = Side::iter().filter(|&side| {
-            let neighbor = match node.neighbors[side as usize] {
-                None => return false,
-                Some(x) => x,
-            };
-            self.nodes[neighbor.idx()].length < node.length
-        });
-        for _ in 0..3 {
-            if iter.next().is_none() {
-                return false;
-            }
-        }
-        debug_assert!(
-            iter.next().is_none(),
-            "at most 3 neighbors of any node have shorter length"
-        );
-        true
-    }
-
-    /// Compute the transform from cube space to dodecahedron space, if this node represents a cube
-    fn cube_to_node(&self, node: NodeId) -> Option<(na::Matrix4<f64>, bool)> {
-        let node = &self.nodes[node.idx()];
-        let mut iter = Side::iter().filter(|&side| {
-            let neighbor = match node.neighbors[side as usize] {
-                None => return false,
-                Some(x) => x,
-            };
-            self.nodes[neighbor.idx()].length < node.length
-        });
-        let a = iter.next()?;
-        let b = iter.next()?;
-        let c = iter.next()?;
-        debug_assert!(
-            iter.next().is_none(),
-            "at most 3 neighbors of any node have shorter length"
-        );
-        let v = SIDES_TO_VERTEX[a as usize][b as usize][c as usize];
-        let flipped = CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize];
-        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-        Some((
-            na::Matrix4::from_columns(&[
-                REFLECTIONS[a as usize].column(3) - origin,
-                REFLECTIONS[b as usize].column(3) - origin,
-                REFLECTIONS[c as usize].column(3) - origin,
-                origin,
-            ]),
-            flipped,
-        ))
+        Vertex::iter().filter(move |&v| {
+            VERTEX_SIDES[v as usize].iter().all(|&side| {
+                let neighbor = match node.neighbors[side as usize] {
+                    None => return true,
+                    Some(x) => x,
+                };
+                self.nodes[neighbor.idx()].length > node.length
+            })
+        })
     }
 
     /// Ensure all nodes within `distance` links of `node` exist
@@ -170,12 +132,12 @@ impl<T> Graph<T> {
         trace!("visited {}, fresh {}", visited.len(), self.fresh.len());
     }
 
-    pub fn get(&self, node: NodeId) -> &Option<T> {
-        &self.nodes[node.idx()].value
+    pub fn get(&self, node: NodeId, cube: Vertex) -> &Option<T> {
+        &self.nodes[node.idx()].cubes[cube as usize]
     }
 
-    pub fn get_mut(&mut self, node: NodeId) -> &mut Option<T> {
-        &mut self.nodes[node.idx()].value
+    pub fn get_mut(&mut self, node: NodeId, cube: Vertex) -> &mut Option<T> {
+        &mut self.nodes[node.idx()].cubes[cube as usize]
     }
 
     fn ensure_neighbor_inner(
@@ -218,7 +180,7 @@ impl<T> Graph<T> {
         let id = NodeId::from_idx(self.nodes.len());
         let length = self.nodes[parent.idx()].length + 1;
         self.nodes.push(Node {
-            value: None,
+            cubes: Default::default(),
             parent_side: Some(side),
             length,
             neighbors: [None; SIDES],
@@ -347,16 +309,8 @@ lazy_static! {
     static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [bool; VERTICES] = {
         let mut result = [false; VERTICES];
 
-        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
         for v in Vertex::iter() {
-            let [a, b, c] = VERTEX_SIDES[v as usize];
-            let m = na::Matrix4::from_columns(&[
-                REFLECTIONS[a as usize].column(3) - origin,
-                REFLECTIONS[b as usize].column(3) - origin,
-                REFLECTIONS[c as usize].column(3) - origin,
-                origin,
-            ]);
-            let lu = na::LU::new(m);
+            let lu = na::LU::new(v.cube_to_node());
             result[v as usize] = lu.determinant() < 0.0;
         }
 
@@ -432,7 +386,7 @@ impl fmt::Debug for NodeId {
 
 #[derive(Debug, Clone)]
 struct Node<T> {
-    value: Option<T>,
+    cubes: [Option<T>; VERTICES],
     parent_side: Option<Side>,
     /// Distance to origin via parents
     length: u32,
@@ -475,6 +429,17 @@ impl Vertex {
         [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
             .iter()
             .cloned()
+    }
+
+    fn cube_to_node(self) -> na::Matrix4<f64> {
+        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+        let [a, b, c] = VERTEX_SIDES[self as usize];
+        na::Matrix4::from_columns(&[
+            REFLECTIONS[a as usize].column(3) - origin,
+            REFLECTIONS[b as usize].column(3) - origin,
+            REFLECTIONS[c as usize].column(3) - origin,
+            origin,
+        ])
     }
 }
 

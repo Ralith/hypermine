@@ -294,15 +294,18 @@ impl Draw {
         // Perform surface extraction of in-range voxel chunks
         if self.graph.len() == 1 {
             let mut index: usize = 0;
-            self.graph.ensure_nearby(graph::NodeId::ROOT, 3);
-            let mut nodes = Vec::new();
+            self.graph.ensure_nearby(graph::NodeId::ROOT, 1);
+            let mut cubes = Vec::new();
+            for v in self.graph.cubes_at(graph::NodeId::ROOT) {
+                cubes.push((graph::NodeId::ROOT, v));
+            }
             for &node in self.graph.fresh() {
-                if self.graph.is_cube(node) {
-                    nodes.push(node);
+                for v in self.graph.cubes_at(node) {
+                    cubes.push((node, v));
                 }
             }
-            trace!("populating {}/{} nodes", nodes.len(), self.graph.len());
-            for node in nodes {
+            trace!("populating {}/{} cubes", cubes.len(), self.graph.len() * 20);
+            for (node, cube) in cubes {
                 let chunk = self.voxel_surfaces.alloc().unwrap();
                 let storage = self.extraction_scratch.storage(index);
                 // TODO: Generate from world
@@ -335,7 +338,7 @@ impl Draw {
                     self.voxel_surfaces.face_buffer(),
                     self.voxel_surfaces.face_offset(&chunk),
                 );
-                *self.graph.get_mut(node) = Some(chunk);
+                *self.graph.get_mut(node, cube) = Some(chunk);
                 index += 1;
             }
         }
