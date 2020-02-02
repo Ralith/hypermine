@@ -521,15 +521,6 @@ mod tests {
     }
 
     #[test]
-    fn cube_to_node_sanity() {
-        let mut graph = Graph::<()>::new();
-        graph.ensure_nearby(NodeId::ROOT, 1);
-        assert_eq!(graph.cube_to_node(NodeId::ROOT), None);
-        let node = graph.ensure_neighbor(NodeId::ROOT, Side::A);
-        assert_eq!(graph.cube_to_node(node), None);
-    }
-
-    #[test]
     fn vertex_sides() {
         use std::collections::HashSet;
         let triples = VERTEX_SIDES.iter().collect::<HashSet<_>>();
