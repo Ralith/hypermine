@@ -114,17 +114,19 @@ impl<T> Graph<T> {
         result
     }
 
-    pub fn cubes_at(&self, node: NodeId) -> impl Iterator<Item = Vertex> + '_ {
+    pub fn cubes_at(&self, node: NodeId) -> impl Iterator<Item = Vertex> {
+        let mut exists = [false; 20];
         let node = &self.nodes[node.idx()];
-        Vertex::iter().filter(move |&v| {
-            VERTEX_SIDES[v as usize].iter().all(|&side| {
+        for v in Vertex::iter() {
+            exists[v as usize] = VERTEX_SIDES[v as usize].iter().all(|&side| {
                 let neighbor = match node.neighbors[side as usize] {
                     None => return true,
                     Some(x) => x,
                 };
                 self.nodes[neighbor.idx()].length > node.length
-            })
-        })
+            });
+        }
+        Vertex::iter().filter(move |&i| exists[i as usize])
     }
 
     /// Ensure all nodes within `distance` links of `start` exist
