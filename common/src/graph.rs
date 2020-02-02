@@ -52,7 +52,7 @@ impl<T> Graph<T> {
         self.fresh.clear();
     }
 
-    /// Compute reflectedness and `node`-relative transforms for all cube-bearing nodes within
+    /// Compute reflectedness and `start`-relative transforms for all cube-bearing nodes within
     /// `distance` links
     ///
     /// Because we relate nodes to their neighbors with reflection transforms, a flag indicating
@@ -60,35 +60,54 @@ impl<T> Graph<T> {
     /// correct vertex winding.
     pub fn nearby_cubes(
         &self,
-        node: NodeId,
+        start: NodeId,
         distance: u32,
     ) -> Vec<(&Option<T>, bool, na::Matrix4<f32>)> {
+        struct PendingNode {
+            id: NodeId,
+            parity: bool,
+            distance: u32,
+            transform: na::Matrix4<f64>,
+        }
+
         let mut result = Vec::new();
-        let mut pending = Vec::<(NodeId, bool, na::Matrix4<f64>)>::new();
+        let mut pending = Vec::<PendingNode>::new();
         let mut visited = FxHashSet::<NodeId>::default();
 
-        pending.push((node, false, na::Matrix4::identity()));
-        visited.insert(node);
+        pending.push(PendingNode {
+            id: start,
+            parity: false,
+            distance: 0,
+            transform: na::Matrix4::identity(),
+        });
+        visited.insert(start);
 
-        while let Some((node_id, reflected, transform)) = pending.pop() {
-            let node = &self.nodes[node_id.idx()];
-            for v in self.cubes_at(node_id) {
+        while let Some(current) = pending.pop() {
+            let node = &self.nodes[current.id.idx()];
+            for v in self.cubes_at(current.id) {
                 result.push((
                     &node.cubes[v as usize],
-                    reflected ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
-                    na::convert(transform * v.cube_to_node()),
+                    current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
+                    na::convert(current.transform * v.cube_to_node()),
                 ));
+            }
+            if current.distance == distance {
+                continue;
             }
             for side in Side::iter() {
                 let neighbor = match node.neighbors[side as usize] {
                     None => continue,
                     Some(x) => x,
                 };
-                if visited.contains(&neighbor) || self.nodes[neighbor.idx()].length > distance {
+                if visited.contains(&neighbor) {
                     continue;
                 }
-                let neighbor_xf = transform * REFLECTIONS[side as usize];
-                pending.push((neighbor, !reflected, neighbor_xf));
+                pending.push(PendingNode {
+                    id: neighbor,
+                    parity: !current.parity,
+                    distance: current.distance + 1,
+                    transform: current.transform * REFLECTIONS[side as usize],
+                });
                 visited.insert(neighbor);
             }
         }
@@ -109,24 +128,22 @@ impl<T> Graph<T> {
         })
     }
 
-    /// Ensure all nodes within `distance` links of `node` exist
-    pub fn ensure_nearby(&mut self, node: NodeId, distance: u32) {
-        let mut pending = Vec::<NodeId>::new();
+    /// Ensure all nodes within `distance` links of `start` exist
+    pub fn ensure_nearby(&mut self, start: NodeId, distance: u32) {
+        let mut pending = Vec::<(NodeId, u32)>::new();
         let mut visited = FxHashSet::<NodeId>::default();
 
-        pending.push(node);
-        visited.insert(node);
+        pending.push((start, 0));
+        visited.insert(start);
 
-        while let Some(node) = pending.pop() {
+        while let Some((node, current_distance)) = pending.pop() {
             for side in Side::iter() {
                 let neighbor = self.ensure_neighbor(node, side);
-                if visited.contains(&neighbor) {
+                if visited.contains(&neighbor) || current_distance + 1 == distance {
                     continue;
                 }
                 visited.insert(neighbor);
-                if self.nodes[neighbor.idx()].length < distance {
-                    pending.push(neighbor);
-                }
+                pending.push((neighbor, current_distance + 1));
             }
         }
         trace!("visited {}, fresh {}", visited.len(), self.fresh.len());
