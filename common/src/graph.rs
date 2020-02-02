@@ -71,7 +71,7 @@ impl<T> Graph<T> {
         visited.insert(node);
 
         while let Some((node_id, reflected, transform)) = pending.pop() {
-            let node = &self.nodes[node.idx()];
+            let node = &self.nodes[node_id.idx()];
             for v in self.cubes_at(node_id) {
                 result.push((
                     &node.cubes[v as usize],
