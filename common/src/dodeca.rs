@@ -47,6 +47,12 @@ impl Side {
     pub fn reflection(self) -> &'static na::Matrix4<f64> {
         &REFLECTIONS[self as usize]
     }
+
+    /// Whether `p` is opposite the dodecahedron across the plane containing `self`
+    #[inline]
+    pub fn faces(self, p: &na::Vector4<f64>) -> bool {
+        (self.reflection().index((3, ..)) * p).x < p.w
+    }
 }
 
 /// Vertices of a right dodecahedron
@@ -226,6 +232,14 @@ mod tests {
             assert_eq!(v, Vertex::from_sides(b, c, a).unwrap());
             assert_eq!(v, Vertex::from_sides(c, a, b).unwrap());
             assert_eq!(v, Vertex::from_sides(c, b, a).unwrap());
+        }
+    }
+
+    #[test]
+    fn side_faces() {
+        for side in Side::iter() {
+            assert!(!side.faces(&math::origin()));
+            assert!(side.faces(&(side.reflection() * math::origin())));
         }
     }
 }
