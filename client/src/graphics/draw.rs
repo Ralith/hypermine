@@ -312,9 +312,9 @@ impl Draw {
                 for x in &mut storage[..] {
                     *x = Material::Void;
                 }
-                for z in 0..SUBDIVISION_FACTOR {
-                    for y in 0..SUBDIVISION_FACTOR {
-                        for x in 0..SUBDIVISION_FACTOR {
+                for z in 2..(SUBDIVISION_FACTOR - 2) {
+                    for y in 2..(SUBDIVISION_FACTOR - 2) {
+                        for x in 2..(SUBDIVISION_FACTOR - 2) {
                             storage[(x + 1)
                                 + (y + 1) * (SUBDIVISION_FACTOR + 2)
                                 + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if x % 2 == 0 {
