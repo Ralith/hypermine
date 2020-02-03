@@ -117,6 +117,7 @@ impl<T> Graph<T> {
         result
     }
 
+    /// Enumerate the vertices of `node` which canonically correspond to cubes
     pub fn cubes_at(&self, node: NodeId) -> impl Iterator<Item = Vertex> {
         let mut exists = [false; 20];
         let node = &self.nodes[node.idx()];
