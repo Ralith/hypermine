@@ -7,7 +7,10 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
-use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
+use crate::{
+    dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
+    math,
+};
 
 /// Graph of the right dodecahedral tiling of H^3
 #[derive(Debug, Clone)]
@@ -170,6 +173,31 @@ impl<T> Graph<T> {
         self.nodes[node.idx()].length
     }
 
+    /// Given a `transform` relative to a `reference` node, computes an equivalent transform
+    /// relative to the node closest to that transform.
+    pub fn normalize_transform(
+        &self,
+        mut reference: NodeId,
+        mut transform: na::Matrix4<f64>,
+    ) -> (NodeId, na::Matrix4<f64>) {
+        'outer: loop {
+            let location = transform * math::origin();
+            for side in Side::iter() {
+                if !side.faces(&location) {
+                    continue;
+                }
+                reference = match self.neighbor(reference, side) {
+                    None => continue,
+                    Some(x) => x,
+                };
+                transform = side.reflection() * transform;
+                continue 'outer;
+            }
+            break;
+        }
+        (reference, transform)
+    }
+
     fn ensure_neighbor_inner(
         &mut self,
         node: NodeId,
@@ -310,6 +338,7 @@ lazy_static! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::*;
 
     #[test]
     fn parent_child_relationships() {
@@ -361,5 +390,22 @@ mod tests {
             .next()
             .unwrap();
         assert_eq!(graph.nodes[other.idx()].length, 2);
+    }
+
+    #[test]
+    fn normalize_transform() {
+        let mut graph = Graph::<()>::default();
+        let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
+        {
+            let (node, xf) = graph.normalize_transform(NodeId::ROOT, na::Matrix4::identity());
+            assert_eq!(node, NodeId::ROOT);
+            assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
+        }
+        {
+            let (node, xf) = graph
+                .normalize_transform(NodeId::ROOT, Side::A.reflection() * na::Matrix4::identity());
+            assert_eq!(node, a);
+            assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
+        }
     }
 }
