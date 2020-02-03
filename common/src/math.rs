@@ -99,13 +99,35 @@ pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> 
     let boost_length = (dest.w + norm).ln();
     let direction = na::Unit::new_unchecked(dest.xyz() / norm);
     let inverse_boost = translate_along(&direction, -boost_length);
-    let mut rotation = na::Rotation3::from_matrix_unchecked(
-        (inverse_boost * m)
+    let rotation = renormalize_rotation_reflection(
+        &(inverse_boost * m)
             .fixed_slice::<na::U3, na::U3>(0, 0)
             .clone_owned(),
     );
-    rotation.renormalize();
     translate_along(&direction, boost_length) * rotation.to_homogeneous()
+}
+
+#[rustfmt::skip]
+fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matrix3<N> {
+    let zv = m.index((.., 2)).normalize();
+    let yv = m.index((.., 1));
+    let dot = zv.dot(&yv);
+    let yv = na::Vector3::new(yv.x - dot * zv.x, yv.y - dot * zv.y, yv.z - dot * zv.z).normalize();
+    let sign = determinant3(m).signum();
+    na::Matrix3::new(
+        sign * (yv.y * zv.z - yv.z * zv.y), yv.x, zv.x,
+	sign * (yv.z * zv.x - yv.x * zv.z), yv.y, zv.y,
+	sign * (yv.x * zv.y - yv.y * zv.x), yv.z, zv.z,
+    )
+}
+
+fn determinant3<N: RealField>(m: &na::Matrix3<N>) -> N {
+    m[(0, 0)] * m[(1, 1)] * m[(2, 2)]
+        + m[(0, 1)] * m[(1, 2)] * m[(2, 0)]
+        + m[(0, 2)] * m[(1, 0)] * m[(2, 1)]
+        - m[(0, 2)] * m[(1, 1)] * m[(2, 0)]
+        - m[(0, 1)] * m[(1, 0)] * m[(2, 2)]
+        - m[(0, 0)] * m[(1, 2)] * m[(2, 1)]
 }
 
 /// Minkowski inner product, aka <a, b>_h
@@ -194,11 +216,21 @@ mod tests {
     }
 
     #[test]
-    fn renormalize_noop() {
+    fn renormalize_translation() {
         let mat = translate(
             &na::Vector4::new(-0.5, -0.5, 0.0, 1.0),
             &na::Vector4::new(0.3, -0.7, 0.0, 1.0),
         );
+        assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn renormalize_reflection() {
+        let mat = na::Matrix4::new(-1.0, 0.0, 0.0, 0.0,
+                                   0.0, 1.0, 0.0, 0.0,
+                                   0.0, 0.0, 1.0, 0.0,
+                                   0.0, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
     }
 }
