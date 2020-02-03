@@ -27,7 +27,7 @@ pub use self::{
     loader::{Asset, LoadCtx, LoadFuture, Loadable, Loader},
     png_array::PngArray,
     sky::Sky,
-    surface_extraction::SurfaceExtraction,
+    surface_extraction::{Chunk, SurfaceExtraction},
     voxels::Voxels,
     window::{EarlyWindow, Window},
 };

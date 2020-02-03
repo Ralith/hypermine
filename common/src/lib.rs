@@ -5,10 +5,10 @@ use rand::{
 
 #[macro_use]
 mod id;
-mod dodeca;
 
 pub mod codec;
 pub mod cursor;
+pub mod dodeca;
 pub mod graph;
 pub mod math;
 pub mod proto;

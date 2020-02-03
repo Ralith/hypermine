@@ -2,23 +2,39 @@ use std::time::Duration;
 
 use tracing::{debug, error};
 
-use crate::Net;
-use common::math;
+use crate::{graphics::Chunk, Net};
+use common::{
+    graph::{Graph, NodeId},
+    math,
+};
 
 /// Game state
 pub struct Sim {
+    view_reference: NodeId,
     view: na::Matrix4<f64>,
     velocity: na::Vector3<f64>,
     net: Net,
+    pub graph: Graph<Node>,
 }
 
 impl Sim {
     pub fn new(net: Net) -> Self {
-        Self {
+        let mut result = Self {
+            view_reference: NodeId::ROOT,
             view: na::Matrix4::identity(),
             velocity: na::zero(),
             net,
+            graph: Graph::new(),
+        };
+
+        result.populate_node(NodeId::ROOT);
+        result.graph.ensure_nearby(NodeId::ROOT, 3);
+        for node in result.graph.fresh().to_vec() {
+            result.populate_node(node);
         }
+        result.graph.clear_fresh();
+
+        result
     }
 
     pub fn rotate(&mut self, delta: na::Vector2<f64>) {
@@ -46,10 +62,31 @@ impl Sim {
 
         let (dir, rate) = na::Unit::new_and_get(na::convert::<_, na::Vector3<f64>>(self.velocity));
         let distance = rate * dt.as_secs_f64() * 0.5;
-        self.view = math::renormalize_isometry(&self.view) * math::translate_along(&dir, distance);
+        let view = math::renormalize_isometry(&self.view) * math::translate_along(&dir, distance);
+        let (reference, view) = self.graph.normalize_transform(self.view_reference, view);
+        if reference != self.view_reference {
+            debug!("moved to node {:?}", reference);
+        }
+        self.view_reference = reference;
+        self.view = view;
     }
 
-    pub fn view(&self) -> na::Matrix4<f32> {
-        na::convert(self.view)
+    pub fn view_reference(&self) -> NodeId {
+        self.view_reference
     }
+
+    pub fn view(&self) -> &na::Matrix4<f64> {
+        &self.view
+    }
+
+    fn populate_node(&mut self, node: NodeId) {
+        for cube in self.graph.cubes_at(node) {
+            *self.graph.get_mut(node, cube) = Some(Node { graphics: None });
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct Node {
+    pub graphics: Option<Chunk>,
 }

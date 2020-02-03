@@ -130,6 +130,11 @@ fn determinant3<N: RealField>(m: &na::Matrix3<N>) -> N {
         - m[(0, 0)] * m[(1, 2)] * m[(2, 1)]
 }
 
+/// Whether an isometry reverses winding with respect to the norm
+pub fn parity<N: RealField>(m: &na::Matrix4<N>) -> bool {
+    determinant3(&m.fixed_slice::<na::U3, na::U3>(0, 0).clone_owned()) < na::zero::<N>()
+}
+
 /// Minkowski inner product, aka <a, b>_h
 fn mip<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     a.x * b.x + a.y * b.y + a.z * b.z - a.w * b.w

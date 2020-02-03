@@ -7,9 +7,9 @@ use lahar::Staged;
 use tracing::{info, trace};
 
 use super::{surface_extraction, voxels, Base, Loader, Sky, SurfaceExtraction, Voxels};
-use crate::Config;
-use common::graph::{self, Graph};
+use crate::{Config, Sim};
 use common::world::{Material, SUBDIVISION_FACTOR};
+use common::{dodeca::Vertex, graph::NodeId};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -44,7 +44,6 @@ pub struct Draw {
     extraction_scratch: surface_extraction::ScratchBuffer,
     voxel_surfaces: surface_extraction::DrawBuffer,
     voxels: Voxels,
-    graph: Graph<surface_extraction::Chunk>,
 
     /// Reusable storage for barriers that prevent races between image upload and read
     image_barriers: Vec<vk::ImageMemoryBarrier>,
@@ -177,7 +176,7 @@ impl Draw {
             let surface_extraction = SurfaceExtraction::new(gfx.clone());
             let extraction_scratch = surface_extraction::ScratchBuffer::new(
                 &surface_extraction,
-                927, // Number of dodecahedra in distance 0-3 to a given one
+                SURFACE_EXTRACTIONS_PER_FRAME,
                 SUBDIVISION_FACTOR as u32,
             );
 
@@ -202,7 +201,6 @@ impl Draw {
                 extraction_scratch,
                 voxel_surfaces,
                 voxels,
-                graph: Graph::new(),
 
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
@@ -236,11 +234,16 @@ impl Draw {
     /// attachment.
     pub unsafe fn draw(
         &mut self,
+        sim: &mut Sim,
         framebuffer: vk::Framebuffer,
         extent: vk::Extent2D,
         present: vk::Semaphore,
         projection: na::Matrix4<f32>,
     ) {
+        let projection = projection
+            * na::convert::<_, na::Matrix4<f32>>(*sim.view())
+                .try_inverse()
+                .unwrap();
         self.loader.drive();
 
         let device = &*self.gfx.device;
@@ -292,20 +295,27 @@ impl Draw {
         timestamp_index += 1;
 
         // Perform surface extraction of in-range voxel chunks
-        if self.graph.len() == 1 {
-            let mut index: usize = 0;
-            self.graph.ensure_nearby(graph::NodeId::ROOT, 1);
+        if sim
+            .graph
+            .get(NodeId::ROOT, Vertex::A)
+            .as_ref()
+            .unwrap()
+            .graphics
+            .is_none()
+        {
             let mut cubes = Vec::new();
-            for v in self.graph.cubes_at(graph::NodeId::ROOT) {
-                cubes.push((graph::NodeId::ROOT, v));
+            for v in sim.graph.cubes_at(NodeId::ROOT) {
+                cubes.push((NodeId::ROOT, v));
             }
-            for &node in self.graph.fresh() {
-                for v in self.graph.cubes_at(node) {
-                    cubes.push((node, v));
-                }
+            let neighbor = sim
+                .graph
+                .neighbor(NodeId::ROOT, common::dodeca::Side::A)
+                .unwrap();
+            for v in sim.graph.cubes_at(neighbor) {
+                cubes.push((neighbor, v));
             }
-            trace!("populating {}/{} cubes", cubes.len(), self.graph.len() * 20);
-            for (node, cube) in cubes {
+            trace!("populating {}/{} cubes", cubes.len(), sim.graph.len() * 20);
+            for (index, (node, cube)) in cubes.into_iter().enumerate() {
                 let chunk = self.voxel_surfaces.alloc().unwrap();
                 let storage = self.extraction_scratch.storage(index);
                 // TODO: Generate from world
@@ -338,8 +348,7 @@ impl Draw {
                     self.voxel_surfaces.face_buffer(),
                     self.voxel_surfaces.face_offset(&chunk),
                 );
-                *self.graph.get_mut(node, cube) = Some(chunk);
-                index += 1;
+                sim.graph.get_mut(node, cube).as_mut().unwrap().graphics = Some(chunk);
             }
         }
 
@@ -357,11 +366,11 @@ impl Draw {
         );
 
         // Transfer node transforms
-        let chunks = self
+        let chunks = sim
             .graph
-            .nearby_cubes(graph::NodeId::ROOT, 3)
+            .nearby_cubes(sim.view_reference(), 3)
             .into_iter()
-            .filter_map(|(x, y, z)| Some((x.as_ref()?, y, z)))
+            .filter_map(|(x, y, z)| Some((x.as_ref()?.graphics.as_ref()?, y, z)))
             .collect::<Vec<_>>();
         for &(chunk, _, ref transform) in &chunks {
             device.cmd_update_buffer(
@@ -446,6 +455,7 @@ impl Draw {
         );
 
         // Record the actual rendering commands
+        let parity = common::math::parity(&sim.view());
         for &(chunk, reflected, _) in &chunks {
             self.voxels.draw(
                 &self.loader,
@@ -454,7 +464,7 @@ impl Draw {
                 &self.voxel_surfaces,
                 &state.voxels,
                 chunk,
-                reflected,
+                reflected ^ parity,
             );
         }
         // Sky goes last to save fillrate
@@ -567,4 +577,5 @@ struct Uniforms {
 }
 
 /// Maximum number of concurrently drawn voxel chunks
-const MAX_CHUNKS: vk::DeviceSize = 1024;
+const MAX_CHUNKS: vk::DeviceSize = 2048;
+const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 64;
