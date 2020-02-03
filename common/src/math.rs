@@ -113,26 +113,16 @@ fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matr
     let yv = m.index((.., 1));
     let dot = zv.dot(&yv);
     let yv = na::Vector3::new(yv.x - dot * zv.x, yv.y - dot * zv.y, yv.z - dot * zv.z).normalize();
-    let sign = determinant3(m).signum();
+    let sign = m.determinant().signum();
     na::Matrix3::new(
         sign * (yv.y * zv.z - yv.z * zv.y), yv.x, zv.x,
 	sign * (yv.z * zv.x - yv.x * zv.z), yv.y, zv.y,
 	sign * (yv.x * zv.y - yv.y * zv.x), yv.z, zv.z,
     )
 }
-
-fn determinant3<N: RealField>(m: &na::Matrix3<N>) -> N {
-    m[(0, 0)] * m[(1, 1)] * m[(2, 2)]
-        + m[(0, 1)] * m[(1, 2)] * m[(2, 0)]
-        + m[(0, 2)] * m[(1, 0)] * m[(2, 1)]
-        - m[(0, 2)] * m[(1, 1)] * m[(2, 0)]
-        - m[(0, 1)] * m[(1, 0)] * m[(2, 2)]
-        - m[(0, 0)] * m[(1, 2)] * m[(2, 1)]
-}
-
 /// Whether an isometry reverses winding with respect to the norm
 pub fn parity<N: RealField>(m: &na::Matrix4<N>) -> bool {
-    determinant3(&m.fixed_slice::<na::U3, na::U3>(0, 0).clone_owned()) < na::zero::<N>()
+    m.fixed_slice::<na::U3, na::U3>(0, 0).determinant() < na::zero::<N>()
 }
 
 /// Minkowski inner product, aka <a, b>_h
