@@ -329,8 +329,7 @@ lazy_static! {
         let mut result = [false; VERTEX_COUNT];
 
         for v in Vertex::iter() {
-            let lu = na::LU::new(cube_to_node(v));
-            result[v as usize] = lu.determinant() < 0.0;
+            result[v as usize] = cube_to_node(v).determinant() < 0.0;
         }
 
         result
