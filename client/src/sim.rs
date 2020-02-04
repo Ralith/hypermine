@@ -81,12 +81,12 @@ impl Sim {
 
     fn populate_node(&mut self, node: NodeId) {
         for cube in self.graph.cubes_at(node) {
-            *self.graph.get_mut(node, cube) = Some(Node { graphics: None });
+            *self.graph.get_mut(node, cube) = Some(Node { surface: None });
         }
     }
 }
 
 #[derive(Default)]
 pub struct Node {
-    pub graphics: Option<Chunk>,
+    pub surface: Option<Chunk>,
 }

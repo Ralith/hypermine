@@ -4,12 +4,11 @@ use std::time::{Duration, Instant};
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
-use tracing::{info, trace};
+use tracing::info;
 
 use super::{surface_extraction, voxels, Base, Loader, Sky, SurfaceExtraction, Voxels};
 use crate::{Config, Sim};
 use common::world::{Material, SUBDIVISION_FACTOR};
-use common::{dodeca::Vertex, graph::NodeId};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -161,6 +160,7 @@ impl Draw {
                             .unwrap(),
                         uniforms,
                         used: false,
+                        surfaces_extracted: Vec::new(),
 
                         voxels: voxels::Frame::new(&voxels, MAX_CHUNKS),
                     };
@@ -211,10 +211,13 @@ impl Draw {
     /// Waits for a frame's worth of resources to become available for use in rendering a new frame
     ///
     /// Call before signaling the image_acquired semaphore or invoking `draw`.
-    pub unsafe fn wait(&self) {
+    pub unsafe fn wait(&mut self) {
         let device = &*self.gfx.device;
         let fence = self.states[self.next_state].fence;
         device.wait_for_fences(&[fence], true, !0).unwrap();
+        for i in self.states[self.next_state].surfaces_extracted.drain(..) {
+            self.extraction_scratch.free(i);
+        }
     }
 
     /// Semaphore that must be signaled when an output framebuffer can be rendered to
@@ -294,64 +297,6 @@ impl Draw {
         );
         timestamp_index += 1;
 
-        // Perform surface extraction of in-range voxel chunks
-        if sim
-            .graph
-            .get(NodeId::ROOT, Vertex::A)
-            .as_ref()
-            .unwrap()
-            .graphics
-            .is_none()
-        {
-            let mut cubes = Vec::new();
-            for v in sim.graph.cubes_at(NodeId::ROOT) {
-                cubes.push((NodeId::ROOT, v));
-            }
-            let neighbor = sim
-                .graph
-                .neighbor(NodeId::ROOT, common::dodeca::Side::A)
-                .unwrap();
-            for v in sim.graph.cubes_at(neighbor) {
-                cubes.push((neighbor, v));
-            }
-            trace!("populating {}/{} cubes", cubes.len(), sim.graph.len() * 20);
-            for (index, (node, cube)) in cubes.into_iter().enumerate() {
-                let chunk = self.voxel_surfaces.alloc().unwrap();
-                let storage = self.extraction_scratch.storage(index);
-                // TODO: Generate from world
-                for x in &mut storage[..] {
-                    *x = Material::Void;
-                }
-                for z in 2..(SUBDIVISION_FACTOR - 2) {
-                    for y in 2..(SUBDIVISION_FACTOR - 2) {
-                        for x in 2..(SUBDIVISION_FACTOR - 2) {
-                            storage[(x + 1)
-                                + (y + 1) * (SUBDIVISION_FACTOR + 2)
-                                + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if x % 2 == 0 {
-                                Material::Stone
-                            } else if y % 2 == 0 {
-                                Material::Dirt
-                            } else if z % 4 == 0 {
-                                Material::Sand
-                            } else {
-                                Material::Void
-                            };
-                        }
-                    }
-                }
-                self.extraction_scratch.extract(
-                    &self.surface_extraction,
-                    index,
-                    cmd,
-                    self.voxel_surfaces.indirect_buffer(),
-                    self.voxel_surfaces.indirect_offset(&chunk),
-                    self.voxel_surfaces.face_buffer(),
-                    self.voxel_surfaces.face_offset(&chunk),
-                );
-                sim.graph.get_mut(node, cube).as_mut().unwrap().graphics = Some(chunk);
-            }
-        }
-
         // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
         // before submitting the command buffer so time-sensitive values can be set with minimum
         // latency.
@@ -365,14 +310,61 @@ impl Draw {
                 .build(),
         );
 
-        // Transfer node transforms
-        let chunks = sim
-            .graph
-            .nearby_cubes(sim.view_reference(), 3)
-            .into_iter()
-            .filter_map(|(x, y, z)| Some((x.as_ref()?.graphics.as_ref()?, y, z)))
-            .collect::<Vec<_>>();
-        for &(chunk, _, ref transform) in &chunks {
+        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 1);
+        for &(node, cube, _, ref transform) in &chunks {
+            // Fetch existing chunk, or extract surface of new chunk
+            let chunk = match *sim.graph.get_mut(node, cube) {
+                None => continue,
+                Some(ref mut value) => match value.surface {
+                    Some(x) => x,
+                    None => {
+                        let scratch_slot = match self.extraction_scratch.alloc() {
+                            None => continue,
+                            Some(i) => i,
+                        };
+                        state.surfaces_extracted.push(scratch_slot);
+                        let chunk = self
+                            .voxel_surfaces
+                            .alloc()
+                            .expect("tried to display too many chunks");
+                        value.surface = Some(chunk);
+                        let storage = self.extraction_scratch.storage(scratch_slot);
+                        // TODO: Generate from world
+                        for x in &mut storage[..] {
+                            *x = Material::Void;
+                        }
+                        for z in 2..(SUBDIVISION_FACTOR - 2) {
+                            for y in 2..(SUBDIVISION_FACTOR - 2) {
+                                for x in 2..(SUBDIVISION_FACTOR - 2) {
+                                    storage[(x + 1)
+                                        + (y + 1) * (SUBDIVISION_FACTOR + 2)
+                                        + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if x % 2 == 0
+                                    {
+                                        Material::Stone
+                                    } else if y % 2 == 0 {
+                                        Material::Dirt
+                                    } else if z % 4 == 0 {
+                                        Material::Sand
+                                    } else {
+                                        Material::Void
+                                    };
+                                }
+                            }
+                        }
+                        self.extraction_scratch.extract(
+                            &self.surface_extraction,
+                            scratch_slot,
+                            cmd,
+                            self.voxel_surfaces.indirect_buffer(),
+                            self.voxel_surfaces.indirect_offset(chunk),
+                            self.voxel_surfaces.face_buffer(),
+                            self.voxel_surfaces.face_offset(chunk),
+                        );
+                        chunk
+                    }
+                },
+            };
+            // Transfer transform
             device.cmd_update_buffer(
                 cmd,
                 state.voxels.transforms(),
@@ -380,6 +372,7 @@ impl Draw {
                 &mem::transmute::<_, [u8; voxels::TRANSFORM_SIZE as usize]>(*transform),
             );
         }
+
         self.buffer_barriers.push(
             vk::BufferMemoryBarrier::builder()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
@@ -456,16 +449,18 @@ impl Draw {
 
         // Record the actual rendering commands
         let parity = common::math::parity(&sim.view());
-        for &(chunk, reflected, _) in &chunks {
-            self.voxels.draw(
-                &self.loader,
-                state.common_ds,
-                cmd,
-                &self.voxel_surfaces,
-                &state.voxels,
-                chunk,
-                reflected ^ parity,
-            );
+        for &(node, cube, reflected, _) in &chunks {
+            if let Some(chunk) = sim.graph.get(node, cube).as_ref().and_then(|x| x.surface) {
+                self.voxels.draw(
+                    &self.loader,
+                    state.common_ds,
+                    cmd,
+                    &self.voxel_surfaces,
+                    &state.voxels,
+                    chunk,
+                    reflected ^ parity,
+                );
+            }
         }
         // Sky goes last to save fillrate
         self.sky.draw(cmd);
@@ -558,6 +553,8 @@ struct State {
     ///
     /// Indicates that e.g. valid timestamps are associated with this query
     used: bool,
+    /// Surface extraction scratch slots completed in this frame
+    surfaces_extracted: Vec<u32>,
 
     // Per-pipeline states
     voxels: voxels::Frame,
@@ -577,5 +574,5 @@ struct Uniforms {
 }
 
 /// Maximum number of concurrently drawn voxel chunks
-const MAX_CHUNKS: vk::DeviceSize = 2048;
-const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 64;
+const MAX_CHUNKS: vk::DeviceSize = 4096;
+const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 16;

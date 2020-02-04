@@ -64,7 +64,7 @@ impl<T> Graph<T> {
         &self,
         start: NodeId,
         distance: u32,
-    ) -> Vec<(&Option<T>, bool, na::Matrix4<f32>)> {
+    ) -> Vec<(NodeId, Vertex, bool, na::Matrix4<f32>)> {
         struct PendingNode {
             id: NodeId,
             parity: bool,
@@ -88,7 +88,8 @@ impl<T> Graph<T> {
             let node = &self.nodes[current.id.idx()];
             for v in self.cubes_at(current.id) {
                 result.push((
-                    &node.cubes[v as usize],
+                    current.id,
+                    v,
                     current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
                     na::convert(current.transform * cube_to_node(v)),
                 ));

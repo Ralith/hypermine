@@ -176,6 +176,7 @@ pub struct ScratchBuffer {
     counts: DedicatedBuffer,
     descriptor_pool: vk::DescriptorPool,
     descriptor_sets: Vec<vk::DescriptorSet>,
+    free_slots: Vec<u32>,
 }
 
 impl ScratchBuffer {
@@ -252,20 +253,34 @@ impl ScratchBuffer {
                 counts,
                 descriptor_pool,
                 descriptor_sets,
+                free_slots: (0..concurrency).collect(),
             }
         }
     }
 
+    pub fn alloc(&mut self) -> Option<u32> {
+        self.free_slots.pop()
+    }
+
+    pub fn free(&mut self, index: u32) {
+        debug_assert!(
+            !self.free_slots.contains(&index),
+            "double-free of surface extraction scratch slot"
+        );
+        self.free_slots.push(index);
+    }
+
     /// Includes a one-voxel margin around the entire volume
-    pub fn storage(&mut self, index: usize) -> &mut [Material] {
+    pub fn storage(&mut self, index: u32) -> &mut [Material] {
         let size = (self.dimension + 2).pow(3) as usize;
+        let index = index as usize;
         &mut self.voxels_staging[size * index..size * (index + 1)]
     }
 
     pub unsafe fn extract(
         &mut self,
         ctx: &SurfaceExtraction,
-        index: usize,
+        index: u32,
         cmd: vk::CommandBuffer,
         indirect: vk::Buffer,
         indirect_offset: vk::DeviceSize,
@@ -273,6 +288,7 @@ impl ScratchBuffer {
         face_offset: vk::DeviceSize,
     ) {
         let device = &*self.gfx.device;
+        let index = index as usize;
 
         let voxel_count = (self.dimension + 2).pow(3) as usize;
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
@@ -575,13 +591,13 @@ impl DrawBuffer {
     }
 
     /// The offset into the face buffer at which a chunk's face data can be found
-    pub fn face_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
+    pub fn face_offset(&self, chunk: Chunk) -> vk::DeviceSize {
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
         vk::DeviceSize::from(chunk.0) * max_faces as vk::DeviceSize * FACE_SIZE
     }
 
     /// The offset into the indirect buffer at which a chunk's face data can be found
-    pub fn indirect_offset(&self, chunk: &Chunk) -> vk::DeviceSize {
+    pub fn indirect_offset(&self, chunk: Chunk) -> vk::DeviceSize {
         vk::DeviceSize::from(chunk.0) * INDIRECT_SIZE
     }
 
@@ -606,5 +622,5 @@ const INDIRECT_SIZE: vk::DeviceSize = 16;
 
 const FACE_SIZE: vk::DeviceSize = 8;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Chunk(pub u32);

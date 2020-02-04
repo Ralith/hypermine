@@ -243,7 +243,7 @@ impl Voxels {
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
         frame: &Frame,
-        chunk: &Chunk,
+        chunk: Chunk,
         reflected: bool,
     ) {
         let device = &*self.gfx.device;
