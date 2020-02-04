@@ -160,6 +160,7 @@ impl Draw {
                             .unwrap(),
                         uniforms,
                         used: false,
+                        in_flight: false,
                         surfaces_extracted: Vec::new(),
 
                         voxels: voxels::Frame::new(&voxels, MAX_CHUNKS),
@@ -213,9 +214,10 @@ impl Draw {
     /// Call before signaling the image_acquired semaphore or invoking `draw`.
     pub unsafe fn wait(&mut self) {
         let device = &*self.gfx.device;
-        let fence = self.states[self.next_state].fence;
-        device.wait_for_fences(&[fence], true, !0).unwrap();
-        for i in self.states[self.next_state].surfaces_extracted.drain(..) {
+        let state = &mut self.states[self.next_state];
+        device.wait_for_fences(&[state.fence], true, !0).unwrap();
+        state.in_flight = false;
+        for i in state.surfaces_extracted.drain(..) {
             self.extraction_scratch.free(i);
         }
     }
@@ -498,6 +500,7 @@ impl Draw {
             )
             .unwrap();
         state.used = true;
+        state.in_flight = true;
     }
 
     /// Wait for all drawing to complete
@@ -524,7 +527,10 @@ impl Drop for Draw {
         let device = &*self.gfx.device;
         unsafe {
             for state in &mut self.states {
-                device.wait_for_fences(&[state.fence], true, !0).unwrap();
+                if state.in_flight {
+                    device.wait_for_fences(&[state.fence], true, !0).unwrap();
+                    state.in_flight = false;
+                }
                 device.destroy_semaphore(state.image_acquired, None);
                 device.destroy_fence(state.fence, None);
                 state.uniforms.destroy(device);
@@ -553,6 +559,10 @@ struct State {
     ///
     /// Indicates that e.g. valid timestamps are associated with this query
     used: bool,
+    /// Whether this state is currently being accessed by the GPU
+    ///
+    /// True for the period between `cmd` being submitted and `fence` being waited.
+    in_flight: bool,
     /// Surface extraction scratch slots completed in this frame
     surfaces_extracted: Vec<u32>,
 
