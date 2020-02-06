@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 common = { path = "../common" }
 tracing = "0.1.10"
-tracing-subscriber = "0.1.6"
+tracing-subscriber = "0.2"
 tokio = { version = "0.2", features = ["rt-threaded", "time", "macros", "stream", "sync"] }
 quinn = { git = "https://github.com/djc/quinn.git", rev = "5f81b5cf317305093b048d2211317f296b46a0e8", default-features = false }
 serde = { version = "1.0.104", features = ["derive", "rc"] }
