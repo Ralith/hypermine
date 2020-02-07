@@ -6,9 +6,12 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 use tracing::info;
 
-use super::{surface_extraction, voxels, Base, Loader, Sky, SurfaceExtraction, Voxels};
+use super::{surface_extraction, voxels, Base, Loader, LruTable, Sky, SurfaceExtraction, Voxels};
 use crate::{Config, Sim};
-use common::world::{Material, SUBDIVISION_FACTOR};
+use common::{
+    graph::NodeId,
+    world::{Material, SUBDIVISION_FACTOR},
+};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -42,6 +45,7 @@ pub struct Draw {
     surface_extraction: SurfaceExtraction,
     extraction_scratch: surface_extraction::ScratchBuffer,
     voxel_surfaces: surface_extraction::DrawBuffer,
+    surface_states: LruTable<SurfaceState>,
     voxels: Voxels,
 
     /// Reusable storage for barriers that prevent races between image upload and read
@@ -162,6 +166,7 @@ impl Draw {
                         used: false,
                         in_flight: false,
                         surfaces_extracted: Vec::new(),
+                        surfaces_drawn: Vec::new(),
 
                         voxels: voxels::Frame::new(&voxels, MAX_CHUNKS),
                     };
@@ -201,6 +206,7 @@ impl Draw {
                 surface_extraction,
                 extraction_scratch,
                 voxel_surfaces,
+                surface_states: LruTable::with_capacity(MAX_CHUNKS as u32),
                 voxels,
 
                 buffer_barriers: Vec::new(),
@@ -219,6 +225,9 @@ impl Draw {
         state.in_flight = false;
         for i in state.surfaces_extracted.drain(..) {
             self.extraction_scratch.free(i);
+        }
+        for slot in state.surfaces_drawn.drain(..) {
+            self.surface_states.peek_mut(slot).refcount -= 1;
         }
     }
 
@@ -312,24 +321,44 @@ impl Draw {
                 .build(),
         );
 
-        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 1);
+        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 2);
+        let mut removed = Vec::new();
         for &(node, cube, _, ref transform) in &chunks {
             // Fetch existing chunk, or extract surface of new chunk
-            let chunk = match *sim.graph.get_mut(node, cube) {
+            let slot = match *sim.graph.get_mut(node, cube) {
                 None => continue,
                 Some(ref mut value) => match value.surface {
-                    Some(x) => x,
+                    Some(x) => {
+                        self.surface_states.get_mut(x).refcount += 1;
+                        x
+                    }
                     None => {
                         let scratch_slot = match self.extraction_scratch.alloc() {
                             None => continue,
                             Some(i) => i,
                         };
                         state.surfaces_extracted.push(scratch_slot);
-                        let chunk = self
-                            .voxel_surfaces
-                            .alloc()
-                            .expect("tried to display too many chunks");
-                        value.surface = Some(chunk);
+                        if self.surface_states.is_full() {
+                            if self
+                                .surface_states
+                                .peek_lru()
+                                .map_or(false, |x| x.refcount != 0)
+                            {
+                                // Not enough space for everything! TODO: Warn once
+                                break;
+                            }
+                            let lru = self.surface_states.remove_lru().unwrap();
+                            removed.push((lru.node, lru.cube));
+                        }
+                        let slot = self
+                            .surface_states
+                            .insert(SurfaceState {
+                                node,
+                                cube,
+                                refcount: 1,
+                            })
+                            .unwrap();
+                        value.surface = Some(slot);
                         let storage = self.extraction_scratch.storage(scratch_slot);
                         // TODO: Generate from world
                         for x in &mut storage[..] {
@@ -358,21 +387,25 @@ impl Draw {
                             scratch_slot,
                             cmd,
                             self.voxel_surfaces.indirect_buffer(),
-                            self.voxel_surfaces.indirect_offset(chunk),
+                            self.voxel_surfaces.indirect_offset(slot.0),
                             self.voxel_surfaces.face_buffer(),
-                            self.voxel_surfaces.face_offset(chunk),
+                            self.voxel_surfaces.face_offset(slot.0),
                         );
-                        chunk
+                        slot
                     }
                 },
             };
+            state.surfaces_drawn.push(slot);
             // Transfer transform
             device.cmd_update_buffer(
                 cmd,
                 state.voxels.transforms(),
-                chunk.0 as vk::DeviceSize * voxels::TRANSFORM_SIZE,
+                slot.0 as vk::DeviceSize * voxels::TRANSFORM_SIZE,
                 &mem::transmute::<_, [u8; voxels::TRANSFORM_SIZE as usize]>(*transform),
             );
+        }
+        for (node, cube) in removed {
+            sim.graph.get_mut(node, cube).as_mut().unwrap().surface = None;
         }
 
         self.buffer_barriers.push(
@@ -452,14 +485,14 @@ impl Draw {
         // Record the actual rendering commands
         let parity = common::math::parity(&sim.view());
         for &(node, cube, reflected, _) in &chunks {
-            if let Some(chunk) = sim.graph.get(node, cube).as_ref().and_then(|x| x.surface) {
+            if let Some(slot) = sim.graph.get(node, cube).as_ref().and_then(|x| x.surface) {
                 self.voxels.draw(
                     &self.loader,
                     state.common_ds,
                     cmd,
                     &self.voxel_surfaces,
                     &state.voxels,
-                    chunk,
+                    slot.0,
                     reflected ^ parity,
                 );
             }
@@ -565,6 +598,7 @@ struct State {
     in_flight: bool,
     /// Surface extraction scratch slots completed in this frame
     surfaces_extracted: Vec<u32>,
+    surfaces_drawn: Vec<super::lru_table::SlotId>,
 
     // Per-pipeline states
     voxels: voxels::Frame,
@@ -584,5 +618,11 @@ struct Uniforms {
 }
 
 /// Maximum number of concurrently drawn voxel chunks
-const MAX_CHUNKS: vk::DeviceSize = 4096;
+const MAX_CHUNKS: u32 = 4096;
 const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 16;
+
+struct SurfaceState {
+    node: NodeId,
+    cube: common::dodeca::Vertex,
+    refcount: u32,
+}

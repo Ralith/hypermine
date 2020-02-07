@@ -5,7 +5,6 @@ use std::num::NonZeroU32;
 use fxhash::FxHashSet;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use tracing::trace;
 
 use crate::{
     dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
@@ -152,7 +151,6 @@ impl<T> Graph<T> {
                 pending.push((neighbor, current_distance + 1));
             }
         }
-        trace!("visited {}, fresh {}", visited.len(), self.fresh.len());
     }
 
     #[inline]
@@ -329,7 +327,7 @@ lazy_static! {
         let mut result = [false; VERTEX_COUNT];
 
         for v in Vertex::iter() {
-            result[v as usize] = cube_to_node(v).determinant() < 0.0;
+            result[v as usize] = math::parity(&cube_to_node(v));
         }
 
         result

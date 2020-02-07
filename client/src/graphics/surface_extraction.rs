@@ -523,7 +523,6 @@ pub struct DrawBuffer {
     pub gfx: Arc<Base>,
     indirect: DedicatedBuffer,
     faces: DedicatedBuffer,
-    freelist: Vec<u32>,
     dimension: u32,
 }
 
@@ -564,20 +563,9 @@ impl DrawBuffer {
                 gfx,
                 indirect,
                 faces,
-                freelist: (0..count).rev().collect(),
                 dimension,
             }
         }
-    }
-
-    /// Allocate storage for a chunk's surface
-    pub fn alloc(&mut self) -> Option<Chunk> {
-        Some(Chunk(self.freelist.pop()?))
-    }
-
-    /// Release storage for reuse
-    pub fn free(&mut self, chunk: Chunk) {
-        self.freelist.push(chunk.0);
     }
 
     /// Buffer containing face data
@@ -591,14 +579,14 @@ impl DrawBuffer {
     }
 
     /// The offset into the face buffer at which a chunk's face data can be found
-    pub fn face_offset(&self, chunk: Chunk) -> vk::DeviceSize {
+    pub fn face_offset(&self, chunk: u32) -> vk::DeviceSize {
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
-        vk::DeviceSize::from(chunk.0) * max_faces as vk::DeviceSize * FACE_SIZE
+        vk::DeviceSize::from(chunk) * max_faces as vk::DeviceSize * FACE_SIZE
     }
 
     /// The offset into the indirect buffer at which a chunk's face data can be found
-    pub fn indirect_offset(&self, chunk: Chunk) -> vk::DeviceSize {
-        vk::DeviceSize::from(chunk.0) * INDIRECT_SIZE
+    pub fn indirect_offset(&self, chunk: u32) -> vk::DeviceSize {
+        vk::DeviceSize::from(chunk) * INDIRECT_SIZE
     }
 
     /// Number of voxels along a chunk edge
@@ -621,6 +609,3 @@ impl Drop for DrawBuffer {
 const INDIRECT_SIZE: vk::DeviceSize = 16;
 
 const FACE_SIZE: vk::DeviceSize = 8;
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Chunk(pub u32);

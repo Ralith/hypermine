@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tracing::{debug, error};
 
-use crate::{graphics::Chunk, Net};
+use crate::{graphics::lru_table::SlotId, Net};
 use common::{
     graph::{Graph, NodeId},
     math,
@@ -28,11 +28,8 @@ impl Sim {
         };
 
         result.populate_node(NodeId::ROOT);
-        result.graph.ensure_nearby(NodeId::ROOT, 3);
-        for node in result.graph.fresh().to_vec() {
-            result.populate_node(node);
-        }
-        result.graph.clear_fresh();
+        result.graph.ensure_nearby(NodeId::ROOT, 2);
+        result.populate_fresh_nodes();
 
         result
     }
@@ -69,6 +66,9 @@ impl Sim {
         }
         self.view_reference = reference;
         self.view = view;
+
+        self.graph.ensure_nearby(self.view_reference, 2);
+        self.populate_fresh_nodes();
     }
 
     pub fn view_reference(&self) -> NodeId {
@@ -77,6 +77,13 @@ impl Sim {
 
     pub fn view(&self) -> &na::Matrix4<f64> {
         &self.view
+    }
+
+    fn populate_fresh_nodes(&mut self) {
+        for node in self.graph.fresh().to_vec() {
+            self.populate_node(node);
+        }
+        self.graph.clear_fresh();
     }
 
     fn populate_node(&mut self, node: NodeId) {
@@ -88,5 +95,5 @@ impl Sim {
 
 #[derive(Default)]
 pub struct Node {
-    pub surface: Option<Chunk>,
+    pub surface: Option<SlotId>,
 }

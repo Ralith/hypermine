@@ -4,10 +4,7 @@ use ash::{version::DeviceV1_0, vk, Device};
 use lahar::{DedicatedBuffer, DedicatedImage};
 use vk_shader_macros::include_glsl;
 
-use super::{
-    surface_extraction::{Chunk, DrawBuffer},
-    Asset, Base, Loader,
-};
+use super::{surface_extraction::DrawBuffer, Asset, Base, Loader};
 use crate::Config;
 use common::{defer, world::Material};
 
@@ -243,7 +240,7 @@ impl Voxels {
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
         frame: &Frame,
-        chunk: Chunk,
+        chunk: u32,
         reflected: bool,
     ) {
         let device = &*self.gfx.device;
@@ -293,7 +290,7 @@ impl Voxels {
             &[],
         );
         let mut push_constants = [0; 12];
-        push_constants[0..4].copy_from_slice(&chunk.0.to_ne_bytes());
+        push_constants[0..4].copy_from_slice(&chunk.to_ne_bytes());
         push_constants[4..8].copy_from_slice(&buffer.dimension().to_ne_bytes());
         push_constants[8..12].copy_from_slice(&u32::from(reflected).to_ne_bytes());
         device.cmd_push_constants(
@@ -335,14 +332,14 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(parent: &Voxels, count: vk::DeviceSize) -> Self {
+    pub fn new(parent: &Voxels, count: u32) -> Self {
         let gfx = &parent.gfx;
         unsafe {
             let transforms = DedicatedBuffer::new(
                 &gfx.device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
-                    .size(count * TRANSFORM_SIZE)
+                    .size(vk::DeviceSize::from(count) * TRANSFORM_SIZE)
                     .usage(
                         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
                     )

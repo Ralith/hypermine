@@ -11,6 +11,7 @@ mod base;
 mod core;
 mod draw;
 mod loader;
+pub mod lru_table;
 mod png_array;
 mod sky;
 mod surface_extraction;
@@ -25,9 +26,10 @@ pub use self::{
     core::Core,
     draw::Draw,
     loader::{Asset, LoadCtx, LoadFuture, Loadable, Loader},
+    lru_table::LruTable,
     png_array::PngArray,
     sky::Sky,
-    surface_extraction::{Chunk, SurfaceExtraction},
+    surface_extraction::SurfaceExtraction,
     voxels::Voxels,
     window::{EarlyWindow, Window},
 };
