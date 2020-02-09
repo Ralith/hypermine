@@ -304,6 +304,11 @@ impl NodeId {
     fn idx(self) -> usize {
         (self.0.get() - 1) as usize
     }
+
+    /// nondeterministic ersatz spice
+    pub fn debug_idx(self) -> usize {
+        (self.0.get() - 1) as usize
+    }
 }
 
 impl fmt::Debug for NodeId {

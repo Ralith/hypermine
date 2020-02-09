@@ -330,7 +330,7 @@ impl Draw {
                 .build(),
         );
 
-        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 2);
+        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 3);
         let mut removed = Vec::new();
         for &(node, cube, _, ref transform) in &chunks {
             // Fetch existing chunk, or extract surface of new chunk
