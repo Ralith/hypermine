@@ -13,15 +13,16 @@ use crate::{
 
 /// Graph of the right dodecahedral tiling of H^3
 #[derive(Debug, Clone)]
-pub struct Graph<T> {
-    nodes: Vec<Node<T>>,
+pub struct Graph<N, C> {
+    nodes: Vec<Node<N, C>>,
     fresh: Vec<NodeId>,
 }
 
-impl<T> Graph<T> {
+impl<N, C> Graph<N, C> {
     pub fn new() -> Self {
         Self {
             nodes: vec![Node {
+                value: None,
                 cubes: Default::default(),
                 parent_side: None,
                 length: 0,
@@ -154,12 +155,22 @@ impl<T> Graph<T> {
     }
 
     #[inline]
-    pub fn get(&self, node: NodeId, cube: Vertex) -> &Option<T> {
+    pub fn get(&self, node: NodeId) -> &Option<N> {
+        &self.nodes[node.idx()].value
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self, node: NodeId) -> &mut Option<N> {
+        &mut self.nodes[node.idx()].value
+    }
+
+    #[inline]
+    pub fn get_cube(&self, node: NodeId, cube: Vertex) -> &Option<C> {
         &self.nodes[node.idx()].cubes[cube as usize]
     }
 
     #[inline]
-    pub fn get_mut(&mut self, node: NodeId, cube: Vertex) -> &mut Option<T> {
+    pub fn get_cube_mut(&mut self, node: NodeId, cube: Vertex) -> &mut Option<C> {
         &mut self.nodes[node.idx()].cubes[cube as usize]
     }
 
@@ -196,6 +207,11 @@ impl<T> Graph<T> {
             break;
         }
         (reference, transform)
+    }
+
+    #[inline]
+    pub fn parent(&self, node: NodeId) -> Option<Side> {
+        self.nodes[node.idx()].parent_side
     }
 
     fn ensure_neighbor_inner(
@@ -238,6 +254,7 @@ impl<T> Graph<T> {
         let id = NodeId::from_idx(self.nodes.len());
         let length = self.nodes[parent.idx()].length + 1;
         self.nodes.push(Node {
+            value: None,
             cubes: Default::default(),
             parent_side: Some(side),
             length,
@@ -262,7 +279,7 @@ impl<T> Graph<T> {
     }
 }
 
-impl<T> Default for Graph<T> {
+impl<N, C> Default for Graph<N, C> {
     fn default() -> Self {
         Self::new()
     }
@@ -296,15 +313,16 @@ impl fmt::Debug for NodeId {
 }
 
 #[derive(Debug, Clone)]
-struct Node<T> {
-    cubes: [Option<T>; VERTEX_COUNT],
+struct Node<N, C> {
+    value: Option<N>,
+    cubes: [Option<C>; VERTEX_COUNT],
     parent_side: Option<Side>,
     /// Distance to origin via parents
     length: u32,
     neighbors: [Option<NodeId>; SIDE_COUNT],
 }
 
-impl<T> Node<T> {
+impl<N, C> Node<N, C> {
     fn parent(&self) -> Option<NodeId> {
         Some(self.neighbors[self.parent_side? as usize].expect("parent edge unpopulated"))
     }

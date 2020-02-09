@@ -99,6 +99,27 @@ impl Vertex {
     pub fn canonical_sides(self) -> [Side; 3] {
         VERTEX_SIDES[self as usize]
     }
+
+    /// Sides across which to reflect the origin to obtain the vertices of the dual cube
+    pub fn dual_vertices(
+        self,
+    ) -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = Side>> {
+        let [a, b, c] = self.canonical_sides();
+        let table: [([Side; 3], usize); 8] = [
+            ([Side::A; 3], 0),
+            ([c, Side::A, Side::A], 1),
+            ([b, Side::A, Side::A], 1),
+            ([b, c, Side::A], 2),
+            ([a, Side::A, Side::A], 1),
+            ([a, c, Side::A], 2),
+            ([a, b, Side::A], 2),
+            ([a, b, c], 3),
+        ];
+        (0..8).map(move |i| {
+            let (sides, len) = table[i];
+            (0..len).map(move |i| sides[i])
+        })
+    }
 }
 
 pub const VERTEX_COUNT: usize = 20;

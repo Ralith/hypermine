@@ -4,8 +4,10 @@ use tracing::{debug, error};
 
 use crate::{graphics::lru_table::SlotId, Net};
 use common::{
+    dodeca,
     graph::{Graph, NodeId},
     math,
+    world::{Material, SUBDIVISION_FACTOR},
 };
 
 /// Game state
@@ -14,7 +16,7 @@ pub struct Sim {
     view: na::Matrix4<f64>,
     velocity: na::Vector3<f64>,
     net: Net,
-    pub graph: Graph<Node>,
+    pub graph: Graph<bool, Node>,
 }
 
 impl Sim {
@@ -80,20 +82,82 @@ impl Sim {
     }
 
     fn populate_fresh_nodes(&mut self) {
-        for node in self.graph.fresh().to_vec() {
+        let fresh = self.graph.fresh().to_vec();
+        self.graph.clear_fresh();
+        for &node in &fresh {
             self.populate_node(node);
+        }
+        for &node in &fresh {
+            for cube in self.graph.cubes_at(node) {
+                self.populate_cube(node, cube);
+            }
         }
         self.graph.clear_fresh();
     }
 
     fn populate_node(&mut self, node: NodeId) {
-        for cube in self.graph.cubes_at(node) {
-            *self.graph.get_mut(node, cube) = Some(Node { surface: None });
-        }
+        use common::dodeca::Side;
+
+        *self.graph.get_mut(node) = Some(match self.graph.parent(node) {
+            None => true,
+            Some(x) => {
+                let parent_solid = self
+                    .graph
+                    .get(self.graph.neighbor(node, x).unwrap())
+                    .unwrap();
+                if x == Side::A {
+                    !parent_solid
+                } else {
+                    parent_solid
+                }
+            }
+        });
+    }
+
+    fn populate_cube(&mut self, node: NodeId, cube: dodeca::Vertex) {
+        let contains_border = cube.canonical_sides().iter().any(|&x| x == dodeca::Side::A);
+
+        let voxels = if contains_border {
+            let mut data = (0..(SUBDIVISION_FACTOR + 2).pow(3))
+                .map(|_| Material::Void)
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+
+            const GAP: usize = 0;
+            for z in GAP..(SUBDIVISION_FACTOR - GAP) {
+                for y in GAP..(SUBDIVISION_FACTOR - GAP) {
+                    for x in GAP..(SUBDIVISION_FACTOR - GAP) {
+                        data[(x + 1)
+                            + (y + 1) * (SUBDIVISION_FACTOR + 2)
+                            + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if (x + 1) % 2 == 0 {
+                            Material::Stone
+                        } else if (y + 1) % 2 == 0 {
+                            Material::Dirt
+                        } else if (z + 1) % 4 == 0 {
+                            Material::Sand
+                        } else {
+                            Material::Void
+                        };
+                    }
+                }
+            }
+            VoxelData::Dense(data)
+        } else {
+            VoxelData::Empty
+        };
+        *self.graph.get_cube_mut(node, cube) = Some(Node {
+            surface: None,
+            voxels: voxels,
+        });
     }
 }
 
-#[derive(Default)]
 pub struct Node {
     pub surface: Option<SlotId>,
+    pub voxels: VoxelData,
+}
+
+pub enum VoxelData {
+    Empty,
+    Dense(Box<[Material]>),
 }

@@ -4,14 +4,11 @@ use std::time::{Duration, Instant};
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::{surface_extraction, voxels, Base, Loader, LruTable, Sky, SurfaceExtraction, Voxels};
-use crate::{Config, Sim};
-use common::{
-    graph::NodeId,
-    world::{Material, SUBDIVISION_FACTOR},
-};
+use crate::{sim::VoxelData, Config, Sim};
+use common::{graph::NodeId, world::SUBDIVISION_FACTOR};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -194,7 +191,7 @@ impl Draw {
             let surface_extraction = SurfaceExtraction::new(gfx.clone());
             let extraction_scratch = surface_extraction::ScratchBuffer::new(
                 &surface_extraction,
-                SURFACE_EXTRACTIONS_PER_FRAME,
+                SURFACE_EXTRACTIONS_PER_FRAME * PIPELINE_DEPTH,
                 SUBDIVISION_FACTOR as u32,
             );
 
@@ -337,19 +334,18 @@ impl Draw {
         let mut removed = Vec::new();
         for &(node, cube, _, ref transform) in &chunks {
             // Fetch existing chunk, or extract surface of new chunk
-            let slot = match *sim.graph.get_mut(node, cube) {
+            let slot = match *sim.graph.get_cube_mut(node, cube) {
                 None => continue,
-                Some(ref mut value) => match value.surface {
-                    Some(x) => {
+                Some(ref mut value) => match (value.surface, &value.voxels) {
+                    (Some(x), _) => {
                         self.surface_states.get_mut(x).refcount += 1;
                         x
                     }
-                    None => {
-                        let scratch_slot = match self.extraction_scratch.alloc() {
-                            None => continue,
-                            Some(i) => i,
-                        };
-                        state.surfaces_extracted.push(scratch_slot);
+                    (None, &VoxelData::Dense(ref data)) => {
+                        if state.surfaces_extracted.len() == SURFACE_EXTRACTIONS_PER_FRAME as usize
+                        {
+                            continue;
+                        }
                         if self.surface_states.is_full() {
                             if self
                                 .surface_states
@@ -362,6 +358,8 @@ impl Draw {
                             let lru = self.surface_states.remove_lru().unwrap();
                             removed.push((lru.node, lru.cube));
                         }
+                        let scratch_slot = self.extraction_scratch.alloc().unwrap();
+                        state.surfaces_extracted.push(scratch_slot);
                         let slot = self
                             .surface_states
                             .insert(SurfaceState {
@@ -372,28 +370,7 @@ impl Draw {
                             .unwrap();
                         value.surface = Some(slot);
                         let storage = self.extraction_scratch.storage(scratch_slot);
-                        // TODO: Generate from world
-                        for x in &mut storage[..] {
-                            *x = Material::Void;
-                        }
-                        for z in 2..(SUBDIVISION_FACTOR - 2) {
-                            for y in 2..(SUBDIVISION_FACTOR - 2) {
-                                for x in 2..(SUBDIVISION_FACTOR - 2) {
-                                    storage[(x + 1)
-                                        + (y + 1) * (SUBDIVISION_FACTOR + 2)
-                                        + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if x % 2 == 0
-                                    {
-                                        Material::Stone
-                                    } else if y % 2 == 0 {
-                                        Material::Dirt
-                                    } else if z % 4 == 0 {
-                                        Material::Sand
-                                    } else {
-                                        Material::Void
-                                    };
-                                }
-                            }
-                        }
+                        storage.copy_from_slice(&data[..]);
                         self.extraction_scratch.extract(
                             &self.surface_extraction,
                             scratch_slot,
@@ -405,6 +382,7 @@ impl Draw {
                         );
                         slot
                     }
+                    (None, &VoxelData::Empty) => continue,
                 },
             };
             state.surfaces_drawn.push(slot);
@@ -417,7 +395,7 @@ impl Draw {
             );
         }
         for (node, cube) in removed {
-            sim.graph.get_mut(node, cube).as_mut().unwrap().surface = None;
+            sim.graph.get_cube_mut(node, cube).as_mut().unwrap().surface = None;
         }
 
         self.buffer_barriers.push(
@@ -497,7 +475,12 @@ impl Draw {
         // Record the actual rendering commands
         let parity = common::math::parity(&sim.view());
         for &(node, cube, reflected, _) in &chunks {
-            if let Some(slot) = sim.graph.get(node, cube).as_ref().and_then(|x| x.surface) {
+            if let Some(slot) = sim
+                .graph
+                .get_cube(node, cube)
+                .as_ref()
+                .and_then(|x| x.surface)
+            {
                 self.voxels.draw(
                     &self.loader,
                     state.common_ds,
@@ -630,7 +613,7 @@ struct Uniforms {
 }
 
 /// Maximum number of concurrently drawn voxel chunks
-const MAX_CHUNKS: u32 = 4096;
+const MAX_CHUNKS: u32 = 2048;
 const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 16;
 
 struct SurfaceState {
