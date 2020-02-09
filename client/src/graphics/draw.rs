@@ -122,9 +122,21 @@ impl Draw {
 
             let mut loader = Loader::new(gfx.clone());
 
+            let max_supported_chunks = gfx.limits.max_storage_buffer_range
+                / (8 * 3 * (SUBDIVISION_FACTOR.pow(3) + SUBDIVISION_FACTOR.pow(2))) as u32;
+            let actual_max_chunks = if MAX_CHUNKS > max_supported_chunks {
+                warn!(
+                    "clamping max chunks to {} due to SSBO size limit",
+                    max_supported_chunks
+                );
+                max_supported_chunks
+            } else {
+                MAX_CHUNKS
+            };
+
             let voxel_surfaces = surface_extraction::DrawBuffer::new(
                 gfx.clone(),
-                MAX_CHUNKS as u32,
+                actual_max_chunks,
                 SUBDIVISION_FACTOR as u32,
             );
             let voxels = Voxels::new(&config, &mut loader, &voxel_surfaces, PIPELINE_DEPTH);
@@ -168,7 +180,7 @@ impl Draw {
                         surfaces_extracted: Vec::new(),
                         surfaces_drawn: Vec::new(),
 
-                        voxels: voxels::Frame::new(&voxels, MAX_CHUNKS),
+                        voxels: voxels::Frame::new(&voxels, actual_max_chunks),
                     };
                     gfx.set_name(x.cmd, cstr!("frame"));
                     gfx.set_name(x.image_acquired, cstr!("image acquired"));
@@ -206,7 +218,7 @@ impl Draw {
                 surface_extraction,
                 extraction_scratch,
                 voxel_surfaces,
-                surface_states: LruTable::with_capacity(MAX_CHUNKS as u32),
+                surface_states: LruTable::with_capacity(actual_max_chunks),
                 voxels,
 
                 buffer_barriers: Vec::new(),
