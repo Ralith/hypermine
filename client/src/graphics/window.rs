@@ -125,6 +125,9 @@ impl Window {
                         self.sim
                             .rotate(na::Vector3::new(delta.0, delta.1, 0.0) * 2e-3);
                     }
+                    DeviceEvent::Button { button: _, state: ElementState::Pressed } => {
+                        focused = true;
+                    }
                     _ => {}
                 },
                 Event::WindowEvent { event, .. } => match event {
