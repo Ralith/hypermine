@@ -36,10 +36,11 @@ impl Sim {
         result
     }
 
-    pub fn rotate(&mut self, delta: na::Vector2<f64>) {
+    pub fn rotate(&mut self, delta: na::Vector3<f64>) {
         self.view = self.view
             * na::Matrix4::from_axis_angle(&na::Vector3::y_axis(), -delta.x)
-            * na::Matrix4::from_axis_angle(&na::Vector3::x_axis(), -delta.y);
+            * na::Matrix4::from_axis_angle(&na::Vector3::x_axis(), -delta.y)
+            * na::Matrix4::from_axis_angle(&na::Vector3::z_axis(), -delta.z);
     }
 
     pub fn velocity(&mut self, v: na::Vector3<f64>) {
