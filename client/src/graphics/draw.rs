@@ -330,7 +330,7 @@ impl Draw {
                 .build(),
         );
 
-        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 2);
+        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 3);
         let mut removed = Vec::new();
         for &(node, cube, _, ref transform) in &chunks {
             // Fetch existing chunk, or extract surface of new chunk
@@ -613,7 +613,7 @@ struct Uniforms {
 }
 
 /// Maximum number of concurrently drawn voxel chunks
-const MAX_CHUNKS: u32 = 2048;
+const MAX_CHUNKS: u32 = 4096;
 const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 16;
 
 struct SurfaceState {

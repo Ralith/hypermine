@@ -30,7 +30,7 @@ impl Sim {
         };
 
         result.populate_node(NodeId::ROOT);
-        result.graph.ensure_nearby(NodeId::ROOT, 2);
+        result.graph.ensure_nearby(NodeId::ROOT, 3);
         result.populate_fresh_nodes();
 
         result
