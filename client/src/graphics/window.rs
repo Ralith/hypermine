@@ -125,8 +125,9 @@ impl Window {
                         self.sim
                             .rotate(na::Vector3::new(delta.0, delta.1, 0.0) * 2e-3);
                     }
-                    DeviceEvent::Button { button: _, state: ElementState::Pressed } => {
-                        focused = true;
+                    DeviceEvent::Button { button, state: ElementState::Pressed } => {
+                        // Button 1 is LMB, Button 3 is RMB
+                        focused = match button {1 => true, 3 => false, _ => focused};
                     }
                     _ => {}
                 },
