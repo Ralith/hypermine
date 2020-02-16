@@ -107,10 +107,14 @@ impl Window {
                         + na::Vector3::y() * (up as u8 as f64 - down as u8 as f64)
                         + na::Vector3::z() * (back as u8 as f64 - forward as u8 as f64);
                     self.sim.velocity(velocity);
-                    
-                    let viewrotation = na::Vector3::new(0.0, 0.0, clockwise as u8 as f64 - anticlockwise as u8 as f64) * 5e-2;
+
+                    let viewrotation = na::Vector3::new(
+                        0.0,
+                        0.0,
+                        clockwise as u8 as f64 - anticlockwise as u8 as f64,
+                    ) * 5e-2;
                     self.sim.rotate(viewrotation);
-                    
+
                     let this_frame = Instant::now();
                     self.sim.step(this_frame - last_frame);
                     last_frame = this_frame;
@@ -118,7 +122,8 @@ impl Window {
                 }
                 Event::DeviceEvent { event, .. } => match event {
                     DeviceEvent::MouseMotion { delta } if focused => {
-                        self.sim.rotate(na::Vector3::new(delta.0, delta.1, 0.0) * 2e-3);
+                        self.sim
+                            .rotate(na::Vector3::new(delta.0, delta.1, 0.0) * 2e-3);
                     }
                     _ => {}
                 },
