@@ -124,17 +124,20 @@ impl Sim {
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
 
+            let mut rd = ((cube as u32) + 20 * u32::from(node)) % 1000081; // Pseudorandom value to fill chunk with
             const GAP: usize = 0;
+            const XGAP: usize = (SUBDIVISION_FACTOR - 1) / 2; // dodeca::Side::A will always correspond to the x coordinate, so let`s flatten it in this direction
             for z in GAP..(SUBDIVISION_FACTOR - GAP) {
                 for y in GAP..(SUBDIVISION_FACTOR - GAP) {
-                    for x in GAP..(SUBDIVISION_FACTOR - GAP) {
+                    for x in XGAP..(SUBDIVISION_FACTOR - XGAP) {
+                        rd = (37 * rd + 1) % 1000081;
                         data[(x + 1)
                             + (y + 1) * (SUBDIVISION_FACTOR + 2)
-                            + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if (x + 1) % 2 == 0 {
+                            + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if rd % 4 == 1 {
                             Material::Stone
-                        } else if (y + 1) % 2 == 0 {
+                        } else if rd % 4 == 2 {
                             Material::Dirt
-                        } else if (z + 1) % 4 == 0 {
+                        } else if rd % 4 == 3 {
                             Material::Sand
                         } else {
                             Material::Void

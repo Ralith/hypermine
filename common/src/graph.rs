@@ -306,6 +306,12 @@ impl NodeId {
     }
 }
 
+impl From<NodeId> for u32 {
+    fn from(x: NodeId) -> u32 {
+        x.0.get() - 1
+    }
+}
+
 impl fmt::Debug for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (self.0.get() - 1).fmt(f)
