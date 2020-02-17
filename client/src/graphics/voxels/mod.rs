@@ -121,10 +121,14 @@ impl Voxels {
                             &self.surface_extraction,
                             scratch_slot,
                             cmd,
-                            self.surfaces.indirect_buffer(),
-                            self.surfaces.indirect_offset(slot.0),
-                            self.surfaces.face_buffer(),
-                            self.surfaces.face_offset(slot.0),
+                            (
+                                self.surfaces.indirect_buffer(),
+                                self.surfaces.indirect_offset(slot.0),
+                            ),
+                            (
+                                self.surfaces.face_buffer(),
+                                self.surfaces.face_offset(slot.0),
+                            ),
                         );
                         slot
                     }

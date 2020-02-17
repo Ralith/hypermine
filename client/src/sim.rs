@@ -130,13 +130,14 @@ impl Sim {
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
 
-            let mut rd = ((cube as u32) + 20 * u32::from(node)) % 1000081; // Pseudorandom value to fill chunk with
+            const MAGIC: u32 = 1_000_081;
+            let mut rd = ((cube as u32) + 20 * u32::from(node)) % MAGIC; // Pseudorandom value to fill chunk with
             const GAP: usize = 0;
             const XGAP: usize = (SUBDIVISION_FACTOR - 1) / 2; // dodeca::Side::A will always correspond to the x coordinate, so let`s flatten it in this direction
             for z in GAP..(SUBDIVISION_FACTOR - GAP) {
                 for y in GAP..(SUBDIVISION_FACTOR - GAP) {
                     for x in XGAP..(SUBDIVISION_FACTOR - XGAP) {
-                        rd = (37 * rd + 1) % 1000081;
+                        rd = (37 * rd + 1) % MAGIC;
                         data[(x + 1)
                             + (y + 1) * (SUBDIVISION_FACTOR + 2)
                             + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if rd % 4 == 1 {
@@ -157,7 +158,7 @@ impl Sim {
         };
         *self.graph.get_cube_mut(node, cube) = Some(Cube {
             surface: None,
-            voxels: voxels,
+            voxels,
         });
     }
 }

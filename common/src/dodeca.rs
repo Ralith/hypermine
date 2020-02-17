@@ -133,16 +133,8 @@ lazy_static! {
             for j in 0..SIDE_COUNT {
                 let cosh_distance = (REFLECTIONS[i] * REFLECTIONS[j])[(3, 3)];
                 // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
-                result[i][j] = if cosh_distance < 2.0 {
-                    // current == next
-                    false
-                } else if cosh_distance < 5.0 {
-                    // current adjacent to next
-                    true
-                } else {
-                    // current not adjacent
-                    false
-                }
+                // < 2.0 indicates identical faces; < 5.0 indicates adjacent faces; > 5.0 indicates non-adjacent faces
+                result[i][j] = cosh_distance >= 2.0 && cosh_distance < 5.0;
             }
         }
         result

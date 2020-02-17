@@ -20,7 +20,7 @@ impl Cursor {
     }
 
     /// Get the neighbor towards `dir`
-    pub fn step<N, C>(&self, graph: &Graph<N, C>, dir: Dir) -> Option<Self> {
+    pub fn step<N, C>(self, graph: &Graph<N, C>, dir: Dir) -> Option<Self> {
         // For a cube identified by three dodecahedral faces sharing a vertex, we identify its
         // cubical neighbors by taking each vertex incident to exactly two of the faces and the face
         // of the three it's not incident to, and selecting the cube represented by the new vertex
@@ -49,7 +49,7 @@ impl Cursor {
     }
 
     /// Node and dodecahedral vertex that contains the representation for this cube in the graph
-    pub fn canonicalize<N, C>(&self, graph: &Graph<N, C>) -> Option<(NodeId, Vertex)> {
+    pub fn canonicalize<N, C>(self, graph: &Graph<N, C>) -> Option<(NodeId, Vertex)> {
         let mut node = self.node;
         for side in [self.a, self.b, self.c].iter().cloned() {
             // missing neighbors are always longer
