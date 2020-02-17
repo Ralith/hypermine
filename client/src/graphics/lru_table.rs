@@ -29,6 +29,10 @@ impl<T> LruTable<T> {
         self.free.is_empty()
     }
 
+    pub fn capacity(&self) -> u32 {
+        self.slots.len() as u32
+    }
+
     /// Inserts a value, returning the slot it was stored in
     ///
     /// The returned slot is marked as the most recently used.

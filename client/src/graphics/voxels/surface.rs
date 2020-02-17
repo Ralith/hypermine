@@ -4,14 +4,17 @@ use ash::{version::DeviceV1_0, vk, Device};
 use lahar::{DedicatedBuffer, DedicatedImage};
 use vk_shader_macros::include_glsl;
 
-use super::{surface_extraction::DrawBuffer, Asset, Base, Loader};
-use crate::Config;
+use super::surface_extraction::DrawBuffer;
+use crate::{
+    graphics::{Asset, Base, Loader},
+    Config,
+};
 use common::{defer, world::Material};
 
 const VERT: &[u32] = include_glsl!("shaders/voxels.vert");
 const FRAG: &[u32] = include_glsl!("shaders/voxels.frag");
 
-pub struct Voxels {
+pub struct Surface {
     gfx: Arc<Base>,
     static_ds_layout: vk::DescriptorSetLayout,
     frame_ds_layout: vk::DescriptorSetLayout,
@@ -23,7 +26,7 @@ pub struct Voxels {
     colors_view: vk::ImageView,
 }
 
-impl Voxels {
+impl Surface {
     pub fn new(config: &Config, loader: &mut Loader, buffer: &DrawBuffer, frames: u32) -> Self {
         let gfx = buffer.gfx.clone();
         let device = &*gfx.device;
@@ -213,7 +216,7 @@ impl Voxels {
 
             let colors = loader.load(
                 "voxel materials",
-                super::PngArray {
+                crate::graphics::PngArray {
                     path: config.data_dir.join("materials"),
                     size: common::world::Material::COUNT - 1,
                 },
@@ -233,17 +236,15 @@ impl Voxels {
         }
     }
 
-    pub unsafe fn draw(
+    pub unsafe fn bind(
         &mut self,
         loader: &Loader,
         common_ds: vk::DescriptorSet,
-        cmd: vk::CommandBuffer,
-        buffer: &DrawBuffer,
         frame: &Frame,
-        chunk: u32,
-        reflected: bool,
-    ) {
+        cmd: vk::CommandBuffer,
+    ) -> bool {
         let device = &*self.gfx.device;
+
         if self.colors_view == vk::ImageView::null() {
             if let Some(colors) = loader.get(self.colors) {
                 self.colors_view = device
@@ -276,7 +277,7 @@ impl Voxels {
                     &[],
                 );
             } else {
-                return;
+                return false;
             }
         }
 
@@ -289,6 +290,17 @@ impl Voxels {
             &[common_ds, self.ds, frame.ds],
             &[],
         );
+        true
+    }
+
+    pub unsafe fn draw(
+        &self,
+        cmd: vk::CommandBuffer,
+        buffer: &DrawBuffer,
+        chunk: u32,
+        reflected: bool,
+    ) {
+        let device = &*self.gfx.device;
         let mut push_constants = [0; 12];
         push_constants[0..4].copy_from_slice(&chunk.to_ne_bytes());
         push_constants[4..8].copy_from_slice(&buffer.dimension().to_ne_bytes());
@@ -310,7 +322,7 @@ impl Voxels {
     }
 }
 
-impl Drop for Voxels {
+impl Drop for Surface {
     fn drop(&mut self) {
         let device = &*self.gfx.device;
         unsafe {
@@ -332,7 +344,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(parent: &Voxels, count: u32) -> Self {
+    pub fn new(parent: &Surface, count: u32) -> Self {
         let gfx = &parent.gfx;
         unsafe {
             let transforms = DedicatedBuffer::new(

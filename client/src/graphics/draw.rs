@@ -1,14 +1,12 @@
-use std::mem;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
-use tracing::{info, warn};
+use tracing::info;
 
-use super::{surface_extraction, voxels, Base, Loader, LruTable, Sky, SurfaceExtraction, Voxels};
-use crate::{sim::VoxelData, Config, Sim};
-use common::{graph::NodeId, world::SUBDIVISION_FACTOR};
+use super::{voxels, Base, Loader, Sky, Voxels};
+use crate::{Config, Sim};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -35,15 +33,9 @@ pub struct Draw {
     /// Drives async asset loading
     loader: Loader,
 
-    /// Sky rendering
-    sky: Sky,
-
-    /// Voxel chunks -> triangles
-    surface_extraction: SurfaceExtraction,
-    extraction_scratch: surface_extraction::ScratchBuffer,
-    voxel_surfaces: surface_extraction::DrawBuffer,
-    surface_states: LruTable<SurfaceState>,
+    // Rendering pipelines
     voxels: Voxels,
+    sky: Sky,
 
     /// Reusable storage for barriers that prevent races between image upload and read
     image_barriers: Vec<vk::ImageMemoryBarrier>,
@@ -119,24 +111,7 @@ impl Draw {
 
             let mut loader = Loader::new(gfx.clone());
 
-            let max_supported_chunks = gfx.limits.max_storage_buffer_range
-                / (8 * 3 * (SUBDIVISION_FACTOR.pow(3) + SUBDIVISION_FACTOR.pow(2))) as u32;
-            let actual_max_chunks = if MAX_CHUNKS > max_supported_chunks {
-                warn!(
-                    "clamping max chunks to {} due to SSBO size limit",
-                    max_supported_chunks
-                );
-                max_supported_chunks
-            } else {
-                MAX_CHUNKS
-            };
-
-            let voxel_surfaces = surface_extraction::DrawBuffer::new(
-                gfx.clone(),
-                actual_max_chunks,
-                SUBDIVISION_FACTOR as u32,
-            );
-            let voxels = Voxels::new(&config, &mut loader, &voxel_surfaces, PIPELINE_DEPTH);
+            let voxels = Voxels::new(gfx.clone(), &config, &mut loader, PIPELINE_DEPTH);
 
             // Construct the per-frame states
             let states = cmds
@@ -174,10 +149,8 @@ impl Draw {
                         uniforms,
                         used: false,
                         in_flight: false,
-                        surfaces_extracted: Vec::new(),
-                        surfaces_drawn: Vec::new(),
 
-                        voxels: voxels::Frame::new(&voxels, actual_max_chunks),
+                        voxels: voxels::Frame::new(&voxels),
                     };
                     gfx.set_name(x.cmd, cstr!("frame"));
                     gfx.set_name(x.image_acquired, cstr!("image acquired"));
@@ -188,12 +161,6 @@ impl Draw {
                 .collect();
 
             let sky = Sky::new(gfx.clone());
-            let surface_extraction = SurfaceExtraction::new(gfx.clone());
-            let extraction_scratch = surface_extraction::ScratchBuffer::new(
-                &surface_extraction,
-                SURFACE_EXTRACTIONS_PER_FRAME * PIPELINE_DEPTH,
-                SUBDIVISION_FACTOR as u32,
-            );
 
             gfx.save_pipeline_cache();
 
@@ -210,13 +177,8 @@ impl Draw {
 
                 loader,
 
-                sky,
-
-                surface_extraction,
-                extraction_scratch,
-                voxel_surfaces,
-                surface_states: LruTable::with_capacity(actual_max_chunks),
                 voxels,
+                sky,
 
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
@@ -232,12 +194,6 @@ impl Draw {
         let state = &mut self.states[self.next_state];
         device.wait_for_fences(&[state.fence], true, !0).unwrap();
         state.in_flight = false;
-        for i in state.surfaces_extracted.drain(..) {
-            self.extraction_scratch.free(i);
-        }
-        for slot in state.surfaces_drawn.drain(..) {
-            self.surface_states.peek_mut(slot).refcount -= 1;
-        }
     }
 
     /// Semaphore that must be signaled when an output framebuffer can be rendered to
@@ -330,82 +286,7 @@ impl Draw {
                 .build(),
         );
 
-        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 3);
-        let mut removed = Vec::new();
-        for &(node, cube, _, ref transform) in &chunks {
-            // Fetch existing chunk, or extract surface of new chunk
-            let slot = match *sim.graph.get_cube_mut(node, cube) {
-                None => continue,
-                Some(ref mut value) => match (value.surface, &value.voxels) {
-                    (Some(x), _) => {
-                        self.surface_states.get_mut(x).refcount += 1;
-                        x
-                    }
-                    (None, &VoxelData::Dense(ref data)) => {
-                        if state.surfaces_extracted.len() == SURFACE_EXTRACTIONS_PER_FRAME as usize
-                        {
-                            continue;
-                        }
-                        if self.surface_states.is_full() {
-                            if self
-                                .surface_states
-                                .peek_lru()
-                                .map_or(false, |x| x.refcount != 0)
-                            {
-                                // Not enough space for everything! TODO: Warn once
-                                break;
-                            }
-                            let lru = self.surface_states.remove_lru().unwrap();
-                            removed.push((lru.node, lru.cube));
-                        }
-                        let scratch_slot = self.extraction_scratch.alloc().unwrap();
-                        state.surfaces_extracted.push(scratch_slot);
-                        let slot = self
-                            .surface_states
-                            .insert(SurfaceState {
-                                node,
-                                cube,
-                                refcount: 1,
-                            })
-                            .unwrap();
-                        value.surface = Some(slot);
-                        let storage = self.extraction_scratch.storage(scratch_slot);
-                        storage.copy_from_slice(&data[..]);
-                        self.extraction_scratch.extract(
-                            &self.surface_extraction,
-                            scratch_slot,
-                            cmd,
-                            self.voxel_surfaces.indirect_buffer(),
-                            self.voxel_surfaces.indirect_offset(slot.0),
-                            self.voxel_surfaces.face_buffer(),
-                            self.voxel_surfaces.face_offset(slot.0),
-                        );
-                        slot
-                    }
-                    (None, &VoxelData::Empty) => continue,
-                },
-            };
-            state.surfaces_drawn.push(slot);
-            // Transfer transform
-            device.cmd_update_buffer(
-                cmd,
-                state.voxels.transforms(),
-                slot.0 as vk::DeviceSize * voxels::TRANSFORM_SIZE,
-                &mem::transmute::<_, [u8; voxels::TRANSFORM_SIZE as usize]>(*transform),
-            );
-        }
-        for (node, cube) in removed {
-            sim.graph.get_cube_mut(node, cube).as_mut().unwrap().surface = None;
-        }
-
-        self.buffer_barriers.push(
-            vk::BufferMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                .buffer(state.voxels.transforms())
-                .size(vk::WHOLE_SIZE)
-                .build(),
-        );
+        self.voxels.prepare(&mut state.voxels, sim, cmd);
 
         // Ensure reads of just-transferred memory wait until it's ready
         device.cmd_pipeline_barrier(
@@ -473,25 +354,8 @@ impl Draw {
         );
 
         // Record the actual rendering commands
-        let parity = common::math::parity(&sim.view());
-        for &(node, cube, reflected, _) in &chunks {
-            if let Some(slot) = sim
-                .graph
-                .get_cube(node, cube)
-                .as_ref()
-                .and_then(|x| x.surface)
-            {
-                self.voxels.draw(
-                    &self.loader,
-                    state.common_ds,
-                    cmd,
-                    &self.voxel_surfaces,
-                    &state.voxels,
-                    slot.0,
-                    reflected ^ parity,
-                );
-            }
-        }
+        self.voxels
+            .draw(&self.loader, state.common_ds, &state.voxels, cmd);
         // Sky goes last to save fillrate
         self.sky.draw(cmd);
 
@@ -591,9 +455,6 @@ struct State {
     ///
     /// True for the period between `cmd` being submitted and `fence` being waited.
     in_flight: bool,
-    /// Surface extraction scratch slots completed in this frame
-    surfaces_extracted: Vec<u32>,
-    surfaces_drawn: Vec<super::lru_table::SlotId>,
 
     // Per-pipeline states
     voxels: voxels::Frame,
@@ -610,14 +471,4 @@ struct Uniforms {
     projection: na::Matrix4<f32>,
     /// Cycles through [0,1) once per second for simple animation effects
     time: f32,
-}
-
-/// Maximum number of concurrently drawn voxel chunks
-const MAX_CHUNKS: u32 = 4096;
-const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 16;
-
-struct SurfaceState {
-    node: NodeId,
-    cube: common::dodeca::Vertex,
-    refcount: u32,
 }

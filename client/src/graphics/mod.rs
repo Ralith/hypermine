@@ -14,7 +14,6 @@ mod loader;
 pub mod lru_table;
 mod png_array;
 mod sky;
-mod surface_extraction;
 mod voxels;
 mod window;
 
@@ -29,7 +28,6 @@ pub use self::{
     lru_table::LruTable,
     png_array::PngArray,
     sky::Sky,
-    surface_extraction::SurfaceExtraction,
     voxels::Voxels,
     window::{EarlyWindow, Window},
 };
