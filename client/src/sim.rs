@@ -18,7 +18,7 @@ pub struct Sim {
     velocity: na::Vector3<f64>,
     net: Net,
     config: Arc<Config>,
-    pub graph: Graph<bool, Node>,
+    pub graph: Graph<bool, Cube>,
 }
 
 impl Sim {
@@ -155,14 +155,14 @@ impl Sim {
         } else {
             VoxelData::Empty
         };
-        *self.graph.get_cube_mut(node, cube) = Some(Node {
+        *self.graph.get_cube_mut(node, cube) = Some(Cube {
             surface: None,
             voxels: voxels,
         });
     }
 }
 
-pub struct Node {
+pub struct Cube {
     pub surface: Option<SlotId>,
     pub voxels: VoxelData,
 }
