@@ -6,6 +6,7 @@ use tracing::{error, info};
 pub struct Config {
     pub name: Arc<str>,
     pub data_dir: PathBuf,
+    pub view_distance: u32,
 }
 
 impl Config {
@@ -13,7 +14,11 @@ impl Config {
         // Future work: search $XDG_CONFIG_DIRS
         let path = dirs.config_dir().join("client.toml");
         // Read and parse config file
-        let RawConfig { name, data_dir } = match fs::read(&path) {
+        let RawConfig {
+            name,
+            data_dir,
+            view_distance,
+        } = match fs::read(&path) {
             Ok(data) => match toml::from_slice(&data) {
                 Ok(x) => x,
                 Err(e) => {
@@ -34,6 +39,7 @@ impl Config {
         Config {
             name: name.unwrap_or_else(|| whoami::user().into()),
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
+            view_distance: view_distance.unwrap_or(3),
         }
     }
 }
@@ -43,4 +49,5 @@ impl Config {
 struct RawConfig {
     name: Option<Arc<str>>,
     data_dir: Option<PathBuf>,
+    view_distance: Option<u32>,
 }

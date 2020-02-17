@@ -22,6 +22,7 @@ use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
 pub struct Voxels {
     // TODO: Remove in favor of explicit destruction
     gfx: Arc<Base>,
+    config: Arc<Config>,
     surface_extraction: SurfaceExtraction,
     extraction_scratch: ScratchBuffer,
     surfaces: DrawBuffer,
@@ -30,7 +31,7 @@ pub struct Voxels {
 }
 
 impl Voxels {
-    pub fn new(gfx: Arc<Base>, config: &Config, loader: &mut Loader, frames: u32) -> Self {
+    pub fn new(gfx: Arc<Base>, config: Arc<Config>, loader: &mut Loader, frames: u32) -> Self {
         let max_supported_chunks = gfx.limits.max_storage_buffer_range
             / (8 * 3 * (SUBDIVISION_FACTOR.pow(3) + SUBDIVISION_FACTOR.pow(2))) as u32;
         let max_chunks = if MAX_CHUNKS > max_supported_chunks {
@@ -43,7 +44,7 @@ impl Voxels {
             MAX_CHUNKS
         };
         let surfaces = DrawBuffer::new(gfx.clone(), max_chunks, SUBDIVISION_FACTOR as u32);
-        let draw = Surface::new(config, loader, &surfaces, frames);
+        let draw = Surface::new(&config, loader, &surfaces, frames);
         let surface_extraction = SurfaceExtraction::new(gfx.clone());
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
             &surface_extraction,
@@ -52,6 +53,7 @@ impl Voxels {
         );
         Self {
             gfx,
+            config,
             surface_extraction,
             extraction_scratch,
             surfaces,
@@ -73,7 +75,9 @@ impl Voxels {
         }
 
         // Determine what to load/render
-        let chunks = sim.graph.nearby_cubes(sim.view_reference(), 3);
+        let chunks = sim
+            .graph
+            .nearby_cubes(sim.view_reference(), self.config.view_distance);
         let mut removed = Vec::new();
         let view_parity = common::math::parity(&sim.view());
         for &(node, cube, parity, ref transform) in &chunks {

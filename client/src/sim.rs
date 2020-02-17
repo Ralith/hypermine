@@ -1,8 +1,9 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use tracing::{debug, error};
 
-use crate::{graphics::lru_table::SlotId, Net};
+use crate::{graphics::lru_table::SlotId, Config, Net};
 use common::{
     dodeca,
     graph::{Graph, NodeId},
@@ -16,21 +17,25 @@ pub struct Sim {
     view: na::Matrix4<f64>,
     velocity: na::Vector3<f64>,
     net: Net,
+    config: Arc<Config>,
     pub graph: Graph<bool, Node>,
 }
 
 impl Sim {
-    pub fn new(net: Net) -> Self {
+    pub fn new(net: Net, config: Arc<Config>) -> Self {
         let mut result = Self {
             view_reference: NodeId::ROOT,
             view: na::Matrix4::identity(),
             velocity: na::zero(),
             net,
             graph: Graph::new(),
+            config,
         };
 
         result.populate_node(NodeId::ROOT);
-        result.graph.ensure_nearby(NodeId::ROOT, 3);
+        result
+            .graph
+            .ensure_nearby(NodeId::ROOT, result.config.view_distance);
         result.populate_fresh_nodes();
 
         result
@@ -70,7 +75,8 @@ impl Sim {
         self.view_reference = reference;
         self.view = view;
 
-        self.graph.ensure_nearby(self.view_reference, 2);
+        self.graph
+            .ensure_nearby(self.view_reference, self.config.view_distance);
         self.populate_fresh_nodes();
     }
 
