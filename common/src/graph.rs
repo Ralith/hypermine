@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn parent_child_relationships() {
-        let mut graph = Graph::<()>::default();
+        let mut graph = Graph::<(), ()>::default();
         assert_eq!(graph.len(), 1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         assert_eq!(graph.len(), 2);
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn children_have_common_neighbor() {
-        let mut graph = Graph::<()>::default();
+        let mut graph = Graph::<(), ()>::default();
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         let b = graph.ensure_neighbor(NodeId::ROOT, Side::B);
         let a_neighbors = Side::iter()
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn normalize_transform() {
-        let mut graph = Graph::<()>::default();
+        let mut graph = Graph::<(), ()>::default();
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
             let (node, xf) = graph.normalize_transform(NodeId::ROOT, na::Matrix4::identity());

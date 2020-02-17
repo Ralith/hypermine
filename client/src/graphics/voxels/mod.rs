@@ -1,6 +1,9 @@
 mod surface;
 mod surface_extraction;
 
+#[cfg(test)]
+mod tests;
+
 use std::mem;
 use std::sync::Arc;
 
