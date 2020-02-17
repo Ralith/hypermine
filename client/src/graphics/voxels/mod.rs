@@ -48,7 +48,7 @@ impl Voxels {
         let surface_extraction = SurfaceExtraction::new(gfx.clone());
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
             &surface_extraction,
-            SURFACE_EXTRACTIONS_PER_FRAME * frames,
+            config.chunks_loaded_per_frame * frames,
             SUBDIVISION_FACTOR as u32,
         );
         Self {
@@ -90,7 +90,7 @@ impl Voxels {
                         x
                     }
                     (None, &VoxelData::Dense(ref data)) => {
-                        if frame.extracted.len() == SURFACE_EXTRACTIONS_PER_FRAME as usize {
+                        if frame.extracted.len() == self.config.chunks_loaded_per_frame as usize {
                             continue;
                         }
                         if self.states.is_full() {
@@ -207,7 +207,6 @@ impl Frame {
 
 /// Maximum number of concurrently drawn voxel chunks
 const MAX_CHUNKS: u32 = 4096;
-const SURFACE_EXTRACTIONS_PER_FRAME: u32 = 16;
 
 struct SurfaceState {
     node: NodeId,
