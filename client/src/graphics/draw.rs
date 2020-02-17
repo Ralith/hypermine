@@ -111,7 +111,7 @@ impl Draw {
 
             let mut loader = Loader::new(gfx.clone());
 
-            let voxels = Voxels::new(gfx.clone(), config.clone(), &mut loader, PIPELINE_DEPTH);
+            let voxels = Voxels::new(gfx.clone(), config, &mut loader, PIPELINE_DEPTH);
 
             // Construct the per-frame states
             let states = cmds

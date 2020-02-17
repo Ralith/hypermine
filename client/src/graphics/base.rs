@@ -3,7 +3,7 @@
 use std::ffi::CStr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{fs, io, mem, ptr};
+use std::{fs, io, ptr};
 use tracing::{info, trace, warn};
 
 use ash::{
@@ -100,13 +100,13 @@ impl Base {
                         .next()
                 })?;
             let physical_properties = instance.get_physical_device_properties(physical);
-            let name = std::str::from_utf8(mem::transmute::<_, &[u8]>(
-                &physical_properties.device_name[..physical_properties
+            let name = std::str::from_utf8(
+                &*(&physical_properties.device_name[..physical_properties
                     .device_name
                     .iter()
                     .position(|&x| x == 0)
-                    .unwrap()],
-            ))
+                    .unwrap()] as *const [i8] as *const [u8]),
+            )
             .unwrap();
             info!(name, "selected device");
 

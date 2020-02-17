@@ -37,6 +37,11 @@ impl<N, C> Graph<N, C> {
         self.nodes.len() as u32
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
     /// Look up the ID of a node's neighbor, creating nearby nodes if necessary
     pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
         self.ensure_neighbor_inner(node, side, NeighborType::Any)
@@ -225,11 +230,14 @@ impl<N, C> Graph<N, C> {
             // Neighbor already exists
             return Some(x);
         }
-        // Create a new neighbor
-        if v.parent_side.map_or(true, |parent_side| {
+
+        let neighbor_is_further = |parent_side| {
             (side != parent_side && !side.adjacent_to(parent_side))
                 || !self.is_near_side(v.neighbors[parent_side as usize].unwrap(), side)
-        }) {
+        };
+
+        // Create a new neighbor
+        if v.parent_side.map_or(true, neighbor_is_further) {
             // New neighbor will be further from the origin
             return match mode {
                 NeighborType::Shorter => None,
@@ -406,12 +414,7 @@ mod tests {
             "both the root and some other node are common neighbors"
         );
         assert!(common.contains(&NodeId::ROOT));
-        let other = common
-            .iter()
-            .cloned()
-            .filter(|&x| x != NodeId::ROOT)
-            .next()
-            .unwrap();
+        let other = common.iter().cloned().find(|&x| x != NodeId::ROOT).unwrap();
         assert_eq!(graph.nodes[other.idx()].length, 2);
     }
 

@@ -282,10 +282,8 @@ impl ScratchBuffer {
         ctx: &SurfaceExtraction,
         index: u32,
         cmd: vk::CommandBuffer,
-        indirect: vk::Buffer,
-        indirect_offset: vk::DeviceSize,
-        face: vk::Buffer,
-        face_offset: vk::DeviceSize,
+        indirect: (vk::Buffer, vk::DeviceSize),
+        face: (vk::Buffer, vk::DeviceSize),
     ) {
         let device = &*self.gfx.device;
         let index = index as usize;
@@ -330,8 +328,8 @@ impl ScratchBuffer {
                     .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                     .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: indirect,
-                        offset: indirect_offset,
+                        buffer: indirect.0,
+                        offset: indirect.1,
                         range: INDIRECT_SIZE,
                     }])
                     .build(),
@@ -340,8 +338,8 @@ impl ScratchBuffer {
                     .dst_binding(3)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                     .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: face,
-                        offset: face_offset,
+                        buffer: face.0,
+                        offset: face.1,
                         range: max_faces as vk::DeviceSize * FACE_SIZE,
                     }])
                     .build(),
@@ -458,7 +456,7 @@ impl ScratchBuffer {
             ctx.pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
-            &((face_offset / FACE_SIZE) as u32).to_ne_bytes(),
+            &((face.1 / FACE_SIZE) as u32).to_ne_bytes(),
         );
         device.cmd_dispatch(
             cmd,
@@ -479,8 +477,8 @@ impl ScratchBuffer {
                     dst_access_mask: vk::AccessFlags::SHADER_READ,
                     src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                     dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    buffer: face,
-                    offset: face_offset,
+                    buffer: face.0,
+                    offset: face.1,
                     size: max_faces as vk::DeviceSize * FACE_SIZE,
                     ..Default::default()
                 },
@@ -489,8 +487,8 @@ impl ScratchBuffer {
                     dst_access_mask: vk::AccessFlags::INDIRECT_COMMAND_READ,
                     src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                     dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    buffer: indirect,
-                    offset: indirect_offset,
+                    buffer: indirect.0,
+                    offset: indirect.1,
                     size: INDIRECT_SIZE,
                     ..Default::default()
                 },
