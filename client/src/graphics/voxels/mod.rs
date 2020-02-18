@@ -78,9 +78,10 @@ impl Voxels {
         }
 
         // Determine what to load/render
-        let chunks = sim
+        let mut chunks = sim
             .graph
             .nearby_cubes(sim.view_reference(), self.config.view_distance);
+        chunks.sort_unstable_by_key(|&(node, _, _, _)| sim.graph.length(node));
         let view_parity = common::math::parity(&sim.view());
         for &(node, cube, parity, ref transform) in &chunks {
             // Fetch existing chunk, or extract surface of new chunk
