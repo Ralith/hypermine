@@ -40,7 +40,7 @@ impl EarlyWindow {
 /// OS window + rendering handles
 pub struct Window {
     _core: Arc<Core>,
-    _window: WinitWindow,
+    window: WinitWindow,
     config: Arc<Config>,
     event_loop: Option<EventLoop<()>>,
     surface_fn: khr::Surface,
@@ -60,7 +60,7 @@ impl Window {
 
         Self {
             _core: core,
-            _window: early.window,
+            window: early.window,
             config,
             event_loop: Some(early.event_loop),
             surface,
@@ -121,6 +121,13 @@ impl Window {
                     self.draw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
+                    DeviceEvent::Button {
+                        button: 1,
+                        state: ElementState::Pressed,
+                    } => {
+                        let _ = self.window.set_cursor_grab(true);
+                        self.window.set_cursor_visible(false);
+                    }
                     DeviceEvent::MouseMotion { delta } if focused => {
                         self.sim
                             .rotate(na::Vector3::new(delta.0, delta.1, 0.0) * 2e-3);
@@ -164,6 +171,10 @@ impl Window {
                         }
                         VirtualKeyCode::F => {
                             down = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::Escape => {
+                            let _ = self.window.set_cursor_grab(false);
+                            self.window.set_cursor_visible(true);
                         }
                         _ => {}
                     },
