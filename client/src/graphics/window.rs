@@ -213,7 +213,7 @@ impl Window {
                 frame.buffer,
                 swapchain.state.extent,
                 frame.present,
-                projection(0.05, (aspect_ratio * vfov.tan()).atan(), vfov),
+                projection(0.01, (aspect_ratio * vfov.tan()).atan(), vfov),
             );
             // Submit the frame to be presented on the window
             match swapchain.queue_present(frame_id) {
