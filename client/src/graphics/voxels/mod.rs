@@ -81,7 +81,6 @@ impl Voxels {
         let chunks = sim
             .graph
             .nearby_cubes(sim.view_reference(), self.config.view_distance);
-        let mut removed = Vec::new();
         let view_parity = common::math::parity(&sim.view());
         for &(node, cube, parity, ref transform) in &chunks {
             // Fetch existing chunk, or extract surface of new chunk
@@ -96,14 +95,15 @@ impl Voxels {
                         if frame.extracted.len() == self.config.chunks_loaded_per_frame as usize {
                             continue;
                         }
-                        if self.states.is_full() {
-                            if self.states.peek_lru().map_or(false, |x| x.refcount != 0) {
+                        let removed = if self.states.is_full() {
+                            if self.states.peek_lru().unwrap().refcount != 0 {
                                 warn!("MAX_CHUNKS is too small");
                                 break;
                             }
-                            let lru = self.states.remove_lru().unwrap();
-                            removed.push((lru.node, lru.cube));
-                        }
+                            Some(self.states.remove_lru().unwrap())
+                        } else {
+                            None
+                        };
                         let scratch_slot = self.extraction_scratch.alloc().unwrap();
                         frame.extracted.push(scratch_slot);
                         let slot = self
@@ -117,6 +117,13 @@ impl Voxels {
                         value.surface = Some(slot);
                         let storage = self.extraction_scratch.storage(scratch_slot);
                         storage.copy_from_slice(&data[..]);
+                        if let Some(lru) = removed {
+                            sim.graph
+                                .get_cube_mut(lru.node, lru.cube)
+                                .as_mut()
+                                .unwrap()
+                                .surface = None;
+                        }
                         self.extraction_scratch.extract(
                             &self.surface_extraction,
                             scratch_slot,
@@ -146,9 +153,6 @@ impl Voxels {
                 slot.0 as vk::DeviceSize * surface::TRANSFORM_SIZE,
                 &mem::transmute::<_, [u8; surface::TRANSFORM_SIZE as usize]>(*transform),
             );
-        }
-        for (node, cube) in removed {
-            sim.graph.get_cube_mut(node, cube).as_mut().unwrap().surface = None;
         }
 
         device.cmd_pipeline_barrier(
