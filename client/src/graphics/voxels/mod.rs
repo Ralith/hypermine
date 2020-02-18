@@ -97,11 +97,12 @@ impl Voxels {
                             continue;
                         }
                         let removed = if self.states.is_full() {
-                            if self.states.peek_lru().unwrap().refcount != 0 {
+                            let slot = self.states.lru().unwrap();
+                            if self.states.peek(slot).refcount != 0 {
                                 warn!("MAX_CHUNKS is too small");
                                 break;
                             }
-                            Some(self.states.remove_lru().unwrap())
+                            Some(self.states.remove(slot))
                         } else {
                             None
                         };

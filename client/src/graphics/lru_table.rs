@@ -50,44 +50,37 @@ impl<T> LruTable<T> {
         Some(id)
     }
 
-    /// Get the value in the least recently used slot
-    pub fn peek_lru(&self) -> Option<&T> {
+    /// Get the most recently used slot, if any
+    pub fn lru(&self) -> Option<SlotId> {
         if self.tail == SlotId::NONE {
-            // Empty
-            return None;
+            debug_assert_eq!(self.head, SlotId::NONE);
+            None
+        } else {
+            Some(self.tail)
         }
-        Some(
-            self.slots[self.tail.0 as usize]
-                .value
-                .as_ref()
-                .expect("empty slot in lru list"),
-        )
     }
 
-    /// Free the least recently used slot
-    pub fn remove_lru(&mut self) -> Option<T> {
-        let slot = self.tail;
-        if slot == SlotId::NONE {
-            debug_assert_eq!(self.free.len(), self.slots.len());
-            // Already empty
-            return None;
-        }
+    pub fn remove(&mut self, slot: SlotId) -> T {
         self.unlink(slot);
         self.free.push(slot);
         // To help make corruption obvious, empty slots have no next/prev
         self.slots[slot.0 as usize].prev = SlotId::NONE;
-        Some(
-            self.slots[slot.0 as usize]
-                .value
-                .take()
-                .expect("tried to free empty slot"),
-        )
+        self.slots[slot.0 as usize].next = SlotId::NONE;
+        self.slots[slot.0 as usize]
+            .value
+            .take()
+            .expect("removing empty slot")
     }
 
     /// Mark `slot` as the most recently used and access it uniquely
     pub fn get_mut(&mut self, slot: SlotId) -> &mut T {
         self.freshen(slot);
         self.peek_mut(slot)
+    }
+
+    /// Access `slot` without marking it as most recently used
+    pub fn peek(&self, slot: SlotId) -> &T {
+        self.slots[slot.0 as usize].value.as_ref().unwrap()
     }
 
     /// Access `slot` uniquely without marking it as most recently used
@@ -169,10 +162,10 @@ mod tests {
         cache.get_mut(c);
         cache.get_mut(d);
 
-        assert_eq!(cache.remove_lru().unwrap(), 0);
-        assert_eq!(cache.remove_lru().unwrap(), 1);
-        assert_eq!(cache.remove_lru().unwrap(), 2);
-        assert_eq!(cache.remove_lru().unwrap(), 3);
-        assert!(cache.remove_lru().is_none());
+        assert_eq!(cache.remove(cache.lru().unwrap()), 0);
+        assert_eq!(cache.remove(cache.lru().unwrap()), 1);
+        assert_eq!(cache.remove(cache.lru().unwrap()), 2);
+        assert_eq!(cache.remove(cache.lru().unwrap()), 3);
+        assert!(cache.lru().is_none());
     }
 }
