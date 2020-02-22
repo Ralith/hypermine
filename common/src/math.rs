@@ -77,7 +77,7 @@ pub fn midpoint<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vec
 }
 
 pub fn distance<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
-    na::convert::<_, N>(2.0) * (mip(a, b).powi(2) / (mip(a, a) * mip(b, b))).sqrt().acosh()
+    (mip(a, b).powi(2) / (mip(a, a) * mip(b, b))).sqrt().acosh()
 }
 
 pub fn origin<N: RealField>() -> na::Vector4<N> {
@@ -188,10 +188,36 @@ mod tests {
     }
 
     #[test]
+    fn translate_equivalence() {
+        let a = na::Vector4::new(-0.5, -0.5, 0.0, 1.0);
+        let o = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+        let direction = na::Unit::new_normalize(a.xyz());
+        let distance = dbg!(distance(&o, &a));
+        println!(
+            "{}\n{}",
+            translate(&o, &a),
+            translate_along(&direction, distance)
+        );
+        assert_abs_diff_eq!(
+            translate(&o, &a),
+            translate_along(&direction, distance),
+            epsilon = 1e-5
+        );
+    }
+
+    #[test]
+    fn translate_distance() {
+        let dx = 2.3;
+        let xf = translate_along(&na::Vector3::x_axis(), dx);
+        assert_abs_diff_eq!(dx, distance(&origin(), &(xf * origin())));
+    }
+
+    #[test]
     fn distance_example() {
         let a = na::Vector4::new(0.2, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(-0.5, -0.5, 0.0, 1.0);
-        assert_abs_diff_eq!(distance(&a, &b), 2.074, epsilon = 1e-3);
+        // Paper doubles distances for reasons unknown
+        assert_abs_diff_eq!(distance(&a, &b), 2.074 / 2.0, epsilon = 1e-3);
     }
 
     #[test]
