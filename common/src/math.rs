@@ -88,7 +88,7 @@ impl<'a, 'b, N: RealField> Mul<&'b HIsometry3<N>> for &'a HIsometry3<N> {
         let b = distance(&translation, &origin());
         let c = distance(&origin(), &x);
         let angle_sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
-        let rotation = if angle_sum == N::zero() {
+        let rotation = if angle_sum == N::zero() || angle_sum >= N::pi() {
             self.rotation * rhs.rotation
         } else {
             let defect = N::pi() - angle_sum;
@@ -124,7 +124,12 @@ fn loc_angle<N: RealField>(a: N, b: N, c: N) -> N {
     if denom == N::zero() {
         return N::zero();
     }
-    ((b.cosh() * c.cosh() - a.cosh()) / denom).acos()
+    na::clamp(
+        (b.cosh() * c.cosh() - a.cosh()) / denom,
+        -N::one(),
+        N::one(),
+    )
+    .acos()
 }
 
 /// Point reflection around `p`
