@@ -19,7 +19,7 @@ impl<N: Scalar> HPoint<N> {
     }
 
     /// Construct from Minkowski coordinates
-    pub fn from_homogeneous(v: na::Vector4<N>) -> Self {
+    pub fn from_homogeneous(v: &na::Vector4<N>) -> Self {
         Self(v.xyz())
     }
 }
@@ -120,6 +120,7 @@ fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matr
 	sign * (yv.x * zv.y - yv.y * zv.x), yv.z, zv.z,
     )
 }
+
 /// Whether an isometry reverses winding with respect to the norm
 pub fn parity<N: RealField>(m: &na::Matrix4<N>) -> bool {
     m.fixed_slice::<na::U3, na::U3>(0, 0).determinant() < na::zero::<N>()
@@ -193,11 +194,6 @@ mod tests {
         let o = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
         let direction = na::Unit::new_normalize(a.xyz());
         let distance = dbg!(distance(&o, &a));
-        println!(
-            "{}\n{}",
-            translate(&o, &a),
-            translate_along(&direction, distance)
-        );
         assert_abs_diff_eq!(
             translate(&o, &a),
             translate_along(&direction, distance),
