@@ -340,6 +340,55 @@ mod tests {
     }
 
     #[test]
+    fn isometry_simple() {
+        assert_abs_diff_eq!(
+            &HIsometry3::<f64>::identity() * &HIsometry3::identity(),
+            HIsometry3::identity()
+        );
+
+        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
+        println!(
+            "{}\n{}",
+            (&HIsometry3::<f64>::from_parts(a, na::one()))
+                .to_homogeneous(),
+            translate(&origin(), &a)
+        );
+        assert_abs_diff_eq!(
+            (&HIsometry3::<f64>::from_parts(a, na::one()))
+                .to_homogeneous(),
+            translate(&origin(), &a),
+            epsilon = 1e-5
+        );
+    }
+
+    #[test]
+    fn isometry_homogenize_distributes() {
+        assert_abs_diff_eq!(
+            &HIsometry3::<f64>::identity() * &HIsometry3::identity(),
+            HIsometry3::identity()
+        );
+
+        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
+        let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
+        println!(
+            "{}\n{}",
+            (&HIsometry3::<f64>::from_parts(a, na::one())
+                * &HIsometry3::<f64>::from_parts(b, na::one()))
+                .to_homogeneous(),
+            &HIsometry3::<f64>::from_parts(a, na::one()).to_homogeneous()
+                * &HIsometry3::<f64>::from_parts(b, na::one()).to_homogeneous()
+        );
+        assert_abs_diff_eq!(
+            (&HIsometry3::<f64>::from_parts(a, na::one())
+                * &HIsometry3::<f64>::from_parts(b, na::one()))
+                .to_homogeneous(),
+            &HIsometry3::<f64>::from_parts(a, na::one()).to_homogeneous()
+                * &HIsometry3::<f64>::from_parts(b, na::one()).to_homogeneous(),
+            epsilon = 1e-5
+        );
+    }
+
+    #[test]
     fn isometry_composition() {
         assert_abs_diff_eq!(
             &HIsometry3::<f64>::identity() * &HIsometry3::identity(),
