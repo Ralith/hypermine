@@ -3,7 +3,10 @@
 //! Vector4 values are assumed to be homogeneous Klein model coordinates unless otherwise
 //! stated. Note that Minkowski model coordinates are valid Klein coordinates, but not vis versa.
 
-use std::{f64, ops::Mul};
+mod isometry;
+pub use isometry::Isometry;
+
+use std::f64;
 
 use na::{RealField, Scalar};
 use serde::{Deserialize, Serialize};
@@ -36,100 +39,6 @@ impl<N: RealField> HPoint<N> {
         let w = (self.0.x.powi(2) + self.0.y.powi(2) + self.0.z.powi(2) + na::one()).sqrt();
         na::Vector4::new(self.0.x, self.0.y, self.0.z, w)
     }
-}
-
-/// A translation followed by a rotation
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
-pub struct HIsometry3<N: RealField> {
-    pub translation: na::Vector4<N>,
-    pub rotation: na::UnitQuaternion<N>,
-}
-
-impl<N: RealField> HIsometry3<N> {
-    pub fn identity() -> Self {
-        Self {
-            translation: origin(),
-            rotation: na::one(),
-        }
-    }
-
-    pub fn from_parts(translation: na::Vector4<N>, rotation: na::UnitQuaternion<N>) -> Self {
-        debug_assert!(translation.w != N::zero());
-        Self {
-            translation,
-            rotation,
-        }
-    }
-
-    pub fn to_homogeneous(&self) -> na::Matrix4<N> {
-        self.rotation.to_homogeneous() * translate(&origin(), &self.translation)
-    }
-}
-
-impl<'a, 'b, N: RealField> Mul<&'b na::Vector4<N>> for &'a HIsometry3<N> {
-    type Output = na::Vector4<N>;
-    fn mul(self, rhs: &'b na::Vector4<N>) -> Self::Output {
-        let translated = translate(&origin(), &self.translation) * rhs;
-        let rotated = self.rotation * translated.xyz();
-        na::Vector4::new(rotated.x, rotated.y, rotated.z, translated.w)
-    }
-}
-
-impl<'a, 'b, N: RealField> Mul<&'b HIsometry3<N>> for &'a HIsometry3<N> {
-    type Output = HIsometry3<N>;
-    fn mul(self, rhs: &'b HIsometry3<N>) -> Self::Output {
-        let x = rhs
-            .rotation
-            .inverse_transform_vector(&self.translation.xyz());
-        let x = na::Vector4::new(x.x, x.y, x.z, self.translation.w);
-        let translation = translate(&origin(), &x) * rhs.translation;
-
-        let a = distance(&x, &translation);
-        let b = distance(&translation, &origin());
-        let c = distance(&origin(), &x);
-        let angle_sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
-        let rotation = if angle_sum == N::zero() || angle_sum >= N::pi() {
-            self.rotation * rhs.rotation
-        } else {
-            let defect = N::pi() - angle_sum;
-            let axis = na::Unit::new_normalize(translation.xyz().cross(&x.xyz()));
-            self.rotation * rhs.rotation * na::UnitQuaternion::from_axis_angle(&axis, defect)
-        };
-        HIsometry3 {
-            translation,
-            rotation,
-        }
-    }
-}
-
-#[cfg(test)]
-impl<N: RealField> approx::AbsDiffEq for HIsometry3<N> {
-    type Epsilon = N;
-
-    fn default_epsilon() -> N {
-        N::default_epsilon()
-    }
-
-    fn abs_diff_eq(&self, other: &Self, epsilon: N) -> bool {
-        self.translation.abs_diff_eq(&other.translation, epsilon)
-            && self.rotation.abs_diff_eq(&other.rotation, epsilon)
-    }
-}
-
-/// Compute angle at the vertex opposite side `a` using the hyperbolic law of cosines
-fn loc_angle<N: RealField>(a: N, b: N, c: N) -> N {
-    // cosh a = cosh b cosh c - sinh b sinh c cos θ
-    // θ = acos ((cosh b cosh c - cosh a) / (sinh b sinh c))
-    let denom = b.sinh() * c.sinh();
-    if denom == N::zero() {
-        return N::zero();
-    }
-    na::clamp(
-        (b.cosh() * c.cosh() - a.cosh()) / denom,
-        -N::one(),
-        N::one(),
-    )
-    .acos()
 }
 
 /// Point reflection around `p`
@@ -343,89 +252,5 @@ mod tests {
                                    0.0, 0.0, 1.0, 0.0,
                                    0.0, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
-    }
-
-    #[test]
-    fn isometry_simple() {
-        assert_abs_diff_eq!(
-            &HIsometry3::<f64>::identity() * &HIsometry3::identity(),
-            HIsometry3::identity()
-        );
-
-        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
-        println!(
-            "{}\n{}",
-            (&HIsometry3::<f64>::from_parts(a, na::one())).to_homogeneous(),
-            translate(&origin(), &a)
-        );
-        assert_abs_diff_eq!(
-            (&HIsometry3::<f64>::from_parts(a, na::one())).to_homogeneous(),
-            translate(&origin(), &a),
-            epsilon = 1e-5
-        );
-    }
-
-    #[test]
-    fn isometry_rotation_composition() {
-        let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), 1.0);
-        assert_abs_diff_eq!(
-            (&HIsometry3::<f64>::from_parts(origin(), q)
-                * &HIsometry3::<f64>::from_parts(origin(), q))
-                .to_homogeneous(),
-            (q * q).to_homogeneous(),
-            epsilon = 1e-5
-        );
-    }
-
-    #[test]
-    fn isometry_homogenize_distributes() {
-        assert_abs_diff_eq!(
-            &HIsometry3::<f64>::identity() * &HIsometry3::identity(),
-            HIsometry3::identity()
-        );
-
-        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
-        let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
-        println!(
-            "{}\n{}",
-            (&HIsometry3::<f64>::from_parts(a, na::one())
-                * &HIsometry3::<f64>::from_parts(b, na::one()))
-                .to_homogeneous(),
-            &HIsometry3::<f64>::from_parts(a, na::one()).to_homogeneous()
-                * &HIsometry3::<f64>::from_parts(b, na::one()).to_homogeneous()
-        );
-        assert_abs_diff_eq!(
-            (&HIsometry3::<f64>::from_parts(a, na::one())
-                * &HIsometry3::<f64>::from_parts(b, na::one()))
-                .to_homogeneous(),
-            &HIsometry3::<f64>::from_parts(a, na::one()).to_homogeneous()
-                * &HIsometry3::<f64>::from_parts(b, na::one()).to_homogeneous(),
-            epsilon = 1e-5
-        );
-    }
-
-    #[test]
-    fn isometry_composition() {
-        assert_abs_diff_eq!(
-            &HIsometry3::<f64>::identity() * &HIsometry3::identity(),
-            HIsometry3::identity()
-        );
-
-        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
-        let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
-        println!(
-            "{}\n{}",
-            (&HIsometry3::<f64>::from_parts(a, na::one())
-                * &HIsometry3::<f64>::from_parts(b, na::one()))
-                .to_homogeneous(),
-            translate(&origin(), &a) * translate(&origin(), &b)
-        );
-        assert_abs_diff_eq!(
-            (&HIsometry3::<f64>::from_parts(a, na::one())
-                * &HIsometry3::<f64>::from_parts(b, na::one()))
-                .to_homogeneous(),
-            translate(&origin(), &a) * translate(&origin(), &b),
-            epsilon = 1e-3
-        );
     }
 }
