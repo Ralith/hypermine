@@ -38,6 +38,7 @@ impl<N: RealField> HPoint<N> {
     }
 }
 
+/// A translation followed by a rotation
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HIsometry3<N: RealField> {
     pub translation: na::Vector4<N>,
@@ -88,7 +89,7 @@ impl<'a, 'b, N: RealField> Mul<&'b HIsometry3<N>> for &'a HIsometry3<N> {
         let c = distance(&origin(), &x);
         let angle_sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
         let rotation = if angle_sum == N::zero() {
-            na::one()
+            self.rotation * rhs.rotation
         } else {
             let defect = N::pi() - angle_sum;
             let axis = na::Unit::new_normalize(translation.xyz().cross(&x.xyz()));
@@ -349,14 +350,24 @@ mod tests {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         println!(
             "{}\n{}",
-            (&HIsometry3::<f64>::from_parts(a, na::one()))
-                .to_homogeneous(),
+            (&HIsometry3::<f64>::from_parts(a, na::one())).to_homogeneous(),
             translate(&origin(), &a)
         );
         assert_abs_diff_eq!(
-            (&HIsometry3::<f64>::from_parts(a, na::one()))
-                .to_homogeneous(),
+            (&HIsometry3::<f64>::from_parts(a, na::one())).to_homogeneous(),
             translate(&origin(), &a),
+            epsilon = 1e-5
+        );
+    }
+
+    #[test]
+    fn isometry_rotation_composition() {
+        let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), 1.0);
+        assert_abs_diff_eq!(
+            (&HIsometry3::<f64>::from_parts(origin(), q)
+                * &HIsometry3::<f64>::from_parts(origin(), q))
+                .to_homogeneous(),
+            (q * q).to_homogeneous(),
             epsilon = 1e-5
         );
     }
