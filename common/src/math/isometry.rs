@@ -29,16 +29,16 @@ impl<N: RealField> Isometry<N> {
     }
 
     pub fn to_homogeneous(&self) -> na::Matrix4<N> {
-        self.rotation.to_homogeneous() * translate(&origin(), &self.translation)
+        translate(&origin(), &self.translation) * self.rotation.to_homogeneous()
     }
 }
 
 impl<'a, 'b, N: RealField> Mul<&'b na::Vector4<N>> for &'a Isometry<N> {
     type Output = na::Vector4<N>;
     fn mul(self, rhs: &'b na::Vector4<N>) -> Self::Output {
-        let translated = translate(&origin(), &self.translation) * rhs;
-        let rotated = self.rotation * translated.xyz();
-        na::Vector4::new(rotated.x, rotated.y, rotated.z, translated.w)
+        let rotated = self.rotation * rhs.xyz();
+        translate(&origin(), &self.translation)
+            * na::Vector4::new(rotated.x, rotated.y, rotated.z, rhs.w)
     }
 }
 
