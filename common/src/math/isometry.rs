@@ -171,11 +171,6 @@ mod tests {
         );
 
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
-        println!(
-            "{}\n{}",
-            (Isometry::from_parts(a, na::one())).to_homogeneous(),
-            translate(&origin(), &a)
-        );
         assert_abs_diff_eq!(
             (Isometry::from_parts(a, na::one())).to_homogeneous(),
             translate(&origin(), &a),
@@ -198,13 +193,6 @@ mod tests {
     fn homogenize_distributes() {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
-        println!(
-            "{}\n{}",
-            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
-                .to_homogeneous(),
-            Isometry::from_parts(a, na::one()).to_homogeneous()
-                * Isometry::from_parts(b, na::one()).to_homogeneous()
-        );
         assert_abs_diff_eq!(
             (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
                 .to_homogeneous(),
@@ -218,12 +206,6 @@ mod tests {
     fn translation_composition() {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
-        println!(
-            "{}\n{}",
-            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
-                .to_homogeneous(),
-            translate(&origin(), &a) * translate(&origin(), &b)
-        );
         assert_abs_diff_eq!(
             (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
                 .to_homogeneous(),
@@ -237,12 +219,6 @@ mod tests {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), f64::pi() / 3.0);
 
-        println!(
-            "{}\n{}",
-            (Isometry::from_parts(origin(), q) * Isometry::from_parts(a, na::one()))
-                .to_homogeneous(),
-            q.to_homogeneous() * translate(&origin(), &a)
-        );
         assert_abs_diff_eq!(
             (Isometry::from_parts(origin(), q) * Isometry::from_parts(a, na::one()))
                 .to_homogeneous(),
