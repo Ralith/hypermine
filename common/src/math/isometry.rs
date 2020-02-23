@@ -55,11 +55,7 @@ impl<'a, 'b, N: RealField> Mul<&'b Isometry<N>> for &'a Isometry<N> {
         let rotation = if magnitude == N::zero() {
             self.rotation * rhs.rotation
         } else {
-            let a = distance(&x, &translation);
-            let b = distance(&translation, &origin());
-            let c = distance(&origin(), &x);
-            let angle_sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
-            let defect = N::pi() - angle_sum;
+            let defect = triangle_defect(&x, &translation, &origin());
             self.rotation * rhs.rotation * na::UnitQuaternion::from_axis_angle(&axis, defect)
         };
         Isometry {
@@ -81,6 +77,21 @@ impl<N: RealField> approx::AbsDiffEq for Isometry<N> {
         self.translation.abs_diff_eq(&other.translation, epsilon)
             && self.rotation.abs_diff_eq(&other.rotation, epsilon)
     }
+}
+
+fn triangle_defect<N: RealField>(
+    p0: &na::Vector4<N>,
+    p1: &na::Vector4<N>,
+    p2: &na::Vector4<N>,
+) -> N {
+    let a = distance(p0, p1);
+    let b = distance(p1, p2);
+    let c = distance(p2, p0);
+    if a == N::zero() || b == N::zero() || c == N::zero() {
+        return N::zero();
+    }
+    let angle_sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
+    N::pi() - angle_sum
 }
 
 /// Compute angle at the vertex opposite side `a` using the hyperbolic law of cosines
@@ -201,5 +212,15 @@ mod tests {
             q.to_homogeneous() * translate(&origin(), &a),
             epsilon = 1e-3
         );
+    }
+
+    #[test]
+    fn defect() {
+        assert_abs_diff_eq!(triangle_defect::<f64>(&origin(), &origin(), &origin()), 0.0);
+        let a = 3.11;
+        let b = 4.39;
+        let c = 1.95;
+        let sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
+        assert_abs_diff_eq!(sum, 1.94, epsilon = 1e-2);
     }
 }
