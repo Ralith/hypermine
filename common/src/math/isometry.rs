@@ -1,3 +1,5 @@
+#![allow(clippy::op_ref)]
+
 use std::ops::Mul;
 
 use na::RealField;
