@@ -223,4 +223,17 @@ mod tests {
         let sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
         assert_abs_diff_eq!(sum, 1.94, epsilon = 1e-2);
     }
+
+    #[test]
+    fn compose_identity() {
+        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
+        assert_abs_diff_eq!(
+            Isometry::from_parts(a, na::one()).to_homogeneous(),
+            (&Isometry::from_parts(a, na::one()) * &Isometry::identity()).to_homogeneous()
+        );
+        assert_abs_diff_eq!(
+            Isometry::from_parts(a, na::one()).to_homogeneous(),
+            (&Isometry::identity() * &Isometry::from_parts(a, na::one())).to_homogeneous()
+        );
+    }
 }
