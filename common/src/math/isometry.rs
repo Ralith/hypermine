@@ -42,6 +42,30 @@ impl<'a, 'b, N: RealField> Mul<&'b na::Vector4<N>> for &'a Isometry<N> {
     }
 }
 
+impl<'a, N: RealField> Mul<&'a na::Vector4<N>> for Isometry<N> {
+    type Output = na::Vector4<N>;
+    #[inline]
+    fn mul(self, rhs: &'a na::Vector4<N>) -> Self::Output {
+        &self * rhs
+    }
+}
+
+impl<'a, N: RealField> Mul<na::Vector4<N>> for &'a Isometry<N> {
+    type Output = na::Vector4<N>;
+    #[inline]
+    fn mul(self, rhs: na::Vector4<N>) -> Self::Output {
+        self * &rhs
+    }
+}
+
+impl<N: RealField> Mul<na::Vector4<N>> for Isometry<N> {
+    type Output = na::Vector4<N>;
+    #[inline]
+    fn mul(self, rhs: na::Vector4<N>) -> Self::Output {
+        &self * &rhs
+    }
+}
+
 impl<'a, 'b, N: RealField> Mul<&'b Isometry<N>> for &'a Isometry<N> {
     type Output = Isometry<N>;
     fn mul(self, rhs: &'b Isometry<N>) -> Self::Output {
@@ -62,6 +86,30 @@ impl<'a, 'b, N: RealField> Mul<&'b Isometry<N>> for &'a Isometry<N> {
             translation,
             rotation,
         }
+    }
+}
+
+impl<'a, N: RealField> Mul<Isometry<N>> for &'a Isometry<N> {
+    type Output = Isometry<N>;
+    #[inline]
+    fn mul(self, rhs: Isometry<N>) -> Self::Output {
+        self * &rhs
+    }
+}
+
+impl<'a, N: RealField> Mul<&'a Isometry<N>> for Isometry<N> {
+    type Output = Isometry<N>;
+    #[inline]
+    fn mul(self, rhs: &'a Isometry<N>) -> Self::Output {
+        &self * rhs
+    }
+}
+
+impl<N: RealField> Mul<Isometry<N>> for Isometry<N> {
+    type Output = Isometry<N>;
+    #[inline]
+    fn mul(self, rhs: Isometry<N>) -> Self::Output {
+        &self * &rhs
     }
 }
 
@@ -118,18 +166,18 @@ mod tests {
     #[test]
     fn simple() {
         assert_abs_diff_eq!(
-            &Isometry::<f64>::identity() * &Isometry::identity(),
+            Isometry::<f64>::identity() * Isometry::identity(),
             Isometry::identity()
         );
 
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         println!(
             "{}\n{}",
-            (&Isometry::<f64>::from_parts(a, na::one())).to_homogeneous(),
+            (Isometry::from_parts(a, na::one())).to_homogeneous(),
             translate(&origin(), &a)
         );
         assert_abs_diff_eq!(
-            (&Isometry::<f64>::from_parts(a, na::one())).to_homogeneous(),
+            (Isometry::from_parts(a, na::one())).to_homogeneous(),
             translate(&origin(), &a),
             epsilon = 1e-5
         );
@@ -139,7 +187,7 @@ mod tests {
     fn rotation_composition() {
         let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), 1.0);
         assert_abs_diff_eq!(
-            (&Isometry::<f64>::from_parts(origin(), q) * &Isometry::<f64>::from_parts(origin(), q))
+            (Isometry::from_parts(origin(), q) * Isometry::from_parts(origin(), q))
                 .to_homogeneous(),
             (q * q).to_homogeneous(),
             epsilon = 1e-5
@@ -148,27 +196,20 @@ mod tests {
 
     #[test]
     fn homogenize_distributes() {
-        assert_abs_diff_eq!(
-            &Isometry::<f64>::identity() * &Isometry::identity(),
-            Isometry::identity()
-        );
-
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
         println!(
             "{}\n{}",
-            (&Isometry::<f64>::from_parts(a, na::one())
-                * &Isometry::<f64>::from_parts(b, na::one()))
+            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
                 .to_homogeneous(),
-            &Isometry::<f64>::from_parts(a, na::one()).to_homogeneous()
-                * &Isometry::<f64>::from_parts(b, na::one()).to_homogeneous()
+            Isometry::from_parts(a, na::one()).to_homogeneous()
+                * Isometry::from_parts(b, na::one()).to_homogeneous()
         );
         assert_abs_diff_eq!(
-            (&Isometry::<f64>::from_parts(a, na::one())
-                * &Isometry::<f64>::from_parts(b, na::one()))
+            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
                 .to_homogeneous(),
-            &Isometry::<f64>::from_parts(a, na::one()).to_homogeneous()
-                * &Isometry::<f64>::from_parts(b, na::one()).to_homogeneous(),
+            Isometry::from_parts(a, na::one()).to_homogeneous()
+                * Isometry::from_parts(b, na::one()).to_homogeneous(),
             epsilon = 1e-5
         );
     }
@@ -179,14 +220,12 @@ mod tests {
         let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
         println!(
             "{}\n{}",
-            (&Isometry::<f64>::from_parts(a, na::one())
-                * &Isometry::<f64>::from_parts(b, na::one()))
+            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
                 .to_homogeneous(),
             translate(&origin(), &a) * translate(&origin(), &b)
         );
         assert_abs_diff_eq!(
-            (&Isometry::<f64>::from_parts(a, na::one())
-                * &Isometry::<f64>::from_parts(b, na::one()))
+            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
                 .to_homogeneous(),
             translate(&origin(), &a) * translate(&origin(), &b),
             epsilon = 1e-3
@@ -200,14 +239,12 @@ mod tests {
 
         println!(
             "{}\n{}",
-            (&Isometry::<f64>::from_parts(origin(), q)
-                * &Isometry::<f64>::from_parts(a, na::one()))
+            (Isometry::from_parts(origin(), q) * Isometry::from_parts(a, na::one()))
                 .to_homogeneous(),
             q.to_homogeneous() * translate(&origin(), &a)
         );
         assert_abs_diff_eq!(
-            (&Isometry::<f64>::from_parts(origin(), q)
-                * &Isometry::<f64>::from_parts(a, na::one()))
+            (Isometry::from_parts(origin(), q) * Isometry::from_parts(a, na::one()))
                 .to_homogeneous(),
             q.to_homogeneous() * translate(&origin(), &a),
             epsilon = 1e-3
