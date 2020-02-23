@@ -51,15 +51,15 @@ impl<'a, 'b, N: RealField> Mul<&'b Isometry<N>> for &'a Isometry<N> {
         let x = na::Vector4::new(x.x, x.y, x.z, self.translation.w);
         let translation = translate(&origin(), &x) * rhs.translation;
 
-        let a = distance(&x, &translation);
-        let b = distance(&translation, &origin());
-        let c = distance(&origin(), &x);
-        let angle_sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
-        let rotation = if angle_sum == N::zero() || angle_sum >= N::pi() {
+        let (axis, magnitude) = na::Unit::new_and_get(translation.xyz().cross(&x.xyz()));
+        let rotation = if magnitude == N::zero() {
             self.rotation * rhs.rotation
         } else {
+            let a = distance(&x, &translation);
+            let b = distance(&translation, &origin());
+            let c = distance(&origin(), &x);
+            let angle_sum = loc_angle(a, b, c) + loc_angle(b, c, a) + loc_angle(c, a, b);
             let defect = N::pi() - angle_sum;
-            let axis = na::Unit::new_normalize(translation.xyz().cross(&x.xyz()));
             self.rotation * rhs.rotation * na::UnitQuaternion::from_axis_angle(&axis, defect)
         };
         Isometry {
@@ -164,11 +164,6 @@ mod tests {
 
     #[test]
     fn translation_composition() {
-        assert_abs_diff_eq!(
-            &Isometry::<f64>::identity() * &Isometry::identity(),
-            Isometry::identity()
-        );
-
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
         println!(
@@ -183,6 +178,27 @@ mod tests {
                 * &Isometry::<f64>::from_parts(b, na::one()))
                 .to_homogeneous(),
             translate(&origin(), &a) * translate(&origin(), &b),
+            epsilon = 1e-3
+        );
+    }
+
+    #[test]
+    fn mixed_composition() {
+        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
+        let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), f64::pi() / 3.0);
+
+        println!(
+            "{}\n{}",
+            (&Isometry::<f64>::from_parts(origin(), q)
+                * &Isometry::<f64>::from_parts(a, na::one()))
+                .to_homogeneous(),
+            q.to_homogeneous() * translate(&origin(), &a)
+        );
+        assert_abs_diff_eq!(
+            (&Isometry::<f64>::from_parts(origin(), q)
+                * &Isometry::<f64>::from_parts(a, na::one()))
+                .to_homogeneous(),
+            q.to_homogeneous() * translate(&origin(), &a),
             epsilon = 1e-3
         );
     }
