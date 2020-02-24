@@ -284,9 +284,16 @@ mod tests {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), f64::pi() / 3.0);
         let m = translate(&origin(), &a) * q.to_homogeneous();
+        assert_abs_diff_eq!(Isometry::from_homogeneous(&m).to_homogeneous(), m);
+    }
+
+    #[test]
+    fn from_parts() {
+        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
+        let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), f64::pi() / 3.0);
         assert_abs_diff_eq!(
-            Isometry::from_homogeneous(&m).to_homogeneous(),
-            Isometry::from_parts(a, q).to_homogeneous()
+            Isometry::from_parts(a, q).to_homogeneous(),
+            translate(&origin(), &a) * q.to_homogeneous()
         );
     }
 }
