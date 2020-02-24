@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{distance, origin, translate};
 
-/// A hyperbolic translation followed by a rotation
+/// A hyperbolic translation followed by a rotation; a direct isometry.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Isometry<N: RealField> {
     pub translation: na::Vector4<N>,
@@ -22,6 +22,17 @@ impl<N: RealField> Isometry<N> {
         }
     }
 
+    #[inline]
+    pub fn translation(translation: na::Vector4<N>) -> Self {
+        Self::from_parts(translation, na::one())
+    }
+
+    #[inline]
+    pub fn rotation(rotation: na::UnitQuaternion<N>) -> Self {
+        Self::from_parts(origin(), rotation)
+    }
+
+    #[inline]
     pub fn from_parts(translation: na::Vector4<N>, rotation: na::UnitQuaternion<N>) -> Self {
         debug_assert!(translation.w != N::zero());
         Self {
@@ -174,7 +185,7 @@ mod tests {
 
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(
-            (Isometry::from_parts(a, na::one())).to_homogeneous(),
+            (Isometry::translation(a)).to_homogeneous(),
             translate(&origin(), &a),
             epsilon = 1e-5
         );
@@ -184,8 +195,7 @@ mod tests {
     fn rotation_composition() {
         let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), 1.0);
         assert_abs_diff_eq!(
-            (Isometry::from_parts(origin(), q) * Isometry::from_parts(origin(), q))
-                .to_homogeneous(),
+            (Isometry::rotation(q) * Isometry::rotation(q)).to_homogeneous(),
             (q * q).to_homogeneous(),
             epsilon = 1e-5
         );
@@ -196,10 +206,8 @@ mod tests {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
         assert_abs_diff_eq!(
-            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
-                .to_homogeneous(),
-            Isometry::from_parts(a, na::one()).to_homogeneous()
-                * Isometry::from_parts(b, na::one()).to_homogeneous(),
+            (Isometry::translation(a) * Isometry::translation(b)).to_homogeneous(),
+            Isometry::translation(a).to_homogeneous() * Isometry::translation(b).to_homogeneous(),
             epsilon = 1e-5
         );
     }
@@ -209,8 +217,7 @@ mod tests {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         let b = na::Vector4::new(0.0, 0.5, 0.0, 1.0);
         assert_abs_diff_eq!(
-            (Isometry::from_parts(a, na::one()) * Isometry::from_parts(b, na::one()))
-                .to_homogeneous(),
+            (Isometry::translation(a) * Isometry::translation(b)).to_homogeneous(),
             translate(&origin(), &a) * translate(&origin(), &b),
             epsilon = 1e-3
         );
@@ -222,8 +229,7 @@ mod tests {
         let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), f64::pi() / 3.0);
 
         assert_abs_diff_eq!(
-            (Isometry::from_parts(origin(), q) * Isometry::from_parts(a, na::one()))
-                .to_homogeneous(),
+            (Isometry::rotation(q) * Isometry::translation(a)).to_homogeneous(),
             q.to_homogeneous() * translate(&origin(), &a),
             epsilon = 1e-3
         );
@@ -243,12 +249,12 @@ mod tests {
     fn compose_identity() {
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(
-            Isometry::from_parts(a, na::one()).to_homogeneous(),
-            (&Isometry::from_parts(a, na::one()) * &Isometry::identity()).to_homogeneous()
+            Isometry::translation(a).to_homogeneous(),
+            (&Isometry::translation(a) * &Isometry::identity()).to_homogeneous()
         );
         assert_abs_diff_eq!(
-            Isometry::from_parts(a, na::one()).to_homogeneous(),
-            (&Isometry::identity() * &Isometry::from_parts(a, na::one())).to_homogeneous()
+            Isometry::translation(a).to_homogeneous(),
+            (&Isometry::identity() * &Isometry::translation(a)).to_homogeneous()
         );
     }
 }
