@@ -65,6 +65,18 @@ impl<N: RealField> Isometry<N> {
     pub fn to_homogeneous(&self) -> na::Matrix4<N> {
         translate(&origin(), &self.translation) * self.rotation.to_homogeneous()
     }
+
+    pub fn inverse(&self) -> Self {
+        let inverse_rot = self.rotation.inverse();
+        let inverse_trans = translate(&self.translation, &origin())
+            .index((.., 3))
+            .clone_owned();
+        let v = inverse_rot * inverse_trans.xyz();
+        Self {
+            rotation: inverse_rot,
+            translation: na::Vector4::new(v.x, v.y, v.z, inverse_trans.w),
+        }
+    }
 }
 
 impl<'a, 'b, N: RealField> Mul<&'b na::Vector4<N>> for &'a Isometry<N> {
@@ -204,6 +216,11 @@ mod tests {
             Isometry::identity()
         );
 
+        assert_abs_diff_eq!(
+            Isometry::<f64>::identity().to_homogeneous(),
+            na::Matrix4::identity()
+        );
+
         let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(
             (Isometry::translation(a)).to_homogeneous(),
@@ -294,6 +311,20 @@ mod tests {
         assert_abs_diff_eq!(
             Isometry::from_parts(a, q).to_homogeneous(),
             translate(&origin(), &a) * q.to_homogeneous()
+        );
+    }
+
+    #[test]
+    fn inverse() {
+        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
+        let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), f64::pi() / 3.0);
+        assert_abs_diff_eq!(
+            (Isometry::from_parts(a, q) * Isometry::from_parts(a, q).inverse()).to_homogeneous(),
+            na::Matrix4::identity()
+        );
+        assert_abs_diff_eq!(
+            (Isometry::from_parts(a, q).inverse() * Isometry::from_parts(a, q)).to_homogeneous(),
+            na::Matrix4::identity()
         );
     }
 }
