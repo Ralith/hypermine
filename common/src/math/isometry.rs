@@ -5,7 +5,7 @@ use std::ops::Mul;
 use na::RealField;
 use serde::{Deserialize, Serialize};
 
-use super::{distance, origin, translate};
+use super::{distance, origin, translate, translate_along};
 
 /// A hyperbolic translation followed by a rotation; a direct isometry.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
@@ -38,6 +38,27 @@ impl<N: RealField> Isometry<N> {
         Self {
             translation,
             rotation,
+        }
+    }
+
+    /// Construct from a direct isometry encoded as a 4x4 matrix
+    pub fn from_homogeneous(m: &na::Matrix4<N>) -> Self {
+        let dest = m.index((.., 3));
+        let norm = dest.xyz().norm();
+        let boost_length = (dest.w + norm).ln();
+        let rotation = na::Rotation3::from_matrix_unchecked(if norm == N::zero() {
+            m.fixed_slice::<na::U3, na::U3>(0, 0).clone_owned()
+        } else {
+            let direction = na::Unit::new_unchecked(dest.xyz() / norm);
+            let inverse_boost = translate_along(&direction, -boost_length);
+
+            (inverse_boost * m)
+                .fixed_slice::<na::U3, na::U3>(0, 0)
+                .clone_owned()
+        });
+        Self {
+            translation: dest.clone_owned(),
+            rotation: na::UnitQuaternion::from_rotation_matrix(&rotation),
         }
     }
 
@@ -255,6 +276,17 @@ mod tests {
         assert_abs_diff_eq!(
             Isometry::translation(a).to_homogeneous(),
             (&Isometry::identity() * &Isometry::translation(a)).to_homogeneous()
+        );
+    }
+
+    #[test]
+    fn from_homogeneous() {
+        let a = na::Vector4::new(0.5, 0.0, 0.0, 1.0);
+        let q = na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), f64::pi() / 3.0);
+        let m = translate(&origin(), &a) * q.to_homogeneous();
+        assert_abs_diff_eq!(
+            Isometry::from_homogeneous(&m).to_homogeneous(),
+            Isometry::from_parts(a, q).to_homogeneous()
         );
     }
 }
