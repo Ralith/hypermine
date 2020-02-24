@@ -77,6 +77,23 @@ impl<N: RealField> Isometry<N> {
             translation: na::Vector4::new(v.x, v.y, v.z, inverse_trans.w),
         }
     }
+
+    /// Transform this isometry by a matrix that reflects about some plane
+    ///
+    /// Useful for moving between nodes of the graph
+    pub fn reflect(&self, reflection: &na::Matrix4<N>) -> Self {
+        let mut unreflected = *reflection;
+        // Reflect along X axis to obtain a rotation matrix
+        for x in &mut unreflected.row_mut(0) {
+            *x *= -N::one();
+        }
+        let unreflected = Self::from_homogeneous(&unreflected);
+        let mut result = unreflected * self * unreflected.inverse();
+        // Cancel out the X reflection
+        result.translation.x *= -N::one();
+        result.rotation.as_mut_unchecked().coords.x *= -N::one();
+        result
+    }
 }
 
 impl<'a, 'b, N: RealField> Mul<&'b na::Vector4<N>> for &'a Isometry<N> {
@@ -325,6 +342,16 @@ mod tests {
         assert_abs_diff_eq!(
             (Isometry::from_parts(a, q).inverse() * Isometry::from_parts(a, q)).to_homogeneous(),
             na::Matrix4::identity()
+        );
+    }
+
+    #[test]
+    fn reflect() {
+        use crate::dodeca::Side;
+
+        assert_abs_diff_eq!(
+            Isometry::identity().reflect(Side::A.reflection()) * origin(),
+            Side::A.reflection() * origin()
         );
     }
 }
