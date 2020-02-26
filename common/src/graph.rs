@@ -188,11 +188,11 @@ impl<N, C> Graph<N, C> {
 
     /// Given a `transform` relative to a `reference` node, computes an equivalent transform
     /// relative to the node closest to that transform.
-    pub fn normalize_transform(
+    pub fn normalize_transform<T: na::RealField>(
         &self,
         mut reference: NodeId,
-        mut transform: na::Matrix4<f64>,
-    ) -> (NodeId, na::Matrix4<f64>) {
+        mut transform: na::Matrix4<T>,
+    ) -> (NodeId, na::Matrix4<T>) {
         'outer: loop {
             let location = transform * math::origin();
             for side in Side::iter() {
@@ -203,7 +203,7 @@ impl<N, C> Graph<N, C> {
                     None => continue,
                     Some(x) => x,
                 };
-                transform = side.reflection() * transform;
+                transform = na::convert::<_, na::Matrix4<T>>(*side.reflection()) * transform;
                 continue 'outer;
             }
             break;
@@ -420,7 +420,8 @@ mod tests {
         let mut graph = Graph::<(), ()>::default();
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
-            let (node, xf) = graph.normalize_transform(NodeId::ROOT, na::Matrix4::identity());
+            let (node, xf) =
+                graph.normalize_transform::<f32>(NodeId::ROOT, na::Matrix4::identity());
             assert_eq!(node, NodeId::ROOT);
             assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
         }
