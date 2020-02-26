@@ -1,3 +1,5 @@
+#![allow(clippy::len_without_is_empty)]
+
 use std::convert::TryFrom;
 use std::fmt;
 use std::num::NonZeroU32;
@@ -35,11 +37,6 @@ impl<N, C> Graph<N, C> {
     #[inline]
     pub fn len(&self) -> u32 {
         self.nodes.len() as u32
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
     }
 
     /// Look up the ID of a node's neighbor, creating nearby nodes if necessary
