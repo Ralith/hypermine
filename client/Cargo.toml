@@ -27,7 +27,7 @@ serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
 fxhash = "0.2.1"
 downcast-rs = "1.1.1"
-quinn = { git = "https://github.com/djc/quinn.git", rev = "5f81b5cf317305093b048d2211317f296b46a0e8", default-features = false }
+quinn = "0.6"
 futures-util = "0.3.1"
-rustls = { version = "0.16.0", features = ["dangerous_configuration"] }
+rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
 webpki = "0.21.0"
