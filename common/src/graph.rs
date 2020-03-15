@@ -23,13 +23,7 @@ pub struct Graph<N, C> {
 impl<N, C> Graph<N, C> {
     pub fn new() -> Self {
         Self {
-            nodes: vec![Node {
-                value: None,
-                cubes: Default::default(),
-                parent_side: None,
-                length: 0,
-                neighbors: [None; SIDE_COUNT],
-            }],
+            nodes: vec![Node::new(None, 0)],
             fresh: Vec::new(),
         }
     }
@@ -37,12 +31,6 @@ impl<N, C> Graph<N, C> {
     #[inline]
     pub fn len(&self) -> u32 {
         self.nodes.len() as u32
-    }
-
-    /// Look up the ID of a node's neighbor, creating nearby nodes if necessary
-    pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
-        self.ensure_neighbor_inner(node, side, NeighborType::Any)
-            .expect("ensuring a neighbor of unconstrained type should always succeed")
     }
 
     /// Nodes created since the last call to `clear_fresh`
@@ -216,37 +204,38 @@ impl<N, C> Graph<N, C> {
         self.nodes[node.idx()].parent_side
     }
 
-    fn ensure_neighbor_inner(
-        &mut self,
-        node: NodeId,
-        side: Side,
-        mode: NeighborType,
-    ) -> Option<NodeId> {
+    /// Iterate over every node and its parent
+    pub fn tree(&self) -> TreeIter<'_, N, C> {
+        TreeIter {
+            id: NodeId::from_idx(1),
+            remaining: &self.nodes[1..],
+        }
+    }
+
+    pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
         let v = &self.nodes[node.idx()];
         if let Some(x) = v.neighbors[side as usize] {
             // Neighbor already exists
-            return Some(x);
+            return x;
         }
 
         let neighbor_is_further = |parent_side| {
             (side != parent_side && !side.adjacent_to(parent_side))
-                || !self.is_near_side(v.neighbors[parent_side as usize].unwrap(), side)
+                || !self.is_near_side(v.parent().unwrap(), side)
         };
 
         // Create a new neighbor
         if v.parent_side.map_or(true, neighbor_is_further) {
             // New neighbor will be further from the origin
-            return match mode {
-                NeighborType::Shorter => None,
-                NeighborType::Any => Some(self.new_node(node, side)),
-            };
+            return self.insert_child(node, side);
         }
+
         // Neighbor is closer to the origin; find it, backfilling if necessary
         let x = self.nodes[v.parent().unwrap().idx()].neighbors[side as usize].unwrap();
         let parent_side = v.parent_side.unwrap();
         let neighbor = self.ensure_neighbor(x, parent_side);
         self.link_neighbors(node, neighbor, side);
-        Some(neighbor)
+        neighbor
     }
 
     /// Whether `node`'s neighbor along `side` is closer than it to the origin
@@ -255,22 +244,42 @@ impl<N, C> Graph<N, C> {
         v.neighbors[side as usize].map_or(false, |x| self.nodes[x.idx()].length < v.length)
     }
 
-    fn new_node(&mut self, parent: NodeId, side: Side) -> NodeId {
+    pub fn insert_child(&mut self, parent: NodeId, side: Side) -> NodeId {
+        // Always create shorter nodes first so that self.nodes is always sorted by length, enabling
+        // graceful synchronization of the graph
+        let shorter_neighbors = self.populate_shorter_neighbors_of_child(parent, side);
         let id = NodeId::from_idx(self.nodes.len());
         let length = self.nodes[parent.idx()].length + 1;
-        self.nodes.push(Node {
-            value: None,
-            cubes: Default::default(),
-            parent_side: Some(side),
-            length,
-            neighbors: [None; SIDE_COUNT],
-        });
+        self.nodes.push(Node::new(Some(side), length));
         self.link_neighbors(id, parent, side);
-        for side in Side::iter() {
-            self.ensure_neighbor_inner(id, side, NeighborType::Shorter);
+        for (side, neighbor) in shorter_neighbors {
+            self.link_neighbors(id, neighbor, side);
         }
         self.fresh.push(id);
         id
+    }
+
+    /// Ensure all shorter neighbors of a not-yet-created child node exist and return them
+    fn populate_shorter_neighbors_of_child(
+        &mut self,
+        parent: NodeId,
+        parent_side: Side,
+    ) -> impl Iterator<Item = (Side, NodeId)> {
+        let mut neighbors = [None; 3]; // Maximum number of shorter neighbors is 3
+        let mut count = 0;
+        for neighbor_side in Side::iter() {
+            if neighbor_side == parent_side
+                || !neighbor_side.adjacent_to(parent_side)
+                || !self.is_near_side(parent, neighbor_side)
+            {
+                continue;
+            }
+            let x = self.nodes[parent.idx()].neighbors[neighbor_side as usize].unwrap();
+            let neighbor = self.ensure_neighbor(x, parent_side);
+            neighbors[count] = Some((neighbor_side, neighbor));
+            count += 1;
+        }
+        (0..3).filter_map(move |i| neighbors[i])
     }
 
     /// Register `a` and `b` as adjacent along `side`
@@ -288,12 +297,6 @@ impl<N, C> Default for Graph<N, C> {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum NeighborType {
-    Shorter,
-    Any,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -334,6 +337,16 @@ struct Node<N, C> {
 }
 
 impl<N, C> Node<N, C> {
+    fn new(parent_side: Option<Side>, length: u32) -> Self {
+        Self {
+            value: None,
+            cubes: Default::default(),
+            parent_side,
+            length,
+            neighbors: [None; SIDE_COUNT],
+        }
+    }
+
     fn parent(&self) -> Option<NodeId> {
         Some(self.neighbors[self.parent_side? as usize].expect("parent edge unpopulated"))
     }
@@ -361,6 +374,23 @@ lazy_static! {
 
         result
     };
+}
+
+pub struct TreeIter<'a, N, C> {
+    id: NodeId,
+    remaining: &'a [Node<N, C>],
+}
+
+impl<N, C> Iterator for TreeIter<'_, N, C> {
+    type Item = (Side, NodeId);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (node, rest) = self.remaining.split_first()?;
+        self.remaining = rest;
+        self.id = NodeId::from_idx(self.id.idx() + 1);
+        let side = node.parent_side.unwrap();
+        Some((side, node.neighbors[side as usize].unwrap()))
+    }
 }
 
 #[cfg(test)]
@@ -430,6 +460,23 @@ mod tests {
                 .normalize_transform(NodeId::ROOT, Side::A.reflection() * na::Matrix4::identity());
             assert_eq!(node, a);
             assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
+        }
+    }
+
+    #[test]
+    fn rebuild_from_tree() {
+        let mut a = Graph::<(), ()>::default();
+        a.ensure_nearby(NodeId::ROOT, 3);
+        let mut b = Graph::<(), ()>::default();
+        for (side, parent) in a.tree() {
+            b.insert_child(parent, side);
+        }
+        assert_eq!(a.nodes.len(), b.nodes.len());
+        for (a, b) in a.nodes.iter().zip(b.nodes.iter()) {
+            assert_eq!(a.parent_side, b.parent_side);
+            if let Some(side) = a.parent_side {
+                assert_eq!(a.neighbors[side as usize], b.neighbors[side as usize]);
+            }
         }
     }
 }

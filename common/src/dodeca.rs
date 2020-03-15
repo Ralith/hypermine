@@ -1,11 +1,12 @@
 //! Tools for processing the geometry of a right dodecahedron
 
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 
 use crate::math;
 
 /// Sides of a right dodecahedron
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum Side {
     A,
     B,
