@@ -1,22 +1,20 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{error, trace};
 
-use crate::{graphics::lru_table::SlotId, Config, Net};
+use crate::{graphics::lru_table::SlotId, net, Net};
 use common::{
     dodeca,
     graph::{Graph, NodeId},
-    proto::{Command, Position},
+    proto::{self, Command, Position},
     world::{Material, SUBDIVISION_FACTOR},
     EntityId, Step,
 };
 
 /// Game state
 pub struct Sim {
-    cfg: Arc<Config>,
     net: Net,
 
     // World state
@@ -32,9 +30,8 @@ pub struct Sim {
 }
 
 impl Sim {
-    pub fn new(net: Net, cfg: Arc<Config>) -> Self {
+    pub fn new(net: Net) -> Self {
         let mut result = Self {
-            cfg,
             net,
 
             graph: Graph::new(),
@@ -60,69 +57,78 @@ impl Sim {
         self.velocity = v;
     }
 
-    pub fn step(&mut self, dt: Duration) {
+    pub fn step(&mut self, _dt: Duration) {
         while let Ok(msg) = self.net.incoming.try_recv() {
-            use crate::net::Message::*;
-            match msg {
-                ConnectionLost(e) => {
-                    error!("connection lost: {}", e);
-                }
-                Hello(msg) => {
-                    self.local_character = Some(msg.character);
-                }
-                Spawns(msg) => {
-                    self.step = self.step.max(Some(msg.step));
-                    let mut builder = hecs::EntityBuilder::new();
-                    for &(id, ref components) in &msg.spawns {
-                        trace!(%id, "spawning entity");
-                        builder.add(id);
-                        for component in components {
-                            use common::proto::Component::*;
-                            match *component {
-                                Character(_) => {}
-                                Position(x) => {
-                                    builder.add(x);
-                                }
+            self.handle_net(msg);
+        }
+
+        self.send_input();
+    }
+
+    fn handle_net(&mut self, msg: net::Message) {
+        use net::Message::*;
+        match msg {
+            ConnectionLost(e) => {
+                error!("connection lost: {}", e);
+            }
+            Hello(msg) => {
+                self.local_character = Some(msg.character);
+            }
+            Spawns(msg) => self.handle_spawns(msg),
+            StateDelta(msg) => {
+                self.step = self.step.max(Some(msg.step));
+                for &(id, new_pos) in &msg.positions {
+                    match self.entity_ids.get(&id) {
+                        None => error!(%id, "position update for unknown entity"),
+                        Some(&entity) => match self.world.get_mut::<Position>(entity) {
+                            Ok(mut pos) => {
+                                *pos = new_pos;
                             }
-                        }
-                        let entity = self.world.spawn(builder.build());
-                        if let Some(x) = self.entity_ids.insert(id, entity) {
-                            let _ = self.world.despawn(x);
-                            error!(%id, "id collision");
-                        }
-                    }
-                    for &id in &msg.despawns {
-                        match self.entity_ids.get(&id) {
-                            Some(&entity) => self.destroy(entity),
-                            None => error!(%id, "despawned unknown entity"),
-                        }
-                    }
-                    if !msg.nodes.is_empty() {
-                        trace!(count = msg.nodes.len(), "adding nodes");
-                    }
-                    for node in &msg.nodes {
-                        self.graph.insert_child(node.parent, node.side);
-                    }
-                    self.populate_fresh_nodes();
-                }
-                StateDelta(msg) => {
-                    self.step = self.step.max(Some(msg.step));
-                    for &(id, new_pos) in &msg.positions {
-                        match self.entity_ids.get(&id) {
-                            None => error!(%id, "position update for unknown entity"),
-                            Some(&entity) => match self.world.get_mut::<Position>(entity) {
-                                Ok(mut pos) => {
-                                    *pos = new_pos;
-                                }
-                                Err(e) => {
-                                    error!(%id, "position update for unpositioned entity: {}", e)
-                                }
-                            },
-                        }
+                            Err(e) => error!(%id, "position update for unpositioned entity: {}", e),
+                        },
                     }
                 }
             }
         }
+    }
+
+    fn handle_spawns(&mut self, msg: proto::Spawns) {
+        self.step = self.step.max(Some(msg.step));
+        let mut builder = hecs::EntityBuilder::new();
+        for &(id, ref components) in &msg.spawns {
+            trace!(%id, "spawning entity");
+            builder.add(id);
+            for component in components {
+                use common::proto::Component::*;
+                match *component {
+                    Character(_) => {}
+                    Position(x) => {
+                        builder.add(x);
+                    }
+                }
+            }
+            let entity = self.world.spawn(builder.build());
+            if let Some(x) = self.entity_ids.insert(id, entity) {
+                let _ = self.world.despawn(x);
+                error!(%id, "id collision");
+            }
+        }
+        for &id in &msg.despawns {
+            match self.entity_ids.get(&id) {
+                Some(&entity) => self.destroy(entity),
+                None => error!(%id, "despawned unknown entity"),
+            }
+        }
+        if !msg.nodes.is_empty() {
+            trace!(count = msg.nodes.len(), "adding nodes");
+        }
+        for node in &msg.nodes {
+            self.graph.insert_child(node.parent, node.side);
+        }
+        self.populate_fresh_nodes();
+    }
+
+    fn send_input(&mut self) {
         if let Some(&entity) = self.local_character.and_then(|id| self.entity_ids.get(&id)) {
             let pos = *self.world.get::<Position>(entity).unwrap();
             // Any failure here will be better handled in ConnectionLost above on the next call
@@ -138,7 +144,7 @@ impl Sim {
     pub fn view(&self) -> Position {
         if let Some(&entity) = self.local_character.and_then(|id| self.entity_ids.get(&id)) {
             let mut pos = *self.world.get::<Position>(entity).unwrap();
-            pos.local = pos.local * self.orientation.to_homogeneous();
+            pos.local *= self.orientation.to_homogeneous();
             pos
         } else {
             Position {
