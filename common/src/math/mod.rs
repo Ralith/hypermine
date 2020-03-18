@@ -93,7 +93,7 @@ pub fn lorentz_normalize<N: RealField>(v: &na::Vector4<N>) -> na::Vector4<N> {
         return origin();
     }
     let sf = sf2.abs().sqrt();
-    na::Vector4::new(v.x / sf, v.y / sf, v.z / sf, v.w / sf)
+    v / sf
 }
 
 pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> {

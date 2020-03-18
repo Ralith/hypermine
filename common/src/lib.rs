@@ -14,6 +14,7 @@ pub mod math;
 pub mod proto;
 pub mod world;
 
+// Stable IDs made of 8 random bytes for easy persistent references
 mkid!(EntityId: u64);
 
 impl std::fmt::Display for EntityId {

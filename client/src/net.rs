@@ -76,14 +76,15 @@ async fn inner(
     codec::send_whole(clienthello_stream, &proto::ClientHello {}).await?;
 
     let mut ordered = uni_streams.next().await.unwrap()?;
+    // Handle unordered messages
+    tokio::spawn(handle_unordered(incoming.clone(), uni_streams));
+
     // Receive the server's hello message
     let hello = codec::recv::<proto::ServerHello>(&mut ordered)
         .await?
         .ok_or_else(|| anyhow!("ordered stream closed unexpectedly"))?;
     // Forward it on
     incoming.send(Message::Hello(hello)).unwrap();
-    // Handle other ordered messages
-    tokio::spawn(handle_unordered(incoming.clone(), uni_streams));
 
     // Receive ordered messages from the server
     loop {
