@@ -174,15 +174,16 @@ impl<N, C> Graph<N, C> {
         self.nodes[node.idx()].length
     }
 
-    /// Given a `transform` relative to a `reference` node, computes an equivalent transform
-    /// relative to the node closest to that transform.
+    /// Given a `transform` relative to a `reference` node, computes the node that it's closest to
+    /// and the transform that moves it there
     pub fn normalize_transform<T: na::RealField>(
         &self,
         mut reference: NodeId,
-        mut transform: na::Matrix4<T>,
+        original: &na::Matrix4<T>,
     ) -> (NodeId, na::Matrix4<T>) {
+        let mut transform = na::Matrix4::identity();
+        let mut location = original * math::origin();
         'outer: loop {
-            let location = transform * math::origin();
             for side in Side::iter() {
                 if !side.faces(&location) {
                     continue;
@@ -191,7 +192,9 @@ impl<N, C> Graph<N, C> {
                     None => continue,
                     Some(x) => x,
                 };
-                transform = na::convert::<_, na::Matrix4<T>>(*side.reflection()) * transform;
+                let mat = na::convert::<_, na::Matrix4<T>>(*side.reflection());
+                location = mat * location;
+                transform = mat * transform;
                 continue 'outer;
             }
             break;
@@ -451,15 +454,14 @@ mod tests {
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
             let (node, xf) =
-                graph.normalize_transform::<f32>(NodeId::ROOT, na::Matrix4::identity());
+                graph.normalize_transform::<f32>(NodeId::ROOT, &na::Matrix4::identity());
             assert_eq!(node, NodeId::ROOT);
             assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
         }
         {
-            let (node, xf) = graph
-                .normalize_transform(NodeId::ROOT, Side::A.reflection() * na::Matrix4::identity());
+            let (node, xf) = graph.normalize_transform(NodeId::ROOT, Side::A.reflection());
             assert_eq!(node, a);
-            assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
+            assert_abs_diff_eq!(xf, Side::A.reflection(), epsilon = 1e-5);
         }
     }
 

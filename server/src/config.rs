@@ -14,6 +14,7 @@ pub struct Config {
     pub private_key: Option<PathBuf>,
     pub listen: SocketAddr,
     pub rate: u16,
+    pub view_distance: u32,
 }
 
 impl Config {
@@ -33,6 +34,7 @@ impl Default for Config {
             private_key: None,
             listen: SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 1234),
             rate: 10,
+            view_distance: 3,
         }
     }
 }

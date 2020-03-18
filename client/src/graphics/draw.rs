@@ -219,10 +219,7 @@ impl Draw {
         present: vk::Semaphore,
         projection: na::Matrix4<f32>,
     ) {
-        let projection = projection
-            * na::convert::<_, na::Matrix4<f32>>(*sim.view())
-                .try_inverse()
-                .unwrap();
+        let projection = projection * sim.view().local.try_inverse().unwrap();
         self.loader.drive();
 
         let device = &*self.gfx.device;

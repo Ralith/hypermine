@@ -1,52 +1,85 @@
-use std::mem;
+use std::{mem, sync::Arc};
 
 use fxhash::FxHashMap;
 use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use tracing::error_span;
+use tracing::{debug, error_span, trace};
 
+use crate::Config;
 use common::{
-    graph::NodeId,
-    math::HPoint,
-    proto::{ClientHello, Command, Component, Position, Spawns, StateDelta},
+    graph::{Graph, NodeId},
+    math,
+    proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
     EntityId, Step,
 };
 
 pub struct Sim {
+    cfg: Arc<Config>,
     rng: SmallRng,
     step: Step,
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
+    graph: Graph<(), ()>,
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
 }
 
 impl Sim {
-    pub fn new() -> Self {
-        Self {
+    pub fn new(cfg: Arc<Config>) -> Self {
+        let mut result = Self {
+            cfg,
             rng: SmallRng::from_entropy(),
             step: 0,
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
+            graph: Graph::new(),
             spawns: Vec::new(),
             despawns: Vec::new(),
-        }
+        };
+        result
+            .graph
+            .ensure_nearby(NodeId::ROOT, result.cfg.view_distance);
+        result
     }
 
     pub fn spawn_character(&mut self, _hello: ClientHello) -> (EntityId, Entity) {
         let id = self.new_id();
         let position = Position {
-            tile: NodeId::ROOT,
-            local: HPoint::origin(),
+            node: NodeId::ROOT,
+            local: na::one(),
         };
-        let entity = self.world.spawn((id, position));
+        let character = Character {
+            latest_command: 0,
+            speed: 0.0,
+            direction: -na::Vector3::z_axis(),
+            orientation: na::one(),
+            command_node: NodeId::ROOT,
+        };
+        let entity = self.world.spawn((id, position, character));
         self.spawns.push(entity);
         (id, entity)
     }
 
-    pub fn command(&mut self, _entity: Entity, _command: Command) {
-        // TODO
+    pub fn command(
+        &mut self,
+        entity: Entity,
+        command: Command,
+    ) -> Result<(), hecs::ComponentError> {
+        let mut ch = self.world.get_mut::<Character>(entity)?;
+        if command.step > ch.latest_command {
+            ch.latest_command = command.step;
+            let (direction, speed) = na::Unit::new_and_get(command.velocity);
+            ch.direction = if speed == 0.0 {
+                -na::Vector3::z_axis()
+            } else {
+                direction
+            };
+            ch.speed = speed.min(1.0);
+            ch.orientation = command.orientation;
+            ch.command_node = command.node;
+        }
+        Ok(())
     }
 
     pub fn destroy(&mut self, entity: Entity) {
@@ -62,6 +95,11 @@ impl Sim {
             step: self.step,
             spawns: Vec::new(),
             despawns: Vec::new(),
+            nodes: self
+                .graph
+                .tree()
+                .map(|(side, parent)| FreshNode { side, parent })
+                .collect(),
         };
         for (entity, &id) in &mut self.world.query::<&EntityId>() {
             spawns.spawns.push((id, dump_entity(&self.world, entity)));
@@ -73,7 +111,23 @@ impl Sim {
         let span = error_span!("step", step = self.step);
         let _guard = span.enter();
 
-        // TODO: simulate
+        // Simulate
+        for (_, (&id, ch, pos)) in self
+            .world
+            .query::<(&EntityId, &Character, &mut Position)>()
+            .iter()
+        {
+            let next_xf =
+                pos.local * math::translate_along(&ch.direction, ch.speed / self.cfg.rate as f32);
+            pos.local = math::renormalize_isometry(&next_xf);
+            let (next_node, transition_xf) = self.graph.normalize_transform(pos.node, &pos.local);
+            if next_node != pos.node {
+                debug!(%id, node = ?next_node, "transition");
+                pos.node = next_node;
+                pos.local = transition_xf * pos.local;
+                self.graph.ensure_nearby(next_node, self.cfg.view_distance);
+            }
+        }
 
         // Capture state changes for broadcast to clients
         let mut spawns = Vec::with_capacity(self.spawns.len());
@@ -81,13 +135,29 @@ impl Sim {
             let id = *self.world.get::<EntityId>(entity).unwrap();
             spawns.push((id, dump_entity(&self.world, entity)));
         }
+        if !self.graph.fresh().is_empty() {
+            trace!(count = self.graph.fresh().len(), "broadcasting fresh nodes");
+        }
         let spawns = Spawns {
             step: self.step,
             spawns,
             despawns: mem::replace(&mut self.despawns, Vec::new()),
+            nodes: self
+                .graph
+                .fresh()
+                .iter()
+                .map(|&id| {
+                    let side = self.graph.parent(id).unwrap();
+                    FreshNode {
+                        side,
+                        parent: self.graph.neighbor(id, side).unwrap(),
+                    }
+                })
+                .collect(),
         };
+        self.graph.clear_fresh();
 
-        // TODO: Omit unchanged (e.g. freshly spawned) entities
+        // TODO: Omit unchanged (e.g. freshly spawned) entities (dirty flag?)
         let delta = StateDelta {
             step: self.step,
             positions: self
@@ -95,6 +165,19 @@ impl Sim {
                 .query::<(&EntityId, &Position)>()
                 .iter()
                 .map(|(_, (&id, &position))| (id, position))
+                .collect(),
+            characters: self
+                .world
+                .query::<(&EntityId, &Character)>()
+                .iter()
+                .map(|(_, (&id, ch))| {
+                    (
+                        id,
+                        proto::Character {
+                            orientation: ch.orientation,
+                        },
+                    )
+                })
                 .collect(),
         };
 
@@ -117,5 +200,18 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     if let Ok(x) = world.get::<Position>(entity) {
         components.push(Component::Position(*x));
     }
+    if let Ok(x) = world.get::<Character>(entity) {
+        components.push(Component::Character(proto::Character {
+            orientation: x.orientation,
+        }));
+    }
     components
+}
+
+struct Character {
+    orientation: na::UnitQuaternion<f32>,
+    direction: na::Unit<na::Vector3<f32>>,
+    speed: f32,
+    latest_command: Step,
+    command_node: NodeId,
 }

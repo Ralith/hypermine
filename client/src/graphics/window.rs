@@ -103,17 +103,15 @@ impl Window {
             .unwrap()
             .run(move |event, _, control_flow| match event {
                 Event::MainEventsCleared => {
-                    let velocity = na::Vector3::x() * (right as u8 as f64 - left as u8 as f64)
-                        + na::Vector3::y() * (up as u8 as f64 - down as u8 as f64)
-                        + na::Vector3::z() * (back as u8 as f64 - forward as u8 as f64);
+                    let velocity = na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
+                        + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
+                        + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
                     self.sim.velocity(velocity);
 
-                    let viewrotation = na::Vector3::new(
-                        0.0,
-                        0.0,
-                        clockwise as u8 as f64 - anticlockwise as u8 as f64,
-                    ) * 5e-2;
-                    self.sim.rotate(viewrotation);
+                    self.sim.rotate(&na::UnitQuaternion::from_axis_angle(
+                        &na::Vector3::z_axis(),
+                        (clockwise as u8 as f32 - anticlockwise as u8 as f32) * 5e-2,
+                    ));
 
                     let this_frame = Instant::now();
                     self.sim.step(this_frame - last_frame);
@@ -129,8 +127,15 @@ impl Window {
                         self.window.set_cursor_visible(false);
                     }
                     DeviceEvent::MouseMotion { delta } if focused => {
-                        self.sim
-                            .rotate(na::Vector3::new(delta.0, delta.1, 0.0) * 2e-3);
+                        const SENSITIVITY: f32 = 2e-3;
+                        let rot = na::UnitQuaternion::from_axis_angle(
+                            &na::Vector3::y_axis(),
+                            -delta.0 as f32 * SENSITIVITY,
+                        ) * na::UnitQuaternion::from_axis_angle(
+                            &na::Vector3::x_axis(),
+                            -delta.1 as f32 * SENSITIVITY,
+                        );
+                        self.sim.rotate(&rot);
                     }
                     _ => {}
                 },

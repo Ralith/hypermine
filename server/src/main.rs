@@ -9,7 +9,7 @@ use hecs::Entity;
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
-use tracing::{error, info, trace, warn};
+use tracing::{error, error_span, info, trace, warn};
 
 use common::{codec, proto};
 use config::Config;
@@ -78,16 +78,17 @@ async fn run() -> Result<()> {
 }
 
 struct Server {
-    cfg: Config,
+    cfg: Arc<Config>,
     sim: Sim,
     clients: DenseSlotMap<ClientId, Client>,
 }
 
 impl Server {
     fn new(cfg: Config) -> Self {
+        let cfg = Arc::new(cfg);
         Self {
+            sim: Sim::new(cfg.clone()),
             cfg,
-            sim: Sim::new(),
             clients: DenseSlotMap::default(),
         }
     }
@@ -117,7 +118,10 @@ impl Server {
         for (client_id, client) in &mut self.clients {
             if let Some(ref mut handles) = client.handles {
                 let r1 = handles.unordered.try_send(delta.clone());
-                let r2 = if !spawns.spawns.is_empty() || !spawns.despawns.is_empty() {
+                let r2 = if !spawns.spawns.is_empty()
+                    || !spawns.despawns.is_empty()
+                    || !spawns.nodes.is_empty()
+                {
                     handles.ordered.try_send(spawns.clone())
                 } else {
                     Ok(())
@@ -141,12 +145,15 @@ impl Server {
     }
 
     fn on_client_event(&mut self, client_id: ClientId, event: ClientEvent) {
+        let span = error_span!("client", id = ?client_id.0);
+        let _guard = span.enter();
         let client = &mut self.clients[client_id];
         match event {
             ClientEvent::Hello(hello) => {
                 assert!(client.handles.is_none());
                 let snapshot = Arc::new(self.sim.snapshot());
                 let (id, entity) = self.sim.spawn_character(hello);
+                trace!(%id, "spawned character");
                 let (mut ordered_send, ordered_recv) = mpsc::channel(32);
                 ordered_send.try_send(snapshot).unwrap();
                 let (unordered_send, unordered_recv) = mpsc::channel(32);
@@ -164,13 +171,15 @@ impl Server {
                 });
             }
             ClientEvent::Lost(e) => {
-                error!("client lost: {:#}", e);
+                error!("lost: {:#}", e);
                 client.conn.close(0u32.into(), b"");
                 self.cleanup_client(client_id);
             }
             ClientEvent::Command(cmd) => {
                 if let Some(ref x) = client.handles {
-                    self.sim.command(x.character, cmd);
+                    if let Err(e) = self.sim.command(x.character, cmd) {
+                        error!("couldn't process command: {}", e);
+                    }
                 }
             }
         }
