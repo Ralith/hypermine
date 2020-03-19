@@ -419,9 +419,6 @@ impl SwapchainState {
                 None,
             )
             .unwrap();
-        if old != vk::SwapchainKHR::null() {
-            swapchain_fn.destroy_swapchain(old, None);
-        }
 
         let frames = swapchain_fn
             .get_swapchain_images(handle)
