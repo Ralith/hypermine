@@ -97,7 +97,7 @@ impl Window {
         let mut clockwise = false;
         let mut anticlockwise = false;
         let mut last_frame = Instant::now();
-        let mut focused = false;
+        let mut focused = true;
         self.event_loop
             .take()
             .unwrap()
