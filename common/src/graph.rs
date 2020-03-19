@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
-    proto::Position,
     math,
+    proto::Position,
 };
 
 /// Graph of the right dodecahedral tiling of H^3
