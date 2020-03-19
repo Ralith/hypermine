@@ -15,7 +15,6 @@ use common::{codec, proto};
 use config::Config;
 use sim::Sim;
 
-
 #[tokio::main]
 pub async fn run() -> Result<()> {
     let cfg = match std::env::args_os().nth(1) {
