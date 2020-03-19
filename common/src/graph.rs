@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
+    proto::Position,
     math,
 };
 
@@ -52,7 +53,7 @@ impl<N, C> Graph<N, C> {
     /// correct vertex winding.
     pub fn nearby_cubes(
         &self,
-        start: NodeId,
+        start: Position,
         distance: u32,
     ) -> Vec<(NodeId, Vertex, bool, na::Matrix4<f32>)> {
         struct PendingNode {
@@ -66,13 +67,15 @@ impl<N, C> Graph<N, C> {
         let mut pending = Vec::<PendingNode>::new();
         let mut visited = FxHashSet::<NodeId>::default();
 
+        let start_p = start.local.map(|x| x as f64) * math::origin();
+
         pending.push(PendingNode {
-            id: start,
+            id: start.node,
             parity: false,
             distance: 0,
             transform: na::Matrix4::identity(),
         });
-        visited.insert(start);
+        visited.insert(start.node);
 
         while let Some(current) = pending.pop() {
             let node = &self.nodes[current.id.idx()];
@@ -84,7 +87,7 @@ impl<N, C> Graph<N, C> {
                     na::convert(current.transform * cube_to_node(v)),
                 ));
             }
-            if current.distance == distance {
+            if (start_p - current.transform * math::origin()).norm() > distance as f64 {
                 continue;
             }
             for side in Side::iter() {
