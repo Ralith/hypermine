@@ -54,13 +54,12 @@ impl<N, C> Graph<N, C> {
     pub fn nearby_cubes(
         &self,
         start: Position,
-        distance: u32,
+        distance: f64,
     ) -> Vec<(NodeId, Vertex, bool, na::Matrix4<f32>)> {
         struct PendingNode {
             id: NodeId,
             parity: bool,
             parent_in_range: bool,
-            distance: u32,
             transform: na::Matrix4<f64>,
         }
 
@@ -73,7 +72,6 @@ impl<N, C> Graph<N, C> {
             id: start.node,
             parity: false,
             parent_in_range: true,
-            distance: 0,
             transform: na::Matrix4::identity(),
         });
         visited.insert(start.node);
@@ -81,11 +79,11 @@ impl<N, C> Graph<N, C> {
         while let Some(current) = pending.pop() {
             let node = &self.nodes[current.id.idx()];
             let current_p = current.transform * math::origin();
-            let current_in_range = math::distance(&start_p, &current_p) < distance as f64;
+            let current_in_range = math::distance(&start_p, &current_p) < distance;
 
             for v in self.cubes_at(current.id) {
                 let v_transform = current.transform * cube_to_node(v);
-                if math::distance(&start_p, &(v_transform * math::origin())) < distance as f64 {
+                if math::distance(&start_p, &(v_transform * math::origin())) < distance {
                     result.push((
                         current.id,
                         v,
@@ -111,7 +109,6 @@ impl<N, C> Graph<N, C> {
                     id: neighbor,
                     parity: !current.parity,
                     parent_in_range: current_in_range,
-                    distance: current.distance + 1,
                     transform: current.transform * side.reflection(),
                 });
                 visited.insert(neighbor);
