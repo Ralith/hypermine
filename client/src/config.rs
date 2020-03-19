@@ -6,7 +6,7 @@ use tracing::{error, info};
 pub struct Config {
     pub name: Arc<str>,
     pub data_dir: PathBuf,
-    pub view_distance: u32,
+    pub view_distance: f64,
     pub chunks_loaded_per_frame: u32,
     pub input_send_rate: u16,
 }
@@ -43,7 +43,7 @@ impl Config {
         Config {
             name: name.unwrap_or_else(|| whoami::user().into()),
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
-            view_distance: view_distance.unwrap_or(3),
+            view_distance: view_distance.unwrap_or(3.0),
             chunks_loaded_per_frame: chunks_loaded_per_frame.unwrap_or(16),
             input_send_rate: input_send_rate.unwrap_or(30),
         }
@@ -55,7 +55,7 @@ impl Config {
 struct RawConfig {
     name: Option<Arc<str>>,
     data_dir: Option<PathBuf>,
-    view_distance: Option<u32>,
+    view_distance: Option<f64>,
     chunks_loaded_per_frame: Option<u32>,
     input_send_rate: Option<u16>,
 }

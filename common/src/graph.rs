@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
     math,
+    proto::Position,
 };
 
 /// Graph of the right dodecahedral tiling of H^3
@@ -52,41 +53,50 @@ impl<N, C> Graph<N, C> {
     /// correct vertex winding.
     pub fn nearby_cubes(
         &self,
-        start: NodeId,
-        distance: u32,
+        start: Position,
+        distance: f64,
     ) -> Vec<(NodeId, Vertex, bool, na::Matrix4<f32>)> {
         struct PendingNode {
             id: NodeId,
             parity: bool,
-            distance: u32,
+            parent_in_range: bool,
             transform: na::Matrix4<f64>,
         }
 
         let mut result = Vec::new();
         let mut pending = Vec::<PendingNode>::new();
         let mut visited = FxHashSet::<NodeId>::default();
+        let start_p = start.local.map(|x| x as f64) * math::origin();
 
         pending.push(PendingNode {
-            id: start,
+            id: start.node,
             parity: false,
-            distance: 0,
+            parent_in_range: true,
             transform: na::Matrix4::identity(),
         });
-        visited.insert(start);
+        visited.insert(start.node);
 
         while let Some(current) = pending.pop() {
             let node = &self.nodes[current.id.idx()];
+            let current_p = current.transform * math::origin();
+            let current_in_range = math::distance(&start_p, &current_p) < distance;
+
             for v in self.cubes_at(current.id) {
-                result.push((
-                    current.id,
-                    v,
-                    current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
-                    na::convert(current.transform * cube_to_node(v)),
-                ));
+                let v_transform = current.transform * cube_to_node(v);
+                if math::distance(&start_p, &(v_transform * math::origin())) < distance {
+                    result.push((
+                        current.id,
+                        v,
+                        current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
+                        na::convert(v_transform),
+                    ));
+                }
             }
-            if current.distance == distance {
+
+            if !current_in_range && !current.parent_in_range {
                 continue;
             }
+
             for side in Side::iter() {
                 let neighbor = match node.neighbors[side as usize] {
                     None => continue,
@@ -98,7 +108,7 @@ impl<N, C> Graph<N, C> {
                 pending.push(PendingNode {
                     id: neighbor,
                     parity: !current.parity,
-                    distance: current.distance + 1,
+                    parent_in_range: current_in_range,
                     transform: current.transform * side.reflection(),
                 });
                 visited.insert(neighbor);
