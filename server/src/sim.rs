@@ -4,7 +4,7 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use tracing::{debug, error_span, trace};
+use tracing::{debug, error_span, info, trace};
 
 use crate::Config;
 use common::{
@@ -43,13 +43,15 @@ impl Sim {
         result
     }
 
-    pub fn spawn_character(&mut self, _hello: ClientHello) -> (EntityId, Entity) {
+    pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
         let id = self.new_id();
+        info!(%id, name = %hello.name, "spawning character");
         let position = Position {
             node: NodeId::ROOT,
             local: na::one(),
         };
         let character = Character {
+            name: hello.name,
             latest_command: 0,
             speed: 0.0,
             direction: -na::Vector3::z_axis(),
@@ -166,18 +168,11 @@ impl Sim {
                 .iter()
                 .map(|(_, (&id, &position))| (id, position))
                 .collect(),
-            characters: self
+            character_orientations: self
                 .world
                 .query::<(&EntityId, &Character)>()
                 .iter()
-                .map(|(_, (&id, ch))| {
-                    (
-                        id,
-                        proto::Character {
-                            orientation: ch.orientation,
-                        },
-                    )
-                })
+                .map(|(_, (&id, ch))| (id, ch.orientation))
                 .collect(),
         };
 
@@ -202,6 +197,7 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     }
     if let Ok(x) = world.get::<Character>(entity) {
         components.push(Component::Character(proto::Character {
+            name: x.name.clone(),
             orientation: x.orientation,
         }));
     }
@@ -209,6 +205,7 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
 }
 
 struct Character {
+    name: String,
     orientation: na::UnitQuaternion<f32>,
     direction: na::Unit<na::Vector3<f32>>,
     speed: f32,

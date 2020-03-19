@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::{dodeca, graph::NodeId, EntityId, Step};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ClientHello {}
+pub struct ClientHello {
+    pub name: String,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerHello {
@@ -20,7 +22,7 @@ pub struct Position {
 pub struct StateDelta {
     pub step: Step,
     pub positions: Vec<(EntityId, Position)>,
-    pub characters: Vec<(EntityId, Character)>,
+    pub character_orientations: Vec<(EntityId, na::UnitQuaternion<f32>)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,5 +58,6 @@ pub struct FreshNode {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Character {
+    pub name: String,
     pub orientation: na::UnitQuaternion<f32>,
 }

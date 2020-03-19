@@ -27,8 +27,8 @@ fn main() {
     ]));
 
     // Kick off networking
-    let net = net::spawn();
-    let sim = Sim::new(net);
+    let net = net::spawn(config.clone());
+    let sim = Sim::new(net, config.clone());
 
     // Finish creating the window, including the Vulkan resources used to render to it
     let window = graphics::Window::new(window, core.clone(), config, sim);

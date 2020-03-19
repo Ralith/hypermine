@@ -6,17 +6,19 @@ use tokio::sync::mpsc;
 
 use common::{codec, proto};
 
+use crate::Config;
+
 pub struct Net {
     pub incoming: mpsc::UnboundedReceiver<Message>,
     pub outgoing: mpsc::UnboundedSender<proto::Command>,
     pub thread: thread::JoinHandle<()>,
 }
 
-pub fn spawn() -> Net {
+pub fn spawn(cfg: Arc<Config>) -> Net {
     let (incoming_send, incoming_recv) = mpsc::unbounded_channel();
     let (outgoing_send, outgoing_recv) = mpsc::unbounded_channel();
     let thread = thread::spawn(move || {
-        if let Err(e) = run(incoming_send.clone(), outgoing_recv) {
+        if let Err(e) = run(cfg, incoming_send.clone(), outgoing_recv) {
             let _ = incoming_send.send(Message::ConnectionLost(e));
         }
     });
@@ -37,6 +39,7 @@ pub enum Message {
 
 #[tokio::main(core_threads = 1)]
 async fn run(
+    cfg: Arc<Config>,
     incoming: mpsc::UnboundedSender<Message>,
     outgoing: mpsc::UnboundedReceiver<proto::Command>,
 ) -> Result<()> {
@@ -49,12 +52,13 @@ async fn run(
     endpoint.default_client_config(client_cfg);
     let (endpoint, _) = endpoint.bind(&"[::]:0".parse().unwrap())?;
 
-    let result = inner(incoming, outgoing, endpoint.clone()).await;
+    let result = inner(cfg, incoming, outgoing, endpoint.clone()).await;
     endpoint.wait_idle().await;
     result
 }
 
 async fn inner(
+    cfg: Arc<Config>,
     incoming: mpsc::UnboundedSender<Message>,
     outgoing: mpsc::UnboundedReceiver<proto::Command>,
     endpoint: quinn::Endpoint,
@@ -73,7 +77,13 @@ async fn inner(
     // Start sending commands asynchronously
     tokio::spawn(handle_outgoing(outgoing, connection));
     // Actually send the hello message
-    codec::send_whole(clienthello_stream, &proto::ClientHello {}).await?;
+    codec::send_whole(
+        clienthello_stream,
+        &proto::ClientHello {
+            name: (*cfg.name).into(),
+        },
+    )
+    .await?;
 
     let mut ordered = uni_streams.next().await.unwrap()?;
     // Handle unordered messages
