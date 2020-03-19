@@ -8,6 +8,7 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub view_distance: u32,
     pub chunks_loaded_per_frame: u32,
+    pub input_send_rate: u16,
 }
 
 impl Config {
@@ -20,6 +21,7 @@ impl Config {
             data_dir,
             view_distance,
             chunks_loaded_per_frame,
+            input_send_rate,
         } = match fs::read(&path) {
             Ok(data) => match toml::from_slice(&data) {
                 Ok(x) => x,
@@ -43,6 +45,7 @@ impl Config {
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
             view_distance: view_distance.unwrap_or(3),
             chunks_loaded_per_frame: chunks_loaded_per_frame.unwrap_or(16),
+            input_send_rate: input_send_rate.unwrap_or(30),
         }
     }
 }
@@ -54,4 +57,5 @@ struct RawConfig {
     data_dir: Option<PathBuf>,
     view_distance: Option<u32>,
     chunks_loaded_per_frame: Option<u32>,
+    input_send_rate: Option<u16>,
 }

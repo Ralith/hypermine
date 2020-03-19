@@ -1,10 +1,10 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{error, trace};
 
-use crate::{graphics::lru_table::SlotId, net, Net};
+use crate::{graphics::lru_table::SlotId, net, Config, Net};
 use common::{
     dodeca,
     graph::{Graph, NodeId},
@@ -15,6 +15,7 @@ use common::{
 
 /// Game state
 pub struct Sim {
+    cfg: Arc<Config>,
     net: Net,
 
     // World state
@@ -26,12 +27,14 @@ pub struct Sim {
     step: Option<Step>,
 
     // Input state
+    since_input_sent: Duration,
     velocity: na::Vector3<f32>,
 }
 
 impl Sim {
-    pub fn new(net: Net) -> Self {
+    pub fn new(net: Net, cfg: Arc<Config>) -> Self {
         let mut result = Self {
+            cfg,
             net,
 
             graph: Graph::new(),
@@ -41,6 +44,7 @@ impl Sim {
             orientation: na::one(),
             step: None,
 
+            since_input_sent: Duration::new(0, 0),
             velocity: na::zero(),
         };
 
@@ -57,12 +61,16 @@ impl Sim {
         self.velocity = v;
     }
 
-    pub fn step(&mut self, _dt: Duration) {
+    pub fn step(&mut self, dt: Duration) {
         while let Ok(msg) = self.net.incoming.try_recv() {
             self.handle_net(msg);
         }
 
-        self.send_input();
+        self.since_input_sent += dt;
+        if self.since_input_sent > Duration::from_secs(1) / (self.cfg.input_send_rate as u32) {
+            self.send_input();
+            self.since_input_sent = Duration::new(0, 0);
+        }
     }
 
     fn handle_net(&mut self, msg: net::Message) {
