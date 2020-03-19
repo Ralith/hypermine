@@ -15,6 +15,14 @@ fn main() {
     // Set up logging
     tracing_subscriber::fmt::init();
 
+    // spawn the server in a new thread
+    std::thread::spawn(|| {
+        if let Err(e) = server::run() {
+            eprintln!("{:#}", e);
+            std::process::exit(1);
+        }
+    });
+
     let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
     let config = Arc::new(Config::load(&dirs));
 
