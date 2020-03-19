@@ -59,6 +59,7 @@ impl<N, C> Graph<N, C> {
         struct PendingNode {
             id: NodeId,
             parity: bool,
+            parent_in_range: bool,
             distance: u32,
             transform: na::Matrix4<f64>,
         }
@@ -66,12 +67,12 @@ impl<N, C> Graph<N, C> {
         let mut result = Vec::new();
         let mut pending = Vec::<PendingNode>::new();
         let mut visited = FxHashSet::<NodeId>::default();
-
         let start_p = start.local.map(|x| x as f64) * math::origin();
 
         pending.push(PendingNode {
             id: start.node,
             parity: false,
+            parent_in_range: true,
             distance: 0,
             transform: na::Matrix4::identity(),
         });
@@ -79,17 +80,25 @@ impl<N, C> Graph<N, C> {
 
         while let Some(current) = pending.pop() {
             let node = &self.nodes[current.id.idx()];
+            let current_p = current.transform * math::origin();
+            let current_in_range = math::distance(&start_p, &current_p) < distance as f64;
+
             for v in self.cubes_at(current.id) {
-                result.push((
-                    current.id,
-                    v,
-                    current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
-                    na::convert(current.transform * cube_to_node(v)),
-                ));
+                let v_transform = current.transform * cube_to_node(v);
+                if math::distance(&start_p, &(v_transform * math::origin())) < distance as f64 {
+                    result.push((
+                        current.id,
+                        v,
+                        current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
+                        na::convert(v_transform),
+                    ));
+                }
             }
-            if (start_p - current.transform * math::origin()).norm() > distance as f64 {
+
+            if !current_in_range && !current.parent_in_range {
                 continue;
             }
+
             for side in Side::iter() {
                 let neighbor = match node.neighbors[side as usize] {
                     None => continue,
@@ -101,6 +110,7 @@ impl<N, C> Graph<N, C> {
                 pending.push(PendingNode {
                     id: neighbor,
                     parity: !current.parity,
+                    parent_in_range: current_in_range,
                     distance: current.distance + 1,
                     transform: current.transform * side.reflection(),
                 });
