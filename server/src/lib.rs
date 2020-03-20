@@ -1,81 +1,53 @@
-mod config;
 mod sim;
 
-use std::{fs, path::Path, sync::Arc, time::Duration};
+use std::{net::UdpSocket, sync::Arc, time::Duration};
 
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{Context, Error, Result};
 use futures::{select, StreamExt, TryStreamExt};
 use hecs::Entity;
-use quinn::{Certificate, CertificateChain, PrivateKey};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
-use tracing::{error, error_span, info, trace, warn};
+use tracing::{error, error_span, info, trace};
 
 use common::{codec, proto};
-use config::Config;
 use sim::Sim;
 
-#[tokio::main]
-pub async fn run() -> Result<()> {
-    let cfg = match std::env::args_os().nth(1) {
-        Some(path) => Config::load(Path::new(&path))?,
-        None => Config::default(),
-    };
+pub struct NetParams {
+    pub certificate_chain: quinn::CertificateChain,
+    pub private_key: quinn::PrivateKey,
+    pub socket: UdpSocket,
+}
 
-    let (certs, pkey) = match (&cfg.certificate_chain, &cfg.private_key) {
-        (&Some(ref certificate_chain), &Some(ref private_key)) => (
-            CertificateChain::from_pem(
-                &fs::read(certificate_chain).context("reading certificate chain")?,
-            )
-            .context("parsing certificate chain")?,
-            PrivateKey::from_pem(&fs::read(private_key).context("reading private key")?)
-                .context("parsing private key")?,
-        ),
-        _ => {
-            // TODO: Cache on disk
-            warn!("generating self-signed certificate");
-            let cert = rcgen::generate_simple_self_signed(vec![cfg
-                .server_name
-                .clone()
-                .map(Ok)
-                .unwrap_or_else(|| {
-                    hostname::get().context("getting hostname").and_then(|x| {
-                        x.into_string()
-                            .map_err(|_| anyhow!("hostname is not valid UTF-8"))
-                    })
-                })?])
-            .unwrap();
-            let key = cert.serialize_private_key_der();
-            let cert = cert.serialize_der().unwrap();
-            (
-                CertificateChain::from_certs(Certificate::from_der(&cert)),
-                PrivateKey::from_der(&key).unwrap(),
-            )
-        }
-    };
+pub struct SimConfig {
+    pub rate: u16,
+    pub view_distance: u32,
+}
+
+#[tokio::main]
+pub async fn run(net: NetParams, sim: SimConfig) -> Result<()> {
     let mut server_config = quinn::ServerConfigBuilder::default();
     server_config
-        .certificate(certs, pkey)
+        .certificate(net.certificate_chain, net.private_key)
         .context("parsing certificate")?;
     let mut endpoint = quinn::Endpoint::builder();
     endpoint.listen(server_config.build());
-    let (endpoint, incoming) = endpoint.bind(&cfg.listen)?;
+    let (endpoint, incoming) = endpoint.with_socket(net.socket)?;
     info!(address = %endpoint.local_addr().unwrap(), "listening");
 
-    let server = Server::new(cfg);
+    let server = Server::new(sim);
     server.run(incoming).await;
     Ok(())
 }
 
 struct Server {
-    cfg: Arc<Config>,
+    cfg: Arc<SimConfig>,
     sim: Sim,
     clients: DenseSlotMap<ClientId, Client>,
 }
 
 impl Server {
-    fn new(cfg: Config) -> Self {
-        let cfg = Arc::new(cfg);
+    fn new(params: SimConfig) -> Self {
+        let cfg = Arc::new(params);
         Self {
             sim: Sim::new(cfg.clone()),
             cfg,
