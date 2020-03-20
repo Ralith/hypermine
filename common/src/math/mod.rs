@@ -6,8 +6,6 @@
 mod isometry;
 pub use isometry::Isometry;
 
-use std::f64;
-
 use na::{RealField, Scalar};
 use serde::{Deserialize, Serialize};
 
