@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn sides_to_vertex() {
         for v in Vertex::iter() {
-            let [a, b, c] = VERTEX_SIDES[v as usize];
+            let [a, b, c] = v.canonical_sides();
             assert_eq!(v, Vertex::from_sides(a, b, c).unwrap());
             assert_eq!(v, Vertex::from_sides(a, c, b).unwrap());
             assert_eq!(v, Vertex::from_sides(b, a, c).unwrap());
