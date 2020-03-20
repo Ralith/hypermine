@@ -4,9 +4,10 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{error, trace};
 
-use crate::{graphics::lru_table::SlotId, net, Config, Net};
+use crate::{worldgen::NodeState, graphics::lru_table::SlotId, net, Config, Net};
 use common::{
     dodeca,
+    cursor::Cursor,
     graph::{Graph, NodeId},
     proto::{self, Command, Position},
     world::{Material, SUBDIVISION_FACTOR},
@@ -21,7 +22,7 @@ pub struct Sim {
     // World state
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
-    pub graph: Graph<bool, Cube>,
+    pub graph: Graph<NodeState, Cube>,
     local_character: Option<EntityId>,
     orientation: na::UnitQuaternion<f32>,
     step: Option<Step>,
@@ -49,6 +50,9 @@ impl Sim {
         };
 
         result.populate_node(NodeId::ROOT);
+        for v in dodeca::Vertex::iter() {
+            result.populate_cube(NodeId::ROOT, v);
+        }
 
         result
     }
@@ -185,59 +189,36 @@ impl Sim {
     }
 
     fn populate_node(&mut self, node: NodeId) {
-        use common::dodeca::Side;
-
-        *self.graph.get_mut(node) = Some(match self.graph.parent(node) {
-            None => true,
-            Some(x) => {
-                let parent_solid = self
-                    .graph
-                    .get(self.graph.neighbor(node, x).unwrap())
-                    .unwrap();
-                if x == Side::A {
-                    !parent_solid
-                } else {
-                    parent_solid
-                }
-            }
-        });
+        *self.graph.get_mut(node) = self
+            .graph
+            .parent(node)
+            .and_then(|i| {
+                let parent_state = (*self.graph.get(self.graph.neighbor(node, i)?))?;
+                Some(parent_state.child(i))
+            })
+            .or(Some(NodeState::ROOT));
     }
 
     fn populate_cube(&mut self, node: NodeId, cube: dodeca::Vertex) {
-        let contains_border = cube.canonical_sides().iter().any(|&x| x == dodeca::Side::A);
-
-        let voxels = if contains_border {
-            let mut data = (0..(SUBDIVISION_FACTOR + 2).pow(3))
-                .map(|_| Material::Void)
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
-
-            const MAGIC: u32 = 1_000_081;
-            let mut rd = ((cube as u32) + 20 * u32::from(node)) % MAGIC; // Pseudorandom value to fill chunk with
-            const GAP: usize = 0;
-            const XGAP: usize = (SUBDIVISION_FACTOR - 1) / 2; // dodeca::Side::A will always correspond to the x coordinate, so let`s flatten it in this direction
-            for z in GAP..(SUBDIVISION_FACTOR - GAP) {
-                for y in GAP..(SUBDIVISION_FACTOR - GAP) {
-                    for x in XGAP..(SUBDIVISION_FACTOR - XGAP) {
-                        rd = (37 * rd + 1) % MAGIC;
-                        data[(x + 1)
-                            + (y + 1) * (SUBDIVISION_FACTOR + 2)
-                            + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)] = if rd % 4 == 1 {
-                            Material::Stone
-                        } else if rd % 4 == 2 {
-                            Material::Dirt
-                        } else if rd % 4 == 3 {
-                            Material::Sand
-                        } else {
-                            Material::Void
-                        };
-                    }
-                }
-            }
-            VoxelData::Dense(data)
-        } else {
-            VoxelData::Empty
-        };
+        let node_state = self.graph.get(node).unwrap();
+        // find the state of all nodes incident to this cube
+        let voxels = NodeState::voxels(
+            cube
+                .dual_vertices()
+                // this'll give us all the nodes that touch the cube
+                .map(|paths| paths.fold((Some(node), node_state), |(acc_id, acc_state), x| {
+                    let x_id = acc_id.and_then(|i| self.graph.neighbor(i, x));
+                    (
+                        x_id,
+                        x_id.and_then(|i| *self.graph.get(i))
+                            .unwrap_or_else(|| acc_state.child(x))
+                    )
+                }))
+                .map(|(_, state)| state)
+                // their states can tell us their precedence and what to render
+                .collect(),
+            Cursor::from_vertex(node, cube)
+        );
         *self.graph.get_cube_mut(node, cube) = Some(Cube {
             surface: None,
             voxels,

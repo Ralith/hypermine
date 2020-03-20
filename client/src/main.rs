@@ -1,5 +1,6 @@
 mod config;
 mod graphics;
+mod worldgen;
 mod net;
 mod sim;
 
