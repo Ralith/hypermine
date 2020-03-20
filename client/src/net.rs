@@ -63,14 +63,12 @@ async fn inner(
     outgoing: mpsc::UnboundedReceiver<proto::Command>,
     endpoint: quinn::Endpoint,
 ) -> Result<()> {
+    let server = cfg.server.unwrap();
     let quinn::NewConnection {
         connection,
         mut uni_streams,
         ..
-    } = endpoint
-        .connect(&"[::1]:1234".parse().unwrap(), "localhost")
-        .unwrap()
-        .await?;
+    } = endpoint.connect(&server, "localhost").unwrap().await?;
 
     // Open the first stream for our hello message
     let clienthello_stream = connection.open_uni().await?;

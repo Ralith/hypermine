@@ -1,4 +1,4 @@
-use std::{fs, io, path::PathBuf, sync::Arc};
+use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use serde::Deserialize;
 use tracing::{error, info};
@@ -9,6 +9,7 @@ pub struct Config {
     pub view_distance: f64,
     pub chunks_loaded_per_frame: u32,
     pub input_send_rate: u16,
+    pub server: Option<SocketAddr>,
 }
 
 impl Config {
@@ -22,6 +23,7 @@ impl Config {
             view_distance,
             chunks_loaded_per_frame,
             input_send_rate,
+            server,
         } = match fs::read(&path) {
             Ok(data) => match toml::from_slice(&data) {
                 Ok(x) => x,
@@ -46,6 +48,7 @@ impl Config {
             view_distance: view_distance.unwrap_or(3.0),
             chunks_loaded_per_frame: chunks_loaded_per_frame.unwrap_or(16),
             input_send_rate: input_send_rate.unwrap_or(30),
+            server,
         }
     }
 }
@@ -58,4 +61,5 @@ struct RawConfig {
     view_distance: Option<f64>,
     chunks_loaded_per_frame: Option<u32>,
     input_send_rate: Option<u16>,
+    server: Option<SocketAddr>,
 }

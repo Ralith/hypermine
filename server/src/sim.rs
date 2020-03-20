@@ -6,7 +6,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use tracing::{debug, error_span, info, trace};
 
-use crate::Config;
+use crate::SimConfig;
 use common::{
     graph::{Graph, NodeId},
     math,
@@ -15,7 +15,7 @@ use common::{
 };
 
 pub struct Sim {
-    cfg: Arc<Config>,
+    cfg: Arc<SimConfig>,
     rng: SmallRng,
     step: Step,
     entity_ids: FxHashMap<EntityId, Entity>,
@@ -26,7 +26,7 @@ pub struct Sim {
 }
 
 impl Sim {
-    pub fn new(cfg: Arc<Config>) -> Self {
+    pub fn new(cfg: Arc<SimConfig>) -> Self {
         let mut result = Self {
             cfg,
             rng: SmallRng::from_entropy(),

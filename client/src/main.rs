@@ -3,11 +3,14 @@ mod graphics;
 mod net;
 mod sim;
 
+use std::{
+    net::{SocketAddr, UdpSocket},
+    sync::Arc,
+};
+
 use config::Config;
 use net::Net;
 use sim::Sim;
-
-use std::sync::Arc;
 
 use ash::extensions::khr;
 
@@ -15,16 +18,40 @@ fn main() {
     // Set up logging
     tracing_subscriber::fmt::init();
 
-    // spawn the server in a new thread
-    std::thread::spawn(|| {
-        if let Err(e) = server::run() {
-            eprintln!("{:#}", e);
-            std::process::exit(1);
-        }
-    });
-
     let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
-    let config = Arc::new(Config::load(&dirs));
+    let mut config = Config::load(&dirs);
+
+    if config.server.is_none() {
+        // spawn an in-process server
+        let socket =
+            UdpSocket::bind(&"[::1]:0".parse::<SocketAddr>().unwrap()).expect("binding socket");
+        config.server = Some(socket.local_addr().unwrap());
+
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let key = cert.serialize_private_key_der();
+        let cert = cert.serialize_der().unwrap();
+
+        let sim_cfg = server::SimConfig {
+            rate: config.input_send_rate,
+            view_distance: 3,
+        };
+        std::thread::spawn(move || {
+            if let Err(e) = server::run(
+                server::NetParams {
+                    certificate_chain: quinn::CertificateChain::from_certs(
+                        quinn::Certificate::from_der(&cert),
+                    ),
+                    private_key: quinn::PrivateKey::from_der(&key).unwrap(),
+                    socket,
+                },
+                sim_cfg,
+            ) {
+                eprintln!("{:#}", e);
+                std::process::exit(1);
+            }
+        });
+    }
+    let config = Arc::new(config);
 
     // Create the OS window
     let window = graphics::EarlyWindow::new();
