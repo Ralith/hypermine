@@ -50,7 +50,7 @@ impl<T> LruTable<T> {
         Some(id)
     }
 
-    /// Get the most recently used slot, if any
+    /// Get the least recently used slot, if any
     pub fn lru(&self) -> Option<SlotId> {
         if self.tail == SlotId::NONE {
             debug_assert_eq!(self.head, SlotId::NONE);
