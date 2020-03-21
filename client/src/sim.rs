@@ -235,34 +235,12 @@ fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
     let node_state = graph.get(node).unwrap();
     let node_length = graph.length(node);
     let mut voxels = VoxelData::Solid(Material::Void);
-    cube.dual_vertices()
-        // this'll give us 7/8 nodes that touch the cube
-        .map(|paths| {
-            paths.fold((Some(node), node_state), |(acc_id, acc_state), x| {
-                let x_id = acc_id.and_then(|i| graph.neighbor(i, x));
-                (
-                    x_id,
-                    x_id.and_then(|i| *graph.get(i))
-                        .unwrap_or_else(|| acc_state.child(x)),
-                )
-            })
-        })
-        .map(|(node, state)| {
-            (
-                na::Vector3::from_vec(
-                    cube.canonical_sides()
-                        .iter()
-                        .map(|&s| {
-                            node.and_then(|n| graph.neighbor(n, s))
-                                .map(|n| if graph.length(n) > node_length { 0 } else { 1 })
-                                .unwrap_or(1)
-                        })
-                        .collect::<Vec<usize>>(),
-                ),
-                state,
-            )
-        })
-        .for_each(|(subchunk_offset, state)| state.fill_subchunk(&mut voxels, subchunk_offset));
+    for (coords, path) in cube.dual_vertices() {
+        let state = path.fold(node_state, |state, side| state.child(side));
+        let subchunk_offset =
+            na::Vector3::new(coords[0] as usize, coords[1] as usize, coords[2] as usize);
+        state.fill_subchunk(&mut voxels, subchunk_offset);
+    }
     *graph.get_cube_mut(node, cube) = Some(Cube {
         surface: None,
         voxels,
