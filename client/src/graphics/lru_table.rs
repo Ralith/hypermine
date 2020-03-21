@@ -1,4 +1,4 @@
-/// A fixed-size table of handles with constant-time insert and free of least recently used value
+/// A fixed-size random-access table that maintains an LRU list in constant time
 pub struct LruTable<T> {
     slots: Box<[Slot<T>]>,
     free: Vec<SlotId>,
