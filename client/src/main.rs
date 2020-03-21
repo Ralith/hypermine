@@ -1,8 +1,8 @@
 mod config;
 mod graphics;
-mod worldgen;
 mod net;
 mod sim;
+mod worldgen;
 
 use config::Config;
 use net::Net;

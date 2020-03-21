@@ -18,6 +18,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Graph<N, C> {
     nodes: Vec<Node<N, C>>,
+    /// This field stores implicitly added nodes to ensure that they're initialized in the correct
+    /// order
     fresh: Vec<NodeId>,
 }
 

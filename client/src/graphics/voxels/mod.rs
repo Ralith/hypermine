@@ -140,7 +140,7 @@ impl Voxels {
                         );
                         slot
                     }
-                    (None, &VoxelData::Empty) => continue,
+                    (None, &VoxelData::Solid(_)) => continue,
                 },
             };
             frame.drawn.push(DrawnChunk {
