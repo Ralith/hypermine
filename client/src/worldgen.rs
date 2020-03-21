@@ -1,9 +1,8 @@
 use crate::sim::VoxelData;
 use common::{
-    world::{Material, SUBDIVISION_FACTOR},
     dodeca::Side,
+    world::{Material, SUBDIVISION_FACTOR},
 };
-
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeState {
@@ -46,28 +45,28 @@ impl NodeState {
         // half of SUBDIVISION_FACTOR, which is the width/height/depth of a subchunk.
         const GAP: usize = 0;
         match self {
-            RootSky | Sky | DeepSky => {},
+            RootSky | Sky | DeepSky => {}
             filled => {
                 match filled {
                     Land => {
-                        for z in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
-                            for y in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
-                                for x in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                        for z in GAP..(SUBDIVISION_FACTOR / 2 - GAP) {
+                            for y in GAP..(SUBDIVISION_FACTOR / 2 - GAP) {
+                                for x in GAP..(SUBDIVISION_FACTOR / 2 - GAP) {
                                     let i = subchunk_index(x, y, z, subchunk_offset);
-                                    voxels.data_mut()[i] = match ((z + y)/2 + (x%3)) % 3 {
+                                    voxels.data_mut()[i] = match ((z + y) / 2 + (x % 3)) % 3 {
                                         0 => Material::Stone,
                                         1 => Material::Dirt,
                                         2 => Material::Sand,
-                                        _ => unreachable!()
+                                        _ => unreachable!(),
                                     };
                                 }
                             }
                         }
-                    },
+                    }
                     DeepLand => {
-                        for z in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
-                            for y in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
-                                for x in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                        for z in GAP..(SUBDIVISION_FACTOR / 2 - GAP) {
+                            for y in GAP..(SUBDIVISION_FACTOR / 2 - GAP) {
+                                for x in GAP..(SUBDIVISION_FACTOR / 2 - GAP) {
                                     let i = subchunk_index(x, y, z, subchunk_offset);
                                     voxels.data_mut()[i] = Material::Stone;
                                 }
@@ -85,10 +84,7 @@ impl NodeState {
 fn subchunk_index(x: usize, y: usize, z: usize, subchunk_offset: na::Vector3<usize>) -> usize {
     let v = na::Vector3::new(x, y, z)
         + na::Vector3::repeat(1)
-        + (subchunk_offset * (SUBDIVISION_FACTOR/2));
+        + (subchunk_offset * (SUBDIVISION_FACTOR / 2));
 
-    v.x
-        + v.y * (SUBDIVISION_FACTOR + 2)
-        + v.z * (SUBDIVISION_FACTOR + 2).pow(2)
+    v.x + v.y * (SUBDIVISION_FACTOR + 2) + v.z * (SUBDIVISION_FACTOR + 2).pow(2)
 }
-
