@@ -4,15 +4,16 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{error, trace};
 
-use crate::{worldgen::NodeState, graphics::lru_table::SlotId, net, Config, Net};
+use crate::{graphics::lru_table::SlotId, net, worldgen::NodeState, Config, Net};
 use common::{
     dodeca,
-    cursor::Cursor,
     graph::{Graph, NodeId},
     proto::{self, Command, Position},
     world::{Material, SUBDIVISION_FACTOR},
     EntityId, Step,
 };
+
+type DualGraph = Graph<NodeState, Cube>;
 
 /// Game state
 pub struct Sim {
@@ -22,7 +23,7 @@ pub struct Sim {
     // World state
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
-    pub graph: Graph<NodeState, Cube>,
+    pub graph: DualGraph,
     local_character: Option<EntityId>,
     orientation: na::UnitQuaternion<f32>,
     step: Option<Step>,
@@ -34,11 +35,18 @@ pub struct Sim {
 
 impl Sim {
     pub fn new(net: Net, cfg: Arc<Config>) -> Self {
-        let mut result = Self {
+        Self {
             cfg,
             net,
 
-            graph: Graph::new(),
+            graph: {
+                let mut g = Graph::new();
+                populate_node(&mut g, NodeId::ROOT);
+                for v in dodeca::Vertex::iter() {
+                    populate_cube(&mut g, NodeId::ROOT, v);
+                }
+                g
+            },
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
             local_character: None,
@@ -47,14 +55,7 @@ impl Sim {
 
             since_input_sent: Duration::new(0, 0),
             velocity: na::zero(),
-        };
-
-        result.populate_node(NodeId::ROOT);
-        for v in dodeca::Vertex::iter() {
-            result.populate_cube(NodeId::ROOT, v);
         }
-
-        result
     }
 
     pub fn rotate(&mut self, delta: &na::UnitQuaternion<f32>) {
@@ -137,7 +138,7 @@ impl Sim {
         for node in &msg.nodes {
             self.graph.insert_child(node.parent, node.side);
         }
-        self.populate_fresh_nodes();
+        populate_fresh_nodes(&mut self.graph);
     }
 
     fn send_input(&mut self) {
@@ -173,57 +174,6 @@ impl Sim {
             .despawn(entity)
             .expect("destroyed nonexistent entity");
     }
-
-    fn populate_fresh_nodes(&mut self) {
-        let fresh = self.graph.fresh().to_vec();
-        self.graph.clear_fresh();
-        for &node in &fresh {
-            self.populate_node(node);
-        }
-        for &node in &fresh {
-            for cube in self.graph.cubes_at(node) {
-                self.populate_cube(node, cube);
-            }
-        }
-        self.graph.clear_fresh();
-    }
-
-    fn populate_node(&mut self, node: NodeId) {
-        *self.graph.get_mut(node) = self
-            .graph
-            .parent(node)
-            .and_then(|i| {
-                let parent_state = (*self.graph.get(self.graph.neighbor(node, i)?))?;
-                Some(parent_state.child(i))
-            })
-            .or(Some(NodeState::ROOT));
-    }
-
-    fn populate_cube(&mut self, node: NodeId, cube: dodeca::Vertex) {
-        let node_state = self.graph.get(node).unwrap();
-        // find the state of all nodes incident to this cube
-        let voxels = NodeState::voxels(
-            cube
-                .dual_vertices()
-                // this'll give us all the nodes that touch the cube
-                .map(|paths| paths.fold((Some(node), node_state), |(acc_id, acc_state), x| {
-                    let x_id = acc_id.and_then(|i| self.graph.neighbor(i, x));
-                    (
-                        x_id,
-                        x_id.and_then(|i| *self.graph.get(i))
-                            .unwrap_or_else(|| acc_state.child(x))
-                    )
-                }))
-                .map(|(_, state)| state)
-                // their states can tell us their precedence and what to render
-                .collect(),
-            Cursor::from_vertex(node, cube)
-        );
-        *self.graph.get_cube_mut(node, cube) = Some(Cube {
-            surface: None,
-            voxels,
-        });
-    }
 }
 
 pub struct Cube {
@@ -232,6 +182,91 @@ pub struct Cube {
 }
 
 pub enum VoxelData {
-    Empty,
     Dense(Box<[Material]>),
+    Solid(Material),
+}
+impl VoxelData {
+    pub fn data_mut(&mut self) -> &mut [Material] {
+        match self {
+            VoxelData::Dense(d) => d,
+            VoxelData::Solid(_) => {
+                *self = VoxelData::Dense(self.data());
+                self.data_mut()
+            }
+        }
+    }
+    pub fn data(&self) -> Box<[Material]> {
+        match self {
+            VoxelData::Dense(d) => Box::clone(d),
+            VoxelData::Solid(mat) => {
+                (0..(SUBDIVISION_FACTOR + 2).pow(3))
+                    .map(|_| *mat)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice()
+            }
+        }
+    }
+}
+
+fn populate_fresh_nodes(graph: &mut DualGraph) {
+    let fresh = graph.fresh().to_vec();
+    graph.clear_fresh();
+    for &node in &fresh {
+        populate_node(graph, node);
+    }
+    for &node in &fresh {
+        for cube in graph.cubes_at(node) {
+            populate_cube(graph, node, cube);
+        }
+    }
+    graph.clear_fresh();
+}
+
+fn populate_node(graph: &mut DualGraph, node: NodeId) {
+    *graph.get_mut(node) = graph
+        .parent(node)
+        .and_then(|i| {
+            let parent_state = (*graph.get(graph.neighbor(node, i)?))?;
+            Some(parent_state.child(i))
+        })
+        .or(Some(NodeState::ROOT));
+}
+
+fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
+    // find the state of all nodes incident to this cube
+    let node_state = graph.get(node).unwrap();
+    let node_length = graph.length(node);
+    let mut voxels = VoxelData::Solid(Material::Void);
+    cube.dual_vertices()
+        // this'll give us 7/8 nodes that touch the cube
+        .map(|paths| {
+            paths.fold((Some(node), node_state), |(acc_id, acc_state), x| {
+                let x_id = acc_id.and_then(|i| graph.neighbor(i, x));
+                (
+                    x_id,
+                    x_id.and_then(|i| *graph.get(i))
+                        .unwrap_or_else(|| acc_state.child(x)),
+                )
+            })
+        })
+        .map(|(node, state)| {
+            (
+                na::Vector3::from_vec(
+                    cube.canonical_sides()
+                        .iter()
+                        .map(|&s| {
+                            node.and_then(|n| graph.neighbor(n, s))
+                                .map(|n| if graph.length(n) > node_length { 0 } else { 1 })
+                                .unwrap_or(1)
+                        })
+                        .collect::<Vec<usize>>(),
+                ),
+                state,
+            )
+        })
+        .for_each(|(subchunk_offset, state)| state.fill_subchunk(&mut voxels, subchunk_offset));
+    *graph.get_cube_mut(node, cube) = Some(Cube {
+        surface: None,
+        voxels,
+    });
 }

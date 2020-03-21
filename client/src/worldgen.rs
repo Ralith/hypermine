@@ -1,9 +1,9 @@
 use crate::sim::VoxelData;
 use common::{
-    cursor::{Cursor, Dir},
     world::{Material, SUBDIVISION_FACTOR},
     dodeca::Side,
 };
+
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeState {
@@ -16,28 +16,20 @@ pub enum NodeState {
 use NodeState::*;
 
 impl NodeState {
-    pub const ROOT: Self = RootSky;
+    pub const ROOT: Self = Land;
 
     /// If a vertex is at the junction of 8 different types of nodes,
     /// which should it manifest?
-    fn precedence(self) -> u8 {
-        match self {
-            RootSky => 3,
-            DeepLand => 2,
-            Land => 1,
-            Sky | DeepSky => 0,
-        }
-    }
-
     pub fn child(self, i: Side) -> Self {
         match (self, i) {
+            /*
             (RootSky, _) => {
                 match i {
                     _ if i.adjacent_to(Side::A) => Land,
                     Side::A => Sky,
                     _ => DeepLand
                 }
-            },
+            },*/
             (_, Side::A) => match self {
                 Sky => Land,
                 Land => Sky,
@@ -50,63 +42,53 @@ impl NodeState {
         }
     }
 
-    pub fn voxels(incidents: Vec<NodeState>, cursor: Cursor) -> VoxelData {
-        assert_eq!(incidents.len(), 8);
-        let first = incidents.get(0).cloned();
-
-        // cubes with homogeneous incidents can't be seen,
-        // they're incased in things that can be seen
-        if incidents
-                .iter()
-                .fold(first, |a, x| a.filter(|a| a == x))
-                .is_some()
-        {
-            return VoxelData::Empty;
-        }
-
+    pub fn fill_subchunk(self, voxels: &mut VoxelData, subchunk_offset: na::Vector3<usize>) {
+        // half of SUBDIVISION_FACTOR, which is the width/height/depth of a subchunk.
         const GAP: usize = 0;
-        match incidents.iter().max_by(|a, b| a.precedence().cmp(&b.precedence())).unwrap() {
-            Land => {
-                let mut data = empty_chunk_data();
-                for z in GAP..(SUBDIVISION_FACTOR - GAP) {
-                    for y in GAP..(SUBDIVISION_FACTOR - GAP) {
-                        for x in GAP..((SUBDIVISION_FACTOR / 2) - GAP) {
-                            data[padded_chunk_index(x, y, z)] = match (z + y)/2 % 3 {
-                                0 => Material::Stone,
-                                1 => Material::Dirt,
-                                _ => Material::Sand,
-                            };
+        match self {
+            RootSky | Sky | DeepSky => {},
+            filled => {
+                match filled {
+                    Land => {
+                        for z in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                            for y in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                                for x in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                                    let i = subchunk_index(x, y, z, subchunk_offset);
+                                    voxels.data_mut()[i] = match ((z + y)/2 + (x%3)) % 3 {
+                                        0 => Material::Stone,
+                                        1 => Material::Dirt,
+                                        2 => Material::Sand,
+                                        _ => unreachable!()
+                                    };
+                                }
+                            }
+                        }
+                    },
+                    DeepLand => {
+                        for z in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                            for y in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                                for x in GAP..(SUBDIVISION_FACTOR/2 - GAP) {
+                                    let i = subchunk_index(x, y, z, subchunk_offset);
+                                    voxels.data_mut()[i] = Material::Stone;
+                                }
+                            }
                         }
                     }
-                }
-                VoxelData::Dense(data)
-            },
-            DeepLand => {
-                let mut data = empty_chunk_data();
-                for z in GAP..(SUBDIVISION_FACTOR - GAP) {
-                    for y in GAP..(SUBDIVISION_FACTOR - GAP) {
-                        for x in GAP..((SUBDIVISION_FACTOR) - GAP) {
-                            data[padded_chunk_index(x, y, z)] = Material::Stone;
-                        }
-                    }
-                }
-                VoxelData::Dense(data)
+                    _ => unreachable!(),
+                };
             }
-            RootSky | Sky | DeepSky => VoxelData::Empty,
         }
     }
 }
 
 #[inline]
-fn empty_chunk_data() -> Box<[Material]> {
-    (0..(SUBDIVISION_FACTOR + 2).pow(3))
-        .map(|_| Material::Void)
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
+fn subchunk_index(x: usize, y: usize, z: usize, subchunk_offset: na::Vector3<usize>) -> usize {
+    let v = na::Vector3::new(x, y, z)
+        + na::Vector3::repeat(1)
+        + (subchunk_offset * (SUBDIVISION_FACTOR/2));
 
-#[inline]
-fn padded_chunk_index(x: usize, y: usize, z: usize) -> usize {
-    (x + 1) + (y + 1) * (SUBDIVISION_FACTOR + 2) + (z + 1) * (SUBDIVISION_FACTOR + 2).pow(2)
+    v.x
+        + v.y * (SUBDIVISION_FACTOR + 2)
+        + v.z * (SUBDIVISION_FACTOR + 2).pow(2)
 }
 
