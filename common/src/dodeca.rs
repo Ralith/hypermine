@@ -102,22 +102,24 @@ impl Vertex {
         VERTEX_SIDES[self as usize]
     }
 
-    /// Sides across which to reflect the origin to obtain the vertices of the dual cube
-    pub fn dual_vertices(self) -> [impl ExactSizeIterator<Item = Side>; 8] {
+    /// For each vertex of the cube dual to this dodecahedral vertex, provides an iterator of at
+    /// most 3 steps to reach the corresponding graph node, and binary coordinates of the vertex in
+    /// question with respect to the origin vertex of the cube.
+    pub fn dual_vertices(self) -> [(impl ExactSizeIterator<Item = Side>, [bool; 3]); 8] {
         fn it(sides: [Side; 3], len: usize) -> impl ExactSizeIterator<Item = Side> {
             (0..len).map(move |i| sides[i])
         }
 
         let [a, b, c] = self.canonical_sides();
         [
-            it([Side::A; 3], 0),
-            it([c, Side::A, Side::A], 1),
-            it([b, Side::A, Side::A], 1),
-            it([b, c, Side::A], 2),
-            it([a, Side::A, Side::A], 1),
-            it([a, c, Side::A], 2),
-            it([a, b, Side::A], 2),
-            it([a, b, c], 3),
+            (it([Side::A; 3], 0), [false, false, false]),
+            (it([c, Side::A, Side::A], 1), [false, false, true]),
+            (it([b, Side::A, Side::A], 1), [false, true, false]),
+            (it([b, c, Side::A], 2), [false, true, true]),
+            (it([a, Side::A, Side::A], 1), [true, false, false]),
+            (it([a, c, Side::A], 2), [true, false, true]),
+            (it([a, b, Side::A], 2), [true, true, false]),
+            (it([a, b, c], 3), [true, true, true]),
         ]
     }
 }
