@@ -103,24 +103,22 @@ impl Vertex {
     }
 
     /// Sides across which to reflect the origin to obtain the vertices of the dual cube
-    pub fn dual_vertices(
-        self,
-    ) -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = Side>> {
-        let [a, b, c] = self.canonical_sides();
-        let table: [([Side; 3], usize); 8] = [
-            ([Side::A; 3], 0),
-            ([c, Side::A, Side::A], 1),
-            ([b, Side::A, Side::A], 1),
-            ([b, c, Side::A], 2),
-            ([a, Side::A, Side::A], 1),
-            ([a, c, Side::A], 2),
-            ([a, b, Side::A], 2),
-            ([a, b, c], 3),
-        ];
-        (0..8).map(move |i| {
-            let (sides, len) = table[i];
+    pub fn dual_vertices(self) -> [impl ExactSizeIterator<Item = Side>; 8] {
+        fn it(sides: [Side; 3], len: usize) -> impl ExactSizeIterator<Item = Side> {
             (0..len).map(move |i| sides[i])
-        })
+        }
+
+        let [a, b, c] = self.canonical_sides();
+        [
+            it([Side::A; 3], 0),
+            it([c, Side::A, Side::A], 1),
+            it([b, Side::A, Side::A], 1),
+            it([b, c, Side::A], 2),
+            it([a, Side::A, Side::A], 1),
+            it([a, c, Side::A], 2),
+            it([a, b, Side::A], 2),
+            it([a, b, c], 3),
+        ]
     }
 }
 
