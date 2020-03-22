@@ -204,9 +204,7 @@ impl VoxelData {
                 .map(|_| *mat)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            VoxelData::Uninitialized => {
-                VoxelData::Solid(Material::Void).data()
-            }
+            VoxelData::Uninitialized => VoxelData::Solid(Material::Void).data(),
         }
     }
 }

@@ -21,20 +21,18 @@ impl NodeState {
     /// What state comes after this state, from a given side?
     pub fn child(self, i: Side) -> Self {
         match (self, i) {
-            (RootSky, _) => {
-                match i {
-                    _ if i.adjacent_to(Side::A) => Land,
-                    Side::A => Sky,
-                    Side::J => Hole(5),
-                    _ => DeepLand
-                }
+            (RootSky, _) => match i {
+                _ if i.adjacent_to(Side::A) => Land,
+                Side::A => Sky,
+                Side::J => Hole(5),
+                _ => DeepLand,
             },
             (Hole(0), _) => match i {
                 Side::A | Side::J => Hole(5),
                 _ => Land,
             },
             (Hole(n), _) => match i {
-                Side::A | Side::J => Hole(n-1),
+                Side::A | Side::J => Hole(n - 1),
                 _ => DeepLand,
             },
             (_, Side::A) => match self {
@@ -49,7 +47,11 @@ impl NodeState {
         }
     }
 
-    pub fn write_subchunk_voxels(self, voxels: &mut VoxelData, subchunk_offset: na::Vector3<usize>) {
+    pub fn write_subchunk_voxels(
+        self,
+        voxels: &mut VoxelData,
+        subchunk_offset: na::Vector3<usize>,
+    ) {
         // half of SUBDIVISION_FACTOR, which is the width/height/depth of a subchunk.
         const GAP: usize = 0;
         const SUB: usize = (SUBDIVISION_FACTOR + 2) / 2;
@@ -79,7 +81,7 @@ impl NodeState {
                     }
                 }
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -87,7 +89,7 @@ impl NodeState {
         match self {
             Hole(_) | RootSky | Sky | DeepSky => Some(Material::Void),
             DeepLand => Some(Material::Stone),
-            _ => None
+            _ => None,
         }
     }
 
@@ -98,13 +100,13 @@ impl NodeState {
                 VoxelData::Uninitialized => {
                     *voxels = VoxelData::Solid(material);
                     return;
-                },
+                }
                 // why change the voxel? it's already filled with what we'd fill it with.
                 VoxelData::Solid(voxel_mat) if *voxel_mat == material => return,
                 _ => {}
             }
-        } 
-        
+        }
+
         // sometimes there's just no way around writing into the subchunk.
         self.write_subchunk_voxels(voxels, subchunk_offset);
     }
