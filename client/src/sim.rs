@@ -233,12 +233,10 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
 fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
     // find the state of all nodes incident to this cube
     let node_state = graph.get(node).unwrap();
-    let node_length = graph.length(node);
     let mut voxels = VoxelData::Solid(Material::Void);
-    for (coords, path) in cube.dual_vertices() {
+    for ([x, y, z], path) in cube.dual_vertices() {
         let state = path.fold(node_state, |state, side| state.child(side));
-        let subchunk_offset =
-            na::Vector3::new(coords[0] as usize, coords[1] as usize, coords[2] as usize);
+        let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
         state.fill_subchunk(&mut voxels, subchunk_offset);
     }
     *graph.get_cube_mut(node, cube) = Some(Cube {

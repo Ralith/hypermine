@@ -15,20 +15,19 @@ pub enum NodeState {
 use NodeState::*;
 
 impl NodeState {
-    pub const ROOT: Self = Land;
+    pub const ROOT: Self = RootSky;
 
     /// If a vertex is at the junction of 8 different types of nodes,
     /// which should it manifest?
     pub fn child(self, i: Side) -> Self {
         match (self, i) {
-            /*
             (RootSky, _) => {
                 match i {
                     _ if i.adjacent_to(Side::A) => Land,
                     Side::A => Sky,
                     _ => DeepLand
                 }
-            },*/
+            },
             (_, Side::A) => match self {
                 Sky => Land,
                 Land => Sky,
