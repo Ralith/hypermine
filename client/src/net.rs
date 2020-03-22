@@ -129,7 +129,9 @@ async fn handle_unordered(
         .buffer_unordered(128);
     // TODO: Don't silently die on parse errors
     while let Some(msg) = msgs.try_next().await? {
-        incoming.send(Message::StateDelta(msg)).unwrap();
+        // Ignore errors so we don't panic if the simulation thread goes away between checking
+        // `msgs` and here.
+        let _ = incoming.send(Message::StateDelta(msg));
     }
     Ok(())
 }
