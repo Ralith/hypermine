@@ -181,15 +181,17 @@ pub struct Cube {
     pub voxels: VoxelData,
 }
 
+#[derive(PartialEq)]
 pub enum VoxelData {
-    Dense(Box<[Material]>),
+    Uninitialized,
     Solid(Material),
+    Dense(Box<[Material]>),
 }
 impl VoxelData {
     pub fn data_mut(&mut self) -> &mut [Material] {
         match self {
             VoxelData::Dense(d) => d,
-            VoxelData::Solid(_) => {
+            _ => {
                 *self = VoxelData::Dense(self.data());
                 self.data_mut()
             }
@@ -202,6 +204,9 @@ impl VoxelData {
                 .map(|_| *mat)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
+            VoxelData::Uninitialized => {
+                VoxelData::Solid(Material::Void).data()
+            }
         }
     }
 }
@@ -233,11 +238,11 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
 fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
     // find the state of all nodes incident to this cube
     let node_state = graph.get(node).unwrap();
-    let mut voxels = VoxelData::Solid(Material::Void);
+    let mut voxels = VoxelData::Uninitialized;
     for ([x, y, z], path) in cube.dual_vertices() {
         let state = path.fold(node_state, |state, side| state.child(side));
         let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-        state.fill_subchunk(&mut voxels, subchunk_offset);
+        state.write_chunk(&mut voxels, subchunk_offset);
     }
     *graph.get_cube_mut(node, cube) = Some(Cube {
         surface: None,
