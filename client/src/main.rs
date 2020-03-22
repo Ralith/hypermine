@@ -2,6 +2,7 @@ mod config;
 mod graphics;
 mod net;
 mod sim;
+mod worldgen;
 
 use std::{
     net::{SocketAddr, UdpSocket},

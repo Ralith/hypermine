@@ -72,6 +72,12 @@ pub enum Dir {
     Forward,
     Back,
 }
+impl Dir {
+    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
+        use Dir::*;
+        [Left, Right, Down, Up, Forward, Back].iter().cloned()
+    }
+}
 
 impl std::ops::Neg for Dir {
     type Output = Self;
