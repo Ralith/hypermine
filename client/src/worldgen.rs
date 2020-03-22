@@ -7,11 +7,12 @@ use common::{
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeState {
     RootSky,
-    Hole(usize),
     Sky,
     DeepSky,
     Land,
     DeepLand,
+    Sea,
+    DeepSea,
 }
 use NodeState::*;
 
@@ -19,30 +20,18 @@ impl NodeState {
     pub const ROOT: Self = RootSky;
 
     /// What state comes after this state, from a given side?
-    pub fn child(self, i: Side) -> Self {
+    pub fn child(mut self, i: Side) -> Self {
+        if self == RootSky {self = Land};
         match (self, i) {
-            (RootSky, _) => match i {
-                _ if i.adjacent_to(Side::A) => Land,
-                Side::A => Sky,
-                Side::J => Hole(5),
-                _ => DeepLand,
-            },
-            (Hole(0), _) => match i {
-                Side::A | Side::J => Hole(5),
-                _ => Land,
-            },
-            (Hole(n), _) => match i {
-                Side::A | Side::J => Hole(n - 1),
-                _ => DeepLand,
-            },
-            (_, Side::A) => match self {
-                Sky => Land,
-                Land => Sky,
-                _ => self,
-            },
-            _ if i.adjacent_to(Side::A) => self,
-            (Sky, _) => DeepSky,
-            (Land, _) => DeepLand,
+            (Land, Side::A) => Sky,
+            (Land, Side::B) => Sea,
+            (Land, _) if !i.adjacent_to(Side::A) => DeepLand,
+            (Sea, Side::A) => Sky,
+            (Sea, Side::B) => Land,
+            (Sea, _) if !i.adjacent_to(Side::A) => DeepSea,
+            (DeepLand, Side::B) => DeepSea,
+            (DeepSea, Side::B) => DeepLand,
+            (Sky, _) if !i.adjacent_to(Side::A) => DeepSky,
             _ => self,
         }
     }
@@ -87,8 +76,9 @@ impl NodeState {
 
     pub fn solid_material(self) -> Option<Material> {
         match self {
-            Hole(_) | RootSky | Sky | DeepSky => Some(Material::Void),
-            DeepLand => Some(Material::Stone),
+            Land | DeepLand => Some(Material::Stone),
+            Sea | DeepSea => Some(Material::Sand),
+            RootSky | Sky | DeepSky => Some(Material::Void),
             _ => None,
         }
     }
