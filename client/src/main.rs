@@ -1,6 +1,7 @@
 mod config;
 mod graphics;
 mod net;
+mod prediction;
 mod sim;
 mod worldgen;
 
@@ -32,10 +33,6 @@ fn main() {
         let key = cert.serialize_private_key_der();
         let cert = cert.serialize_der().unwrap();
 
-        let sim_cfg = server::SimConfig {
-            rate: config.input_send_rate,
-            view_distance: 4,
-        };
         std::thread::spawn(move || {
             if let Err(e) = server::run(
                 server::NetParams {
@@ -45,7 +42,10 @@ fn main() {
                     private_key: quinn::PrivateKey::from_der(&key).unwrap(),
                     socket,
                 },
-                sim_cfg,
+                server::SimConfig {
+                    rate: 10,
+                    view_distance: 4,
+                },
             ) {
                 eprintln!("{:#}", e);
                 std::process::exit(1);
@@ -64,7 +64,7 @@ fn main() {
 
     // Kick off networking
     let net = net::spawn(config.clone());
-    let sim = Sim::new(net, config.clone());
+    let sim = Sim::new(net);
 
     // Finish creating the window, including the Vulkan resources used to render to it
     let window = graphics::Window::new(window, core.clone(), config, sim);

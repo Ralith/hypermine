@@ -1,14 +1,12 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{error, trace};
 
 use crate::{
-    graphics::lru_table::SlotId,
-    net,
-    worldgen::{self, NodeState},
-    Config, Net,
+    graphics::lru_table::SlotId, net, prediction::PredictedMotion, worldgen, worldgen::NodeState,
+    Net,
 };
 use common::{
     dodeca,
@@ -22,7 +20,6 @@ pub type DualGraph = Graph<NodeState, Cube>;
 
 /// Game state
 pub struct Sim {
-    cfg: Arc<Config>,
     net: Net,
 
     // World state
@@ -31,17 +28,18 @@ pub struct Sim {
     world: hecs::World,
     local_character: Option<EntityId>,
     orientation: na::UnitQuaternion<f32>,
+    step_interval: Option<Duration>,
     step: Option<Step>,
 
     // Input state
     since_input_sent: Duration,
     velocity: na::Vector3<f32>,
+    prediction: PredictedMotion,
 }
 
 impl Sim {
-    pub fn new(net: Net, cfg: Arc<Config>) -> Self {
+    pub fn new(net: Net) -> Self {
         Self {
-            cfg,
             net,
 
             graph: Graph::new(),
@@ -49,10 +47,15 @@ impl Sim {
             world: hecs::World::new(),
             local_character: None,
             orientation: na::one(),
+            step_interval: None,
             step: None,
 
             since_input_sent: Duration::new(0, 0),
             velocity: na::zero(),
+            prediction: PredictedMotion::new(proto::Position {
+                node: NodeId::ROOT,
+                local: na::one(),
+            }),
         }
     }
 
@@ -65,14 +68,24 @@ impl Sim {
     }
 
     pub fn step(&mut self, dt: Duration) {
+        self.orientation.renormalize_fast();
+
         while let Ok(msg) = self.net.incoming.try_recv() {
             self.handle_net(msg);
         }
 
         self.since_input_sent += dt;
-        if self.since_input_sent > Duration::from_secs(1) / (self.cfg.input_send_rate as u32) {
-            self.send_input();
-            self.since_input_sent = Duration::new(0, 0);
+        if let Some(step_interval) = self.step_interval {
+            if let Some(overflow) = self.since_input_sent.checked_sub(step_interval) {
+                self.send_input();
+                self.since_input_sent = if overflow > step_interval {
+                    // If it's been more than two timesteps since we last sent input, skip ahead
+                    // rather than spamming the server.
+                    Duration::new(0, 0)
+                } else {
+                    overflow
+                };
+            }
         }
     }
 
@@ -84,11 +97,19 @@ impl Sim {
             }
             Hello(msg) => {
                 self.local_character = Some(msg.character);
+                self.step_interval = Some(Duration::from_secs(1) / msg.rate as u32);
             }
             Spawns(msg) => self.handle_spawns(msg),
             StateDelta(msg) => {
-                self.step = self.step.max(Some(msg.step));
+                // Discard out-of-order messages, taking care to account for step counter wrapping.
+                if self.step.map_or(false, |x| x.wrapping_sub(msg.step) >= 0) {
+                    return;
+                }
+                self.step = Some(msg.step);
                 for &(id, new_pos) in &msg.positions {
+                    if self.local_character == Some(id) {
+                        self.prediction.reconcile(msg.latest_input, new_pos);
+                    }
                     match self.entity_ids.get(&id) {
                         None => error!(%id, "position update for unknown entity"),
                         Some(&entity) => match self.world.get_mut::<Position>(entity) {
@@ -140,29 +161,29 @@ impl Sim {
     }
 
     fn send_input(&mut self) {
-        if let Some(&entity) = self.local_character.and_then(|id| self.entity_ids.get(&id)) {
-            let pos = *self.world.get::<Position>(entity).unwrap();
-            // Any failure here will be better handled in ConnectionLost above on the next call
-            let _ = self.net.outgoing.send(Command {
-                step: self.step.unwrap(),
-                node: pos.node,
-                orientation: self.orientation,
-                velocity: self.orientation * self.velocity,
-            });
+        let (mut direction, mut speed) = na::Unit::new_and_get(self.orientation * self.velocity);
+        if speed == 0.0 {
+            direction = -na::Vector3::z_axis();
+        } else {
+            speed = speed.min(1.0);
         }
+        let generation = self.prediction.push(
+            &direction,
+            speed * self.step_interval.as_ref().unwrap().as_secs_f32(),
+        );
+
+        // Any failure here will be better handled in handle_net's ConnectionLost case
+        let _ = self.net.outgoing.send(Command {
+            generation,
+            orientation: self.orientation,
+            velocity: direction.into_inner() * speed,
+        });
     }
 
     pub fn view(&self) -> Position {
-        if let Some(&entity) = self.local_character.and_then(|id| self.entity_ids.get(&id)) {
-            let mut pos = *self.world.get::<Position>(entity).unwrap();
-            pos.local *= self.orientation.to_homogeneous();
-            pos
-        } else {
-            Position {
-                node: NodeId::ROOT,
-                local: na::Matrix4::identity(),
-            }
-        }
+        let mut result = *self.prediction.predicted();
+        result.local *= self.orientation.to_homogeneous();
+        result
     }
 
     fn destroy(&mut self, entity: Entity) {

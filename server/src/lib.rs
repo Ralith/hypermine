@@ -75,11 +75,12 @@ impl Server {
     fn on_step(&mut self) {
         let (spawns, delta) = self.sim.step();
         let spawns = Arc::new(spawns);
-        let delta = Arc::new(delta);
         let mut overran = Vec::new();
         for (client_id, client) in &mut self.clients {
             if let Some(ref mut handles) = client.handles {
-                let r1 = handles.unordered.try_send(delta.clone());
+                let mut delta = delta.clone();
+                delta.latest_input = client.latest_input;
+                let r1 = handles.unordered.try_send(delta);
                 let r2 = if !spawns.spawns.is_empty()
                     || !spawns.despawns.is_empty()
                     || !spawns.nodes.is_empty()
@@ -124,7 +125,10 @@ impl Server {
                     unordered: unordered_send,
                 });
                 let connection = client.conn.clone();
-                let server_hello = proto::ServerHello { character: id };
+                let server_hello = proto::ServerHello {
+                    character: id,
+                    rate: self.cfg.rate,
+                };
                 tokio::spawn(async move {
                     // Errors will be handled by recv task
                     let _ =
@@ -138,8 +142,11 @@ impl Server {
             }
             ClientEvent::Command(cmd) => {
                 if let Some(ref x) = client.handles {
-                    if let Err(e) = self.sim.command(x.character, cmd) {
-                        error!("couldn't process command: {}", e);
+                    if cmd.generation.wrapping_sub(client.latest_input) < u16::max_value() / 2 {
+                        client.latest_input = cmd.generation;
+                        if let Err(e) = self.sim.command(x.character, cmd) {
+                            error!("couldn't process command: {}", e);
+                        }
                     }
                 }
             }
@@ -172,6 +179,7 @@ impl Server {
         let id = self.clients.insert(Client {
             conn: connection.clone(),
             handles: None,
+            latest_input: 0,
         });
         info!(id = ?id.0, address = %connection.remote_address(), "connection established");
         tokio::spawn(async move {
@@ -248,6 +256,7 @@ struct Client {
     conn: quinn::Connection,
     /// Filled in after receiving ClientHello
     handles: Option<ClientHandles>,
+    latest_input: u16,
 }
 
 struct ClientHandles {
@@ -262,6 +271,6 @@ enum ClientEvent {
     Lost(Error),
 }
 
-type Unordered = Arc<proto::StateDelta>;
+type Unordered = proto::StateDelta;
 
 type Ordered = Arc<proto::Spawns>;
