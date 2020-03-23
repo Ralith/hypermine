@@ -1,16 +1,16 @@
 pub const SUBDIVISION_FACTOR: usize = 12;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[repr(u16)]
-pub enum Material {
-    Void = 0,
-    Stone = 1,
-    Dirt = 2,
-    Sand = 3,
-}
+#[repr(C)]
+pub struct Material(pub u16);
 
 impl Material {
-    pub const COUNT: usize = 4;
+
+    pub const Void: Material = Material(0);
+    pub const Stone: Material = Material(1);
+    pub const Dirt: Material = Material(2);
+    pub const Sand: Material = Material(3);
+    pub const COUNT: usize = 8;
 }
 
 impl Default for Material {
