@@ -148,12 +148,12 @@ impl Sim {
                 .graph
                 .fresh()
                 .iter()
-                .map(|&id| {
-                    let side = self.graph.parent(id).unwrap();
-                    FreshNode {
+                .filter_map(|&id| {
+                    let side = self.graph.parent(id)?;
+                    Some(FreshNode {
                         side,
                         parent: self.graph.neighbor(id, side).unwrap(),
-                    }
+                    })
                 })
                 .collect(),
         };

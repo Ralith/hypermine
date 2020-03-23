@@ -13,7 +13,7 @@ use common::{
     EntityId, Step,
 };
 
-type DualGraph = Graph<NodeState, Cube>;
+pub type DualGraph = Graph<NodeState, Cube>;
 
 /// Game state
 pub struct Sim {
@@ -23,10 +23,10 @@ pub struct Sim {
     // World state
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
-    pub graph: DualGraph,
     local_character: Option<EntityId>,
     orientation: na::UnitQuaternion<f32>,
     step: Option<Step>,
+    pub graph: DualGraph,
 
     // Input state
     since_input_sent: Duration,
@@ -39,14 +39,7 @@ impl Sim {
             cfg,
             net,
 
-            graph: {
-                let mut g = Graph::new();
-                populate_node(&mut g, NodeId::ROOT);
-                for v in dodeca::Vertex::iter() {
-                    populate_cube(&mut g, NodeId::ROOT, v);
-                }
-                g
-            },
+            graph: Graph::new(),
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
             local_character: None,
@@ -216,8 +209,12 @@ fn populate_fresh_nodes(graph: &mut DualGraph) {
         populate_node(graph, node);
     }
     for &node in &fresh {
-        for cube in graph.cubes_at(node) {
-            populate_cube(graph, node, cube);
+        let mut d = graph.descenders(node).map(|(side, _node)| side);
+        // If all of a node's neighbors are loaded, it will have three descenders
+        if let (Some(a), Some(b), Some(c)) = (d.next(), d.next(), d.next()) {
+            let vert = dodeca::Vertex::from_sides(a, b, c).unwrap();
+            let (node, _) = graph.canonicalize(node, vert).unwrap();
+            populate_cube(graph, node, vert);
         }
     }
     graph.clear_fresh();
@@ -227,18 +224,20 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
     *graph.get_mut(node) = graph
         .parent(node)
         .and_then(|i| {
-            let parent_state = (*graph.get(graph.neighbor(node, i)?))?;
-            Some(parent_state.child(i))
+            let parent_state = graph.get(graph.neighbor(node, i)?).as_ref()?;
+            Some(parent_state.child(graph, node, i))
         })
         .or(Some(NodeState::ROOT));
 }
 
 fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
     // find the state of all nodes incident to this cube
-    let node_state = graph.get(node).unwrap();
     let mut voxels = VoxelData::Uninitialized;
     for ([x, y, z], path) in cube.dual_vertices() {
-        let state = path.fold(node_state, |state, side| state.child(side));
+        let state = graph
+            .get(path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
+            .as_ref()
+            .unwrap();
         let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
         state.write_chunk(&mut voxels, subchunk_offset);
     }

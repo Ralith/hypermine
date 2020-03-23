@@ -27,7 +27,7 @@ impl<N, C> Graph<N, C> {
     pub fn new() -> Self {
         Self {
             nodes: vec![Node::new(None, 0)],
-            fresh: Vec::new(),
+            fresh: vec![NodeId::ROOT],
         }
     }
 
@@ -45,6 +45,48 @@ impl<N, C> Graph<N, C> {
     #[inline]
     pub fn clear_fresh(&mut self) {
         self.fresh.clear();
+    }
+
+    /// Node and dodecahedral vertex for this cube based on the node that is canonically
+    /// assigned to it, not the node that this function is called with.
+    ///
+    /// The node incident to a cube with the shortest canonical length is said to be canonically
+    /// assigned to that cube.
+    ///
+    /// Canonical length is defined as a node's distance from the root node.
+    pub fn canonicalize(&self, mut node: NodeId, vertex: Vertex) -> Option<(NodeId, Vertex)> {
+        for side in vertex.canonical_sides().iter().cloned() {
+            // missing neighbors are always longer
+            if let Some(neighbor) = self.neighbor(node, side) {
+                if self.length(neighbor) < self.length(node) {
+                    node = neighbor;
+                }
+            }
+        }
+        Some((node, vertex))
+    }
+
+    /// Returns all of the sides between the provided node and its canonically shorter neighbors.
+    ///
+    /// Canonical length is a node's distance from the root node.
+    pub fn descenders(&self, node: NodeId) -> impl ExactSizeIterator<Item = (Side, NodeId)> {
+        let node_length = self.length(node);
+
+        let mut results = [None; 3];
+        let mut len = 0;
+
+        for side in Side::iter() {
+            // filtering out not-yet-allocated neighbors is fine since
+            // they have to be longer than us not to be allocated yet
+            if let Some(neighbor_node) = self.neighbor(node, side) {
+                if self.length(neighbor_node) < node_length {
+                    results[len] = Some((side, neighbor_node));
+                    len += 1;
+                }
+            }
+        }
+
+        (0..len).map(move |i| results[i].unwrap())
     }
 
     /// Compute reflectedness and `start`-relative transforms for all cube-bearing nodes within
