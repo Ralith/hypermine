@@ -52,11 +52,10 @@ impl Sim {
         };
         let character = Character {
             name: hello.name,
-            latest_command: 0,
+            latest_input: 0,
             speed: 0.0,
             direction: -na::Vector3::z_axis(),
             orientation: na::one(),
-            command_node: NodeId::ROOT,
         };
         let entity = self.world.spawn((id, position, character));
         self.spawns.push(entity);
@@ -69,8 +68,8 @@ impl Sim {
         command: Command,
     ) -> Result<(), hecs::ComponentError> {
         let mut ch = self.world.get_mut::<Character>(entity)?;
-        if command.step > ch.latest_command {
-            ch.latest_command = command.step;
+        if command.generation.wrapping_sub(ch.latest_input) < u16::max_value() / 2 {
+            ch.latest_input = command.generation;
             let (direction, speed) = na::Unit::new_and_get(command.velocity);
             ch.direction = if speed == 0.0 {
                 -na::Vector3::z_axis()
@@ -79,7 +78,6 @@ impl Sim {
             };
             ch.speed = speed.min(1.0);
             ch.orientation = command.orientation;
-            ch.command_node = command.node;
         }
         Ok(())
     }
@@ -161,6 +159,7 @@ impl Sim {
 
         // TODO: Omit unchanged (e.g. freshly spawned) entities (dirty flag?)
         let delta = StateDelta {
+            latest_input: 0, // To be filled in by the caller
             step: self.step,
             positions: self
                 .world
@@ -209,6 +208,5 @@ struct Character {
     orientation: na::UnitQuaternion<f32>,
     direction: na::Unit<na::Vector3<f32>>,
     speed: f32,
-    latest_command: Step,
-    command_node: NodeId,
+    latest_input: u16,
 }
