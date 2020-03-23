@@ -128,7 +128,7 @@ pub fn parity<N: RealField>(m: &na::Matrix4<N>) -> bool {
 }
 
 /// Minkowski inner product, aka <a, b>_h
-fn mip<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
+pub fn mip<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     a.x * b.x + a.y * b.y + a.z * b.z - a.w * b.w
 }
 

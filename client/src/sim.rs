@@ -227,20 +227,14 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
             let parent_state = graph.get(graph.neighbor(node, i)?).as_ref()?;
             Some(parent_state.child(graph, node, i))
         })
-        .or(Some(NodeState::ROOT));
+        .or(Some(NodeState::root()));
 }
 
 fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
     // find the state of all nodes incident to this cube
     let mut voxels = VoxelData::Uninitialized;
-    for ([x, y, z], path) in cube.dual_vertices() {
-        let state = graph
-            .get(path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
-            .as_ref()
-            .unwrap();
-        let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-        state.write_chunk(&mut voxels, subchunk_offset);
-    }
+    let state = graph.get(node).as_ref().unwrap();
+    state.write_chunk(cube, &mut voxels);
     *graph.get_cube_mut(node, cube) = Some(Cube {
         surface: None,
         voxels,

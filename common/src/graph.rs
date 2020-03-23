@@ -126,7 +126,7 @@ impl<N, C> Graph<N, C> {
             let current_in_range = math::distance(&start_p, &current_p) < distance;
 
             for v in self.cubes_at(current.id) {
-                let v_transform = current.transform * cube_to_node(v);
+                let v_transform = current.transform * v.cube_to_node();
                 if math::distance(&start_p, &(v_transform * math::origin())) < distance {
                     result.push((
                         current.id,
@@ -409,24 +409,13 @@ impl<N, C> Node<N, C> {
     }
 }
 
-fn cube_to_node(v: Vertex) -> na::Matrix4<f64> {
-    let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-    let [a, b, c] = v.canonical_sides();
-    na::Matrix4::from_columns(&[
-        a.reflection().column(3) - origin,
-        b.reflection().column(3) - origin,
-        c.reflection().column(3) - origin,
-        origin,
-    ])
-}
-
 lazy_static! {
     /// Whether the determinant of the cube-to-node transform is negative
     static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [bool; VERTEX_COUNT] = {
         let mut result = [false; VERTEX_COUNT];
 
         for v in Vertex::iter() {
-            result[v as usize] = math::parity(&cube_to_node(v));
+            result[v as usize] = math::parity(&v.cube_to_node());
         }
 
         result

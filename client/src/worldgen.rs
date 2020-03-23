@@ -3,55 +3,33 @@ use common::{
     dodeca::Side,
     graph::NodeId,
     world::{Material, SUBDIVISION_FACTOR},
+    math,
 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeStateKind {
-    RootSky,
-    Hole(usize),
-    Sky,
-    DeepSky,
-    Land,
-    DeepLand,
+    Horosphere(na::Vector4<f64>, f64)
 }
 use NodeStateKind::*;
+use common::dodeca::Vertex;
 
 impl NodeStateKind {
-    pub const ROOT: Self = RootSky;
+    #[inline]
+    pub fn root() -> Self {
+        Horosphere(na::Vector4::new(1.0, 0.0, 0.0, 1.0), 1.0)
+    }
 
     /// What state comes after this state, from a given side?
     pub fn child_with_spice(self, spice: u64, side: Side) -> Self {
-        match (self, side) {
-            (RootSky, _) => match side {
-                _ if side.adjacent_to(Side::A) => Land,
-                Side::A => Sky,
-                Side::J => Hole(5),
-                _ => DeepLand,
-            },
-            (Hole(0), _) => match side {
-                Side::A | Side::J => Hole(5),
-                _ => Land,
-            },
-            (Hole(n), _) => match side {
-                Side::A | Side::J => Hole(n - 1),
-                _ => DeepLand,
-            },
-            (_, Side::A) => match self {
-                Sky => Land,
-                Land => Sky,
-                _ => self,
-            },
-            _ if side.adjacent_to(Side::A) => self,
-            (Sky, _) => DeepSky,
-            (Land, _) => DeepLand,
-            _ => self,
-        }
+        let Horosphere(v, factor) = self;
+        let mut w: na::Vector4<f64> = side.reflection() * v;
+        w[3] = (w[0]*w[0] + w[1]*w[1] + w[2]*w[2]).sqrt(); // Make sure center stays ideal point
+        let norm = w.norm();
+        Horosphere(w / norm, factor * norm)
     }
 
     pub fn solid_material(self) -> Option<Material> {
         match self {
-            Hole(_) | RootSky | Sky | DeepSky => Some(Material::Void),
-            DeepLand => Some(Material::Stone),
             _ => None,
         }
     }
@@ -63,11 +41,14 @@ pub struct NodeState {
     scalar_field: i64,
 }
 impl NodeState {
-    pub const ROOT: Self = Self {
-        kind: NodeStateKind::ROOT,
-        spice: 0,
-        scalar_field: 0,
-    };
+    #[inline]
+    pub fn root() -> Self {
+        Self {
+            kind: NodeStateKind::root(),
+            spice: 0,
+            scalar_field: 0,
+        }
+    }
 
     pub fn child(&self, graph: &DualGraph, node: NodeId, side: Side) -> Self {
         let node_length = graph.length(node);
@@ -111,68 +92,40 @@ impl NodeState {
         }
     }
 
-    pub fn write_subchunk_voxels(
+    pub fn write_chunk_voxels(
         &self,
+        cube_type: Vertex,
         voxels: &mut VoxelData,
-        subchunk_offset: na::Vector3<usize>,
     ) {
-        // half of SUBDIVISION_FACTOR, which is the width/height/depth of a subchunk.
-        const GAP: usize = 0;
-        const SUB: usize = (SUBDIVISION_FACTOR + 2) / 2;
-        match self.kind {
-            Land => {
-                for z in GAP..(SUB - GAP) {
-                    for y in GAP..(SUB - GAP) {
-                        for x in GAP..((self.scalar_field as usize).min(SUB).max(1) - GAP) {
-                            let i = subchunk_index(x, y, z, subchunk_offset);
-                            voxels.data_mut()[i] = match (self.spice) % 3 {
-                                0 => Material::Stone,
-                                1 => Material::Dirt,
-                                2 => Material::Sand,
-                                _ => unreachable!(),
-                            };
-                        }
+        if let Horosphere(center, factor) = self.kind {
+            for z in 0..SUBDIVISION_FACTOR {
+                for y in 0..SUBDIVISION_FACTOR {
+                    for x in 0..SUBDIVISION_FACTOR {
+                        let i = chunk_index(x, y, z);
+                        let ix = (0.5 + (x as f64)) / (SUBDIVISION_FACTOR as f64);
+                        let iy = (0.5 + (y as f64)) / (SUBDIVISION_FACTOR as f64);
+                        let iz = (0.5 + (z as f64)) / (SUBDIVISION_FACTOR as f64);
+                        voxels.data_mut()[i] = if is_inside_horosphere(&center, factor, ix, iy, iz, cube_type) {Material::Void} else {Material::Stone};
                     }
                 }
             }
-            _ if self.kind.solid_material().is_some() => {
-                for z in GAP..(SUB - GAP) {
-                    for y in GAP..(SUB - GAP) {
-                        for x in GAP..(SUB - GAP) {
-                            let i = subchunk_index(x, y, z, subchunk_offset);
-                            voxels.data_mut()[i] = self.kind.solid_material().unwrap();
-                        }
-                    }
-                }
-            }
-            _ => unreachable!(),
         }
     }
 
-    pub fn write_chunk(&self, voxels: &mut VoxelData, subchunk_offset: na::Vector3<usize>) {
-        if let Some(material) = self.kind.solid_material() {
-            match voxels {
-                // who knows, maybe this voxel is surrounded by the same type of node.
-                VoxelData::Uninitialized => {
-                    *voxels = VoxelData::Solid(material);
-                    return;
-                }
-                // why change the voxel? it's already filled with what we'd fill it with.
-                VoxelData::Solid(voxel_mat) if *voxel_mat == material => return,
-                _ => {}
+    pub fn write_chunk(&self, cube_type: Vertex, voxels: &mut VoxelData) {
+        match voxels {
+            VoxelData::Uninitialized => {
+                self.write_chunk_voxels(cube_type, voxels);
             }
+            _ => {}
         }
-
-        // sometimes there's just no way around writing into the subchunk.
-        self.write_subchunk_voxels(voxels, subchunk_offset);
     }
 }
 
 #[inline]
-fn subchunk_index(x: usize, y: usize, z: usize, subchunk_offset: na::Vector3<usize>) -> usize {
+fn chunk_index(x: usize, y: usize, z: usize) -> usize {
     let v = na::Vector3::new(x, y, z)
-        //+ na::Vector3::repeat(1)
-        + (subchunk_offset * ((SUBDIVISION_FACTOR + 2) / 2));
+        + na::Vector3::repeat(1);
 
     v.x + v.y * (SUBDIVISION_FACTOR + 2) + v.z * (SUBDIVISION_FACTOR + 2).pow(2)
 }
@@ -181,4 +134,10 @@ fn subchunk_index(x: usize, y: usize, z: usize, subchunk_offset: na::Vector3<usi
 fn hash(a: u64, b: u64) -> u64 {
     use std::ops::BitXor;
     a.rotate_left(5).bitxor(b).wrapping_mul(0x517cc1b727220a95)
+}
+
+#[inline]
+fn is_inside_horosphere(center: &na::Vector4<f64>, factor: f64, cx: f64, cy: f64, cz: f64, cube_type: Vertex) -> bool {
+    let pos: na::Vector4<f64> = math::lorentz_normalize(&(cube_type.cube_to_node() * na::Vector4::new(cx, cy, cz, 1.0)));
+    math::mip(&pos, center) * factor > -1.0
 }
