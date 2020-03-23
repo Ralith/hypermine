@@ -61,12 +61,14 @@ pub struct NodeState {
     kind: NodeStateKind,
     spice: u64,
     scalar_field: i64,
+    surface: Surface,
 }
 impl NodeState {
     pub const ROOT: Self = Self {
         kind: NodeStateKind::ROOT,
         spice: 0,
         scalar_field: 0,
+        surface: Surface::Dry(Biome::Plains),
     };
 
     pub fn child(&self, graph: &DualGraph, node: NodeId, side: Side) -> Self {
@@ -89,12 +91,7 @@ impl NodeState {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_scalar = graph.get(parent_node).as_ref().unwrap().scalar_field;
-                parent_scalar
-                    + match spice % 2 {
-                        0 => -1,
-                        1 => 1,
-                        _ => unreachable!(),
-                    }
+                parent_scalar + (1 - (spice as i64 % 3))
             }
             (Some((a_side, a_scalar)), Some((b_side, b_scalar))) => {
                 let ab_node = graph.neighbor(graph.neighbor(node, a_side).unwrap(), b_side).unwrap();
@@ -104,10 +101,13 @@ impl NodeState {
             _ => unreachable!()
         };
 
+        let surface = Surface::from_scalar_field(scalar_field);
+                             
         Self {
             kind: self.kind.clone().child_with_spice(spice, side),
-            spice: spice,
+            spice,
             scalar_field,
+            surface,
         }
     }
 
@@ -123,14 +123,10 @@ impl NodeState {
             Land => {
                 for z in GAP..(SUB - GAP) {
                     for y in GAP..(SUB - GAP) {
-                        for x in GAP..((self.scalar_field as usize).min(SUB).max(1) - GAP) {
+                        //for x in GAP..((self.scalar_field as usize).min(SUB).max(1) - GAP) {
+                        for x in GAP..(self.surface.height() - GAP) {
                             let i = subchunk_index(x, y, z, subchunk_offset);
-                            voxels.data_mut()[i] = match (self.spice) % 3 {
-                                0 => Material::Stone,
-                                1 => Material::Dirt,
-                                2 => Material::Sand,
-                                _ => unreachable!(),
-                            };
+                            voxels.data_mut()[i] = self.surface.material();
                         }
                     }
                 }
@@ -165,6 +161,79 @@ impl NodeState {
 
         // sometimes there's just no way around writing into the subchunk.
         self.write_subchunk_voxels(voxels, subchunk_offset);
+    }
+}
+
+#[derive(Copy, Clone)]
+/// You can think of Surfaces like "Super Biomes";
+///
+/// If Biomes are used to group certain chunks and voxels together,
+/// Surfaces are used to group certain biomes together.
+pub enum Surface {
+    /// Dry Surfaces are above sea level.
+    Dry(Biome),
+    /// Wet Surfaces are below sea level.
+    ///
+    /// Currently there is little variation among Wet Surfaces,
+    /// but perhaps that will change?
+    Wet,
+}
+impl Surface {
+    const COUNT: i64 = 2;
+    const SIZE: i64 = 7;
+
+    fn from_scalar_field(sf: i64) -> Self {
+        match (sf / Surface::SIZE % Surface::COUNT).signum() {
+            1 => {
+                const BEACH_GRANULARITY: f64 = 5.0;
+                let shore_vicinity = sf as f64
+                    / (Surface::SIZE as f64 * BEACH_GRANULARITY)
+                    % (Surface::COUNT as f64 * BEACH_GRANULARITY);
+
+                if shore_vicinity == (1.0/BEACH_GRANULARITY) {
+                    Surface::Dry(Biome::Shore)
+                } else {
+                    Surface::Dry(Biome::Plains)
+                }
+            },
+            0 | -1 => Surface::Wet,
+            _ => unreachable!()
+        }
+    }
+    fn height(self) -> usize{
+        match self {
+            Surface::Dry(biome) => biome.height(),
+            Surface::Wet => 1,
+        }
+    }
+    fn material(self) -> Material {
+        match self {
+            Surface::Dry(biome) => biome.material(),
+            Surface::Wet => Material::Stone,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum Biome {
+    Plains,
+    Shore,
+}
+impl Biome {
+    const COUNT: usize = 2;
+    const SIZE: usize = 7;
+
+    fn height(self) -> usize{
+        match self {
+            Biome::Plains => 6,
+            Biome::Shore => 2,
+        }
+    }
+    fn material(self) -> Material {
+        match self {
+            Biome::Plains => Material::Dirt,
+            Biome::Shore => Material::Sand,
+        }
     }
 }
 

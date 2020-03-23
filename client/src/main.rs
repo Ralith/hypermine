@@ -34,7 +34,7 @@ fn main() {
 
         let sim_cfg = server::SimConfig {
             rate: config.input_send_rate,
-            view_distance: 3,
+            view_distance: 4,
         };
         std::thread::spawn(move || {
             if let Err(e) = server::run(
