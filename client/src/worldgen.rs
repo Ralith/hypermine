@@ -60,11 +60,13 @@ impl NodeStateKind {
 pub struct NodeState {
     kind: NodeStateKind,
     spice: u64,
+    scalar_field: i64,
 }
 impl NodeState {
     pub const ROOT: Self = Self {
         kind: NodeStateKind::ROOT,
         spice: 0,
+        scalar_field: 0,
     };
 
     pub fn child(&self, graph: &DualGraph, node: NodeId, side: Side) -> Self {
@@ -79,9 +81,33 @@ impl NodeState {
             // unique hash.
             .fold(hash(0, node_length as u64), |acc, x| hash(acc, x));
 
+        let mut d = graph
+            .descenders(node)
+            .map(|(s, n)| (s, graph.get(n).as_ref().unwrap().scalar_field));
+        let scalar_field = match (d.next(), d.next()) {
+            (Some(_), None) => {
+                let parent_side = graph.parent(node).unwrap();
+                let parent_node = graph.neighbor(node, parent_side).unwrap();
+                let parent_scalar = graph.get(parent_node).as_ref().unwrap().scalar_field;
+                parent_scalar
+                    + match spice % 2 {
+                        0 => -1,
+                        1 => 1,
+                        _ => unreachable!(),
+                    }
+            }
+            (Some((a_side, a_scalar)), Some((b_side, b_scalar))) => {
+                let ab_node = graph.neighbor(graph.neighbor(node, a_side).unwrap(), b_side).unwrap();
+                let ab_scalar = graph.get(ab_node).as_ref().unwrap().scalar_field;
+                a_scalar + (b_scalar - ab_scalar)
+            }
+            _ => unreachable!()
+        };
+
         Self {
             kind: self.kind.clone().child_with_spice(spice, side),
             spice: spice,
+            scalar_field,
         }
     }
 
@@ -97,15 +123,14 @@ impl NodeState {
             Land => {
                 for z in GAP..(SUB - GAP) {
                     for y in GAP..(SUB - GAP) {
-                        for x in GAP..(SUB - GAP) {
+                        for x in GAP..((self.scalar_field as usize).min(SUB).max(1) - GAP) {
                             let i = subchunk_index(x, y, z, subchunk_offset);
-                            voxels.data_mut()[i] =
-                                match (self.spice) % 3 {
-                                    0 => Material::Stone,
-                                    1 => Material::Dirt,
-                                    2 => Material::Sand,
-                                    _ => unreachable!(),
-                                };
+                            voxels.data_mut()[i] = match (self.spice) % 3 {
+                                0 => Material::Stone,
+                                1 => Material::Dirt,
+                                2 => Material::Sand,
+                                _ => unreachable!(),
+                            };
                         }
                     }
                 }
