@@ -21,12 +21,12 @@ pub struct Sim {
     net: Net,
 
     // World state
+    pub graph: DualGraph,
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
     local_character: Option<EntityId>,
     orientation: na::UnitQuaternion<f32>,
     step: Option<Step>,
-    pub graph: DualGraph,
 
     // Input state
     since_input_sent: Duration,
