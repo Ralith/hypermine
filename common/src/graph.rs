@@ -36,6 +36,11 @@ impl<N, C> Graph<N, C> {
         self.nodes.len() as u32
     }
 
+    #[inline]
+    pub fn contains(&self, node: NodeId) -> bool {
+        node.0.get() as usize <= self.nodes.len()
+    }
+
     /// Nodes created since the last call to `clear_fresh`
     #[inline]
     pub fn fresh(&self) -> &[NodeId] {

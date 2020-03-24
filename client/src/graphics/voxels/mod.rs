@@ -79,6 +79,11 @@ impl Voxels {
 
         // Determine what to load/render
         let view = sim.view();
+        if !sim.graph.contains(view.node) {
+            // Graph is temporarily out of sync with the server; we don't know where we are, so
+            // there's no point trying to draw.
+            return;
+        }
         let mut chunks = sim.graph.nearby_cubes(view, self.config.view_distance);
         chunks.sort_unstable_by_key(|&(node, _, _, _)| sim.graph.length(node));
         let view_parity = common::math::parity(&view.local);
