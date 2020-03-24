@@ -1,14 +1,14 @@
-use std::convert::TryFrom;
-
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub async fn send<T: Serialize + ?Sized>(stream: &mut quinn::SendStream, msg: &T) -> Result<()> {
     let mut buf = Vec::new();
-    let tag = u16::try_from(bincode::serialized_size(msg).unwrap())
-        .map_err(|_| anyhow!("message too long to send"))?
-        .to_le_bytes();
-    buf.extend_from_slice(&tag);
+    let len = bincode::serialized_size(msg).unwrap();
+    if len >= 2u64.pow(24) {
+        bail!("{} byte ordered message exceeds maximum length", len);
+    }
+    let tag = (len as u32).to_le_bytes();
+    buf.extend_from_slice(&tag[0..3]);
     bincode::serialize_into(&mut buf, msg).unwrap();
     stream.write_all(&buf).await?;
     Ok(())
@@ -16,14 +16,14 @@ pub async fn send<T: Serialize + ?Sized>(stream: &mut quinn::SendStream, msg: &T
 
 /// Returns `None` on end of stream
 pub async fn recv<T: DeserializeOwned>(stream: &mut quinn::RecvStream) -> Result<Option<T>> {
-    let mut tag = [0; 2];
-    match stream.read_exact(&mut tag).await {
+    let mut tag = [0; 4];
+    match stream.read_exact(&mut tag[0..3]).await {
         Err(quinn::ReadExactError::FinishedEarly) => return Ok(None),
         Err(quinn::ReadExactError::ReadError(e)) => return Err(e.into()),
         Ok(()) => {}
     }
 
-    let len = u16::from_le_bytes(tag) as usize;
+    let len = u32::from_le_bytes(tag) as usize;
     let mut buf = vec![0; len];
     match stream.read_exact(&mut buf).await {
         Err(quinn::ReadExactError::FinishedEarly) => return Ok(None),
