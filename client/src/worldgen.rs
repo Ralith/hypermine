@@ -149,7 +149,7 @@ impl NodeState {
                             // of the incident nodes that dictate the content of this chunk
                             let max_e = trilerp(&elevations, p);
 
-                            if self.surface.voxel_elevation(p, cube) < max_e {
+                            if self.surface.voxel_elevation(p, cube) < max_e/-10.0 {
                                 voxels.data_mut()[index(p)] = Material::Sand;
                                 /*
                                 let z_border = p.z == 0.5 / SUBDIVISION_FACTOR as f64;
@@ -225,7 +225,7 @@ pub struct Surface {
 impl Surface {
     /// A Vector pointing up from the surface at the root node.
     fn at_root() -> Self {
-        let n = Side::J.reflection().map(|x| x as f64) * origin() - origin();
+        let n = Side::A.reflection().map(|x| x as f64) * origin() - origin();
         Self {
             normal: lorentz_normalize(&n),
         }
@@ -241,8 +241,20 @@ impl Surface {
     /// The elevation of a single voxel wrt. this Surface
     fn voxel_elevation(&self, voxel: na::Vector3<f64>, cube: Vertex) -> f64 {
         let pos = lorentz_normalize(&(cube.cube_to_node() * voxel.push(1.0)));
-        mip(&pos, &self.normal)
+        mip(&pos, &self.normal).asinh()
     }
+}
+
+#[test]
+fn check_surface_flipped() {
+    use approx::*;
+
+    let root = Surface::at_root();
+    assert_abs_diff_eq!(
+        root.voxel_elevation(na::Vector3::x(), Vertex::A),
+        root.voxel_elevation(na::Vector3::x(), Vertex::J) - 1.0,
+        epsilon = 1e-5
+    );
 }
 
 fn trilerp<N: na::RealField>(a: &[N], t: na::Vector3<N>) -> N {
