@@ -34,3 +34,4 @@ rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
 webpki = "0.21.0"
 hecs = "0.2.9"
 rcgen = { version = "0.7.0", default-features = false }
+lazy_static = "1.4.0"

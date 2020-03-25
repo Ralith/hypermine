@@ -4,7 +4,12 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{error, trace};
 
-use crate::{graphics::lru_table::SlotId, net, worldgen::{self, NodeState}, Config, Net};
+use crate::{
+    graphics::lru_table::SlotId,
+    net,
+    worldgen::{self, NodeState},
+    Config, Net,
+};
 use common::{
     dodeca,
     graph::{Graph, NodeId},
@@ -227,12 +232,12 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
             let parent_state = graph.get(graph.neighbor(node, i)?).as_ref()?;
             Some(parent_state.child(graph, node, i))
         })
-        .or(Some(NodeState::ROOT));
+        .or(Some(NodeState::root()));
 }
 
 fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
     *graph.get_cube_mut(node, cube) = Some(Cube {
         surface: None,
-        voxels: worldgen::voxels(graph, node, cube)
+        voxels: worldgen::voxels(graph, node, cube),
     });
 }
