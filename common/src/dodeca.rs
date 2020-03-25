@@ -124,6 +124,17 @@ impl Vertex {
             (coords, (0..len).map(move |i| sides[i]))
         })
     }
+
+    pub fn cube_to_node(self) -> na::Matrix4<f64> {
+        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+        let [a, b, c] = self.canonical_sides();
+        na::Matrix4::from_columns(&[
+            a.reflection().column(3) - origin,
+            b.reflection().column(3) - origin,
+            c.reflection().column(3) - origin,
+            origin,
+        ])
+    }
 }
 
 pub const VERTEX_COUNT: usize = 20;
