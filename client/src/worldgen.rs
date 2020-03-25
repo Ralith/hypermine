@@ -66,7 +66,7 @@ pub struct NodeState {
     kind: NodeStateKind,
     surface: Surface,
     spice: u64,
-    elev: i64,
+    occupancy_weight: i64,
     temp: i64,
     rain: i64,
 }
@@ -76,7 +76,7 @@ impl NodeState {
             kind: NodeStateKind::ROOT,
             surface: Surface::at_root(),
             spice: 0,
-            elev: 0,
+            occupancy_weight: 0,
             temp: 0,
             rain: 0,
         }
@@ -97,13 +97,13 @@ impl NodeState {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, graph.get(n).as_ref().unwrap()));
-        let (elev, temp, rain) = match (d.next(), d.next()) {
+        let (occupancy_weight, temp, rain) = match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
                 (
-                    parent_state.elev + (1 - (spice as i64 % 3)),
+                    parent_state.occupancy_weight + (1 - (spice as i64 % 3)),
                     parent_state.temp + (1 - (spice as i64 % 3)),
                     parent_state.rain + (1 - (spice as i64 % 3)),
                 )
@@ -114,7 +114,7 @@ impl NodeState {
                     .unwrap();
                 let ab_state = graph.get(ab_node).as_ref().unwrap();
                 (
-                    a_state.elev + (b_state.elev - ab_state.elev),
+                    a_state.occupancy_weight + (b_state.occupancy_weight - ab_state.occupancy_weight),
                     a_state.temp + (b_state.temp - ab_state.temp),
                     a_state.rain + (b_state.rain - ab_state.rain),
                 )
@@ -126,7 +126,7 @@ impl NodeState {
             kind: self.kind.clone().child_with_spice(spice, side),
             surface: self.surface.reflect(side),
             spice,
-            elev,
+            occupancy_weight,
             temp,
             rain,
         }
@@ -203,7 +203,7 @@ fn chunk_incident_occupancy_weights(graph: &DualGraph, node: NodeId, cube: Verte
     let mut e = cube
         .dual_vertices()
         .map(|(_, path)| path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
-        .map(|n| graph.get(n).as_ref().unwrap().elev as f64);
+        .map(|n| graph.get(n).as_ref().unwrap().occupancy_weight as f64);
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
@@ -365,7 +365,6 @@ mod test {
         );
     }
 
-    /*
     #[test]
     fn check_chunk_incident_occupancy_weights() {
         let mut g = DualGraph::new();
@@ -375,8 +374,8 @@ mod test {
 
             // assigning state
             *g.get_mut(new_node) = Some({
-                let mut state = NodeState::ROOT;
-                state.elev = i as i64 + 1;
+                let mut state = NodeState::root();
+                state.occupancy_weight = i as i64 + 1;
                 state
             });
 
@@ -411,7 +410,7 @@ mod test {
         if !checked_center {
             panic!("Never checked trilerping center occupancy_weight!");
         }
-    }*/
+    }
 
     #[test]
     fn check_trilerp() {
