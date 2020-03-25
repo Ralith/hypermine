@@ -137,7 +137,7 @@ impl NodeState {
         voxels: &mut VoxelData,
         subchunk_offset: na::Vector3<usize>,
         cube: Vertex,
-        elevations: [f64; 8],
+        occupancy_weights: [f64; 8],
     ) {
         match self.kind {
             Sky | Land => {
@@ -145,9 +145,10 @@ impl NodeState {
                     for y in GAP..(SUB - GAP) {
                         for x in GAP..(SUB - GAP) {
                             let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
-                            // maximum elevation for this voxel according to the elevations
+                            // maximum occupancy_weight for this voxel according to the
+                            // occupancy_weights
                             // of the incident nodes that dictate the content of this chunk
-                            let max_e = trilerp(&elevations, p);
+                            let max_e = trilerp(&occupancy_weights, p);
 
                             if self.surface.voxel_elevation(p, cube) < max_e/-10.0 {
                                 voxels.data_mut()[index(p)] = Material::Sand;
@@ -182,7 +183,7 @@ impl NodeState {
 }
 
 pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
-    let elevations = chunk_incident_elevations(graph, node, cube);
+    let occupancy_weights = chunk_incident_occupancy_weights(graph, node, cube);
 
     let mut voxels = VoxelData::Uninitialized;
 
@@ -192,13 +193,13 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
             .as_ref()
             .unwrap();
         let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-        state.write_subchunk(&mut voxels, subchunk_offset, cube, elevations);
+        state.write_subchunk(&mut voxels, subchunk_offset, cube, occupancy_weights);
     }
 
     voxels
 }
 
-fn chunk_incident_elevations(graph: &DualGraph, node: NodeId, cube: Vertex) -> [f64; 8] {
+fn chunk_incident_occupancy_weights(graph: &DualGraph, node: NodeId, cube: Vertex) -> [f64; 8] {
     let mut e = cube
         .dual_vertices()
         .map(|(_, path)| path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
@@ -238,7 +239,7 @@ impl Surface {
         }
     }
 
-    /// The elevation of a single voxel wrt. this Surface
+    /// The occupancy_weight of a single voxel wrt. this Surface
     fn voxel_elevation(&self, voxel: na::Vector3<f64>, cube: Vertex) -> f64 {
         let pos = lorentz_normalize(&(cube.cube_to_node() * voxel.push(1.0)));
         mip(&pos, &self.normal).asinh()
@@ -366,7 +367,7 @@ mod test {
 
     /*
     #[test]
-    fn check_chunk_incident_elevations() {
+    fn check_chunk_incident_occupancy_weights() {
         let mut g = DualGraph::new();
         for (i, path) in Vertex::A.dual_vertices().map(|(_, p)| p).enumerate() {
             // this line could panic if the paths in dual_vertices weren't outlined like they were.
@@ -381,12 +382,12 @@ mod test {
 
         }
 
-        let elevations = chunk_incident_elevations(&g, NodeId::ROOT, Vertex::A);
-        assert_eq!(elevations, [1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0]);
+        let occupancy_weights = chunk_incident_occupancy_weights(&g, NodeId::ROOT, Vertex::A);
+        assert_eq!(occupancy_weights, [1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0]);
 
         // see corresponding test for trilerp
-        let center_elevation = trilerp(&elevations, na::Vector3::repeat(0.5));
-        assert_eq!(center_elevation, 4.5);
+        let center_occupancy_weight = trilerp(&occupancy_weights, na::Vector3::repeat(0.5));
+        assert_eq!(center_occupancy_weight, 4.5);
 
         let mut checked_center = false;
         for ([x, y, z], path) in Vertex::A.dual_vertices() {
@@ -399,8 +400,8 @@ mod test {
                         if a == center {
                             checked_center = true;
                             let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
-                            let center_elevation = trilerp(&elevations, c);
-                            assert_eq!(center_elevation, 4.5);
+                            let center_occupancy_weight = trilerp(&occupancy_weights, c);
+                            assert_eq!(center_occupancy_weight, 4.5);
                         }
                     }
                 }
@@ -408,7 +409,7 @@ mod test {
         }
 
         if !checked_center {
-            panic!("Never checked trilerping center elevation!");
+            panic!("Never checked trilerping center occupancy_weight!");
         }
     }*/
 
