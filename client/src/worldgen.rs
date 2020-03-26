@@ -313,9 +313,8 @@ mod test {
             root.voxel_elevation(na::Vector3::x(), Vertex::A),
             root.voxel_elevation(na::Vector3::x(), Vertex::J) * -1.0,
             epsilon = 1e-5
-            );
+        );
     }
-
 
     #[test]
     fn check_chunk_indexing() {
@@ -397,18 +396,18 @@ mod test {
         }
 
         let max_elevations = chunk_incident_max_elevations(&g, NodeId::ROOT, Vertex::A);
-        assert_abs_diff_eq!(max_elevations[0], 1.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[1], 5.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[2], 3.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[3], 7.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[4], 2.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[5], 6.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[6], 4.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[7], 8.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[0], 1.0, epsilon = 1e-8);
+        assert_abs_diff_eq!(max_elevations[1], 5.0, epsilon = 1e-8);
+        assert_abs_diff_eq!(max_elevations[2], 3.0, epsilon = 1e-8);
+        assert_abs_diff_eq!(max_elevations[3], 7.0, epsilon = 1e-8);
+        assert_abs_diff_eq!(max_elevations[4], 2.0, epsilon = 1e-8);
+        assert_abs_diff_eq!(max_elevations[5], 6.0, epsilon = 1e-8);
+        assert_abs_diff_eq!(max_elevations[6], 4.0, epsilon = 1e-8);
+        assert_abs_diff_eq!(max_elevations[7], 8.0, epsilon = 1e-8);
 
         // see corresponding test for trilerp
         let center_max_elevation = trilerp(&max_elevations, na::Vector3::repeat(0.5));
-        assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon=1e-8);
+        assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
         for ([x, y, z], _path) in Vertex::A.dual_vertices() {
@@ -422,7 +421,7 @@ mod test {
                             checked_center = true;
                             let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
                             let center_max_elevation = trilerp(&max_elevations, c);
-                            assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon=1e-8);
+                            assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
                         }
                     }
                 }
@@ -442,7 +441,7 @@ mod test {
                 &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -450,7 +449,7 @@ mod test {
                 &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -458,7 +457,7 @@ mod test {
                 &[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -466,7 +465,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 1.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -474,7 +473,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -482,7 +481,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -490,7 +489,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -498,7 +497,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
                 na::Vector3::new(1.0, 1.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
@@ -507,7 +506,7 @@ mod test {
                 &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             0.5,
@@ -515,7 +514,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
@@ -524,7 +523,7 @@ mod test {
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
     }
 
