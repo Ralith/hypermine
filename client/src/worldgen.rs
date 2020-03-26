@@ -92,7 +92,7 @@ impl NodeState {
             .map(|(s, n)| hash(graph.get(n).as_ref().unwrap().spice, s as u64))
             // now we mix together all the local hashes of the neighbors for this new node's
             // unique hash.
-            .fold(hash(0, node_length as u64), |acc, x| hash(acc, x));
+            .fold(hash(0, node_length as u64), hash);
 
         let mut d = graph
             .descenders(node)
@@ -243,18 +243,6 @@ impl Surface {
     }
 }
 
-#[test]
-fn check_surface_flipped() {
-    use approx::*;
-
-    let root = Surface::at_root();
-    assert_abs_diff_eq!(
-        root.voxel_elevation(na::Vector3::x(), Vertex::A),
-        root.voxel_elevation(na::Vector3::x(), Vertex::J) * -1.0,
-        epsilon = 1e-5
-    );
-}
-
 fn trilerp<N: na::RealField>(a: &[N], t: na::Vector3<N>) -> N {
     fn lerp<N: na::RealField>(a: &[N], t: N) -> N {
         a[0] * (N::one() - t) + a[1] * t
@@ -316,6 +304,18 @@ fn hash(a: u64, b: u64) -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
+    use approx::*;
+
+    #[test]
+    fn check_surface_flipped() {
+        let root = Surface::at_root();
+        assert_abs_diff_eq!(
+            root.voxel_elevation(na::Vector3::x(), Vertex::A),
+            root.voxel_elevation(na::Vector3::x(), Vertex::J) * -1.0,
+            epsilon = 1e-5
+            );
+    }
+
 
     #[test]
     fn check_chunk_indexing() {
@@ -397,11 +397,18 @@ mod test {
         }
 
         let max_elevations = chunk_incident_max_elevations(&g, NodeId::ROOT, Vertex::A);
-        assert_eq!(max_elevations, [1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0]);
+        assert_abs_diff_eq!(max_elevations[0], 1.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[1], 5.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[2], 3.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[3], 7.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[4], 2.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[5], 6.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[6], 4.0, epsilon=1e-8);
+        assert_abs_diff_eq!(max_elevations[7], 8.0, epsilon=1e-8);
 
         // see corresponding test for trilerp
         let center_max_elevation = trilerp(&max_elevations, na::Vector3::repeat(0.5));
-        assert_eq!(center_max_elevation, 4.5);
+        assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon=1e-8);
 
         let mut checked_center = false;
         for ([x, y, z], _path) in Vertex::A.dual_vertices() {
@@ -415,7 +422,7 @@ mod test {
                             checked_center = true;
                             let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
                             let center_max_elevation = trilerp(&max_elevations, c);
-                            assert_eq!(center_max_elevation, 4.5);
+                            assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon=1e-8);
                         }
                     }
                 }
@@ -429,90 +436,100 @@ mod test {
 
     #[test]
     fn check_trilerp() {
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 0.0)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 0.0)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 0.0)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 1.0, 0.0)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 1.0)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 1.0)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 1.0)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
                 na::Vector3::new(1.0, 1.0, 1.0)
-            )
+            ),
+            epsilon=1e-8,
         );
 
-        assert_eq!(
+        assert_abs_diff_eq!(
             0.5,
             trilerp(
                 &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
-            )
+            ),
+            epsilon=1e-8,
         );
-        assert_eq!(
+        assert_abs_diff_eq!(
             0.5,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
-            )
+            ),
+            epsilon=1e-8,
         );
 
-        assert_eq!(
+        assert_abs_diff_eq!(
             4.5,
             trilerp(
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
-            )
+            ),
+            epsilon=1e-8,
         );
     }
 
     #[test]
     fn check_surface_on_plane() {
-        use approx::*;
         assert_abs_diff_eq!(
             Surface::at_root().voxel_elevation(
                 na::Vector3::new(0.5, 0.3, 0.9), // The first 0.5 is important, the plane is the midplane of the cube in Side::A direction
@@ -525,7 +542,6 @@ mod test {
 
     #[test]
     fn check_voxel_elevation_consistency() {
-        use approx::*;
         // A cube corner should have the same elevation seen from different cubes
         assert_abs_diff_eq!(
             Surface::at_root().voxel_elevation(

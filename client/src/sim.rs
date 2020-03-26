@@ -232,7 +232,7 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
             let parent_state = graph.get(graph.neighbor(node, i)?).as_ref()?;
             Some(parent_state.child(graph, node, i))
         })
-        .or(Some(NodeState::root()));
+        .or_else(|| Some(NodeState::root()));
 }
 
 fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
