@@ -50,16 +50,10 @@ impl Cursor {
 
     /// Node and dodecahedral vertex that contains the representation for this cube in the graph
     pub fn canonicalize<N, C>(self, graph: &Graph<N, C>) -> Option<(NodeId, Vertex)> {
-        let mut node = self.node;
-        for side in [self.a, self.b, self.c].iter().cloned() {
-            // missing neighbors are always longer
-            if let Some(neighbor) = graph.neighbor(node, side) {
-                if graph.length(neighbor) < graph.length(node) {
-                    node = neighbor;
-                }
-            }
-        }
-        Some((node, Vertex::from_sides(self.a, self.b, self.c).unwrap()))
+        graph.canonicalize(
+            self.node,
+            Vertex::from_sides(self.a, self.b, self.c).unwrap(),
+        )
     }
 }
 
