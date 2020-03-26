@@ -215,7 +215,7 @@ fn populate_fresh_nodes(graph: &mut DualGraph) {
     }
     for &node in &fresh {
         let mut d = graph.descenders(node).map(|(side, _node)| side);
-        // If all of a node's neighbors are loaded, it will have three descenders
+        // If this node has three descenders, it completes a cube
         if let (Some(a), Some(b), Some(c)) = (d.next(), d.next(), d.next()) {
             let vert = dodeca::Vertex::from_sides(a, b, c).unwrap();
             let (node, _) = graph.canonicalize(node, vert).unwrap();
