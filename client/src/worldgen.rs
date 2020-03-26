@@ -58,7 +58,7 @@ pub struct NodeState {
     kind: NodeStateKind,
     surface: Surface,
     spice: u64,
-    enviro: EnviroFactors
+    enviro: EnviroFactors,
 }
 impl NodeState {
     pub fn root() -> Self {
@@ -70,7 +70,7 @@ impl NodeState {
                 max_elevation: 0,
                 temperature: 0,
                 rainfall: 0,
-            }
+            },
         }
     }
 
@@ -192,7 +192,11 @@ struct ChunkIncidentEnviroFactors {
 
 /// Returns the max_elevation values for the nodes that are incident to this chunk,
 /// sorted and converted to f64 for use in functions like trilerp.
-fn chunk_incident_enviro_factors(graph: &DualGraph, node: NodeId, cube: Vertex) -> Option<ChunkIncidentEnviroFactors> {
+fn chunk_incident_enviro_factors(
+    graph: &DualGraph,
+    node: NodeId,
+    cube: Vertex,
+) -> Option<ChunkIncidentEnviroFactors> {
     let mut i = cube
         .dual_vertices()
         .map(|(_, path)| path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
