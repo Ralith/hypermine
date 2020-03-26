@@ -525,59 +525,59 @@ mod test {
         );
     }
 
-#[test]
-fn check_voxel_elevation_consistency() {
-use approx::*;
-// A cube corner should have the same elevation seen from different cubes
-assert_abs_diff_eq!(
-    Surface::at_root().voxel_elevation(
-        na::Vector3::new(0.0, 0.0, 0.0),
-        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-    ),
-    Surface::at_root().voxel_elevation(
-        na::Vector3::new(0.0, 0.0, 0.0),
-        Vertex::from_sides(Side::F, Side::H, Side::J).unwrap()
-    ),
-    epsilon = 1e-8,
-);
+    #[test]
+    fn check_voxel_elevation_consistency() {
+        use approx::*;
+        // A cube corner should have the same elevation seen from different cubes
+        assert_abs_diff_eq!(
+            Surface::at_root().voxel_elevation(
+                na::Vector3::new(0.0, 0.0, 0.0),
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            Surface::at_root().voxel_elevation(
+                na::Vector3::new(0.0, 0.0, 0.0),
+                Vertex::from_sides(Side::F, Side::H, Side::J).unwrap()
+            ),
+            epsilon = 1e-8,
+        );
 
-// The same corner should have the same elevation when represented from the same cube at different corners
-assert_abs_diff_eq!(
-    Surface::at_root().voxel_elevation(
-        na::Vector3::new(1.0, 0.0, 0.0),
-        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-    ),
-    Surface::at_root().reflect(Side::A).voxel_elevation(
-        na::Vector3::new(0.0, 0.0, 0.0),
-        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-    ),
-    epsilon = 1e-8,
-);
+        // The same corner should have the same elevation when represented from the same cube at different corners
+        assert_abs_diff_eq!(
+            Surface::at_root().voxel_elevation(
+                na::Vector3::new(1.0, 0.0, 0.0),
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            Surface::at_root().reflect(Side::A).voxel_elevation(
+                na::Vector3::new(0.0, 0.0, 0.0),
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            epsilon = 1e-8,
+        );
 
-// Corners of midplane cubes separated by the midplane should have the same elevation with a different sign
-assert_abs_diff_eq!(
-    Surface::at_root().voxel_elevation(
-        na::Vector3::new(0.0, 0.0, 0.0),
-        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-    ),
-    -Surface::at_root().voxel_elevation(
-        na::Vector3::new(1.0, 0.0, 0.0),
-        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-    ),
-    epsilon = 1e-8,
-);
+        // Corners of midplane cubes separated by the midplane should have the same elevation with a different sign
+        assert_abs_diff_eq!(
+            Surface::at_root().voxel_elevation(
+                na::Vector3::new(0.0, 0.0, 0.0),
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            -Surface::at_root().voxel_elevation(
+                na::Vector3::new(1.0, 0.0, 0.0),
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            epsilon = 1e-8,
+        );
 
-// Corners of midplane cubes not separated by the midplane should have the same elevation
-assert_abs_diff_eq!(
-    Surface::at_root().voxel_elevation(
-        na::Vector3::new(0.0, 0.0, 0.0),
-        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-    ),
-    Surface::at_root().voxel_elevation(
-        na::Vector3::new(0.0, 0.0, 1.0),
-        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-    ),
-    epsilon = 1e-8,
-);
-}
+        // Corners of midplane cubes not separated by the midplane should have the same elevation
+        assert_abs_diff_eq!(
+            Surface::at_root().voxel_elevation(
+                na::Vector3::new(0.0, 0.0, 0.0),
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            Surface::at_root().voxel_elevation(
+                na::Vector3::new(0.0, 0.0, 1.0),
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            epsilon = 1e-8,
+        );
+    }
 }
