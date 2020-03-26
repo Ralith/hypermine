@@ -125,6 +125,8 @@ impl Vertex {
         })
     }
 
+    /// Returns the transform which places this cube in its canonical position
+    /// relative to the node it's associated with.
     pub fn cube_to_node(self) -> na::Matrix4<f64> {
         let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
         let [a, b, c] = self.canonical_sides();
