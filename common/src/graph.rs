@@ -47,7 +47,7 @@ impl<N, C> Graph<N, C> {
         self.fresh.clear();
     }
 
-    /// Node and vertex that the cube around a certain vertex is canonically assigned to. 
+    /// Node and vertex that the cube around a certain vertex is canonically assigned to.
     ///
     /// Each cube is said to be canonically assigned to the shortest of the nodes it touches.
     ///
