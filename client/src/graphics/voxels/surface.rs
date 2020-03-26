@@ -5,10 +5,7 @@ use lahar::{DedicatedBuffer, DedicatedImage};
 use vk_shader_macros::include_glsl;
 
 use super::surface_extraction::DrawBuffer;
-use crate::{
-    graphics::{Asset, Base, Loader},
-    Config,
-};
+use crate::graphics::{Asset, Base, Loader};
 use common::{defer, world::Material};
 
 const VERT: &[u32] = include_glsl!("shaders/voxels.vert");
@@ -27,7 +24,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(config: &Config, loader: &mut Loader, buffer: &DrawBuffer, frames: u32) -> Self {
+    pub fn new(loader: &mut Loader, buffer: &DrawBuffer, frames: u32) -> Self {
         let gfx = buffer.gfx.clone();
         let device = &*gfx.device;
         unsafe {
@@ -217,7 +214,7 @@ impl Surface {
             let colors = loader.load(
                 "voxel materials",
                 crate::graphics::PngArray {
-                    path: config.data_dir.join("materials"),
+                    path: "materials".into(),
                     size: common::world::Material::COUNT - 1,
                 },
             );

@@ -47,7 +47,7 @@ impl Voxels {
             MAX_CHUNKS
         };
         let surfaces = DrawBuffer::new(gfx.clone(), max_chunks, SUBDIVISION_FACTOR as u32);
-        let draw = Surface::new(&config, loader, &surfaces, frames);
+        let draw = Surface::new(loader, &surfaces, frames);
         let surface_extraction = SurfaceExtraction::new(gfx.clone());
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
             &surface_extraction,
@@ -79,6 +79,11 @@ impl Voxels {
 
         // Determine what to load/render
         let view = sim.view();
+        if !sim.graph.contains(view.node) {
+            // Graph is temporarily out of sync with the server; we don't know where we are, so
+            // there's no point trying to draw.
+            return;
+        }
         let mut chunks = sim.graph.nearby_cubes(view, self.config.view_distance);
         chunks.sort_unstable_by_key(|&(node, _, _, _)| sim.graph.length(node));
         let view_parity = common::math::parity(&view.local);
