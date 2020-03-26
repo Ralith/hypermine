@@ -66,7 +66,7 @@ pub struct NodeState {
     kind: NodeStateKind,
     surface: Surface,
     spice: u64,
-    occupancy_weight: i64,
+    max_elevation: i64,
     temp: i64,
     rain: i64,
 }
@@ -76,7 +76,7 @@ impl NodeState {
             kind: NodeStateKind::ROOT,
             surface: Surface::at_root(),
             spice: 0,
-            occupancy_weight: 0,
+            max_elevation: 0,
             temp: 0,
             rain: 0,
         }
@@ -97,13 +97,13 @@ impl NodeState {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, graph.get(n).as_ref().unwrap()));
-        let (occupancy_weight, temp, rain) = match (d.next(), d.next()) {
+        let (max_elevation, temp, rain) = match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
                 (
-                    parent_state.occupancy_weight + (1 - (spice as i64 % 30)/10),
+                    parent_state.max_elevation + (1 - (spice as i64 % 30)/10),
                     parent_state.temp + (1 - (spice as i64 % 3)),
                     parent_state.rain + (1 - (spice as i64 % 3)),
                 )
@@ -114,7 +114,7 @@ impl NodeState {
                     .unwrap();
                 let ab_state = graph.get(ab_node).as_ref().unwrap();
                 (
-                    a_state.occupancy_weight + (b_state.occupancy_weight - ab_state.occupancy_weight),
+                    a_state.max_elevation + (b_state.max_elevation - ab_state.max_elevation),
                     a_state.temp + (b_state.temp - ab_state.temp),
                     a_state.rain + (b_state.rain - ab_state.rain),
                 )
@@ -126,7 +126,7 @@ impl NodeState {
             kind: self.kind.clone().child_with_spice(spice, side),
             surface: self.surface.reflect(side),
             spice,
-            occupancy_weight,
+            max_elevation,
             temp,
             rain,
         }
@@ -137,7 +137,7 @@ impl NodeState {
         voxels: &mut VoxelData,
         subchunk_offset: na::Vector3<usize>,
         cube: Vertex,
-        occupancy_weights: [f64; 8],
+        max_elevations: [f64; 8],
     ) {
         match self.kind {
             Sky | Land => {
@@ -146,10 +146,10 @@ impl NodeState {
                         for x in GAP..(SUB - GAP) {
                             let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
                             let q = relative_subchunk_coords(x, y, z, subchunk_offset);
-                            // maximum occupancy_weight for this voxel according to the
-                            // occupancy_weights
+                            // maximum max_elevation for this voxel according to the
+                            // max_elevations
                             // of the incident nodes that dictate the content of this chunk
-                            let max_e = trilerp(&occupancy_weights, p);
+                            let max_e = trilerp(&max_elevations, p);
 
                             if self.surface.voxel_elevation(q, cube) < max_e/-10.0 {
                                 voxels.data_mut()[index(p)] = Material::Sand;
@@ -184,7 +184,7 @@ impl NodeState {
 }
 
 pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
-    let occupancy_weights = chunk_incident_occupancy_weights(graph, node, cube);
+    let max_elevations = chunk_incident_max_elevations(graph, node, cube);
 
     let mut voxels = VoxelData::Uninitialized;
 
@@ -194,17 +194,17 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
             .as_ref()
             .unwrap();
         let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-        state.write_subchunk(&mut voxels, subchunk_offset, cube, occupancy_weights);
+        state.write_subchunk(&mut voxels, subchunk_offset, cube, max_elevations);
     }
 
     voxels
 }
 
-fn chunk_incident_occupancy_weights(graph: &DualGraph, node: NodeId, cube: Vertex) -> [f64; 8] {
+fn chunk_incident_max_elevations(graph: &DualGraph, node: NodeId, cube: Vertex) -> [f64; 8] {
     let mut e = cube
         .dual_vertices()
         .map(|(_, path)| path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
-        .map(|n| graph.get(n).as_ref().unwrap().occupancy_weight as f64);
+        .map(|n| graph.get(n).as_ref().unwrap().max_elevation as f64);
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
@@ -240,7 +240,7 @@ impl Surface {
         }
     }
 
-    /// The occupancy_weight of a single voxel wrt. this Surface
+    /// The max_elevation of a single voxel wrt. this Surface
     fn voxel_elevation(&self, voxel: na::Vector3<f64>, cube: Vertex) -> f64 {
         let pos = lorentz_normalize(&(cube.cube_to_node() * voxel.push(1.0)));
         mip(&pos, &self.normal).asinh()
@@ -383,7 +383,7 @@ mod test {
     }
 
     #[test]
-    fn check_chunk_incident_occupancy_weights() {
+    fn check_chunk_incident_max_elevations() {
         let mut g = DualGraph::new();
         for (i, path) in Vertex::A.dual_vertices().map(|(_, p)| p).enumerate() {
             // this line could panic if the paths in dual_vertices weren't outlined like they were.
@@ -392,18 +392,18 @@ mod test {
             // assigning state
             *g.get_mut(new_node) = Some({
                 let mut state = NodeState::root();
-                state.occupancy_weight = i as i64 + 1;
+                state.max_elevation = i as i64 + 1;
                 state
             });
 
         }
 
-        let occupancy_weights = chunk_incident_occupancy_weights(&g, NodeId::ROOT, Vertex::A);
-        assert_eq!(occupancy_weights, [1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0]);
+        let max_elevations = chunk_incident_max_elevations(&g, NodeId::ROOT, Vertex::A);
+        assert_eq!(max_elevations, [1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0]);
 
         // see corresponding test for trilerp
-        let center_occupancy_weight = trilerp(&occupancy_weights, na::Vector3::repeat(0.5));
-        assert_eq!(center_occupancy_weight, 4.5);
+        let center_max_elevation = trilerp(&max_elevations, na::Vector3::repeat(0.5));
+        assert_eq!(center_max_elevation, 4.5);
 
         let mut checked_center = false;
         for ([x, y, z], path) in Vertex::A.dual_vertices() {
@@ -416,8 +416,8 @@ mod test {
                         if a == center {
                             checked_center = true;
                             let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
-                            let center_occupancy_weight = trilerp(&occupancy_weights, c);
-                            assert_eq!(center_occupancy_weight, 4.5);
+                            let center_max_elevation = trilerp(&max_elevations, c);
+                            assert_eq!(center_max_elevation, 4.5);
                         }
                     }
                 }
@@ -425,7 +425,7 @@ mod test {
         }
 
         if !checked_center {
-            panic!("Never checked trilerping center occupancy_weight!");
+            panic!("Never checked trilerping center max_elevation!");
         }
     }
 
