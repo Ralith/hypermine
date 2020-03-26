@@ -66,9 +66,7 @@ pub struct NodeState {
     kind: NodeStateKind,
     surface: Surface,
     spice: u64,
-    max_elevation: i64,
-    temp: i64,
-    rain: i64,
+    enviro: EnviroFactors
 }
 impl NodeState {
     pub fn root() -> Self {
@@ -76,9 +74,11 @@ impl NodeState {
             kind: NodeStateKind::ROOT,
             surface: Surface::at_root(),
             spice: 0,
-            max_elevation: 0,
-            temp: 0,
-            rain: 0,
+            enviro: EnviroFactors {
+                max_elevation: 0,
+                temperature: 0,
+                rainfall: 0,
+            }
         }
     }
 
@@ -97,27 +97,19 @@ impl NodeState {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, graph.get(n).as_ref().unwrap()));
-        let (max_elevation, temp, rain) = match (d.next(), d.next()) {
+        let enviro = match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
-                (
-                    parent_state.max_elevation + (1 - (spice as i64 % 30) / 10),
-                    parent_state.temp + (1 - (spice as i64 % 15) / 5),
-                    parent_state.rain + (1 - (spice as i64 % 90) / 30),
-                )
+                EnviroFactors::varied_from(parent_state.enviro, spice as i64)
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
                     .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
                     .unwrap();
                 let ab_state = graph.get(ab_node).as_ref().unwrap();
-                (
-                    a_state.max_elevation + (b_state.max_elevation - ab_state.max_elevation),
-                    a_state.temp + (b_state.temp - ab_state.temp),
-                    a_state.rain + (b_state.rain - ab_state.rain),
-                )
+                EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
             }
             _ => unreachable!(),
         };
@@ -126,18 +118,16 @@ impl NodeState {
             kind: self.kind.clone().child_with_spice(spice, side),
             surface: self.surface.reflect(side),
             spice,
-            max_elevation,
-            temp,
-            rain,
+            enviro,
         }
     }
 
-    pub fn write_subchunk(
+    fn write_subchunk(
         &self,
         voxels: &mut VoxelData,
         subchunk_offset: na::Vector3<usize>,
         cube: Vertex,
-        max_elevations: [f64; 8],
+        enviros: &ChunkIncidentEnviroFactors,
     ) {
         match self.kind {
             Sky | Land => {
@@ -147,15 +137,17 @@ impl NodeState {
                             let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
                             let q = relative_subchunk_coords(x, y, z, subchunk_offset);
 
-                            let (voxel_mat, elevation_boost) = match self.rain {
-                                r if r > 2 => (Material::Dirt, 3.0),
-                                r if r < 1 => (Material::Stone, -3.0),
+                            let rainfall = trilerp(&enviros.rainfalls, p);
+
+                            let (voxel_mat, elevation_boost) = match rainfall {
+                                r if r > 2.0 => (Material::Dirt, 3.0),
+                                r if r < 1.0 => (Material::Stone, -3.0),
                                 _ => (Material::Sand, -1.0),
                             };
 
                             // maximum max_elevation for this voxel according to the max_elevations
                             // of the incident nodes that dictate the content of this chunk
-                            let max_e = trilerp(&max_elevations, p) - elevation_boost;
+                            let max_e = trilerp(&enviros.max_elevations, p) - elevation_boost;
 
                             if self.surface.voxel_elevation(q, cube) < max_e / -10.0 {
                                 voxels.data_mut()[index(p)] = voxel_mat;
@@ -180,7 +172,7 @@ impl NodeState {
 }
 
 pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
-    let max_elevations = chunk_incident_max_elevations(graph, node, cube);
+    let enviros = chunk_incident_enviro_factors(graph, node, cube).unwrap();
 
     let mut voxels = VoxelData::Uninitialized;
 
@@ -190,30 +182,73 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
             .as_ref()
             .unwrap();
         let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-        state.write_subchunk(&mut voxels, subchunk_offset, cube, max_elevations);
+        state.write_subchunk(&mut voxels, subchunk_offset, cube, &enviros);
     }
 
     voxels
 }
 
-fn chunk_incident_max_elevations(graph: &DualGraph, node: NodeId, cube: Vertex) -> [f64; 8] {
-    let mut e = cube
+#[derive(Copy, Clone)]
+struct EnviroFactors {
+    max_elevation: i64,
+    temperature: i64,
+    rainfall: i64,
+}
+impl EnviroFactors {
+    fn varied_from(parent_enviro: Self, spice: i64) -> Self {
+        Self {
+            max_elevation: parent_enviro.max_elevation + (1 - (spice % 30) / 10),
+            temperature: parent_enviro.temperature + (1 - (spice % 15) / 5),
+            rainfall: parent_enviro.rainfall + (1 - (spice % 90) / 30),
+        }
+    }
+    fn continue_from(a_enviro: Self, b_enviro: Self, ab_enviro: Self) -> Self {
+        Self {
+            max_elevation: a_enviro.max_elevation + (b_enviro.max_elevation - ab_enviro.max_elevation),
+            temperature: a_enviro.temperature + (b_enviro.temperature - ab_enviro.temperature),
+            rainfall: a_enviro.rainfall + (b_enviro.rainfall - ab_enviro.rainfall),
+        }
+    }
+}
+impl Into<(f64, f64, f64)> for EnviroFactors {
+    fn into(self) -> (f64, f64, f64) {
+        (
+            self.max_elevation as f64,
+            self.temperature as f64,
+            self.rainfall as f64,
+        )
+    }
+}
+struct ChunkIncidentEnviroFactors {
+    max_elevations: [f64; 8],
+    temperatures: [f64; 8],
+    rainfalls: [f64; 8],
+}
+
+/// Returns the max_elevation values for the nodes that are incident to this chunk,
+/// sorted and converted to f64 for use in functions like trilerp.
+fn chunk_incident_enviro_factors(graph: &DualGraph, node: NodeId, cube: Vertex) -> Option<ChunkIncidentEnviroFactors> {
+    let mut i = cube
         .dual_vertices()
         .map(|(_, path)| path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
-        .map(|n| graph.get(n).as_ref().unwrap().max_elevation as f64);
+        .map(|n| graph.get(n).as_ref().unwrap().enviro);
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
-    let e1 = e.next().unwrap();
-    let e5 = e.next().unwrap();
-    let e3 = e.next().unwrap();
-    let e7 = e.next().unwrap();
-    let e2 = e.next().unwrap();
-    let e6 = e.next().unwrap();
-    let e4 = e.next().unwrap();
-    let e8 = e.next().unwrap();
+    let (e1, t1, r1) = i.next()?.into();
+    let (e5, t5, r5) = i.next()?.into();
+    let (e3, t3, r3) = i.next()?.into();
+    let (e7, t7, r7) = i.next()?.into();
+    let (e2, t2, r2) = i.next()?.into();
+    let (e6, t6, r6) = i.next()?.into();
+    let (e4, t4, r4) = i.next()?.into();
+    let (e8, t8, r8) = i.next()?.into();
 
-    [e1, e2, e3, e4, e5, e6, e7, e8]
+    Some(ChunkIncidentEnviroFactors {
+        max_elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
+        temperatures: [t1, t2, t3, t4, t5, t6, t7, t8],
+        rainfalls: [r1, r2, r3, r4, r5, r6, r7, r8],
+    })
 }
 
 /// Keeps track of the canonical surface wrt. the NodeState this is stored in
