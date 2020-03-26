@@ -52,14 +52,6 @@ impl NodeStateKind {
             _ => self,
         }
     }
-
-    pub fn solid_material(self) -> Option<Material> {
-        match self {
-            Hole(_) | RootSky | Sky | DeepSky => Some(Material::Void),
-            DeepLand => Some(Material::Stone),
-            _ => None,
-        }
-    }
 }
 
 pub struct NodeState {
@@ -121,54 +113,6 @@ impl NodeState {
             enviro,
         }
     }
-
-    fn write_subchunk(
-        &self,
-        voxels: &mut VoxelData,
-        subchunk_offset: na::Vector3<usize>,
-        cube: Vertex,
-        enviros: &ChunkIncidentEnviroFactors,
-    ) {
-        match self.kind {
-            Sky | Land => {
-                for z in GAP..(SUB - GAP) {
-                    for y in GAP..(SUB - GAP) {
-                        for x in GAP..(SUB - GAP) {
-                            let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
-                            let q = relative_subchunk_coords(x, y, z, subchunk_offset);
-
-                            let rainfall = trilerp(&enviros.rainfalls, p);
-
-                            let (voxel_mat, elevation_boost) = match rainfall {
-                                r if r > 2.0 => (Material::Dirt, 3.0),
-                                r if r < 1.0 => (Material::Stone, -3.0),
-                                _ => (Material::Sand, -1.0),
-                            };
-
-                            // maximum max_elevation for this voxel according to the max_elevations
-                            // of the incident nodes that dictate the content of this chunk
-                            let max_e = trilerp(&enviros.max_elevations, p) - elevation_boost;
-
-                            if self.surface.voxel_elevation(q, cube) < max_e / -10.0 {
-                                voxels.data_mut()[index(p)] = voxel_mat;
-                            }
-                        }
-                    }
-                }
-            }
-            _ if self.kind.solid_material().is_some() => {
-                for z in GAP..(SUB - GAP) {
-                    for y in GAP..(SUB - GAP) {
-                        for x in GAP..(SUB - GAP) {
-                            let i = index(absolute_subchunk_coords(x, y, z, subchunk_offset));
-                            voxels.data_mut()[i] = self.kind.solid_material().unwrap();
-                        }
-                    }
-                }
-            }
-            _ => unreachable!(),
-        }
-    }
 }
 
 pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
@@ -182,7 +126,29 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
             .as_ref()
             .unwrap();
         let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-        state.write_subchunk(&mut voxels, subchunk_offset, cube, &enviros);
+
+        for z in GAP..(SUB - GAP) {
+            for y in GAP..(SUB - GAP) {
+                for x in GAP..(SUB - GAP) {
+                    let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
+                    let q = relative_subchunk_coords(x, y, z, subchunk_offset);
+
+                    let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, p) {
+                        r if r > 2.0 => (Material::Dirt, 3.0),
+                        r if r < 1.0 => (Material::Stone, -3.0),
+                        _ => (Material::Sand, -1.0),
+                    };
+
+                    // maximum max_elevation for this voxel according to the max_elevations
+                    // of the incident nodes that dictate the content of this chunk
+                    let max_e = trilerp(&enviros.max_elevations, p) - elevation_boost;
+
+                    if state.surface.voxel_elevation(q, cube) < max_e / -10.0 {
+                        voxels.data_mut()[index(p)] = voxel_mat;
+                    }
+                }
+            }
+        }
     }
 
     voxels
@@ -195,18 +161,18 @@ struct EnviroFactors {
     rainfall: i64,
 }
 impl EnviroFactors {
-    fn varied_from(parent_enviro: Self, spice: i64) -> Self {
+    fn varied_from(parent: Self, spice: i64) -> Self {
         Self {
-            max_elevation: parent_enviro.max_elevation + (1 - (spice % 30) / 10),
-            temperature: parent_enviro.temperature + (1 - (spice % 15) / 5),
-            rainfall: parent_enviro.rainfall + (1 - (spice % 90) / 30),
+            max_elevation: parent.max_elevation + (1 - (spice % 30) / 10),
+            temperature: parent.temperature + (1 - (spice % 15) / 5),
+            rainfall: parent.rainfall + (1 - (spice % 90) / 30),
         }
     }
-    fn continue_from(a_enviro: Self, b_enviro: Self, ab_enviro: Self) -> Self {
+    fn continue_from(a: Self, b: Self, ab: Self) -> Self {
         Self {
-            max_elevation: a_enviro.max_elevation + (b_enviro.max_elevation - ab_enviro.max_elevation),
-            temperature: a_enviro.temperature + (b_enviro.temperature - ab_enviro.temperature),
-            rainfall: a_enviro.rainfall + (b_enviro.rainfall - ab_enviro.rainfall),
+            max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
+            temperature: a.temperature + (b.temperature - ab.temperature),
+            rainfall: a.rainfall + (b.rainfall - ab.rainfall),
         }
     }
 }

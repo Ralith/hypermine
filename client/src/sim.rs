@@ -236,8 +236,10 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
 }
 
 fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
+    let voxels = worldgen::voxels(graph, node, cube);
+
     *graph.get_cube_mut(node, cube) = Some(Cube {
         surface: None,
-        voxels: worldgen::voxels(graph, node, cube),
+        voxels,
     });
 }
