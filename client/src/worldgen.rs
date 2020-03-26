@@ -244,7 +244,10 @@ impl Surface {
     }
 }
 
-fn trilerp<N: na::RealField>(&[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8], t: na::Vector3<N>) -> N {
+fn trilerp<N: na::RealField>(
+    &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
+    t: na::Vector3<N>,
+) -> N {
     fn lerp<N: na::RealField>(v0: N, v1: N, t: N) -> N {
         v0 * (N::one() - t) + v1 * t
     }
@@ -252,7 +255,11 @@ fn trilerp<N: na::RealField>(&[v000, v001, v010, v011, v100, v101, v110, v111]: 
         lerp(lerp(v00, v01, t.x), lerp(v10, v11, t.x), t.y)
     }
 
-    lerp(bilerp(v000, v100, v010, v110, t.xy()), bilerp(v001, v101, v011, v111, t.xy()), t.z)
+    lerp(
+        bilerp(v000, v100, v010, v110, t.xy()),
+        bilerp(v001, v101, v011, v111, t.xy()),
+        t.z,
+    )
 }
 
 /// Turns an x, y, z, index into the voxel data of a subchunk into a
