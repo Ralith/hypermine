@@ -109,7 +109,7 @@ impl Draw {
                 )
                 .unwrap();
 
-            let mut loader = Loader::new(gfx.clone());
+            let mut loader = Loader::new(config.clone(), gfx.clone());
 
             let voxels = Voxels::new(gfx.clone(), config, &mut loader, PIPELINE_DEPTH);
 

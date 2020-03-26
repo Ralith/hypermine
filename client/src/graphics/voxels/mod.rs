@@ -47,7 +47,7 @@ impl Voxels {
             MAX_CHUNKS
         };
         let surfaces = DrawBuffer::new(gfx.clone(), max_chunks, SUBDIVISION_FACTOR as u32);
-        let draw = Surface::new(&config, loader, &surfaces, frames);
+        let draw = Surface::new(loader, &surfaces, frames);
         let surface_extraction = SurfaceExtraction::new(gfx.clone());
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
             &surface_extraction,

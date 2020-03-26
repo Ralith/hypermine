@@ -1,7 +1,12 @@
-use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    fs, io,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use serde::Deserialize;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 pub struct Config {
     pub name: Arc<str>,
@@ -50,6 +55,27 @@ impl Config {
             input_send_rate: input_send_rate.unwrap_or(30),
             server,
         }
+    }
+
+    pub fn find_asset(&self, path: &Path) -> Option<PathBuf> {
+        #[cfg(feature = "use-repo-assets")]
+        {
+            let repo_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("assets")
+                .join(path);
+            if repo_path.exists() {
+                return Some(repo_path);
+            } else {
+                debug!(path = %repo_path.display(), "asset not in repo");
+            }
+        }
+        let user_path = self.data_dir.join("materials");
+        if user_path.exists() {
+            return Some(user_path);
+        }
+        None
     }
 }
 
