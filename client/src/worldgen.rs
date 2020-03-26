@@ -398,7 +398,6 @@ mod test {
     fn check_chunk_incident_max_elevations() {
         let mut g = DualGraph::new();
         for (i, path) in Vertex::A.dual_vertices().map(|(_, p)| p).enumerate() {
-            // this line could panic if the paths in dual_vertices weren't outlined like they were.
             let new_node = path.fold(NodeId::ROOT, |node, side| g.ensure_neighbor(node, side));
 
             // assigning state
@@ -471,7 +470,7 @@ mod test {
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0],
+                &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 na::Vector3::new(1.0, 1.0, 0.0)
             ),
             epsilon = 1e-8,
