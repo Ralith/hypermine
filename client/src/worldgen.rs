@@ -103,7 +103,7 @@ impl NodeState {
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
                 (
-                    parent_state.occupancy_weight + (1 - (spice as i64 % 3)),
+                    parent_state.occupancy_weight + (1 - (spice as i64 % 30)/10),
                     parent_state.temp + (1 - (spice as i64 % 3)),
                     parent_state.rain + (1 - (spice as i64 % 3)),
                 )
@@ -145,12 +145,13 @@ impl NodeState {
                     for y in GAP..(SUB - GAP) {
                         for x in GAP..(SUB - GAP) {
                             let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
+                            let q = relative_subchunk_coords(x, y, z, subchunk_offset);
                             // maximum occupancy_weight for this voxel according to the
                             // occupancy_weights
                             // of the incident nodes that dictate the content of this chunk
                             let max_e = trilerp(&occupancy_weights, p);
 
-                            if self.surface.voxel_elevation(p, cube) < max_e/-10.0 {
+                            if self.surface.voxel_elevation(q, cube) < max_e/-10.0 {
                                 voxels.data_mut()[index(p)] = Material::Sand;
                                 /*
                                 let z_border = p.z == 0.5 / SUBDIVISION_FACTOR as f64;
@@ -270,7 +271,7 @@ fn trilerp<N: na::RealField>(a: &[N], t: na::Vector3<N>) -> N {
 }
 
 /// Turns an x, y, z, index into the voxel data of a subchunk into a
-/// coordinate in a unit chunk where the length of each side is one.
+/// coordinate in a unit chunk where the length of each side is one, relative to the canonical node.
 fn absolute_subchunk_coords(
     x: usize,
     y: usize,
@@ -279,6 +280,22 @@ fn absolute_subchunk_coords(
 ) -> na::Vector3<f64> {
     (subchunk_offset * SUB + na::Vector3::new(x, y, z)).map(|x| x as f64 + 0.5)
         / SUBDIVISION_FACTOR as f64
+}
+
+/// Turns an x, y, z, index into the voxel data of a subchunk into a
+/// coordinate in a unit chunk where the length of each side is one, relative to the node corresponding to the subchunk.
+fn relative_subchunk_coords(
+    x: usize,
+    y: usize,
+    z: usize,
+    subchunk_offset: na::Vector3<usize>,
+) -> na::Vector3<f64> {
+    let asc = absolute_subchunk_coords(x, y, z, subchunk_offset);
+    na::Vector3::new(
+        subchunk_offset[0] as f64 + (1.0 - 2.0 * subchunk_offset[0] as f64) * asc[0],
+        subchunk_offset[1] as f64 + (1.0 - 2.0 * subchunk_offset[1] as f64) * asc[1],
+        subchunk_offset[2] as f64 + (1.0 - 2.0 * subchunk_offset[2] as f64) * asc[2],
+    )
 }
 
 fn index(v: na::Vector3<f64>) -> usize {
@@ -494,4 +511,73 @@ mod test {
             )
         );
     }
+
+    #[test]
+    fn check_surface_on_plane() {
+        use approx::*;
+        assert_abs_diff_eq!(
+            Surface::at_root().voxel_elevation(
+                na::Vector3::new(0.5, 0.3, 0.9), // The first 0.5 is important, the plane is the midplane of the cube in Side::A direction
+                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+            ),
+            0.0,
+            epsilon = 1e-8,
+        );
+    }
+
+#[test]
+fn check_voxel_elevation_consistency() {
+use approx::*;
+// A cube corner should have the same elevation seen from different cubes
+assert_abs_diff_eq!(
+    Surface::at_root().voxel_elevation(
+        na::Vector3::new(0.0, 0.0, 0.0),
+        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+    ),
+    Surface::at_root().voxel_elevation(
+        na::Vector3::new(0.0, 0.0, 0.0),
+        Vertex::from_sides(Side::F, Side::H, Side::J).unwrap()
+    ),
+    epsilon = 1e-8,
+);
+
+// The same corner should have the same elevation when represented from the same cube at different corners
+assert_abs_diff_eq!(
+    Surface::at_root().voxel_elevation(
+        na::Vector3::new(1.0, 0.0, 0.0),
+        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+    ),
+    Surface::at_root().reflect(Side::A).voxel_elevation(
+        na::Vector3::new(0.0, 0.0, 0.0),
+        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+    ),
+    epsilon = 1e-8,
+);
+
+// Corners of midplane cubes separated by the midplane should have the same elevation with a different sign
+assert_abs_diff_eq!(
+    Surface::at_root().voxel_elevation(
+        na::Vector3::new(0.0, 0.0, 0.0),
+        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+    ),
+    -Surface::at_root().voxel_elevation(
+        na::Vector3::new(1.0, 0.0, 0.0),
+        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+    ),
+    epsilon = 1e-8,
+);
+
+// Corners of midplane cubes not separated by the midplane should have the same elevation
+assert_abs_diff_eq!(
+    Surface::at_root().voxel_elevation(
+        na::Vector3::new(0.0, 0.0, 0.0),
+        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+    ),
+    Surface::at_root().voxel_elevation(
+        na::Vector3::new(0.0, 0.0, 1.0),
+        Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
+    ),
+    epsilon = 1e-8,
+);
+}
 }
