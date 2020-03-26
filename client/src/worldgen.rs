@@ -186,6 +186,7 @@ impl Into<(f64, f64, f64)> for EnviroFactors {
 }
 struct ChunkIncidentEnviroFactors {
     max_elevations: [f64; 8],
+    #[allow(dead_code)]
     temperatures: [f64; 8],
     rainfalls: [f64; 8],
 }
