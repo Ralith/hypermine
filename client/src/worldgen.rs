@@ -104,8 +104,8 @@ impl NodeState {
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
                 (
                     parent_state.max_elevation + (1 - (spice as i64 % 30)/10),
-                    parent_state.temp + (1 - (spice as i64 % 3)),
-                    parent_state.rain + (1 - (spice as i64 % 3)),
+                    parent_state.temp + (1 - (spice as i64 % 15)/5),
+                    parent_state.rain + (1 - (spice as i64 % 90)/30),
                 )
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
@@ -146,23 +146,19 @@ impl NodeState {
                         for x in GAP..(SUB - GAP) {
                             let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
                             let q = relative_subchunk_coords(x, y, z, subchunk_offset);
-                            // maximum max_elevation for this voxel according to the
-                            // max_elevations
+
+                            let (voxel_mat, elevation_boost) = match self.rain {
+                                r if r > 2 => (Material::Dirt, 3.0),
+                                r if r < 1 => (Material::Stone, -3.0),
+                                _ => (Material::Sand, -1.0),
+                            };
+                            
+                            // maximum max_elevation for this voxel according to the max_elevations
                             // of the incident nodes that dictate the content of this chunk
-                            let max_e = trilerp(&max_elevations, p);
+                            let max_e = trilerp(&max_elevations, p) - elevation_boost;
 
                             if self.surface.voxel_elevation(q, cube) < max_e/-10.0 {
-                                voxels.data_mut()[index(p)] = Material::Sand;
-                                /*
-                                let z_border = p.z == 0.5 / SUBDIVISION_FACTOR as f64;
-                                let y_border = p.y == 0.5 / SUBDIVISION_FACTOR as f64;
-                                voxels.data_mut()[index(p)] = if z_border && y_border {
-                                    Material::Stone
-                                } else if z_border || y_border {
-                                    Material::Dirt
-                                } else {
-                                    Material::Sand
-                                };*/
+                                voxels.data_mut()[index(p)] = voxel_mat;
                             }
                         }
                     }
