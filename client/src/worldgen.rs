@@ -52,23 +52,13 @@ impl NodeStateKind {
             _ => self,
         }
     }
-
-    pub fn solid_material(self) -> Option<Material> {
-        match self {
-            Hole(_) | RootSky | Sky | DeepSky => Some(Material::Void),
-            DeepLand => Some(Material::Stone),
-            _ => None,
-        }
-    }
 }
 
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Surface,
     spice: u64,
-    max_elevation: i64,
-    temp: i64,
-    rain: i64,
+    enviro: EnviroFactors,
 }
 impl NodeState {
     pub fn root() -> Self {
@@ -76,9 +66,11 @@ impl NodeState {
             kind: NodeStateKind::ROOT,
             surface: Surface::at_root(),
             spice: 0,
-            max_elevation: 0,
-            temp: 0,
-            rain: 0,
+            enviro: EnviroFactors {
+                max_elevation: 0,
+                temperature: 0,
+                rainfall: 0,
+            },
         }
     }
 
@@ -97,27 +89,19 @@ impl NodeState {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, graph.get(n).as_ref().unwrap()));
-        let (max_elevation, temp, rain) = match (d.next(), d.next()) {
+        let enviro = match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
-                (
-                    parent_state.max_elevation + (1 - (spice as i64 % 30) / 10),
-                    parent_state.temp + (1 - (spice as i64 % 15) / 5),
-                    parent_state.rain + (1 - (spice as i64 % 90) / 30),
-                )
+                EnviroFactors::varied_from(parent_state.enviro, spice as i64)
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
                     .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
                     .unwrap();
                 let ab_state = graph.get(ab_node).as_ref().unwrap();
-                (
-                    a_state.max_elevation + (b_state.max_elevation - ab_state.max_elevation),
-                    a_state.temp + (b_state.temp - ab_state.temp),
-                    a_state.rain + (b_state.rain - ab_state.rain),
-                )
+                EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
             }
             _ => unreachable!(),
         };
@@ -126,61 +110,13 @@ impl NodeState {
             kind: self.kind.clone().child(side),
             surface: self.surface.reflect(side),
             spice,
-            max_elevation,
-            temp,
-            rain,
-        }
-    }
-
-    pub fn write_subchunk(
-        &self,
-        voxels: &mut VoxelData,
-        subchunk_offset: na::Vector3<usize>,
-        cube: Vertex,
-        max_elevations: [f64; 8],
-    ) {
-        match self.kind {
-            Sky | Land => {
-                for z in GAP..(SUB - GAP) {
-                    for y in GAP..(SUB - GAP) {
-                        for x in GAP..(SUB - GAP) {
-                            let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
-                            let q = relative_subchunk_coords(x, y, z, subchunk_offset);
-
-                            let (voxel_mat, elevation_boost) = match self.rain {
-                                r if r > 2 => (Material::Dirt, 3.0),
-                                r if r < 1 => (Material::Stone, -3.0),
-                                _ => (Material::Sand, -1.0),
-                            };
-
-                            // maximum max_elevation for this voxel according to the max_elevations
-                            // of the incident nodes that dictate the content of this chunk
-                            let max_e = trilerp(&max_elevations, p) - elevation_boost;
-
-                            if self.surface.voxel_elevation(q, cube) < max_e / -10.0 {
-                                voxels.data_mut()[index(p)] = voxel_mat;
-                            }
-                        }
-                    }
-                }
-            }
-            _ if self.kind.solid_material().is_some() => {
-                for z in GAP..(SUB - GAP) {
-                    for y in GAP..(SUB - GAP) {
-                        for x in GAP..(SUB - GAP) {
-                            let i = index(absolute_subchunk_coords(x, y, z, subchunk_offset));
-                            voxels.data_mut()[i] = self.kind.solid_material().unwrap();
-                        }
-                    }
-                }
-            }
-            _ => unreachable!(),
+            enviro,
         }
     }
 }
 
 pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
-    let max_elevations = chunk_incident_max_elevations(graph, node, cube);
+    let enviros = chunk_incident_enviro_factors(graph, node, cube).unwrap();
 
     let mut voxels = VoxelData::Uninitialized;
 
@@ -190,37 +126,105 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
             .as_ref()
             .unwrap();
         let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-        state.write_subchunk(&mut voxels, subchunk_offset, cube, max_elevations);
-    }
 
+        for z in GAP..(SUB - GAP) {
+            for y in GAP..(SUB - GAP) {
+                for x in GAP..(SUB - GAP) {
+                    let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
+                    let q = relative_subchunk_coords(x, y, z, subchunk_offset);
+
+                    let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, p) {
+                        r if r > 2.0 => (Material::Dirt, 3.0),
+                        r if r < 1.0 => (Material::Stone, -3.0),
+                        _ => (Material::Sand, -1.0),
+                    };
+
+                    // maximum max_elevation for this voxel according to the max_elevations
+                    // of the incident nodes that dictate the content of this chunk
+                    let max_e = trilerp(&enviros.max_elevations, p) - elevation_boost;
+
+                    if state.surface.voxel_elevation(q, cube) < max_e / -10.0 {
+                        voxels.data_mut()[index(p)] = voxel_mat;
+                    }
+                }
+            }
+        }
+    }
     voxels
 }
 
-fn chunk_incident_max_elevations(graph: &DualGraph, node: NodeId, cube: Vertex) -> [f64; 8] {
-    let mut e = cube
+#[derive(Copy, Clone)]
+struct EnviroFactors {
+    max_elevation: i64,
+    temperature: i64,
+    rainfall: i64,
+}
+impl EnviroFactors {
+    fn varied_from(parent: Self, spice: i64) -> Self {
+        Self {
+            max_elevation: parent.max_elevation + (1 - (spice % 30) / 10),
+            temperature: parent.temperature + (1 - (spice % 15) / 5),
+            rainfall: parent.rainfall + (1 - (spice % 90) / 30),
+        }
+    }
+    fn continue_from(a: Self, b: Self, ab: Self) -> Self {
+        Self {
+            max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
+            temperature: a.temperature + (b.temperature - ab.temperature),
+            rainfall: a.rainfall + (b.rainfall - ab.rainfall),
+        }
+    }
+}
+impl Into<(f64, f64, f64)> for EnviroFactors {
+    fn into(self) -> (f64, f64, f64) {
+        (
+            self.max_elevation as f64,
+            self.temperature as f64,
+            self.rainfall as f64,
+        )
+    }
+}
+struct ChunkIncidentEnviroFactors {
+    max_elevations: [f64; 8],
+    #[allow(dead_code)]
+    temperatures: [f64; 8],
+    rainfalls: [f64; 8],
+}
+
+/// Returns the max_elevation values for the nodes that are incident to this chunk,
+/// sorted and converted to f64 for use in functions like trilerp.
+fn chunk_incident_enviro_factors(
+    graph: &DualGraph,
+    node: NodeId,
+    cube: Vertex,
+) -> Option<ChunkIncidentEnviroFactors> {
+    let mut i = cube
         .dual_vertices()
         .map(|(_, path)| path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
-        .map(|n| graph.get(n).as_ref().unwrap().max_elevation as f64);
+        .map(|n| graph.get(n).as_ref().unwrap().enviro);
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
-    [
-        e.next().unwrap(),
-        e.next().unwrap(),
-        e.next().unwrap(),
-        e.next().unwrap(),
-        e.next().unwrap(),
-        e.next().unwrap(),
-        e.next().unwrap(),
-        e.next().unwrap(),
-    ]
+    let (e1, t1, r1) = i.next()?.into();
+    let (e2, t2, r2) = i.next()?.into();
+    let (e3, t3, r3) = i.next()?.into();
+    let (e4, t4, r4) = i.next()?.into();
+    let (e5, t5, r5) = i.next()?.into();
+    let (e6, t6, r6) = i.next()?.into();
+    let (e7, t7, r7) = i.next()?.into();
+    let (e8, t8, r8) = i.next()?.into();
+
+    Some(ChunkIncidentEnviroFactors {
+        max_elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
+        temperatures: [t1, t2, t3, t4, t5, t6, t7, t8],
+        rainfalls: [r1, r2, r3, r4, r5, r6, r7, r8],
+    })
 }
 
 /// Keeps track of the canonical surface wrt. the NodeState this is stored in
 pub struct Surface {
     normal: na::Vector4<f64>,
 }
-
 impl Surface {
     /// A Vector pointing up from the surface at the root node.
     fn at_root() -> Self {
@@ -410,18 +414,19 @@ mod test {
             // assigning state
             *g.get_mut(new_node) = Some({
                 let mut state = NodeState::root();
-                state.max_elevation = i as i64 + 1;
+                state.enviro.max_elevation = i as i64 + 1;
                 state
             });
         }
 
-        let max_elevations = chunk_incident_max_elevations(&g, NodeId::ROOT, Vertex::A);
-        for (i, max_elevation) in max_elevations.iter().cloned().enumerate() {
+        let enviros = chunk_incident_enviro_factors(&g, NodeId::ROOT, Vertex::A).unwrap();
+        for (i, max_elevation) in enviros.max_elevations.iter().cloned().enumerate() {
+            println!("{}, {}", i, max_elevation);
             assert_abs_diff_eq!(max_elevation, (i + 1) as f64, epsilon = 1e-8);
         }
 
         // see corresponding test for trilerp
-        let center_max_elevation = trilerp(&max_elevations, na::Vector3::repeat(0.5));
+        let center_max_elevation = trilerp(&enviros.max_elevations, na::Vector3::repeat(0.5));
         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
@@ -435,7 +440,7 @@ mod test {
                         if a == center {
                             checked_center = true;
                             let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
-                            let center_max_elevation = trilerp(&max_elevations, c);
+                            let center_max_elevation = trilerp(&enviros.max_elevations, c);
                             assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
                         }
                     }
