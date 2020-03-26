@@ -49,10 +49,9 @@ impl<N, C> Graph<N, C> {
 
     /// Node and vertex that the cube around a certain vertex is canonically assigned to. 
     ///
-    /// The node incident to a cube with the shortest canonical length is said to be canonically
-    /// assigned to that cube.
+    /// Each cube is said to be canonically assigned to the shortest of the nodes it touches.
     ///
-    /// Canonical length is defined as a node's distance from the root node.
+    /// A node's length is defined as a its distance from the root node.
     pub fn canonicalize(&self, mut node: NodeId, vertex: Vertex) -> Option<(NodeId, Vertex)> {
         for side in vertex.canonical_sides().iter().cloned() {
             // missing neighbors are always longer
@@ -65,9 +64,9 @@ impl<N, C> Graph<N, C> {
         Some((node, vertex))
     }
 
-    /// Returns all of the sides between the provided node and its canonically shorter neighbors.
+    /// Returns all of the sides between the provided node and its shorter neighbors.
     ///
-    /// Canonical length is a node's distance from the root node.
+    /// A node's length is a its distance from the root node.
     pub fn descenders(&self, node: NodeId) -> impl ExactSizeIterator<Item = (Side, NodeId)> {
         let node_length = self.length(node);
 

@@ -220,6 +220,7 @@ fn chunk_incident_max_elevations(graph: &DualGraph, node: NodeId, cube: Vertex) 
 pub struct Surface {
     normal: na::Vector4<f64>,
 }
+
 impl Surface {
     /// A Vector pointing up from the surface at the root node.
     fn at_root() -> Self {
