@@ -25,7 +25,7 @@ impl NodeStateKind {
     pub const ROOT: Self = RootSky;
 
     /// What state comes after this state, from a given side?
-    pub fn child_with_spice(self, _spice: u64, side: Side) -> Self {
+    pub fn child(self, side: Side) -> Self {
         match (self, side) {
             (RootSky, _) => match side {
                 _ if side.adjacent_to(Side::A) => Land,
@@ -123,7 +123,7 @@ impl NodeState {
         };
 
         Self {
-            kind: self.kind.clone().child_with_spice(spice, side),
+            kind: self.kind.clone().child(side),
             surface: self.surface.reflect(side),
             spice,
             max_elevation,
