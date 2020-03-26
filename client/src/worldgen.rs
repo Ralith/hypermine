@@ -308,7 +308,7 @@ fn chunk_coords_to_index_with_margin(mut v: na::Vector3<usize>) -> usize {
 
 fn hash(a: u64, b: u64) -> u64 {
     use std::ops::BitXor;
-    a.rotate_left(5).bitxor(b).wrapping_mul(0x517cc1b727220a95)
+    a.rotate_left(5).bitxor(b).wrapping_mul(0x517c_c1b7_2722_0a95)
 }
 
 #[cfg(test)]
