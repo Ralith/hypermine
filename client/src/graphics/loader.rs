@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 use tracing::error;
 
 use super::Base;
+use crate::Config;
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
@@ -42,7 +43,7 @@ pub struct Loader {
 }
 
 impl Loader {
-    pub fn new(gfx: Arc<Base>) -> Self {
+    pub fn new(cfg: Arc<Config>, gfx: Arc<Base>) -> Self {
         let runtime = tokio::runtime::Builder::new()
             .threaded_scheduler()
             .build()
@@ -59,6 +60,7 @@ impl Loader {
         let shared = Arc::new(Shared {
             send,
             ctx: LoadCtx {
+                cfg,
                 gfx,
                 staging,
                 transfer,
@@ -147,6 +149,7 @@ struct Message {
 }
 
 pub struct LoadCtx {
+    pub cfg: Arc<Config>,
     pub gfx: Arc<Base>,
     pub staging: StagingBuffer,
     pub transfer: TransferHandle,

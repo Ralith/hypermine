@@ -125,6 +125,8 @@ impl Vertex {
         })
     }
 
+    /// Transform from euclidean cube coordinates to the hyperbolic space
+    /// relative to the cube's canonical node.
     pub fn cube_to_node(self) -> na::Matrix4<f64> {
         let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
         let [a, b, c] = self.canonical_sides();

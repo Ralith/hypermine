@@ -35,3 +35,7 @@ webpki = "0.21.0"
 hecs = "0.2.9"
 rcgen = { version = "0.7.0", default-features = false }
 approx = "0.3.2"
+
+[features]
+default = ["use-repo-assets"]
+use-repo-assets = []

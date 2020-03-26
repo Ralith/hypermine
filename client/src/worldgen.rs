@@ -25,7 +25,7 @@ impl NodeStateKind {
     pub const ROOT: Self = RootSky;
 
     /// What state comes after this state, from a given side?
-    pub fn child_with_spice(self, _spice: u64, side: Side) -> Self {
+    pub fn child(self, side: Side) -> Self {
         match (self, side) {
             (RootSky, _) => match side {
                 _ if side.adjacent_to(Side::A) => Land,
@@ -107,7 +107,7 @@ impl NodeState {
         };
 
         Self {
-            kind: self.kind.clone().child_with_spice(spice, side),
+            kind: self.kind.clone().child(side),
             surface: self.surface.reflect(side),
             spice,
             enviro,
@@ -150,7 +150,6 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
             }
         }
     }
-
     voxels
 }
 
@@ -202,12 +201,12 @@ fn chunk_incident_enviro_factors(graph: &DualGraph, node: NodeId, cube: Vertex) 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
     let (e1, t1, r1) = i.next()?.into();
-    let (e5, t5, r5) = i.next()?.into();
-    let (e3, t3, r3) = i.next()?.into();
-    let (e7, t7, r7) = i.next()?.into();
     let (e2, t2, r2) = i.next()?.into();
-    let (e6, t6, r6) = i.next()?.into();
+    let (e3, t3, r3) = i.next()?.into();
     let (e4, t4, r4) = i.next()?.into();
+    let (e5, t5, r5) = i.next()?.into();
+    let (e6, t6, r6) = i.next()?.into();
+    let (e7, t7, r7) = i.next()?.into();
     let (e8, t8, r8) = i.next()?.into();
 
     Some(ChunkIncidentEnviroFactors {
@@ -244,15 +243,22 @@ impl Surface {
     }
 }
 
-fn trilerp<N: na::RealField>(a: &[N], t: na::Vector3<N>) -> N {
-    fn lerp<N: na::RealField>(a: &[N], t: N) -> N {
-        a[0] * (N::one() - t) + a[1] * t
+fn trilerp<N: na::RealField>(
+    &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
+    t: na::Vector3<N>,
+) -> N {
+    fn lerp<N: na::RealField>(v0: N, v1: N, t: N) -> N {
+        v0 * (N::one() - t) + v1 * t
     }
-    fn bilerp<N: na::RealField>(a: &[N], t: na::Vector2<N>) -> N {
-        lerp(&[lerp(&a[0..2], t.x), lerp(&a[2..4], t.x)], t.y)
+    fn bilerp<N: na::RealField>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>) -> N {
+        lerp(lerp(v00, v01, t.x), lerp(v10, v11, t.x), t.y)
     }
 
-    lerp(&[bilerp(&a[0..4], t.xy()), bilerp(&a[4..8], t.xy())], t.z)
+    lerp(
+        bilerp(v000, v100, v010, v110, t.xy()),
+        bilerp(v001, v101, v011, v111, t.xy()),
+        t.z,
+    )
 }
 
 /// Turns an x, y, z, index into the voxel data of a subchunk into a
@@ -314,12 +320,11 @@ mod test {
             root.voxel_elevation(na::Vector3::x(), Vertex::A),
             root.voxel_elevation(na::Vector3::x(), Vertex::J) * -1.0,
             epsilon = 1e-5
-            );
+        );
     }
 
-
     #[test]
-    fn check_chunk_indexing() {
+    fn chunk_indexing_origin() {
         // (0, 0, 0) in localized coords
         let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
 
@@ -328,7 +333,11 @@ mod test {
             chunk_coords_to_index_with_margin(na::Vector3::repeat(0)),
             origin_index
         );
+    }
 
+    #[test]
+    fn chunk_indexing_normalized() {
+        let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
         // (0.5, 0.5, 0.5) in localized coords
         let center_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUB));
         // the point farthest from the origin, (1, 1, 1) in localized coords
@@ -337,6 +346,15 @@ mod test {
         assert_eq!(index(na::Vector3::repeat(0.0)), origin_index);
         assert_eq!(index(na::Vector3::repeat(0.5)), center_index);
         assert_eq!(index(na::Vector3::repeat(1.0)), anti_index);
+    }
+
+    #[test]
+    fn chunk_indexing_absolute() {
+        let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
+        // (0.5, 0.5, 0.5) in localized coords
+        let center_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUB));
+        // the point farthest from the origin, (1, 1, 1) in localized coords
+        let anti_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR));
 
         assert_eq!(
             index(absolute_subchunk_coords(0, 0, 0, na::zero())),
@@ -386,30 +404,25 @@ mod test {
     fn check_chunk_incident_max_elevations() {
         let mut g = DualGraph::new();
         for (i, path) in Vertex::A.dual_vertices().map(|(_, p)| p).enumerate() {
-            // this line could panic if the paths in dual_vertices weren't outlined like they were.
             let new_node = path.fold(NodeId::ROOT, |node, side| g.ensure_neighbor(node, side));
 
             // assigning state
             *g.get_mut(new_node) = Some({
                 let mut state = NodeState::root();
-                state.max_elevation = i as i64 + 1;
+                state.enviro.max_elevation = i as i64 + 1;
                 state
             });
         }
 
-        let max_elevations = chunk_incident_max_elevations(&g, NodeId::ROOT, Vertex::A);
-        assert_abs_diff_eq!(max_elevations[0], 1.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[1], 5.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[2], 3.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[3], 7.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[4], 2.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[5], 6.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[6], 4.0, epsilon=1e-8);
-        assert_abs_diff_eq!(max_elevations[7], 8.0, epsilon=1e-8);
+        let enviros = chunk_incident_enviro_factors(&g, NodeId::ROOT, Vertex::A).unwrap();
+        for (i, max_elevation) in enviros.max_elevations.iter().cloned().enumerate() {
+            println!("{}, {}", i, max_elevation);
+            assert_abs_diff_eq!(max_elevation, (i + 1) as f64, epsilon = 1e-8);
+        }
 
         // see corresponding test for trilerp
-        let center_max_elevation = trilerp(&max_elevations, na::Vector3::repeat(0.5));
-        assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon=1e-8);
+        let center_max_elevation = trilerp(&enviros.max_elevations, na::Vector3::repeat(0.5));
+        assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
         for ([x, y, z], _path) in Vertex::A.dual_vertices() {
@@ -422,8 +435,8 @@ mod test {
                         if a == center {
                             checked_center = true;
                             let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
-                            let center_max_elevation = trilerp(&max_elevations, c);
-                            assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon=1e-8);
+                            let center_max_elevation = trilerp(&enviros.max_elevations, c);
+                            assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
                         }
                     }
                 }
@@ -443,15 +456,15 @@ mod test {
                 &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -459,23 +472,23 @@ mod test {
                 &[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 na::Vector3::new(1.0, 1.0, 0.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -483,15 +496,15 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
@@ -499,7 +512,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
                 na::Vector3::new(1.0, 1.0, 1.0)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
@@ -508,7 +521,7 @@ mod test {
                 &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             0.5,
@@ -516,7 +529,7 @@ mod test {
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
@@ -525,7 +538,7 @@ mod test {
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
                 na::Vector3::new(0.5, 0.5, 0.5)
             ),
-            epsilon=1e-8,
+            epsilon = 1e-8,
         );
     }
 

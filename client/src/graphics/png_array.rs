@@ -17,18 +17,22 @@ impl Loadable for PngArray {
 
     fn load(self, handle: &LoadCtx) -> LoadFuture<'_, Self::Output> {
         Box::pin(async move {
-            let mut paths = fs::read_dir(&self.path)
-                .with_context(|| format!("reading {}", self.path.display()))?
+            let full_path = handle
+                .cfg
+                .find_asset(&self.path)
+                .ok_or_else(|| anyhow!("not found"))?;
+            let mut paths = fs::read_dir(&full_path)
+                .with_context(|| format!("reading {}", full_path.display()))?
                 .map(|x| x.map(|x| x.path()))
                 .collect::<Result<Vec<_>, _>>()
-                .with_context(|| format!("reading {}", self.path.display()))?;
+                .with_context(|| format!("reading {}", full_path.display()))?;
             if paths.is_empty() {
-                bail!("{} is empty", self.path.display());
+                bail!("{} is empty", full_path.display());
             }
             if paths.len() < self.size {
                 bail!(
                     "{}: expected {} textures, found {}",
-                    self.path.display(),
+                    full_path.display(),
                     self.size,
                     paths.len()
                 );
@@ -63,7 +67,7 @@ impl Loadable for PngArray {
                             .alloc(info.width as usize * info.height as usize * 4 * self.size)
                             .await
                             .ok_or_else(|| {
-                                anyhow!("{}: image array too large", self.path.display())
+                                anyhow!("{}: image array too large", full_path.display())
                             })?,
                     );
                 }
@@ -120,7 +124,7 @@ impl Loadable for PngArray {
                 trace!(
                     width = width,
                     height = height,
-                    path = %self.path.display(),
+                    path = %full_path.display(),
                     "loaded array"
                 );
                 Ok(image)
