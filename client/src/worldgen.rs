@@ -25,7 +25,7 @@ impl NodeStateKind {
     pub const ROOT: Self = RootSky;
 
     /// What state comes after this state, from a given side?
-    pub fn child_with_spice(self, spice: u64, side: Side) -> Self {
+    pub fn child_with_spice(self, _spice: u64, side: Side) -> Self {
         match (self, side) {
             (RootSky, _) => match side {
                 _ if side.adjacent_to(Side::A) => Land,
@@ -250,7 +250,7 @@ fn check_surface_flipped() {
     let root = Surface::at_root();
     assert_abs_diff_eq!(
         root.voxel_elevation(na::Vector3::x(), Vertex::A),
-        root.voxel_elevation(na::Vector3::x(), Vertex::J) - 1.0,
+        root.voxel_elevation(na::Vector3::x(), Vertex::J) * -1.0,
         epsilon = 1e-5
     );
 }
@@ -308,7 +308,9 @@ fn chunk_coords_to_index_with_margin(mut v: na::Vector3<usize>) -> usize {
 
 fn hash(a: u64, b: u64) -> u64 {
     use std::ops::BitXor;
-    a.rotate_left(5).bitxor(b).wrapping_mul(0x517c_c1b7_2722_0a95)
+    a.rotate_left(5)
+        .bitxor(b)
+        .wrapping_mul(0x517c_c1b7_2722_0a95)
 }
 
 #[cfg(test)]
@@ -402,7 +404,7 @@ mod test {
         assert_eq!(center_max_elevation, 4.5);
 
         let mut checked_center = false;
-        for ([x, y, z], path) in Vertex::A.dual_vertices() {
+        for ([x, y, z], _path) in Vertex::A.dual_vertices() {
             let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
             for z in GAP..(SUB - GAP) {
                 for y in GAP..(SUB - GAP) {
