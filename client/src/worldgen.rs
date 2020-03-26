@@ -204,16 +204,16 @@ fn chunk_incident_max_elevations(graph: &DualGraph, node: NodeId, cube: Vertex) 
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
-    let e1 = e.next().unwrap();
-    let e5 = e.next().unwrap();
-    let e3 = e.next().unwrap();
-    let e7 = e.next().unwrap();
-    let e2 = e.next().unwrap();
-    let e6 = e.next().unwrap();
-    let e4 = e.next().unwrap();
-    let e8 = e.next().unwrap();
-
-    [e1, e2, e3, e4, e5, e6, e7, e8]
+    [
+        e.next().unwrap(),
+        e.next().unwrap(),
+        e.next().unwrap(),
+        e.next().unwrap(),
+        e.next().unwrap(),
+        e.next().unwrap(),
+        e.next().unwrap(),
+        e.next().unwrap(),
+    ]
 }
 
 /// Keeps track of the canonical surface wrt. the NodeState this is stored in
@@ -243,15 +243,15 @@ impl Surface {
     }
 }
 
-fn trilerp<N: na::RealField>(a: &[N], t: na::Vector3<N>) -> N {
-    fn lerp<N: na::RealField>(a: &[N], t: N) -> N {
-        a[0] * (N::one() - t) + a[1] * t
+fn trilerp<N: na::RealField>(&[a, e, c, g, b, f, d, h]: &[N; 8], t: na::Vector3<N>) -> N {
+    fn lerp<N: na::RealField>(a: N, b: N, t: N) -> N {
+        a * (N::one() - t) + b * t
     }
-    fn bilerp<N: na::RealField>(a: &[N], t: na::Vector2<N>) -> N {
-        lerp(&[lerp(&a[0..2], t.x), lerp(&a[2..4], t.x)], t.y)
+    fn bilerp<N: na::RealField>(a: N, b: N, c: N, d: N, t: na::Vector2<N>) -> N {
+        lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y)
     }
 
-    lerp(&[bilerp(&a[0..4], t.xy()), bilerp(&a[4..8], t.xy())], t.z)
+    lerp(bilerp(a, b, c, d, t.xy()), bilerp(e, f, g, h, t.xy()), t.z)
 }
 
 /// Turns an x, y, z, index into the voxel data of a subchunk into a
@@ -396,14 +396,9 @@ mod test {
         }
 
         let max_elevations = chunk_incident_max_elevations(&g, NodeId::ROOT, Vertex::A);
-        assert_abs_diff_eq!(max_elevations[0], 1.0, epsilon = 1e-8);
-        assert_abs_diff_eq!(max_elevations[1], 5.0, epsilon = 1e-8);
-        assert_abs_diff_eq!(max_elevations[2], 3.0, epsilon = 1e-8);
-        assert_abs_diff_eq!(max_elevations[3], 7.0, epsilon = 1e-8);
-        assert_abs_diff_eq!(max_elevations[4], 2.0, epsilon = 1e-8);
-        assert_abs_diff_eq!(max_elevations[5], 6.0, epsilon = 1e-8);
-        assert_abs_diff_eq!(max_elevations[6], 4.0, epsilon = 1e-8);
-        assert_abs_diff_eq!(max_elevations[7], 8.0, epsilon = 1e-8);
+        for (i, max_elevation) in max_elevations.iter().cloned().enumerate() {
+            assert_abs_diff_eq!(max_elevation, (i + 1) as f64, epsilon = 1e-8);
+        }
 
         // see corresponding test for trilerp
         let center_max_elevation = trilerp(&max_elevations, na::Vector3::repeat(0.5));
@@ -446,7 +441,7 @@ mod test {
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 0.0)
             ),
             epsilon = 1e-8,
@@ -462,7 +457,7 @@ mod test {
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0],
                 na::Vector3::new(1.0, 1.0, 0.0)
             ),
             epsilon = 1e-8,
@@ -470,7 +465,7 @@ mod test {
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 1.0)
             ),
             epsilon = 1e-8,
@@ -486,7 +481,7 @@ mod test {
         assert_abs_diff_eq!(
             1.0,
             trilerp(
-                &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 1.0)
             ),
             epsilon = 1e-8,
