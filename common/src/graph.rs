@@ -47,8 +47,7 @@ impl<N, C> Graph<N, C> {
         self.fresh.clear();
     }
 
-    /// Node and dodecahedral vertex for this cube based on the node that is canonically
-    /// assigned to it, not the node that this function is called with.
+    /// Node and vertex that the cube around a certain vertex is canonically assigned to. 
     ///
     /// The node incident to a cube with the shortest canonical length is said to be canonically
     /// assigned to that cube.
