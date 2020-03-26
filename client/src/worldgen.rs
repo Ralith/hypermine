@@ -103,9 +103,9 @@ impl NodeState {
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
                 (
-                    parent_state.max_elevation + (1 - (spice as i64 % 30)/10),
-                    parent_state.temp + (1 - (spice as i64 % 15)/5),
-                    parent_state.rain + (1 - (spice as i64 % 90)/30),
+                    parent_state.max_elevation + (1 - (spice as i64 % 30) / 10),
+                    parent_state.temp + (1 - (spice as i64 % 15) / 5),
+                    parent_state.rain + (1 - (spice as i64 % 90) / 30),
                 )
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
@@ -152,12 +152,12 @@ impl NodeState {
                                 r if r < 1 => (Material::Stone, -3.0),
                                 _ => (Material::Sand, -1.0),
                             };
-                            
+
                             // maximum max_elevation for this voxel according to the max_elevations
                             // of the incident nodes that dictate the content of this chunk
                             let max_e = trilerp(&max_elevations, p) - elevation_boost;
 
-                            if self.surface.voxel_elevation(q, cube) < max_e/-10.0 {
+                            if self.surface.voxel_elevation(q, cube) < max_e / -10.0 {
                                 voxels.data_mut()[index(p)] = voxel_mat;
                             }
                         }
@@ -374,7 +374,8 @@ mod test {
                 SUB - 1,
                 SUB - 1,
                 na::Vector3::repeat(1)
-            )), chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR - 1))
+            )),
+            chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR - 1))
         );
     }
 
@@ -391,7 +392,6 @@ mod test {
                 state.max_elevation = i as i64 + 1;
                 state
             });
-
         }
 
         let max_elevations = chunk_incident_max_elevations(&g, NodeId::ROOT, Vertex::A);
