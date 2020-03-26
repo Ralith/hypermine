@@ -317,7 +317,7 @@ mod test {
     }
 
     #[test]
-    fn check_chunk_indexing() {
+    fn chunk_indexing_origin() {
         // (0, 0, 0) in localized coords
         let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
 
@@ -326,7 +326,11 @@ mod test {
             chunk_coords_to_index_with_margin(na::Vector3::repeat(0)),
             origin_index
         );
+    }
 
+    #[test]
+    fn chunk_indexing_normalized() {
+        let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
         // (0.5, 0.5, 0.5) in localized coords
         let center_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUB));
         // the point farthest from the origin, (1, 1, 1) in localized coords
@@ -335,6 +339,15 @@ mod test {
         assert_eq!(index(na::Vector3::repeat(0.0)), origin_index);
         assert_eq!(index(na::Vector3::repeat(0.5)), center_index);
         assert_eq!(index(na::Vector3::repeat(1.0)), anti_index);
+    }
+
+    #[test]
+    fn chunk_indexing_absolute() {
+        let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
+        // (0.5, 0.5, 0.5) in localized coords
+        let center_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUB));
+        // the point farthest from the origin, (1, 1, 1) in localized coords
+        let anti_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR));
 
         assert_eq!(
             index(absolute_subchunk_coords(0, 0, 0, na::zero())),
