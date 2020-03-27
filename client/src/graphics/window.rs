@@ -109,7 +109,7 @@ impl Window {
                     self.sim.velocity(velocity);
 
                     self.sim.rotate(&na::UnitQuaternion::from_axis_angle(
-                        &na::Vector3::z_axis(),
+                        &-na::Vector3::z_axis(),
                         (clockwise as u8 as f32 - anticlockwise as u8 as f32) * 5e-2,
                     ));
 
