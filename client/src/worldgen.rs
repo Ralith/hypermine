@@ -139,15 +139,21 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
                     let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
                     let q = relative_subchunk_coords(x, y, z, subchunk_offset);
 
-                    let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, p) {
-                        r if r > 2.0 => (Material::Dirt, 3.0),
-                        r if r < 1.0 => (Material::Stone, -3.0),
-                        _ => (Material::Sand, -1.0),
-                    };
+
+
+                    let elev = trilerp(&enviros.max_elevations, p);
+                    let temp = trilerp(&enviros.temperatures, p);
+
+                    let mut voxel_mat = Material::Stone;
+                    let mut max_e = temp;
+
+                    if (elev > temp){
+                        voxel_mat = Material::Dirt;
+                        max_e = elev;
+                    }
 
                     // maximum max_elevation for this voxel according to the max_elevations
                     // of the incident nodes that dictate the content of this chunk
-                    let max_e = trilerp(&enviros.max_elevations, p) - elevation_boost;
 
                     if state.surface.voxel_elevation(q, cube) < max_e / -10.0 {
                         voxels.data_mut()[index(p)] = voxel_mat;
