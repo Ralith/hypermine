@@ -106,9 +106,15 @@ impl NodeState {
             _ => unreachable!(),
         };
 
+        let child_kind = self.kind.clone().child(side);
+
         Self {
-            kind: self.kind.clone().child(side),
-            surface: self.surface.reflect(side),
+            kind: child_kind,
+            surface: match child_kind {
+                Land => Surface::at_root(),
+                Sky => Surface::opposite_root(),
+                _ => self.surface.reflect(side),
+            },
             spice,
             enviro,
         }
@@ -228,7 +234,15 @@ pub struct Surface {
 impl Surface {
     /// A Vector pointing up from the surface at the root node.
     fn at_root() -> Self {
-        let n = Side::A.reflection().map(|x| x as f64) * origin() - origin();
+        let n = Side::A.reflection().column(3).map(|x| x as f64) - origin();
+        Self {
+            normal: lorentz_normalize(&n),
+        }
+    }
+
+    /// A vector pointing up from the surface from a node opposite the root node
+    fn opposite_root() -> Self {
+        let n = origin() - Side::A.reflection().column(3).map(|x| x as f64);
         Self {
             normal: lorentz_normalize(&n),
         }
