@@ -155,9 +155,81 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
                 }
             }
         }
+
+        let loc = 2;
+        let voxel_of_interest_index = index(absolute_subchunk_coords(loc,loc,loc,subchunk_offset));
+        let neighbour_data = get_voxel_neighbours(loc,loc,loc, subchunk_offset, &mut voxels);
+
+        let mut num_void_neighbours = 0;
+        for i in neighbour_data.iter() {
+            if i.material == Material::Void {
+                num_void_neighbours += 1;
+            }
+        }
+
+        if num_void_neighbours == 5 {
+            for i in neighbour_data.iter() {
+                if i.material == Material::Dirt {
+                    voxels.data_mut()[voxel_of_interest_index] = Material::Wood;
+
+                    let x_leaf = (loc as isize - i.offset.x) as usize;
+                    let y_leaf = (loc as isize - i.offset.y) as usize;
+                    let z_leaf = (loc as isize - i.offset.z) as usize;
+                    let leaf_location = index(absolute_subchunk_coords(x_leaf,y_leaf,z_leaf, subchunk_offset));
+                    voxels.data_mut()[leaf_location] = Material::Leaves;
+                }
+            }
+        }
     }
+
     voxels
 }
+
+pub struct NeighbourData {
+	offset: na::Vector3<isize>,
+	#[allow(dead_code)]
+	abs_coords: na::Vector3<f64>,
+	#[allow(dead_code)]
+	index: usize,
+    material: Material,
+}
+
+pub fn get_voxel_neighbours(x: usize, y: usize, z: usize, subchunk_offset: na::Vector3<usize>, voxels: &mut VoxelData) -> Vec<NeighbourData> {
+	
+	let mut neighbours = Vec::<NeighbourData>::new();
+
+	neighbours.push(get_neighbour(x,y,z,-1,0,0,subchunk_offset,voxels));
+	neighbours.push(get_neighbour(x,y,z,1,0,0,subchunk_offset,voxels));
+	neighbours.push(get_neighbour(x,y,z,0,-1,0,subchunk_offset,voxels));
+	neighbours.push(get_neighbour(x,y,z,0,1,0,subchunk_offset,voxels));
+	neighbours.push(get_neighbour(x,y,z,0,0,-1,subchunk_offset,voxels));
+	neighbours.push(get_neighbour(x,y,z,0,0,1,subchunk_offset,voxels));
+	
+	neighbours
+}
+
+pub fn get_neighbour(x: usize, y: usize, z: usize, 
+                     x_offset: isize, y_offset: isize, z_offset: isize,
+                     subchunk_offset: na::Vector3<usize>, voxels: &mut VoxelData) -> NeighbourData {
+	
+	let abs_coords = absolute_subchunk_coords(x+x_offset as usize,y+y_offset as usize,z+z_offset as usize,subchunk_offset);
+	let abs_coords_index = index(abs_coords);
+	let mat = voxels.data_mut()[abs_coords_index];
+	
+	let neighbour = NeighbourData {
+		offset: na::Vector3::new(x_offset, y_offset, z_offset),
+		abs_coords: abs_coords,
+		index: abs_coords_index,
+		material: mat,
+	};
+	
+	neighbour
+}
+
+
+
+
+
 
 #[derive(Copy, Clone)]
 struct EnviroFactors {
