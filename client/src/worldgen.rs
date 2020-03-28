@@ -143,13 +143,17 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
 
                     let elev = trilerp(&enviros.max_elevations, p);
                     let temp = trilerp(&enviros.temperatures, p);
+                    let sand_margin = 1_f64;
 
-                    let mut voxel_mat = Material::Stone;
-                    let mut max_e = temp;
+                    let mut voxel_mat = Material::Sand;
+                    let mut max_e = elev;
 
                     if (elev > temp){
+                       voxel_mat = Material::Stone;
+                        max_e = temp
+                    }
+                    if (elev < temp - sand_margin){ //one is arbitrary
                         voxel_mat = Material::Dirt;
-                        max_e = elev;
                     }
 
                     // maximum max_elevation for this voxel according to the max_elevations
@@ -174,11 +178,17 @@ struct EnviroFactors {
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: i64) -> Self {
         Self {
-            max_elevation: parent.max_elevation + (1 - (spice % 30) / 10),
-            temperature: parent.temperature + (1 - (spice % 15) / 5),
+            max_elevation: parent.max_elevation + (1 - (spice % 30) / 10)*3,
+            temperature: if parent.temperature >= parent.max_elevation {parent.temperature}
+            else {
+                parent.max_elevation + (1 - (spice % 15) / 5)
+            },
+
             rainfall: parent.rainfall + (1 - (spice % 90) / 30),
         }
     }
+
+
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
         Self {
             max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
