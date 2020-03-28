@@ -43,7 +43,7 @@ fn main() {
                     socket,
                 },
                 server::SimConfig {
-                    rate: 10,
+                    rate: 4,
                     view_distance: 4,
                 },
             ) {

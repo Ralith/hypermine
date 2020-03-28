@@ -11,7 +11,9 @@ use crate::{
 use common::{
     dodeca,
     graph::{Graph, NodeId},
+    math,
     proto::{self, Command, Position},
+    sanitize_motion_input,
     world::{Material, SUBDIVISION_FACTOR},
     EntityId, Step,
 };
@@ -33,7 +35,11 @@ pub struct Sim {
 
     // Input state
     since_input_sent: Duration,
-    velocity: na::Vector3<f32>,
+    /// Most recent input
+    instantaneous_velocity: na::Vector3<f32>,
+    /// Average input over the current time step. The portion of the timestep which has not yet
+    /// elapsed is considered to have zero input.
+    average_velocity: na::Vector3<f32>,
     prediction: PredictedMotion,
 }
 
@@ -51,7 +57,8 @@ impl Sim {
             step: None,
 
             since_input_sent: Duration::new(0, 0),
-            velocity: na::zero(),
+            instantaneous_velocity: na::zero(),
+            average_velocity: na::zero(),
             prediction: PredictedMotion::new(proto::Position {
                 node: NodeId::ROOT,
                 local: na::one(),
@@ -64,7 +71,7 @@ impl Sim {
     }
 
     pub fn velocity(&mut self, v: na::Vector3<f32>) {
-        self.velocity = v;
+        self.instantaneous_velocity = v;
     }
 
     pub fn step(&mut self, dt: Duration) {
@@ -77,14 +84,24 @@ impl Sim {
         self.since_input_sent += dt;
         if let Some(step_interval) = self.step_interval {
             if let Some(overflow) = self.since_input_sent.checked_sub(step_interval) {
+                self.average_velocity += self.instantaneous_velocity
+                    * (dt - overflow).as_secs_f32()
+                    / step_interval.as_secs_f32();
                 self.send_input();
-                self.since_input_sent = if overflow > step_interval {
+                if overflow > step_interval {
                     // If it's been more than two timesteps since we last sent input, skip ahead
                     // rather than spamming the server.
-                    Duration::new(0, 0)
+                    self.average_velocity = na::zero();
+                    self.since_input_sent = Duration::new(0, 0);
                 } else {
-                    overflow
-                };
+                    self.average_velocity = self.instantaneous_velocity * overflow.as_secs_f32()
+                        / step_interval.as_secs_f32();
+                    // Send the next input a little sooner if necessary to stay in sync
+                    self.since_input_sent = overflow;
+                }
+            } else {
+                self.average_velocity +=
+                    self.instantaneous_velocity * dt.as_secs_f32() / step_interval.as_secs_f32();
             }
         }
     }
@@ -161,12 +178,7 @@ impl Sim {
     }
 
     fn send_input(&mut self) {
-        let (mut direction, mut speed) = na::Unit::new_and_get(self.orientation * self.velocity);
-        if speed == 0.0 {
-            direction = -na::Vector3::z_axis();
-        } else {
-            speed = speed.min(1.0);
-        }
+        let (direction, speed) = sanitize_motion_input(self.orientation * self.average_velocity);
         let generation = self.prediction.push(
             &direction,
             speed * self.step_interval.as_ref().unwrap().as_secs_f32(),
@@ -183,6 +195,15 @@ impl Sim {
     pub fn view(&self) -> Position {
         let mut result = *self.prediction.predicted();
         result.local *= self.orientation.to_homogeneous();
+        if let Some(step_interval) = self.step_interval {
+            // Apply input that hasn't been sent yet
+            let (direction, speed) = sanitize_motion_input(self.average_velocity);
+            // We multiply by the entire timestep rather than the time so far because
+            // self.average_velocity is always over the entire timestep, filling in zeroes for the
+            // future.
+            let distance = speed * step_interval.as_secs_f32();
+            result.local *= math::translate_along(&direction, distance);
+        }
         result
     }
 
