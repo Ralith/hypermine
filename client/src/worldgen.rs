@@ -68,7 +68,7 @@ impl NodeState {
             spice: 0,
             enviro: EnviroFactors {
                 max_elevation: 0,
-                temperature: 1,
+                temperature: 0,
                 rainfall: 0,
             },
         }
@@ -141,7 +141,8 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
 
 
 
-                    let elev = trilerp(&enviros.max_elevations, p);
+                    let elev = trilerp(&enviros.max_elevations, p)
+                            + (trilerp(&enviros.rainfalls,p )/2_f64).floor()*2_f64;
                     let temp = trilerp(&enviros.temperatures, p);
                     let sand_margin = 1_f64;
 
@@ -178,11 +179,11 @@ struct EnviroFactors {
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         Self {
-            max_elevation: parent.max_elevation + ((1 - ((spice % 30) / 10) as i64)*2),
+            max_elevation: parent.max_elevation + (1 - ((spice % 30) / 10) as i64),
             temperature:  parent.temperature + ((1 - (spice % 15) / 5 ) as i64 )*
-                (parent.temperature - parent.max_elevation - 1).max(0).min(3),
+                (parent.temperature - parent.max_elevation - parent.rainfall*1 - 3).max(0).min(8),
 
-            rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
+            rainfall: parent.rainfall + ((  ( 1 ) * (1 - (spice % 90) / 30 ) ) as i64 ),
         }
     }
 
