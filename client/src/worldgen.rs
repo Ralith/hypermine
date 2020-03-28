@@ -94,7 +94,7 @@ impl NodeState {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.get(parent_node).as_ref().unwrap();
-                EnviroFactors::varied_from(parent_state.enviro, spice as i64)
+                EnviroFactors::varied_from(parent_state.enviro, spice)
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
@@ -166,11 +166,11 @@ struct EnviroFactors {
     rainfall: i64,
 }
 impl EnviroFactors {
-    fn varied_from(parent: Self, spice: i64) -> Self {
+    fn varied_from(parent: Self, spice: u64) -> Self {
         Self {
-            max_elevation: parent.max_elevation + (1 - (spice % 30) / 10),
-            temperature: parent.temperature + (1 - (spice % 15) / 5),
-            rainfall: parent.rainfall + (1 - (spice % 90) / 30),
+            max_elevation: parent.max_elevation + (1 - ((spice % 30) / 10) as i64),
+            temperature: parent.temperature + (1 - ((spice % 15) / 5) as i64),
+            rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
         }
     }
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
