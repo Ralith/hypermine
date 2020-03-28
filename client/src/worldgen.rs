@@ -68,7 +68,7 @@ impl NodeState {
             spice: 0,
             enviro: EnviroFactors {
                 max_elevation: 0,
-                temperature: 0,
+                temperature: -4,
                 rainfall: 0,
             },
         }
@@ -148,11 +148,11 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
                     let mut voxel_mat = Material::Sand;
                     let mut max_e = elev;
 
-                    if (elev > temp){
+                    if (elev < temp){
                        voxel_mat = Material::Stone;
-                        max_e = temp
+                        max_e = temp;
                     }
-                    if (elev < temp - sand_margin){ //one is arbitrary
+                    if (elev > temp + sand_margin){ //one is arbitrary
                         voxel_mat = Material::Dirt;
                     }
 
@@ -178,10 +178,10 @@ struct EnviroFactors {
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: i64) -> Self {
         Self {
-            max_elevation: parent.max_elevation + (1 - (spice % 30) / 10)*3,
-            temperature: if parent.temperature >= parent.max_elevation {parent.temperature}
+            max_elevation: parent.max_elevation + (1 - (spice % 30) / 10),
+            temperature: if parent.temperature >= parent.max_elevation - 2 {parent.temperature}
             else {
-                parent.max_elevation + (1 - (spice % 15) / 5)
+                parent.rainfall
             },
 
             rainfall: parent.rainfall + (1 - (spice % 90) / 30),
@@ -192,7 +192,8 @@ impl EnviroFactors {
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
         Self {
             max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
-            temperature: a.temperature + (b.temperature - ab.temperature),
+            //temperature: a.temperature + (b.temperature - ab.temperature),
+            temperature: 0,
             rainfall: a.rainfall + (b.rainfall - ab.rainfall),
         }
     }
