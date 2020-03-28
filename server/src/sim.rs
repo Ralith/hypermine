@@ -11,7 +11,7 @@ use common::{
     graph::{Graph, NodeId},
     math,
     proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
-    EntityId, Step,
+    sanitize_motion_input, EntityId, Step,
 };
 
 pub struct Sim {
@@ -70,13 +70,9 @@ impl Sim {
         let mut ch = self.world.get_mut::<Character>(entity)?;
         if command.generation.wrapping_sub(ch.latest_input) < u16::max_value() / 2 {
             ch.latest_input = command.generation;
-            let (direction, speed) = na::Unit::new_and_get(command.velocity);
-            ch.direction = if speed == 0.0 {
-                -na::Vector3::z_axis()
-            } else {
-                direction
-            };
-            ch.speed = speed.min(1.0);
+            let (direction, speed) = sanitize_motion_input(command.velocity);
+            ch.direction = direction;
+            ch.speed = speed;
             ch.orientation = command.orientation;
         }
         Ok(())
