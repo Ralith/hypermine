@@ -68,8 +68,8 @@ impl NodeState {
             spice: 0,
             enviro: EnviroFactors {
                 max_elevation: 0,
-                temperature: -2,
-                rainfall: -2,
+                temperature: 0,
+                rainfall: 0,
             },
         }
     }
@@ -143,16 +143,16 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
 
                     let elev = trilerp(&enviros.max_elevations, p);
                     let temp = trilerp(&enviros.temperatures, p);
-                    let sand_margin = 1_f64;
+                    let sand_margin = 2_f64;
 
                     let mut voxel_mat = Material::Sand;
-                    let mut max_e = elev;
+                    let mut max_e = elev.min(temp);
 
-                    if (elev < temp){
+
+                    if (elev > temp){
                        voxel_mat = Material::Stone;
-                        max_e = temp;
                     }
-                    if (elev > temp + sand_margin){ //one is arbitrary
+                    if (elev < temp - sand_margin){ //one is arbitrary
                         voxel_mat = Material::Dirt;
                     }
 
@@ -178,11 +178,9 @@ struct EnviroFactors {
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         Self {
-            max_elevation: parent.max_elevation + (1 - ((spice % 30) / 10) as i64),
-            temperature: if parent.temperature >= parent.max_elevation - 2 {parent.temperature}
-            else {
-                parent.rainfall
-            },
+            max_elevation: parent.max_elevation + ((1 - ((spice % 30) / 10) as i64)*5),
+            temperature:  parent.temperature + ((1 - (spice % 24) / 8 ) as i64 )*
+                    (parent.max_elevation - parent.temperature - 6).min(0).max(3),
 
             rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
         }
@@ -192,8 +190,8 @@ impl EnviroFactors {
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
         Self {
             max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
-            //temperature: a.temperature + (b.temperature - ab.temperature),
-            temperature: 0,
+            temperature: a.temperature + (b.temperature - ab.temperature),
+            //temperature: (-1),
             rainfall: a.rainfall + (b.rainfall - ab.rainfall),
         }
     }
