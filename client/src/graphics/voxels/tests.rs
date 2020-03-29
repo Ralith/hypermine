@@ -20,8 +20,8 @@ struct SurfaceExtractionTest {
 impl SurfaceExtractionTest {
     pub fn new() -> Self {
         let gfx = Arc::new(Base::headless());
-        let extract = SurfaceExtraction::new(gfx.clone());
-        let scratch = surface_extraction::ScratchBuffer::new(&extract, 1, DIMENSION as u32);
+        let extract = SurfaceExtraction::new(&gfx);
+        let scratch = surface_extraction::ScratchBuffer::new(&gfx, &extract, 1, DIMENSION as u32);
 
         let device = &*gfx.device;
 
@@ -81,6 +81,7 @@ impl SurfaceExtractionTest {
                 .unwrap();
 
             self.scratch.extract(
+                device,
                 &self.extract,
                 0,
                 self.cmd,
@@ -107,6 +108,8 @@ impl Drop for SurfaceExtractionTest {
     fn drop(&mut self) {
         let device = &*self.gfx.device;
         unsafe {
+            self.extract.destroy(device);
+            self.scratch.destroy(device);
             self.indirect.destroy(device);
             self.vertices.destroy(device);
             device.destroy_command_pool(self.cmd_pool, None);

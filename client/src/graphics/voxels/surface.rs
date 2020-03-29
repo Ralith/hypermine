@@ -1,4 +1,4 @@
-use std::{ptr, sync::Arc};
+use std::ptr;
 
 use ash::{version::DeviceV1_0, vk, Device};
 use lahar::{DedicatedBuffer, DedicatedImage};
@@ -12,7 +12,6 @@ const VERT: &[u32] = include_glsl!("shaders/voxels.vert");
 const FRAG: &[u32] = include_glsl!("shaders/voxels.frag");
 
 pub struct Surface {
-    gfx: Arc<Base>,
     static_ds_layout: vk::DescriptorSetLayout,
     frame_ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
@@ -24,8 +23,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(loader: &mut Loader, buffer: &DrawBuffer, frames: u32) -> Self {
-        let gfx = buffer.gfx.clone();
+    pub fn new(gfx: &Base, loader: &mut Loader, buffer: &DrawBuffer, frames: u32) -> Self {
         let device = &*gfx.device;
         unsafe {
             // Construct the shader modules
@@ -220,7 +218,6 @@ impl Surface {
             );
 
             Self {
-                gfx,
                 static_ds_layout,
                 frame_ds_layout,
                 pipeline_layout,
@@ -235,13 +232,12 @@ impl Surface {
 
     pub unsafe fn bind(
         &mut self,
+        device: &Device,
         loader: &Loader,
         common_ds: vk::DescriptorSet,
         frame: &Frame,
         cmd: vk::CommandBuffer,
     ) -> bool {
-        let device = &*self.gfx.device;
-
         if self.colors_view == vk::ImageView::null() {
             if let Some(colors) = loader.get(self.colors) {
                 self.colors_view = device
@@ -292,12 +288,12 @@ impl Surface {
 
     pub unsafe fn draw(
         &self,
+        device: &Device,
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
         chunk: u32,
         reflected: bool,
     ) {
-        let device = &*self.gfx.device;
         let mut push_constants = [0; 12];
         push_constants[0..4].copy_from_slice(&chunk.to_ne_bytes());
         push_constants[4..8].copy_from_slice(&buffer.dimension().to_ne_bytes());
@@ -317,20 +313,15 @@ impl Surface {
             16,
         );
     }
-}
 
-impl Drop for Surface {
-    fn drop(&mut self) {
-        let device = &*self.gfx.device;
-        unsafe {
-            device.destroy_pipeline(self.pipeline, None);
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-            device.destroy_descriptor_set_layout(self.static_ds_layout, None);
-            device.destroy_descriptor_set_layout(self.frame_ds_layout, None);
-            device.destroy_descriptor_pool(self.descriptor_pool, None);
-            if self.colors_view != vk::ImageView::null() {
-                device.destroy_image_view(self.colors_view, None);
-            }
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        device.destroy_pipeline(self.pipeline, None);
+        device.destroy_pipeline_layout(self.pipeline_layout, None);
+        device.destroy_descriptor_set_layout(self.static_ds_layout, None);
+        device.destroy_descriptor_set_layout(self.frame_ds_layout, None);
+        device.destroy_descriptor_pool(self.descriptor_pool, None);
+        if self.colors_view != vk::ImageView::null() {
+            device.destroy_image_view(self.colors_view, None);
         }
     }
 }
@@ -341,8 +332,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(parent: &Surface, count: u32) -> Self {
-        let gfx = &parent.gfx;
+    pub fn new(gfx: &Base, parent: &Surface, count: u32) -> Self {
         unsafe {
             let transforms = DedicatedBuffer::new(
                 &gfx.device,

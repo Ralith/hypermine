@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use ash::{version::DeviceV1_0, vk};
+use ash::{version::DeviceV1_0, vk, Device};
 use vk_shader_macros::include_glsl;
 
 use super::Base;
@@ -10,13 +8,12 @@ const VERT: &[u32] = include_glsl!("shaders/fullscreen.vert");
 const FRAG: &[u32] = include_glsl!("shaders/sky.frag");
 
 pub struct Sky {
-    gfx: Arc<Base>,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
 }
 
 impl Sky {
-    pub fn new(gfx: Arc<Base>) -> Self {
+    pub fn new(gfx: &Base) -> Self {
         let device = &*gfx.device;
         unsafe {
             // Construct the shader modules
@@ -122,26 +119,19 @@ impl Sky {
             f_guard.invoke();
 
             Self {
-                gfx,
                 pipeline_layout,
                 pipeline,
             }
         }
     }
 
-    pub unsafe fn draw(&mut self, cmd: vk::CommandBuffer) {
-        let device = &*self.gfx.device;
+    pub unsafe fn draw(&mut self, device: &Device, cmd: vk::CommandBuffer) {
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
         device.cmd_draw(cmd, 3, 1, 0, 0);
     }
-}
 
-impl Drop for Sky {
-    fn drop(&mut self) {
-        let device = &*self.gfx.device;
-        unsafe {
-            device.destroy_pipeline(self.pipeline, None);
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-        }
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        device.destroy_pipeline(self.pipeline, None);
+        device.destroy_pipeline_layout(self.pipeline_layout, None);
     }
 }
