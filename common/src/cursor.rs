@@ -67,7 +67,7 @@ pub enum Dir {
     Back,
 }
 impl Dir {
-    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
+    pub fn iter() -> impl ExactSizeIterator<Item = Self> + Clone {
         use Dir::*;
         [Left, Right, Down, Up, Forward, Back].iter().cloned()
     }
