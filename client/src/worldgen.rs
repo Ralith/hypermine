@@ -159,10 +159,18 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
         // Planting trees on dirt. Trees consist of a block of wood and a block of leaves.
         // The leaf block is on the opposite face of the wood block as the dirt block.
         let loc: usize = 2;
-        let voxel_of_interest_index = index(absolute_subchunk_coords(loc,loc,loc,subchunk_offset));
-        let neighbor_data = voxel_neighbors(na::Vector3::new(loc,loc,loc), subchunk_offset, &mut voxels);
+        let voxel_of_interest_index =
+            index(absolute_subchunk_coords(loc, loc, loc, subchunk_offset));
+        let neighbor_data = voxel_neighbors(
+            na::Vector3::new(loc, loc, loc),
+            subchunk_offset,
+            &mut voxels,
+        );
 
-        let num_void_neighbors = neighbor_data.iter().filter(|n| n.material == Material::Void).count();
+        let num_void_neighbors = neighbor_data
+            .iter()
+            .filter(|n| n.material == Material::Void)
+            .count();
 
         // Only plant a tree if there is exactly one adjacent dirt block.
         if num_void_neighbors == 5 {
@@ -180,38 +188,54 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
 }
 
 pub struct NeighborData {
-	#[allow(dead_code)]
-	abs_coords: na::Vector3<f64>,
-	abs_coords_opposing: na::Vector3<f64>,
+    #[allow(dead_code)]
+    abs_coords: na::Vector3<f64>,
+    abs_coords_opposing: na::Vector3<f64>,
     material: Material,
 }
 
-fn voxel_neighbors(coords: na::Vector3<usize>, subchunk_offset: na::Vector3<usize>, voxels:  & mut VoxelData) -> [NeighborData; 6] {
-   
-    let neighbors =   [neighbor(coords, -1,0,0,subchunk_offset,voxels),
-    neighbor(coords,1,0,0,subchunk_offset,voxels),
-    neighbor(coords,0,-1,0,subchunk_offset,voxels),
-    neighbor(coords,0,1,0,subchunk_offset,voxels),
-    neighbor(coords,0,0,-1,subchunk_offset,voxels),
-    neighbor(coords,0,0,1,subchunk_offset,voxels)];
-    neighbors
-
+fn voxel_neighbors(
+    coords: na::Vector3<usize>,
+    subchunk_offset: na::Vector3<usize>,
+    voxels: &mut VoxelData,
+) -> [NeighborData; 6] {
+    [
+        neighbor(coords, -1, 0, 0, subchunk_offset, voxels),
+        neighbor(coords, 1, 0, 0, subchunk_offset, voxels),
+        neighbor(coords, 0, -1, 0, subchunk_offset, voxels),
+        neighbor(coords, 0, 1, 0, subchunk_offset, voxels),
+        neighbor(coords, 0, 0, -1, subchunk_offset, voxels),
+        neighbor(coords, 0, 0, 1, subchunk_offset, voxels),
+    ]
 }
 
-pub fn neighbor(w: na::Vector3<usize>, x: isize, y: isize, z: isize, subchunk_offset: na::Vector3<usize>, 
-    voxels: &mut VoxelData) -> NeighborData {
-	
-    let abs_coords = absolute_subchunk_coords((w.x as isize + x) as usize, (w.y as isize + y) as usize, (w.z as isize + z) as usize, subchunk_offset);
-    let abs_coords_opposing =  absolute_subchunk_coords((w.x as isize - x) as usize, (w.y as isize - y) as usize, (w.z as isize - z) as usize, subchunk_offset);
-	let mat = voxels.data()[index(abs_coords)];
-	
-	let neighbor = NeighborData {
-		abs_coords: abs_coords,
-        abs_coords_opposing: abs_coords_opposing,
-		material: mat,
-	};
-	
-	neighbor
+pub fn neighbor(
+    w: na::Vector3<usize>,
+    x: isize,
+    y: isize,
+    z: isize,
+    subchunk_offset: na::Vector3<usize>,
+    voxels: &mut VoxelData,
+) -> NeighborData {
+    let abs_coords = absolute_subchunk_coords(
+        (w.x as isize + x) as usize,
+        (w.y as isize + y) as usize,
+        (w.z as isize + z) as usize,
+        subchunk_offset,
+    );
+    let abs_coords_opposing = absolute_subchunk_coords(
+        (w.x as isize - x) as usize,
+        (w.y as isize - y) as usize,
+        (w.z as isize - z) as usize,
+        subchunk_offset,
+    );
+    let material = voxels.data()[index(abs_coords)];
+
+    NeighborData {
+        abs_coords,
+        abs_coords_opposing,
+        material,
+    }
 }
 
 #[derive(Copy, Clone)]

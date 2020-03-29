@@ -7,8 +7,8 @@ pub enum Material {
     Stone = 1,
     Dirt = 2,
     Sand = 3,
-	Wood = 4,
-	Leaves = 5,
+    Wood = 4,
+    Leaves = 5,
 }
 
 impl Material {

@@ -84,8 +84,6 @@ impl Dir {
     }
 }
 
-
-
 impl std::ops::Neg for Dir {
     type Output = Self;
     fn neg(self) -> Self::Output {
