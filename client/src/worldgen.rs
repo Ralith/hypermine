@@ -1,5 +1,6 @@
 use crate::sim::{DualGraph, VoxelData};
 use common::{
+    cursor::Dir,
     dodeca::{Side, Vertex},
     graph::NodeId,
     math::{lorentz_normalize, mip, origin},
@@ -156,21 +157,17 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
             }
         }
 
-        let loc = 2;
+        let loc: usize = 2;
         let voxel_of_interest_index = index(absolute_subchunk_coords(loc,loc,loc,subchunk_offset));
-        let neighbor_data = voxel_neighbors(loc,loc,loc, subchunk_offset, &mut voxels);
+        let neighbor_data = voxel_neighbor(na::Vector3::new(loc,loc,loc), subchunk_offset, &voxels);
 
-        let num_void_neighbors = neighbor_data.iter().filter(|n| n.material == Material::Void).count();
+        let num_void_neighbors = neighbor_data.filter(|n| n.material == Material::Void).count();
 
         if num_void_neighbors == 5 {
-            for i in neighbor_data.iter() {
+            for i in neighbor_data {
                 if i.material == Material::Dirt {
                     voxels.data_mut()[voxel_of_interest_index] = Material::Wood;
-
-                    let x_leaf = (loc as isize - i.offset.x) as usize;
-                    let y_leaf = (loc as isize - i.offset.y) as usize;
-                    let z_leaf = (loc as isize - i.offset.z) as usize;
-                    let leaf_location = index(absolute_subchunk_coords(x_leaf,y_leaf,z_leaf, subchunk_offset));
+                    let leaf_location = index(i.abs_coords_opposing);
                     voxels.data_mut()[leaf_location] = Material::Leaves;
                 }
             }
@@ -181,37 +178,31 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
 }
 
 pub struct NeighborData {
-	offset: na::Vector3<isize>,
 	#[allow(dead_code)]
 	abs_coords: na::Vector3<f64>,
-	#[allow(dead_code)]
-	index: usize,
+	abs_coords_opposing: na::Vector3<f64>,
     material: Material,
 }
 
-pub fn voxel_neighbors(x: usize, y: usize, z: usize, subchunk_offset: na::Vector3<usize>, voxels: &mut VoxelData) -> [NeighborData; 6] {
-	
-    let neighbors =   [neighbor(x,y,z,-1,0,0,subchunk_offset,voxels),
-                        neighbor(x,y,z,1,0,0,subchunk_offset,voxels),
-                        neighbor(x,y,z,0,-1,0,subchunk_offset,voxels),
-                        neighbor(x,y,z,0,1,0,subchunk_offset,voxels),
-                        neighbor(x,y,z,0,0,-1,subchunk_offset,voxels),
-                        neighbor(x,y,z,0,0,1,subchunk_offset,voxels)];
-	neighbors
+fn voxel_neighbor(coords: na::Vector3<usize>, subchunk_offset: na::Vector3<usize>, voxels: &VoxelData) -> impl ExactSizeIterator<Item = NeighborData> {
+    Dir::iter()
+        .map(|direction| {
+            let adjusted_coords = coords.map(|x| x as isize) + direction.vector();
+            let adjusted_coords_opposing = coords.map(|x| x as isize)  - direction.vector();
+            neighbor(adjusted_coords.map(|x| x as usize), adjusted_coords_opposing.map(|x| x as usize), subchunk_offset, voxels)
+        })
 }
 
-pub fn neighbor(x: usize, y: usize, z: usize, 
-                     x_offset: isize, y_offset: isize, z_offset: isize,
-                     subchunk_offset: na::Vector3<usize>, voxels: &mut VoxelData) -> NeighborData {
+pub fn neighbor(w: na::Vector3<usize>, w_opp: na::Vector3<usize>, subchunk_offset: na::Vector3<usize>, 
+    voxels: &VoxelData) -> NeighborData {
 	
-	let abs_coords = absolute_subchunk_coords(x+x_offset as usize,y+y_offset as usize,z+z_offset as usize,subchunk_offset);
-	let abs_coords_index = index(abs_coords);
-	let mat = voxels.data_mut()[abs_coords_index];
+    let abs_coords = absolute_subchunk_coords(w.x, w.y, w.z, subchunk_offset);
+    abs_coords_opposing =  absolute_subchunk_coords(w_opp.x, w_opp.y, w_opp.z, subchunk_offset);
+	let mat = voxels.data()[index(abs_coords)];
 	
 	let neighbor = NeighborData {
-		offset: na::Vector3::new(x_offset, y_offset, z_offset),
 		abs_coords: abs_coords,
-		index: abs_coords_index,
+        abs_coords_opposing: abs_coords_opposing,
 		material: mat,
 	};
 	
