@@ -188,8 +188,6 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
 }
 
 pub struct NeighborData {
-    #[allow(dead_code)]
-    abs_coords: na::Vector3<f64>,
     abs_coords_opposing: na::Vector3<f64>,
     material: Material,
 }
@@ -232,7 +230,6 @@ pub fn neighbor(
     let material = voxels.data()[index(abs_coords)];
 
     NeighborData {
-        abs_coords,
         abs_coords_opposing,
         material,
     }
@@ -705,5 +702,167 @@ mod test {
             ),
             epsilon = 1e-8,
         );
+    }
+
+    #[test]
+    fn check_tree_planting() {
+        // Obtain the upper bound for the index into a chunk's voxel data
+        let upper = index(absolute_subchunk_coords(
+            SUB,
+            SUB,
+            SUB,
+            na::Vector3::new(1, 1, 1),
+        ));
+
+        fn in_bounds(lower: usize, upper: usize, value: usize) -> bool {
+            value >= lower && value < upper // Unbalanced inequality signs act like zero-based indexing
+        }
+
+        // Check that wood block can be placed
+        let l = 2;
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(l, l, l, na::Vector3::new(0, 0, 0)))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(l, l, l, na::Vector3::x()))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(l, l, l, na::Vector3::y()))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(l, l, l, na::Vector3::z()))
+        ));
+
+        // Check that leaf blocks can be placed around one corner's wood block
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l - 1,
+                l,
+                l,
+                na::Vector3::new(0, 0, 0)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l + 1,
+                l,
+                l,
+                na::Vector3::new(0, 0, 0)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l - 1,
+                l,
+                na::Vector3::new(0, 0, 0)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l + 1,
+                l,
+                na::Vector3::new(0, 0, 0)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l,
+                l - 1,
+                na::Vector3::new(0, 0, 0)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l,
+                l + 1,
+                na::Vector3::new(0, 0, 0)
+            ))
+        ));
+
+        // Check that leaf blocks can be placed around opposite corner's wood block
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l - 1,
+                l,
+                l,
+                na::Vector3::new(1, 1, 1)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l + 1,
+                l,
+                l,
+                na::Vector3::new(1, 1, 1)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l - 1,
+                l,
+                na::Vector3::new(1, 1, 1)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l + 1,
+                l,
+                na::Vector3::new(1, 1, 1)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l,
+                l - 1,
+                na::Vector3::new(1, 1, 1)
+            ))
+        ));
+        assert!(in_bounds(
+            0,
+            upper,
+            index(absolute_subchunk_coords(
+                l,
+                l,
+                l + 1,
+                na::Vector3::new(1, 1, 1)
+            ))
+        ));
     }
 }
