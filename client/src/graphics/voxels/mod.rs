@@ -23,8 +23,6 @@ use surface::Surface;
 use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
 
 pub struct Voxels {
-    // TODO: Remove in favor of explicit destruction
-    gfx: Arc<Base>,
     config: Arc<Config>,
     surface_extraction: SurfaceExtraction,
     extraction_scratch: ScratchBuffer,
@@ -34,7 +32,7 @@ pub struct Voxels {
 }
 
 impl Voxels {
-    pub fn new(gfx: Arc<Base>, config: Arc<Config>, loader: &mut Loader, frames: u32) -> Self {
+    pub fn new(gfx: &Base, config: Arc<Config>, loader: &mut Loader, frames: u32) -> Self {
         let max_supported_chunks = gfx.limits.max_storage_buffer_range
             / (8 * 3 * (SUBDIVISION_FACTOR.pow(3) + SUBDIVISION_FACTOR.pow(2))) as u32;
         let max_chunks = if MAX_CHUNKS > max_supported_chunks {
@@ -46,16 +44,16 @@ impl Voxels {
         } else {
             MAX_CHUNKS
         };
-        let surfaces = DrawBuffer::new(gfx.clone(), max_chunks, SUBDIVISION_FACTOR as u32);
-        let draw = Surface::new(loader, &surfaces, frames);
-        let surface_extraction = SurfaceExtraction::new(gfx.clone());
+        let surfaces = DrawBuffer::new(gfx, max_chunks, SUBDIVISION_FACTOR as u32);
+        let draw = Surface::new(gfx, loader, &surfaces, frames);
+        let surface_extraction = SurfaceExtraction::new(gfx);
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
+            gfx,
             &surface_extraction,
             config.chunks_loaded_per_frame * frames,
             SUBDIVISION_FACTOR as u32,
         );
         Self {
-            gfx,
             config,
             surface_extraction,
             extraction_scratch,
@@ -66,9 +64,13 @@ impl Voxels {
     }
 
     /// Determine what to render and record the appropriate transfer commands
-    pub unsafe fn prepare(&mut self, frame: &mut Frame, sim: &mut Sim, cmd: vk::CommandBuffer) {
-        let device = &*self.gfx.device;
-
+    pub unsafe fn prepare(
+        &mut self,
+        device: &Device,
+        frame: &mut Frame,
+        sim: &mut Sim,
+        cmd: vk::CommandBuffer,
+    ) {
         // Clean up after previous frame
         for i in frame.extracted.drain(..) {
             self.extraction_scratch.free(i);
@@ -131,6 +133,7 @@ impl Voxels {
                                 .surface = None;
                         }
                         self.extraction_scratch.extract(
+                            device,
                             &self.surface_extraction,
                             scratch_slot,
                             cmd,
@@ -180,18 +183,29 @@ impl Voxels {
 
     pub unsafe fn draw(
         &mut self,
+        device: &Device,
         loader: &Loader,
         common_ds: vk::DescriptorSet,
         frame: &Frame,
         cmd: vk::CommandBuffer,
     ) {
-        if !self.draw.bind(loader, common_ds, &frame.surface, cmd) {
+        if !self
+            .draw
+            .bind(device, loader, common_ds, &frame.surface, cmd)
+        {
             return;
         }
         for chunk in &frame.drawn {
             self.draw
-                .draw(cmd, &self.surfaces, chunk.slot.0, chunk.parity);
+                .draw(device, cmd, &self.surfaces, chunk.slot.0, chunk.parity);
         }
+    }
+
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        self.surface_extraction.destroy(device);
+        self.extraction_scratch.destroy(device);
+        self.surfaces.destroy(device);
+        self.draw.destroy(device);
     }
 }
 
@@ -214,9 +228,9 @@ struct DrawnChunk {
 }
 
 impl Frame {
-    pub fn new(ctx: &Voxels) -> Self {
+    pub fn new(gfx: &Base, ctx: &Voxels) -> Self {
         Self {
-            surface: surface::Frame::new(&ctx.draw, ctx.states.capacity()),
+            surface: surface::Frame::new(gfx, &ctx.draw, ctx.states.capacity()),
             extracted: Vec::new(),
             drawn: Vec::new(),
         }

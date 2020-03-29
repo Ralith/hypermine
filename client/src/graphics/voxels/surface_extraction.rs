@@ -1,6 +1,6 @@
-use std::{mem, ptr, sync::Arc};
+use std::{mem, ptr};
 
-use ash::{version::DeviceV1_0, vk};
+use ash::{version::DeviceV1_0, vk, Device};
 use lahar::{DedicatedBuffer, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
@@ -13,7 +13,6 @@ const EMIT: &[u32] = include_glsl!("shaders/surface-extraction/emit.comp");
 
 /// GPU-accelerated surface extraction from voxel chunks
 pub struct SurfaceExtraction {
-    gfx: Arc<Base>,
     ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
     count: vk::Pipeline,
@@ -22,7 +21,7 @@ pub struct SurfaceExtraction {
 }
 
 impl SurfaceExtraction {
-    pub fn new(gfx: Arc<Base>) -> Self {
+    pub fn new(gfx: &Base) -> Self {
         let device = &*gfx.device;
         unsafe {
             let ds_layout = device
@@ -143,7 +142,6 @@ impl SurfaceExtraction {
             gfx.set_name(prefix_sum, cstr!("emit"));
 
             Self {
-                gfx,
                 ds_layout,
                 pipeline_layout,
                 count,
@@ -152,24 +150,18 @@ impl SurfaceExtraction {
             }
         }
     }
-}
 
-impl Drop for SurfaceExtraction {
-    fn drop(&mut self) {
-        let device = &*self.gfx.device;
-        unsafe {
-            device.destroy_descriptor_set_layout(self.ds_layout, None);
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-            device.destroy_pipeline(self.count, None);
-            device.destroy_pipeline(self.prefix_sum, None);
-            device.destroy_pipeline(self.emit, None);
-        }
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        device.destroy_descriptor_set_layout(self.ds_layout, None);
+        device.destroy_pipeline_layout(self.pipeline_layout, None);
+        device.destroy_pipeline(self.count, None);
+        device.destroy_pipeline(self.prefix_sum, None);
+        device.destroy_pipeline(self.emit, None);
     }
 }
 
 /// Scratch space for actually performing the extraction
 pub struct ScratchBuffer {
-    gfx: Arc<Base>,
     dimension: u32,
     voxels_staging: DedicatedMapping<[Material]>,
     voxels: DedicatedBuffer,
@@ -180,8 +172,7 @@ pub struct ScratchBuffer {
 }
 
 impl ScratchBuffer {
-    pub fn new(ctx: &SurfaceExtraction, concurrency: u32, dimension: u32) -> Self {
-        let gfx = ctx.gfx.clone();
+    pub fn new(gfx: &Base, ctx: &SurfaceExtraction, concurrency: u32, dimension: u32) -> Self {
         let device = &*gfx.device;
         unsafe {
             // Padded by 2 on each dimension so each voxel of interest has a full neighborhood
@@ -246,7 +237,6 @@ impl ScratchBuffer {
                 .unwrap();
 
             Self {
-                gfx,
                 dimension,
                 voxels_staging,
                 voxels,
@@ -279,13 +269,13 @@ impl ScratchBuffer {
 
     pub unsafe fn extract(
         &mut self,
+        device: &Device,
         ctx: &SurfaceExtraction,
         index: u32,
         cmd: vk::CommandBuffer,
         indirect: (vk::Buffer, vk::DeviceSize),
         face: (vk::Buffer, vk::DeviceSize),
     ) {
-        let device = &*self.gfx.device;
         let index = index as usize;
 
         let voxel_count = (self.dimension + 2).pow(3) as usize;
@@ -496,17 +486,12 @@ impl ScratchBuffer {
             &[],
         );
     }
-}
 
-impl Drop for ScratchBuffer {
-    fn drop(&mut self) {
-        let device = &*self.gfx.device;
-        unsafe {
-            device.destroy_descriptor_pool(self.descriptor_pool, None);
-            self.voxels_staging.destroy(device);
-            self.voxels.destroy(device);
-            self.counts.destroy(device);
-        }
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        device.destroy_descriptor_pool(self.descriptor_pool, None);
+        self.voxels_staging.destroy(device);
+        self.voxels.destroy(device);
+        self.counts.destroy(device);
     }
 }
 
@@ -518,7 +503,6 @@ fn dispatch_count(dimension: u32) -> vk::DeviceSize {
 
 /// Manages storage for ready-to-render voxels
 pub struct DrawBuffer {
-    pub gfx: Arc<Base>,
     indirect: DedicatedBuffer,
     faces: DedicatedBuffer,
     dimension: u32,
@@ -527,7 +511,7 @@ pub struct DrawBuffer {
 impl DrawBuffer {
     /// Allocate a buffer suitable for rendering at most `count` chunks having `dimension` voxels
     /// along each edge
-    pub fn new(gfx: Arc<Base>, count: u32, dimension: u32) -> Self {
+    pub fn new(gfx: &Base, count: u32, dimension: u32) -> Self {
         let device = &*gfx.device;
 
         unsafe {
@@ -558,7 +542,6 @@ impl DrawBuffer {
             gfx.set_name(faces.handle, cstr!("faces"));
 
             Self {
-                gfx,
                 indirect,
                 faces,
                 dimension,
@@ -591,15 +574,10 @@ impl DrawBuffer {
     pub fn dimension(&self) -> u32 {
         self.dimension
     }
-}
 
-impl Drop for DrawBuffer {
-    fn drop(&mut self) {
-        let device = &*self.gfx.device;
-        unsafe {
-            self.indirect.destroy(device);
-            self.faces.destroy(device);
-        }
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        self.indirect.destroy(device);
+        self.faces.destroy(device);
     }
 }
 

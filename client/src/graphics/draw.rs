@@ -111,7 +111,7 @@ impl Draw {
 
             let mut loader = Loader::new(config.clone(), gfx.clone());
 
-            let voxels = Voxels::new(gfx.clone(), config, &mut loader, PIPELINE_DEPTH);
+            let voxels = Voxels::new(&gfx, config, &mut loader, PIPELINE_DEPTH);
 
             // Construct the per-frame states
             let states = cmds
@@ -150,7 +150,7 @@ impl Draw {
                         used: false,
                         in_flight: false,
 
-                        voxels: voxels::Frame::new(&voxels),
+                        voxels: voxels::Frame::new(&gfx, &voxels),
                     };
                     gfx.set_name(x.cmd, cstr!("frame"));
                     gfx.set_name(x.image_acquired, cstr!("image acquired"));
@@ -160,7 +160,7 @@ impl Draw {
                 })
                 .collect();
 
-            let sky = Sky::new(gfx.clone());
+            let sky = Sky::new(&gfx);
 
             gfx.save_pipeline_cache();
 
@@ -283,7 +283,7 @@ impl Draw {
                 .build(),
         );
 
-        self.voxels.prepare(&mut state.voxels, sim, cmd);
+        self.voxels.prepare(device, &mut state.voxels, sim, cmd);
 
         // Ensure reads of just-transferred memory wait until it's ready
         device.cmd_pipeline_barrier(
@@ -352,9 +352,9 @@ impl Draw {
 
         // Record the actual rendering commands
         self.voxels
-            .draw(&self.loader, state.common_ds, &state.voxels, cmd);
+            .draw(device, &self.loader, state.common_ds, &state.voxels, cmd);
         // Sky goes last to save fillrate
-        self.sky.draw(cmd);
+        self.sky.draw(device, cmd);
 
         // Finish up
         device.cmd_end_render_pass(cmd);
@@ -429,6 +429,8 @@ impl Drop for Draw {
             device.destroy_query_pool(self.timestamp_pool, None);
             device.destroy_descriptor_pool(self.common_descriptor_pool, None);
             device.destroy_pipeline_layout(self.common_pipeline_layout, None);
+            self.sky.destroy(device);
+            self.voxels.destroy(device);
         }
     }
 }
