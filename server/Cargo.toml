@@ -11,7 +11,7 @@ license = "Apache-2.0 OR Zlib"
 [dependencies]
 common = { path = "../common" }
 tracing = "0.1.10"
-tracing-subscriber = "0.2"
+tracing-subscriber = { version = "0.2", default-features = false, features = ["env-filter", "smallvec", "fmt", "ansi", "chrono", "parking_lot"] }
 tokio = { version = "0.2", features = ["rt-threaded", "time", "macros", "stream", "sync"] }
 quinn = { git = "https://github.com/djc/quinn", rev = "6f1d361dbf0c5d7818a26d9a3db29144f56030c4" }
 serde = { version = "1.0.104", features = ["derive", "rc"] }
