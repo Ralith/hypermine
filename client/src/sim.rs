@@ -12,7 +12,7 @@ use common::{
     dodeca,
     graph::{Graph, NodeId},
     math,
-    proto::{self, Command, Position},
+    proto::{self, Character, Command, Position},
     sanitize_motion_input,
     world::{Material, SUBDIVISION_FACTOR},
     EntityId, Step,
@@ -133,7 +133,20 @@ impl Sim {
                             Ok(mut pos) => {
                                 *pos = new_pos;
                             }
-                            Err(e) => error!(%id, "position update for unpositioned entity: {}", e),
+                            Err(e) => error!(%id, "position update for unpositioned entity {}", e),
+                        },
+                    }
+                }
+                for &(id, orientation) in &msg.character_orientations {
+                    match self.entity_ids.get(&id) {
+                        None => error!(%id, "character orientation update for unknown entity"),
+                        Some(&entity) => match self.world.get_mut::<Character>(entity) {
+                            Ok(mut ch) => {
+                                ch.orientation = orientation;
+                            }
+                            Err(e) => {
+                                error!(%id, "character orientation update for non-character entity {}", e)
+                            }
                         },
                     }
                 }
@@ -150,11 +163,9 @@ impl Sim {
             for component in components {
                 use common::proto::Component::*;
                 match *component {
-                    Character(_) => {}
-                    Position(x) => {
-                        builder.add(x);
-                    }
-                }
+                    Character(ref x) => builder.add(x.clone()),
+                    Position(x) => builder.add(x),
+                };
             }
             let entity = self.world.spawn(builder.build());
             if let Some(x) = self.entity_ids.insert(id, entity) {
