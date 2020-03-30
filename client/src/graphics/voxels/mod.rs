@@ -76,7 +76,7 @@ impl Voxels {
             self.extraction_scratch.free(i);
         }
         for chunk in frame.drawn.drain(..) {
-            self.states.peek_mut(chunk.slot).refcount -= 1;
+            self.states.peek_mut(chunk).refcount -= 1;
         }
 
         // Determine what to load/render
@@ -87,9 +87,8 @@ impl Voxels {
             return;
         }
         let mut chunks = sim.graph.nearby_cubes(view, self.config.view_distance);
-        chunks.sort_unstable_by_key(|&(node, _, _, _)| sim.graph.length(node));
-        let view_parity = common::math::parity(&view.local);
-        for &(node, cube, parity, ref transform) in &chunks {
+        chunks.sort_unstable_by_key(|&(node, _, _)| sim.graph.length(node));
+        for &(node, cube, ref transform) in &chunks {
             // Fetch existing chunk, or extract surface of new chunk
             let slot = match *sim.graph.get_cube_mut(node, cube) {
                 None => continue,
@@ -132,10 +131,12 @@ impl Voxels {
                                 .unwrap()
                                 .surface = None;
                         }
+                        let node_is_odd = sim.graph.length(node) & 1 != 0;
                         self.extraction_scratch.extract(
                             device,
                             &self.surface_extraction,
                             scratch_slot,
+                            cube.parity() ^ node_is_odd,
                             cmd,
                             (
                                 self.surfaces.indirect_buffer(),
@@ -152,10 +153,7 @@ impl Voxels {
                     (None, &VoxelData::Uninitialized) => continue,
                 },
             };
-            frame.drawn.push(DrawnChunk {
-                slot,
-                parity: view_parity ^ parity,
-            });
+            frame.drawn.push(slot);
             // Transfer transform
             device.cmd_update_buffer(
                 cmd,
@@ -196,8 +194,7 @@ impl Voxels {
             return;
         }
         for chunk in &frame.drawn {
-            self.draw
-                .draw(device, cmd, &self.surfaces, chunk.slot.0, chunk.parity);
+            self.draw.draw(device, cmd, &self.surfaces, chunk.0);
         }
     }
 
@@ -213,18 +210,13 @@ pub struct Frame {
     surface: surface::Frame,
     /// Scratch slots completed in this frame
     extracted: Vec<u32>,
-    drawn: Vec<DrawnChunk>,
+    drawn: Vec<super::lru_table::SlotId>,
 }
 
 impl Frame {
     pub unsafe fn destroy(&mut self, device: &Device) {
         self.surface.destroy(device);
     }
-}
-
-struct DrawnChunk {
-    slot: super::lru_table::SlotId,
-    parity: bool,
 }
 
 impl Frame {

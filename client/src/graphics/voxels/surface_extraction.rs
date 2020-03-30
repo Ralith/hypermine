@@ -66,7 +66,7 @@ impl SurfaceExtraction {
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
                             offset: 0,
-                            size: 4,
+                            size: 8,
                         }]),
                     None,
                 )
@@ -267,11 +267,13 @@ impl ScratchBuffer {
         &mut self.voxels_staging[size * index..size * (index + 1)]
     }
 
+    #[allow(clippy::too_many_arguments)] // Refactoring ideas welcome
     pub unsafe fn extract(
         &mut self,
         device: &Device,
         ctx: &SurfaceExtraction,
         index: u32,
+        reverse_winding: bool,
         cmd: vk::CommandBuffer,
         indirect: (vk::Buffer, vk::DeviceSize),
         face: (vk::Buffer, vk::DeviceSize),
@@ -406,12 +408,15 @@ impl ScratchBuffer {
                 &[],
             );
 
+            let mut push_constants = [0; 8];
+            push_constants[0..4].copy_from_slice(&i.to_ne_bytes());
+            push_constants[5] = u8::from(reverse_winding);
             device.cmd_push_constants(
                 cmd,
                 ctx.pipeline_layout,
                 vk::ShaderStageFlags::COMPUTE,
                 0,
-                &i.to_ne_bytes(),
+                &push_constants,
             );
             device.cmd_dispatch(
                 cmd,

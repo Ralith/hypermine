@@ -84,6 +84,7 @@ impl SurfaceExtractionTest {
                 device,
                 &self.extract,
                 0,
+                false,
                 self.cmd,
                 (self.indirect.buffer(), 0),
                 (self.vertices.buffer(), 0),
