@@ -57,7 +57,7 @@ pub struct FreshNode {
     pub parent: NodeId,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Character {
     pub name: String,
     pub orientation: na::UnitQuaternion<f32>,
