@@ -17,6 +17,7 @@ layout(set = 0, binding = 3) writeonly restrict buffer Surfaces {
 };
 layout(push_constant) uniform Uniforms {
     uint offset;
+    bool reverse_winding;
 };
 
 // Compute the occlusion state based on the three voxels surrounding an exposed vertex:
@@ -34,27 +35,24 @@ uint vertex_occlusion(bool a, bool b, bool c) {
 }
 
 // Compute the occlusion state for each vertex on a surface
-uvec4 surface_occlusion(ivec3 voxel, uint axis) {
+uvec4 surface_occlusion(ivec3 voxel, uint axis, bool inward) {
     // Offset from voxel to the void voxel for this surface
-    const ivec3 offsets[6] = {
+    const ivec3 offsets[3] = {
         {-1,  0,  0},
         { 0, -1,  0},
         { 0,  0, -1},
-        {0,  0,  0},
-        {0,  0,  0},
-        {0,  0,  0},
     };
     // U/V axes on this surface
-    const ivec3 uvs[6][2] = {
-        {{0, 1, 0}, {0, 0, 1}},
-        {{0, 0, 1}, {1, 0, 0}},
-        {{1, 0, 0}, {0, 1, 0}},
+    const ivec3 uvs[3][2] = {
         {{0, 1, 0}, {0, 0, 1}},
         {{0, 0, 1}, {1, 0, 0}},
         {{1, 0, 0}, {0, 1, 0}},
     };
 
-    voxel += offsets[axis];
+    if (!inward) {
+        voxel += offsets[axis];
+    }
+
     ivec3 u = uvs[axis][0];
     ivec3 v = uvs[axis][1];
     // 0 1 2
@@ -89,5 +87,11 @@ void main() {
 
     Face info;
     if(!find_face(info)) return;
-    surfaces[count - 1] = surface(info.voxel, info.axis, info.material, surface_occlusion(info.voxel, info.axis));
+    surfaces[count - 1] = surface(
+        info.voxel,
+        info.axis,
+        info.inward ^^ reverse_winding,
+        info.material,
+        surface_occlusion(info.voxel, info.axis, info.inward)
+    );
 }

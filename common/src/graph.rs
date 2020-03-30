@@ -93,18 +93,13 @@ impl<N, C> Graph<N, C> {
 
     /// Compute reflectedness and `start`-relative transforms for all cube-bearing nodes within
     /// `distance` links
-    ///
-    /// Because we relate nodes to their neighbors with reflection transforms, a flag indicating
-    /// whether a given node is reached via an odd number of reflections allows us to render with
-    /// correct vertex winding.
     pub fn nearby_cubes(
         &self,
         start: Position,
         distance: f64,
-    ) -> Vec<(NodeId, Vertex, bool, na::Matrix4<f32>)> {
+    ) -> Vec<(NodeId, Vertex, na::Matrix4<f32>)> {
         struct PendingNode {
             id: NodeId,
-            parity: bool,
             parent_in_range: bool,
             transform: na::Matrix4<f64>,
         }
@@ -116,7 +111,6 @@ impl<N, C> Graph<N, C> {
 
         pending.push(PendingNode {
             id: start.node,
-            parity: false,
             parent_in_range: true,
             transform: na::Matrix4::identity(),
         });
@@ -130,12 +124,7 @@ impl<N, C> Graph<N, C> {
             for v in self.cubes_at(current.id) {
                 let v_transform = current.transform * v.cube_to_node();
                 if math::distance(&start_p, &(v_transform * math::origin())) < distance {
-                    result.push((
-                        current.id,
-                        v,
-                        current.parity ^ v.parity(),
-                        na::convert(v_transform),
-                    ));
+                    result.push((current.id, v, na::convert(v_transform)));
                 }
             }
 
@@ -153,7 +142,6 @@ impl<N, C> Graph<N, C> {
                 }
                 pending.push(PendingNode {
                     id: neighbor,
-                    parity: !current.parity,
                     parent_in_range: current_in_range,
                     transform: current.transform * side.reflection(),
                 });

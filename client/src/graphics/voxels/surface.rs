@@ -120,7 +120,7 @@ impl Surface {
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::VERTEX,
                             offset: 0,
-                            size: 12,
+                            size: 8,
                         }]),
                     None,
                 )
@@ -292,12 +292,10 @@ impl Surface {
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
         chunk: u32,
-        reflected: bool,
     ) {
-        let mut push_constants = [0; 12];
+        let mut push_constants = [0; 8];
         push_constants[0..4].copy_from_slice(&chunk.to_ne_bytes());
         push_constants[4..8].copy_from_slice(&buffer.dimension().to_ne_bytes());
-        push_constants[8..12].copy_from_slice(&u32::from(reflected).to_ne_bytes());
         device.cmd_push_constants(
             cmd,
             self.pipeline_layout,

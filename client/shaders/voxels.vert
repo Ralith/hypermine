@@ -18,7 +18,6 @@ layout(set = 2, binding = 0) readonly restrict buffer Transforms {
 layout(push_constant) uniform PushConstants {
     uint draw_index;
     uint dimension;
-    bool reflected;
 };
 
 // Each set of 6 vertices makes a ring around the quad, with the middle and start/end vertices
@@ -55,9 +54,6 @@ const uvec2 texcoords[4][6] = {
 void main()  {
     uint index = gl_VertexIndex / 6;
     uint vertex = gl_VertexIndex % 6;
-    if (reflected) {
-        vertex = 5 - vertex;
-    }
     Surface s = surfaces[index];
     uvec3 pos = get_pos(s);
     uint axis = get_axis(s);

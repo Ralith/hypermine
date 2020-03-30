@@ -3,7 +3,9 @@
 
 // A face between a voxel and its neighbor in the -X, -Y, or -Z direction
 struct Surface {
+    // (x y, z, axis)
     uint pos_axis;
+    // (occlusion, padding, mat, mat)
     uint occlusion_mat;
 };
 
@@ -32,11 +34,11 @@ float get_occlusion(Surface s, uvec2 texcoords) {
     return float((s.occlusion_mat >> (24 + 2 * (texcoords.x | texcoords.y << 1))) & 0x03) / 3.0;
 }
 
-Surface surface(uvec3 pos, uint axis, uint mat, uvec4 occlusion) {
+Surface surface(uvec3 pos, uint axis, bool reverse, uint mat, uvec4 occlusion) {
     Surface result;
     // Flip the quad if necessary to prevent the triangle dividing line from being parallel to the
     // gradient of ambient occlusion, ensuring isotropy.
-    axis += 6 * uint(occlusion.y + occlusion.z > occlusion.x + occlusion.w);
+    axis += 3 * uint(reverse) + 6 * uint(occlusion.y + occlusion.z > occlusion.x + occlusion.w);
     result.pos_axis = pos.x | pos.y << 8 | pos.z << 16 | axis << 24;
     result.occlusion_mat = mat | occlusion.x << 24 | occlusion.y << 26 | occlusion.z << 28 | occlusion.w << 30;
     return result;

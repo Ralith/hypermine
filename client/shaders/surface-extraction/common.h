@@ -27,7 +27,7 @@ uint get_voxel(ivec3 coords) {
 struct Face {
     // coordinates of the voxel
     ivec3 voxel;
-    // [0,6), indicating which axis this face is perpendicular to and whether it's facing inward
+    // [0,3), indicating which axis this face is perpendicular to
     uint axis;
     // whether the normal is facing towards the center of this voxel
     bool inward;
@@ -51,7 +51,8 @@ bool find_face(out Face info) {
     if (any(equal(info.voxel, padding_coord)) && any(equal(neighbor, padding_coord))) return false;
     uint neighbor_mat = get_voxel(neighbor);
     uint self_mat = get_voxel(info.voxel);
-    info.axis += 3 * uint(self_mat == 0);
+    // Flip face around if the neighbor is the solid one
+    info.inward = self_mat == 0;
     info.material = self_mat | neighbor_mat;
     return (neighbor_mat == 0) != (self_mat == 0);
 }
