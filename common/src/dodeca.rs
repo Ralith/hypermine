@@ -137,6 +137,11 @@ impl Vertex {
             origin,
         ])
     }
+
+    /// Convenience method for `self.cube_to_node().determinant() < 0`.
+    pub fn parity(self) -> bool {
+        CUBE_TO_NODE_PARITY[self as usize]
+    }
 }
 
 pub const VERTEX_COUNT: usize = 20;
@@ -229,6 +234,17 @@ lazy_static! {
             }
         }
         assert_eq!(vertex.next(), None);
+        result
+    };
+
+    /// Whether the determinant of the cube-to-node transform is negative
+    static ref CUBE_TO_NODE_PARITY: [bool; VERTEX_COUNT] = {
+        let mut result = [false; VERTEX_COUNT];
+
+        for v in Vertex::iter() {
+            result[v as usize] = math::parity(&v.cube_to_node());
+        }
+
         result
     };
 }
