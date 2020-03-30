@@ -68,7 +68,7 @@ impl Config {
                 debug!(path = %repo_path.display(), "asset not in repo");
             }
         }
-        let user_path = self.data_dir.join("materials");
+        let user_path = self.data_dir.join(path);
         if user_path.exists() {
             return Some(user_path);
         }
