@@ -5,7 +5,6 @@ use std::fmt;
 use std::num::NonZeroU32;
 
 use fxhash::FxHashSet;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -129,12 +128,12 @@ impl<N, C> Graph<N, C> {
             let current_in_range = math::distance(&start_p, &current_p) < distance;
 
             for v in self.cubes_at(current.id) {
-                let v_transform = current.transform * cube_to_node(v);
+                let v_transform = current.transform * v.cube_to_node();
                 if math::distance(&start_p, &(v_transform * math::origin())) < distance {
                     result.push((
                         current.id,
                         v,
-                        current.parity ^ CUBE_TO_NODE_DETERMINANT_NEGATIVE[v as usize],
+                        current.parity ^ v.parity(),
                         na::convert(v_transform),
                     ));
                 }
@@ -410,30 +409,6 @@ impl<N, C> Node<N, C> {
     fn parent(&self) -> Option<NodeId> {
         Some(self.neighbors[self.parent_side? as usize].expect("parent edge unpopulated"))
     }
-}
-
-fn cube_to_node(v: Vertex) -> na::Matrix4<f64> {
-    let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-    let [a, b, c] = v.canonical_sides();
-    na::Matrix4::from_columns(&[
-        a.reflection().column(3) - origin,
-        b.reflection().column(3) - origin,
-        c.reflection().column(3) - origin,
-        origin,
-    ])
-}
-
-lazy_static! {
-    /// Whether the determinant of the cube-to-node transform is negative
-    static ref CUBE_TO_NODE_DETERMINANT_NEGATIVE: [bool; VERTEX_COUNT] = {
-        let mut result = [false; VERTEX_COUNT];
-
-        for v in Vertex::iter() {
-            result[v as usize] = math::parity(&cube_to_node(v));
-        }
-
-        result
-    };
 }
 
 pub struct TreeIter<'a, N, C> {
