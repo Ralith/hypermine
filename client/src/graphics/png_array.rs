@@ -20,7 +20,7 @@ impl Loadable for PngArray {
             let full_path = handle
                 .cfg
                 .find_asset(&self.path)
-                .ok_or_else(|| anyhow!("not found"))?;
+                .ok_or_else(|| anyhow!("{} not found", self.path.display()))?;
             let mut paths = fs::read_dir(&full_path)
                 .with_context(|| format!("reading {}", full_path.display()))?
                 .map(|x| x.map(|x| x.path()))
