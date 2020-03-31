@@ -161,11 +161,7 @@ pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
         let loc: usize = 2;
         let voxel_of_interest_index =
             index(absolute_subchunk_coords(loc, loc, loc, subchunk_offset));
-        let neighbor_data = voxel_neighbors(
-            na::Vector3::new(loc, loc, loc),
-            subchunk_offset,
-            &mut voxels,
-        );
+        let neighbor_data = voxel_neighbors(na::Vector3::repeat(loc), subchunk_offset, &mut voxels);
 
         let num_void_neighbors = neighbor_data
             .iter()
