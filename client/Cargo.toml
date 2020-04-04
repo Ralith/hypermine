@@ -14,13 +14,13 @@ server = { path = "../server" }
 tracing = "0.1.10"
 tracing-subscriber = { version = "0.2", default-features = false, features = ["env-filter", "smallvec", "fmt", "ansi", "chrono", "parking_lot"] }
 ash = "0.29"
-lahar = { git = "https://github.com/Ralith/lahar", rev = "b70cecccd000c4cdf3d654b65fa339c59a6fb416" }
+lahar = { git = "https://github.com/Ralith/lahar", rev = "3b3f3600629a07f6568f332cbeb76933ba23ba39" }
 winit = "0.22"
 ash-window = "0.1.0"
 directories = "2.0.2"
 vk-shader-macros = "0.2.2"
 na = { package = "nalgebra", version = "0.19" }
-tokio = { version = "0.2", features = ["rt-threaded", "sync", "macros"] }
+tokio = { version = "0.2.13", features = ["rt-threaded", "sync", "macros"] }
 png = "0.15.2"
 anyhow = "1.0.26"
 whoami = "0.7.0"
@@ -34,6 +34,8 @@ rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
 webpki = "0.21.0"
 hecs = "0.2.9"
 rcgen = { version = "0.7.0", default-features = false }
+memoffset = "0.5"
+gltf = { version = "0.15.2", default-features = false, features = ["utils"] }
 
 [features]
 default = ["use-repo-assets"]

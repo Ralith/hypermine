@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use fxhash::FxHashMap;
 use hecs::Entity;
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
 
 use crate::{
     graphics::lru_table::SlotId, net, prediction::PredictedMotion, worldgen, worldgen::NodeState,
@@ -28,8 +28,9 @@ pub struct Sim {
     pub graph: DualGraph,
     pub graph_entities: GraphEntities,
     entity_ids: FxHashMap<EntityId, Entity>,
-    world: hecs::World,
-    local_character: Option<EntityId>,
+    pub world: hecs::World,
+    local_character_id: Option<EntityId>,
+    pub local_character: Option<Entity>,
     orientation: na::UnitQuaternion<f32>,
     step_interval: Option<Duration>,
     step: Option<Step>,
@@ -53,6 +54,7 @@ impl Sim {
             graph_entities: GraphEntities::new(),
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
+            local_character_id: None,
             local_character: None,
             orientation: na::one(),
             step_interval: None,
@@ -115,7 +117,7 @@ impl Sim {
                 error!("connection lost: {}", e);
             }
             Hello(msg) => {
-                self.local_character = Some(msg.character);
+                self.local_character_id = Some(msg.character);
                 self.step_interval = Some(Duration::from_secs(1) / msg.rate as u32);
             }
             Spawns(msg) => self.handle_spawns(msg),
@@ -130,7 +132,7 @@ impl Sim {
                 }
                 for &(id, orientation) in &msg.character_orientations {
                     match self.entity_ids.get(&id) {
-                        None => error!(%id, "character orientation update for unknown entity"),
+                        None => debug!(%id, "character orientation update for unknown entity"),
                         Some(&entity) => match self.world.get_mut::<Character>(entity) {
                             Ok(mut ch) => {
                                 ch.orientation = orientation;
@@ -146,11 +148,11 @@ impl Sim {
     }
 
     fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: Position) {
-        if self.local_character == Some(id) {
+        if self.local_character_id == Some(id) {
             self.prediction.reconcile(latest_input, new_pos);
         }
         match self.entity_ids.get(&id) {
-            None => error!(%id, "position update for unknown entity"),
+            None => debug!(%id, "position update for unknown entity"),
             Some(&entity) => match self.world.get_mut::<Position>(entity) {
                 Ok(mut pos) => {
                     if pos.node != new_pos.node {
@@ -209,6 +211,9 @@ impl Sim {
         let entity = self.world.spawn(builder.build());
         if let Some(node) = node {
             self.graph_entities.insert(node, entity);
+        }
+        if id == self.local_character_id.expect("spawn before ServerHello") {
+            self.local_character = Some(entity);
         }
         if let Some(x) = self.entity_ids.insert(id, entity) {
             self.destroy_idless(x);
