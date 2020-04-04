@@ -7,7 +7,7 @@ use futures::{select, StreamExt, TryStreamExt};
 use hecs::Entity;
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
-use tracing::{error, error_span, info, trace};
+use tracing::{debug, error, error_span, info, trace};
 
 use common::{codec, proto};
 use sim::Sim;
@@ -147,6 +147,8 @@ impl Server {
                         if let Err(e) = self.sim.command(x.character, cmd) {
                             error!("couldn't process command: {}", e);
                         }
+                    } else {
+                        debug!("dropping obsolete command");
                     }
                 }
             }
