@@ -5,12 +5,14 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 use tracing::info;
 
-use super::{voxels, Base, Loader, Sky, Voxels};
+use super::{loader::Asset, voxels, Base, Loader, Mesh, Meshes, Sky, Voxels};
 use crate::{Config, Sim};
+use common::proto::{Character, Position};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
     gfx: Arc<Base>,
+    cfg: Arc<Config>,
     /// Used to allocate the command buffers we render with
     cmd_pool: vk::CommandPool,
     /// Allows accurate frame timing information to be recorded
@@ -35,12 +37,16 @@ pub struct Draw {
 
     // Rendering pipelines
     voxels: Voxels,
+    meshes: Meshes,
     sky: Sky,
 
     /// Reusable storage for barriers that prevent races between image upload and read
     image_barriers: Vec<vk::ImageMemoryBarrier>,
     /// Reusable storage for barriers that prevent races between buffer upload and read
     buffer_barriers: Vec<vk::BufferMemoryBarrier>,
+
+    /// Miscellany
+    character_model: Asset<Mesh>,
 }
 
 /// Maximum number of simultaneous frames in flight
@@ -48,7 +54,7 @@ const PIPELINE_DEPTH: u32 = 2;
 const TIMESTAMPS_PER_FRAME: u32 = 2;
 
 impl Draw {
-    pub fn new(gfx: Arc<Base>, config: Arc<Config>) -> Self {
+    pub fn new(gfx: Arc<Base>, cfg: Arc<Config>) -> Self {
         let device = &*gfx.device;
         unsafe {
             // Allocate a command buffer for each frame state
@@ -109,9 +115,9 @@ impl Draw {
                 )
                 .unwrap();
 
-            let mut loader = Loader::new(config.clone(), gfx.clone());
+            let mut loader = Loader::new(cfg.clone(), gfx.clone());
 
-            let voxels = Voxels::new(&gfx, config, &mut loader, PIPELINE_DEPTH);
+            let voxels = Voxels::new(&gfx, cfg.clone(), &mut loader, PIPELINE_DEPTH);
 
             // Construct the per-frame states
             let states = cmds
@@ -160,12 +166,22 @@ impl Draw {
                 })
                 .collect();
 
+            let meshes = Meshes::new(&gfx, loader.ctx().mesh_ds_layout);
+
             let sky = Sky::new(&gfx);
 
             gfx.save_pipeline_cache();
 
+            let character_model = loader.load(
+                "character model",
+                super::GltfMesh {
+                    path: "character.glb".into(),
+                },
+            );
+
             Self {
                 gfx,
+                cfg,
                 cmd_pool,
                 timestamp_pool,
                 states,
@@ -178,10 +194,13 @@ impl Draw {
                 loader,
 
                 voxels,
+                meshes,
                 sky,
 
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
+
+                character_model,
             }
         }
     }
@@ -219,7 +238,8 @@ impl Draw {
         present: vk::Semaphore,
         projection: na::Matrix4<f32>,
     ) {
-        let projection = projection * sim.view().local.try_inverse().unwrap();
+        let view = sim.view();
+        let projection = projection * view.local.try_inverse().unwrap();
         self.loader.drive();
 
         let device = &*self.gfx.device;
@@ -341,6 +361,31 @@ impl Draw {
         }];
         device.cmd_set_viewport(cmd, 0, &viewports);
         device.cmd_set_scissor(cmd, 0, &scissors);
+
+        // Record the actual rendering commands
+        self.voxels
+            .draw(device, &self.loader, state.common_ds, &state.voxels, cmd);
+
+        for (node, transform) in sim.graph.nearby_nodes(view, self.cfg.view_distance) {
+            for &entity in sim.graph_entities.get(node) {
+                if sim.local_character == Some(entity) {
+                    // Don't draw ourself
+                    continue;
+                }
+                let pos = sim
+                    .world
+                    .get::<Position>(entity)
+                    .expect("positionless entity in graph");
+                if let Some(character_model) = self.loader.get(self.character_model) {
+                    if let Ok(ch) = sim.world.get::<Character>(entity) {
+                        let transform = transform * pos.local * ch.orientation.to_homogeneous();
+                        self.meshes
+                            .draw(device, state.common_ds, cmd, character_model, &transform);
+                    }
+                }
+            }
+        }
+
         device.cmd_bind_descriptor_sets(
             cmd,
             vk::PipelineBindPoint::GRAPHICS,
@@ -349,10 +394,6 @@ impl Draw {
             &[state.common_ds],
             &[],
         );
-
-        // Record the actual rendering commands
-        self.voxels
-            .draw(device, &self.loader, state.common_ds, &state.voxels, cmd);
         // Sky goes last to save fillrate
         self.sky.draw(device, cmd);
 
@@ -430,6 +471,7 @@ impl Drop for Draw {
             device.destroy_descriptor_pool(self.common_descriptor_pool, None);
             device.destroy_pipeline_layout(self.common_pipeline_layout, None);
             self.sky.destroy(device);
+            self.meshes.destroy(device);
             self.voxels.destroy(device);
         }
     }

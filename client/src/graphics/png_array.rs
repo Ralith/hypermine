@@ -1,7 +1,7 @@
 use std::{fs, fs::File, path::PathBuf};
 
 use anyhow::{anyhow, bail, Context};
-use ash::vk;
+use ash::{version::DeviceV1_0, vk};
 use lahar::DedicatedImage;
 use tracing::trace;
 
@@ -97,30 +97,76 @@ impl Loadable for PngArray {
                         .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
                 );
 
-                mem.flush();
+                mem.flush(handle.gfx.limits.non_coherent_atom_size);
+
+                let range = vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: self.size as u32,
+                };
+                let src = handle.staging.buffer();
+                let buffer_offset = mem.offset();
+                let dst = image.handle;
+
                 handle
                     .transfer
-                    .upload_image(
-                        handle.staging.buffer(),
-                        image.handle,
-                        vk::BufferImageCopy {
-                            buffer_offset: mem.offset(),
-                            image_subresource: vk::ImageSubresourceLayers {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                mip_level: 0,
-                                base_array_layer: 0,
-                                layer_count: self.size as u32,
-                            },
-                            image_extent: vk::Extent3D {
-                                width,
-                                height,
-                                depth: 1,
-                            },
-                            ..Default::default()
-                        },
-                        true,
-                    )
+                    .run(move |xf, cmd| {
+                        xf.device.cmd_pipeline_barrier(
+                            cmd,
+                            vk::PipelineStageFlags::TOP_OF_PIPE,
+                            vk::PipelineStageFlags::TRANSFER,
+                            vk::DependencyFlags::default(),
+                            &[],
+                            &[],
+                            &[vk::ImageMemoryBarrier::builder()
+                                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                                .old_layout(vk::ImageLayout::UNDEFINED)
+                                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                                .image(dst)
+                                .subresource_range(range)
+                                .build()],
+                        );
+                        xf.device.cmd_copy_buffer_to_image(
+                            cmd,
+                            src,
+                            dst,
+                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                            &[vk::BufferImageCopy {
+                                buffer_offset,
+                                image_subresource: vk::ImageSubresourceLayers {
+                                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                                    mip_level: 0,
+                                    base_array_layer: 0,
+                                    layer_count: range.layer_count,
+                                },
+                                image_extent: vk::Extent3D {
+                                    width,
+                                    height,
+                                    depth: 1,
+                                },
+                                ..Default::default()
+                            }],
+                        );
+                        xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+                        xf.image_barriers.push(
+                            vk::ImageMemoryBarrier::builder()
+                                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                                .src_queue_family_index(xf.queue_family)
+                                .dst_queue_family_index(xf.dst_queue_family)
+                                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                                .image(dst)
+                                .subresource_range(range)
+                                .build(),
+                        );
+                    })
                     .await?;
+
                 trace!(
                     width = width,
                     height = height,
