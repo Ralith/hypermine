@@ -78,6 +78,7 @@ impl Config {
 
 /// Data as parsed directly out of the config file
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct RawConfig {
     name: Option<Arc<str>>,
     data_dir: Option<PathBuf>,
