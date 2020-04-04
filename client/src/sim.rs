@@ -12,10 +12,10 @@ use common::{
     dodeca,
     graph::{Graph, NodeId},
     math,
-    proto::{self, Character, Command, Position},
+    proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
     world::{Material, SUBDIVISION_FACTOR},
-    EntityId, Step,
+    EntityId, GraphEntities, Step,
 };
 
 pub type DualGraph = Graph<NodeState, Cube>;
@@ -26,6 +26,7 @@ pub struct Sim {
 
     // World state
     pub graph: DualGraph,
+    pub graph_entities: GraphEntities,
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
     local_character: Option<EntityId>,
@@ -49,6 +50,7 @@ impl Sim {
             net,
 
             graph: Graph::new(),
+            graph_entities: GraphEntities::new(),
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
             local_character: None,
@@ -124,18 +126,7 @@ impl Sim {
                 }
                 self.step = Some(msg.step);
                 for &(id, new_pos) in &msg.positions {
-                    if self.local_character == Some(id) {
-                        self.prediction.reconcile(msg.latest_input, new_pos);
-                    }
-                    match self.entity_ids.get(&id) {
-                        None => error!(%id, "position update for unknown entity"),
-                        Some(&entity) => match self.world.get_mut::<Position>(entity) {
-                            Ok(mut pos) => {
-                                *pos = new_pos;
-                            }
-                            Err(e) => error!(%id, "position update for unpositioned entity {}", e),
-                        },
-                    }
+                    self.update_position(msg.latest_input, id, new_pos);
                 }
                 for &(id, orientation) in &msg.character_orientations {
                     match self.entity_ids.get(&id) {
@@ -154,24 +145,30 @@ impl Sim {
         }
     }
 
+    fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: Position) {
+        if self.local_character == Some(id) {
+            self.prediction.reconcile(latest_input, new_pos);
+        }
+        match self.entity_ids.get(&id) {
+            None => error!(%id, "position update for unknown entity"),
+            Some(&entity) => match self.world.get_mut::<Position>(entity) {
+                Ok(mut pos) => {
+                    if pos.node != new_pos.node {
+                        self.graph_entities.remove(pos.node, entity);
+                        self.graph_entities.insert(new_pos.node, entity);
+                    }
+                    *pos = new_pos;
+                }
+                Err(e) => error!(%id, "position update for unpositioned entity {}", e),
+            },
+        }
+    }
+
     fn handle_spawns(&mut self, msg: proto::Spawns) {
         self.step = self.step.max(Some(msg.step));
         let mut builder = hecs::EntityBuilder::new();
-        for &(id, ref components) in &msg.spawns {
-            trace!(%id, "spawning entity");
-            builder.add(id);
-            for component in components {
-                use common::proto::Component::*;
-                match *component {
-                    Character(ref x) => builder.add(x.clone()),
-                    Position(x) => builder.add(x),
-                };
-            }
-            let entity = self.world.spawn(builder.build());
-            if let Some(x) = self.entity_ids.insert(id, entity) {
-                let _ = self.world.despawn(x);
-                error!(%id, "id collision");
-            }
+        for (id, components) in msg.spawns {
+            self.spawn(&mut builder, id, components);
         }
         for &id in &msg.despawns {
             match self.entity_ids.get(&id) {
@@ -186,6 +183,37 @@ impl Sim {
             self.graph.insert_child(node.parent, node.side);
         }
         populate_fresh_nodes(&mut self.graph);
+    }
+
+    fn spawn(
+        &mut self,
+        builder: &mut hecs::EntityBuilder,
+        id: EntityId,
+        components: Vec<Component>,
+    ) {
+        trace!(%id, "spawning entity");
+        builder.add(id);
+        let mut node = None;
+        for component in components {
+            use common::proto::Component::*;
+            match component {
+                Character(x) => {
+                    builder.add(x);
+                }
+                Position(x) => {
+                    node = Some(x.node);
+                    builder.add(x);
+                }
+            };
+        }
+        let entity = self.world.spawn(builder.build());
+        if let Some(node) = node {
+            self.graph_entities.insert(node, entity);
+        }
+        if let Some(x) = self.entity_ids.insert(id, entity) {
+            self.destroy_idless(x);
+            error!(%id, "id collision");
+        }
     }
 
     fn send_input(&mut self) {
@@ -218,9 +246,21 @@ impl Sim {
         result
     }
 
+    /// Destroy all aspects of an entity
     fn destroy(&mut self, entity: Entity) {
-        let id = *self.world.get::<EntityId>(entity).unwrap();
+        let id = *self
+            .world
+            .get::<EntityId>(entity)
+            .expect("destroyed nonexistent entity");
         self.entity_ids.remove(&id);
+        self.destroy_idless(entity);
+    }
+
+    /// Destroy an entity without an EntityId mapped
+    fn destroy_idless(&mut self, entity: Entity) {
+        if let Ok(position) = self.world.get::<Position>(entity) {
+            self.graph_entities.remove(position.node, entity);
+        }
         self.world
             .despawn(entity)
             .expect("destroyed nonexistent entity");

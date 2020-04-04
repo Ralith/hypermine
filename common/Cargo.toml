@@ -18,6 +18,7 @@ quinn = { git = "https://github.com/djc/quinn", rev = "6f1d361dbf0c5d7818a26d9a3
 lazy_static = "1.4.0"
 fxhash = "0.2.1"
 tracing = "0.1.10"
+hecs = "0.2.9"
 
 [dev-dependencies]
 approx = "0.3.2"
