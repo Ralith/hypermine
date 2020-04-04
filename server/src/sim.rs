@@ -52,7 +52,6 @@ impl Sim {
         };
         let character = Character {
             name: hello.name,
-            latest_input: 0,
             speed: 0.0,
             direction: -na::Vector3::z_axis(),
             orientation: na::one(),
@@ -68,13 +67,10 @@ impl Sim {
         command: Command,
     ) -> Result<(), hecs::ComponentError> {
         let mut ch = self.world.get_mut::<Character>(entity)?;
-        if command.generation.wrapping_sub(ch.latest_input) < u16::max_value() / 2 {
-            ch.latest_input = command.generation;
-            let (direction, speed) = sanitize_motion_input(command.velocity);
-            ch.direction = direction;
-            ch.speed = speed;
-            ch.orientation = command.orientation;
-        }
+        let (direction, speed) = sanitize_motion_input(command.velocity);
+        ch.direction = direction;
+        ch.speed = speed;
+        ch.orientation = command.orientation;
         Ok(())
     }
 
@@ -204,5 +200,4 @@ struct Character {
     orientation: na::UnitQuaternion<f32>,
     direction: na::Unit<na::Vector3<f32>>,
     speed: f32,
-    latest_input: u16,
 }
