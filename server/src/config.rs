@@ -16,6 +16,7 @@ pub struct Config {
     pub listen: SocketAddr,
     pub rate: u16,
     pub view_distance: u32,
+    pub input_queue_size_ms: u16,
 }
 
 impl Config {
@@ -36,6 +37,7 @@ impl Default for Config {
             listen: SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 1234),
             rate: 10,
             view_distance: 3,
+            input_queue_size_ms: 50,
         }
     }
 }

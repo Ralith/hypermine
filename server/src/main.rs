@@ -1,6 +1,6 @@
 mod config;
 
-use std::{fs, net::UdpSocket, path::Path};
+use std::{fs, net::UdpSocket, path::Path, time::Duration};
 
 use anyhow::{anyhow, Context, Result};
 use quinn::{Certificate, CertificateChain, PrivateKey};
@@ -65,6 +65,7 @@ pub fn run() -> Result<()> {
         server::SimConfig {
             rate: cfg.rate,
             view_distance: cfg.view_distance,
+            input_queue_size: Duration::from_millis(cfg.input_queue_size_ms as u64),
         },
     )
 }

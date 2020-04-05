@@ -8,6 +8,7 @@ mod worldgen;
 use std::{
     net::{SocketAddr, UdpSocket},
     sync::Arc,
+    time::Duration,
 };
 
 use config::Config;
@@ -45,6 +46,7 @@ fn main() {
                 server::SimConfig {
                     rate: 4,
                     view_distance: 4,
+                    input_queue_size: Duration::from_millis(10),
                 },
             ) {
                 eprintln!("{:#}", e);
