@@ -67,9 +67,20 @@ pub enum Dir {
     Back,
 }
 impl Dir {
-    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
+    pub fn iter() -> impl ExactSizeIterator<Item = Self> + Clone {
         use Dir::*;
         [Left, Right, Down, Up, Forward, Back].iter().cloned()
+    }
+    pub fn vector(self) -> na::Vector3<isize> {
+        use Dir::*;
+        match self {
+            Up => na::Vector3::x(),
+            Down => -na::Vector3::x(),
+            Left => na::Vector3::y(),
+            Right => -na::Vector3::y(),
+            Forward => na::Vector3::z(),
+            Back => -na::Vector3::z(),
+        }
     }
 }
 
