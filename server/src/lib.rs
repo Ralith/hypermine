@@ -1,6 +1,11 @@
+mod input_queue;
 mod sim;
 
-use std::{net::UdpSocket, sync::Arc, time::Duration};
+use std::{
+    net::UdpSocket,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, Error, Result};
 use futures::{select, StreamExt, TryStreamExt};
@@ -10,6 +15,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, error_span, info, trace};
 
 use common::{codec, proto};
+use input_queue::InputQueue;
 use sim::Sim;
 
 pub struct NetParams {
@@ -21,6 +27,7 @@ pub struct NetParams {
 pub struct SimConfig {
     pub rate: u16,
     pub view_distance: u32,
+    pub input_queue_size: Duration,
 }
 
 #[tokio::main]
@@ -72,13 +79,27 @@ impl Server {
     }
 
     fn on_step(&mut self) {
+        let now = Instant::now();
+        // Apply queued inputs
+        for (id, client) in &mut self.clients {
+            if let Some(ref handles) = client.handles {
+                if let Some(cmd) = client.inputs.pop(now, self.cfg.input_queue_size) {
+                    client.latest_input_processed = cmd.generation;
+                    if let Err(e) = self.sim.command(handles.character, cmd) {
+                        error!(client = ?id, "couldn't process command: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Step the simulation
         let (spawns, delta) = self.sim.step();
         let spawns = Arc::new(spawns);
         let mut overran = Vec::new();
         for (client_id, client) in &mut self.clients {
             if let Some(ref mut handles) = client.handles {
                 let mut delta = delta.clone();
-                delta.latest_input = client.latest_input;
+                delta.latest_input = client.latest_input_processed;
                 let r1 = handles.unordered.try_send(delta);
                 let r2 = if !spawns.spawns.is_empty()
                     || !spawns.despawns.is_empty()
@@ -140,15 +161,12 @@ impl Server {
                 self.cleanup_client(client_id);
             }
             ClientEvent::Command(cmd) => {
-                if let Some(ref x) = client.handles {
-                    if cmd.generation.wrapping_sub(client.latest_input) < u16::max_value() / 2 {
-                        client.latest_input = cmd.generation;
-                        if let Err(e) = self.sim.command(x.character, cmd) {
-                            error!("couldn't process command: {}", e);
-                        }
-                    } else {
-                        debug!("dropping obsolete command");
-                    }
+                if cmd.generation.wrapping_sub(client.latest_input_received) < u16::max_value() / 2
+                {
+                    client.latest_input_received = cmd.generation;
+                    client.inputs.push(cmd, Instant::now());
+                } else {
+                    debug!("dropping obsolete command");
                 }
             }
         }
@@ -177,11 +195,7 @@ impl Server {
                 return;
             }
         };
-        let id = self.clients.insert(Client {
-            conn: connection.clone(),
-            handles: None,
-            latest_input: 0,
-        });
+        let id = self.clients.insert(Client::new(connection.clone()));
         info!(id = ?id.0, address = %connection.remote_address(), "connection established");
         tokio::spawn(async move {
             if let Err(e) = drive_recv(id, uni_streams, &mut send).await {
@@ -257,7 +271,21 @@ struct Client {
     conn: quinn::Connection,
     /// Filled in after receiving ClientHello
     handles: Option<ClientHandles>,
-    latest_input: u16,
+    latest_input_received: u16,
+    latest_input_processed: u16,
+    inputs: InputQueue,
+}
+
+impl Client {
+    fn new(conn: quinn::Connection) -> Self {
+        Self {
+            conn,
+            handles: None,
+            latest_input_received: 0,
+            latest_input_processed: 0,
+            inputs: InputQueue::new(),
+        }
+    }
 }
 
 struct ClientHandles {
