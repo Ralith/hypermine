@@ -15,10 +15,15 @@ use common::{
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
     world::{Material, SUBDIVISION_FACTOR},
-    EntityId, GraphEntities, Step,
+    Chunks, EntityId, GraphEntities, Step,
 };
 
-pub type DualGraph = Graph<NodeState, Cube>;
+pub type DualGraph = Graph<Node>;
+
+pub struct Node {
+    pub state: NodeState,
+    pub chunks: Chunks<Option<Chunk>>,
+}
 
 /// Game state
 pub struct Sim {
@@ -272,7 +277,7 @@ impl Sim {
     }
 }
 
-pub struct Cube {
+pub struct Chunk {
     pub surface: Option<SlotId>,
     pub voxels: VoxelData,
 }
@@ -313,29 +318,43 @@ fn populate_fresh_nodes(graph: &mut DualGraph) {
     }
     for &node in &fresh {
         let mut d = graph.descenders(node).map(|(side, _node)| side);
-        // If this node has three descenders, it completes a cube
+        // If this node has three descenders, it completes a cube, and we can populate all eight
+        // chunks within that cube
         if let (Some(a), Some(b), Some(c)) = (d.next(), d.next(), d.next()) {
-            let vert = dodeca::Vertex::from_sides(a, b, c).unwrap();
-            let (node, _) = graph.canonicalize(node, vert).unwrap();
-            populate_cube(graph, node, vert);
+            let vert = dodeca::Vertex::from_sides(a, b, c).expect("descenders are adjacent");
+            for (_, path) in vert.dual_vertices() {
+                let node = path.fold(node, |node, side| {
+                    graph
+                        .neighbor(node, side)
+                        .expect("chunks whose outward-facing neighbors are all along descenders lie between populated cubes")
+                });
+                populate_chunk(graph, node, vert);
+            }
         }
     }
     graph.clear_fresh();
 }
 
 fn populate_node(graph: &mut DualGraph, node: NodeId) {
-    *graph.get_mut(node) = graph
-        .parent(node)
-        .and_then(|i| {
-            let parent_state = graph.get(graph.neighbor(node, i)?).as_ref()?;
-            Some(parent_state.child(graph, node, i))
-        })
-        .or_else(|| Some(NodeState::root()));
+    *graph.get_mut(node) = Some(Node {
+        state: graph
+            .parent(node)
+            .and_then(|i| {
+                let parent_state = &graph.get(graph.neighbor(node, i)?).as_ref()?.state;
+                Some(parent_state.child(graph, node, i))
+            })
+            .unwrap_or_else(NodeState::root),
+        chunks: Chunks::default(),
+    });
 }
 
-fn populate_cube(graph: &mut DualGraph, node: NodeId, cube: dodeca::Vertex) {
-    *graph.get_cube_mut(node, cube) = Some(Cube {
+fn populate_chunk(graph: &mut DualGraph, node: NodeId, chunk: dodeca::Vertex) {
+    graph
+        .get_mut(node)
+        .as_mut()
+        .expect("must not be called on an unpopulated node")
+        .chunks[chunk] = Some(Chunk {
         surface: None,
-        voxels: worldgen::voxels(graph, node, cube),
+        voxels: worldgen::voxels(graph, node, chunk),
     });
 }

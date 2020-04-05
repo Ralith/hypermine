@@ -20,7 +20,7 @@ impl Cursor {
     }
 
     /// Get the neighbor towards `dir`
-    pub fn step<N, C>(self, graph: &Graph<N, C>, dir: Dir) -> Option<Self> {
+    pub fn step<N>(self, graph: &Graph<N>, dir: Dir) -> Option<Self> {
         // For a cube identified by three dodecahedral faces sharing a vertex, we identify its
         // cubical neighbors by taking each vertex incident to exactly two of the faces and the face
         // of the three it's not incident to, and selecting the cube represented by the new vertex
@@ -49,7 +49,7 @@ impl Cursor {
     }
 
     /// Node and dodecahedral vertex that contains the representation for this cube in the graph
-    pub fn canonicalize<N, C>(self, graph: &Graph<N, C>) -> Option<(NodeId, Vertex)> {
+    pub fn canonicalize<N>(self, graph: &Graph<N>) -> Option<(NodeId, Vertex)> {
         graph.canonicalize(
             self.node,
             Vertex::from_sides(self.a, self.b, self.c).unwrap(),
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn cursor_identities() {
-        let mut graph = Graph::<(), ()>::new();
+        let mut graph = Graph::<()>::new();
         graph.ensure_nearby(NodeId::ROOT, 3);
         let start = Cursor::from_vertex(NodeId::ROOT, Vertex::A);
         let wiggle = |dir| {

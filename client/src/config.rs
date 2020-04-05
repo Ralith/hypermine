@@ -48,7 +48,7 @@ impl Config {
         Config {
             name: name.unwrap_or_else(|| whoami::user().into()),
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
-            view_distance: view_distance.unwrap_or(6.0),
+            view_distance: view_distance.unwrap_or(3.0),
             chunks_loaded_per_frame: chunks_loaded_per_frame.unwrap_or(16),
             server,
         }

@@ -6,6 +6,7 @@ use rand::{
 #[macro_use]
 mod id;
 
+mod chunks;
 pub mod codec;
 pub mod cursor;
 pub mod dodeca;
@@ -14,6 +15,8 @@ mod graph_entities;
 pub mod math;
 pub mod proto;
 pub mod world;
+
+pub use chunks::Chunks;
 pub use graph_entities::GraphEntities;
 
 // Stable IDs made of 8 random bytes for easy persistent references

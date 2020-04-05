@@ -20,7 +20,7 @@ pub struct Sim {
     step: Step,
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
-    graph: Graph<(), ()>,
+    graph: Graph<Empty>,
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
 }
@@ -180,6 +180,8 @@ impl Sim {
         }
     }
 }
+
+enum Empty {}
 
 fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     let mut components = Vec::new();
