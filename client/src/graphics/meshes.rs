@@ -105,7 +105,8 @@ impl Meshes {
                         )
                         .rasterization_state(
                             &vk::PipelineRasterizationStateCreateInfo::builder()
-                                .cull_mode(vk::CullModeFlags::NONE)
+                                .cull_mode(vk::CullModeFlags::BACK)
+                                .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
                                 .polygon_mode(vk::PolygonMode::FILL)
                                 .line_width(1.0),
                         )
