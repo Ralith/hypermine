@@ -8,21 +8,21 @@ use fxhash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
+    dodeca::{Side, Vertex, SIDE_COUNT},
     math,
     proto::Position,
 };
 
 /// Graph of the right dodecahedral tiling of H^3
 #[derive(Debug, Clone)]
-pub struct Graph<N, C> {
-    nodes: Vec<Node<N, C>>,
+pub struct Graph<N> {
+    nodes: Vec<Node<N>>,
     /// This field stores implicitly added nodes to ensure that they're initialized in the correct
     /// order
     fresh: Vec<NodeId>,
 }
 
-impl<N, C> Graph<N, C> {
+impl<N> Graph<N> {
     pub fn new() -> Self {
         Self {
             nodes: vec![Node::new(None, 0)],
@@ -137,83 +137,6 @@ impl<N, C> Graph<N, C> {
         result
     }
 
-    /// Compute `start.node`-relative transforms for all cubes whose origin lies within `distance`
-    /// of `start`
-    pub fn nearby_cubes(
-        &self,
-        start: Position,
-        distance: f64,
-    ) -> Vec<(NodeId, Vertex, na::Matrix4<f32>)> {
-        struct PendingNode {
-            id: NodeId,
-            parent_in_range: bool,
-            transform: na::Matrix4<f64>,
-        }
-
-        let mut result = Vec::new();
-        let mut pending = Vec::<PendingNode>::new();
-        let mut visited = FxHashSet::<NodeId>::default();
-        let start_p = start.local.map(|x| x as f64) * math::origin();
-
-        pending.push(PendingNode {
-            id: start.node,
-            parent_in_range: true,
-            transform: na::Matrix4::identity(),
-        });
-        visited.insert(start.node);
-
-        while let Some(current) = pending.pop() {
-            let node = &self.nodes[current.id.idx()];
-            let current_p = current.transform * math::origin();
-            let current_in_range = math::distance(&start_p, &current_p) < distance;
-
-            for v in self.cubes_at(current.id) {
-                let v_transform = current.transform * v.cube_to_node();
-                if math::distance(&start_p, &(v_transform * math::origin())) < distance {
-                    result.push((current.id, v, na::convert(v_transform)));
-                }
-            }
-
-            if !current_in_range && !current.parent_in_range {
-                continue;
-            }
-
-            for side in Side::iter() {
-                let neighbor = match node.neighbors[side as usize] {
-                    None => continue,
-                    Some(x) => x,
-                };
-                if visited.contains(&neighbor) {
-                    continue;
-                }
-                pending.push(PendingNode {
-                    id: neighbor,
-                    parent_in_range: current_in_range,
-                    transform: current.transform * side.reflection(),
-                });
-                visited.insert(neighbor);
-            }
-        }
-
-        result
-    }
-
-    /// Enumerate the vertices of `node` which canonically correspond to cubes
-    pub fn cubes_at(&self, node: NodeId) -> impl Iterator<Item = Vertex> {
-        let mut exists = [false; 20];
-        let node = &self.nodes[node.idx()];
-        for v in Vertex::iter() {
-            exists[v as usize] = v.canonical_sides().iter().all(|&side| {
-                let neighbor = match node.neighbors[side as usize] {
-                    None => return true,
-                    Some(x) => x,
-                };
-                self.nodes[neighbor.idx()].length > node.length
-            });
-        }
-        Vertex::iter().filter(move |&i| exists[i as usize])
-    }
-
     /// Ensure all nodes within `distance` links of `start` exist
     pub fn ensure_nearby(&mut self, start: NodeId, distance: u32) {
         let mut pending = Vec::<(NodeId, u32)>::new();
@@ -242,16 +165,6 @@ impl<N, C> Graph<N, C> {
     #[inline]
     pub fn get_mut(&mut self, node: NodeId) -> &mut Option<N> {
         &mut self.nodes[node.idx()].value
-    }
-
-    #[inline]
-    pub fn get_cube(&self, node: NodeId, cube: Vertex) -> &Option<C> {
-        &self.nodes[node.idx()].cubes[cube as usize]
-    }
-
-    #[inline]
-    pub fn get_cube_mut(&mut self, node: NodeId, cube: Vertex) -> &mut Option<C> {
-        &mut self.nodes[node.idx()].cubes[cube as usize]
     }
 
     #[inline]
@@ -298,7 +211,7 @@ impl<N, C> Graph<N, C> {
     }
 
     /// Iterate over every node and its parent
-    pub fn tree(&self) -> TreeIter<'_, N, C> {
+    pub fn tree(&self) -> TreeIter<'_, N> {
         TreeIter {
             id: NodeId::from_idx(1),
             remaining: &self.nodes[1..],
@@ -386,7 +299,7 @@ impl<N, C> Graph<N, C> {
     }
 }
 
-impl<N, C> Default for Graph<N, C> {
+impl<N> Default for Graph<N> {
     fn default() -> Self {
         Self::new()
     }
@@ -420,20 +333,18 @@ impl fmt::Debug for NodeId {
 }
 
 #[derive(Debug, Clone)]
-struct Node<N, C> {
+struct Node<N> {
     value: Option<N>,
-    cubes: [Option<C>; VERTEX_COUNT],
     parent_side: Option<Side>,
     /// Distance to origin via parents
     length: u32,
     neighbors: [Option<NodeId>; SIDE_COUNT],
 }
 
-impl<N, C> Node<N, C> {
+impl<N> Node<N> {
     fn new(parent_side: Option<Side>, length: u32) -> Self {
         Self {
             value: None,
-            cubes: Default::default(),
             parent_side,
             length,
             neighbors: [None; SIDE_COUNT],
@@ -445,12 +356,12 @@ impl<N, C> Node<N, C> {
     }
 }
 
-pub struct TreeIter<'a, N, C> {
+pub struct TreeIter<'a, N> {
     id: NodeId,
-    remaining: &'a [Node<N, C>],
+    remaining: &'a [Node<N>],
 }
 
-impl<N, C> Iterator for TreeIter<'_, N, C> {
+impl<N> Iterator for TreeIter<'_, N> {
     type Item = (Side, NodeId);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -469,7 +380,7 @@ mod tests {
 
     #[test]
     fn parent_child_relationships() {
-        let mut graph = Graph::<(), ()>::default();
+        let mut graph = Graph::<()>::default();
         assert_eq!(graph.len(), 1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         assert_eq!(graph.len(), 2);
@@ -489,7 +400,7 @@ mod tests {
 
     #[test]
     fn children_have_common_neighbor() {
-        let mut graph = Graph::<(), ()>::default();
+        let mut graph = Graph::<()>::default();
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         let b = graph.ensure_neighbor(NodeId::ROOT, Side::B);
         let a_neighbors = Side::iter()
@@ -516,7 +427,7 @@ mod tests {
 
     #[test]
     fn normalize_transform() {
-        let mut graph = Graph::<(), ()>::default();
+        let mut graph = Graph::<()>::default();
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
             let (node, xf) =
@@ -533,9 +444,9 @@ mod tests {
 
     #[test]
     fn rebuild_from_tree() {
-        let mut a = Graph::<(), ()>::default();
+        let mut a = Graph::<()>::default();
         a.ensure_nearby(NodeId::ROOT, 3);
-        let mut b = Graph::<(), ()>::default();
+        let mut b = Graph::<()>::default();
         for (side, parent) in a.tree() {
             b.insert_child(parent, side);
         }

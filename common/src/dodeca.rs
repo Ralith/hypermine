@@ -125,9 +125,8 @@ impl Vertex {
         })
     }
 
-    /// Transform from euclidean cube coordinates to the hyperbolic space
-    /// relative to the cube's canonical node.
-    pub fn cube_to_node(self) -> na::Matrix4<f64> {
+    /// Transform from euclidean chunk coordinates to hyperbolic node space
+    pub fn chunk_to_node(self) -> na::Matrix4<f64> {
         let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
         let [a, b, c] = self.canonical_sides();
         na::Matrix4::from_columns(&[
@@ -135,12 +134,12 @@ impl Vertex {
             b.reflection().column(3) - origin,
             c.reflection().column(3) - origin,
             origin,
-        ])
+        ]) * na::Matrix4::new_scaling(0.5)
     }
 
     /// Convenience method for `self.cube_to_node().determinant() < 0`.
     pub fn parity(self) -> bool {
-        CUBE_TO_NODE_PARITY[self as usize]
+        CHUNK_TO_NODE_PARITY[self as usize]
     }
 }
 
@@ -238,11 +237,11 @@ lazy_static! {
     };
 
     /// Whether the determinant of the cube-to-node transform is negative
-    static ref CUBE_TO_NODE_PARITY: [bool; VERTEX_COUNT] = {
+    static ref CHUNK_TO_NODE_PARITY: [bool; VERTEX_COUNT] = {
         let mut result = [false; VERTEX_COUNT];
 
         for v in Vertex::iter() {
-            result[v as usize] = math::parity(&v.cube_to_node());
+            result[v as usize] = math::parity(&v.chunk_to_node());
         }
 
         result

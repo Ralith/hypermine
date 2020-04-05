@@ -45,7 +45,7 @@ fn main() {
                 },
                 server::SimConfig {
                     rate: 4,
-                    view_distance: 4,
+                    view_distance: 3,
                     input_queue_size: Duration::from_millis(10),
                 },
             ) {

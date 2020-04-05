@@ -17,7 +17,7 @@ use crate::{
     sim::VoxelData,
     Config, Sim,
 };
-use common::{graph::NodeId, world::SUBDIVISION_FACTOR};
+use common::{dodeca::Vertex, graph::NodeId, world::SUBDIVISION_FACTOR};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
@@ -86,81 +86,90 @@ impl Voxels {
             // there's no point trying to draw.
             return;
         }
-        let mut chunks = sim.graph.nearby_cubes(view, self.config.view_distance);
-        chunks.sort_unstable_by_key(|&(node, _, _)| sim.graph.length(node));
-        for &(node, cube, ref transform) in &chunks {
-            // Fetch existing chunk, or extract surface of new chunk
-            let slot = match *sim.graph.get_cube_mut(node, cube) {
-                None => continue,
-                Some(ref mut value) => match (value.surface, &value.voxels) {
-                    (Some(x), _) => {
-                        self.states.get_mut(x).refcount += 1;
-                        x
-                    }
-                    (None, &VoxelData::Dense(ref data)) => {
-                        if frame.extracted.len() == self.config.chunks_loaded_per_frame as usize {
-                            continue;
+        let mut nodes = sim.graph.nearby_nodes(view, self.config.view_distance);
+        nodes.sort_unstable_by_key(|&(node, _)| sim.graph.length(node));
+        for &(node, ref node_transform) in &nodes {
+            for chunk in Vertex::iter() {
+                // Fetch existing chunk, or extract surface of new chunk
+                let slot = match sim
+                    .graph
+                    .get_mut(node)
+                    .as_mut()
+                    .expect("all nodes must be populated before rendering")
+                    .chunks[chunk]
+                {
+                    None => continue,
+                    Some(ref mut value) => match (value.surface, &value.voxels) {
+                        (Some(x), _) => {
+                            self.states.get_mut(x).refcount += 1;
+                            x
                         }
-                        let removed = if self.states.is_full() {
-                            let slot = self.states.lru().unwrap();
-                            if self.states.peek(slot).refcount != 0 {
-                                warn!("MAX_CHUNKS is too small");
-                                break;
+                        (None, &VoxelData::Dense(ref data)) => {
+                            if frame.extracted.len() == self.config.chunks_loaded_per_frame as usize
+                            {
+                                continue;
                             }
-                            Some(self.states.remove(slot))
-                        } else {
-                            None
-                        };
-                        let scratch_slot = self.extraction_scratch.alloc().unwrap();
-                        frame.extracted.push(scratch_slot);
-                        let slot = self
-                            .states
-                            .insert(SurfaceState {
-                                node,
-                                cube,
-                                refcount: 1,
-                            })
-                            .unwrap();
-                        value.surface = Some(slot);
-                        let storage = self.extraction_scratch.storage(scratch_slot);
-                        storage.copy_from_slice(&data[..]);
-                        if let Some(lru) = removed {
-                            sim.graph
-                                .get_cube_mut(lru.node, lru.cube)
-                                .as_mut()
-                                .unwrap()
-                                .surface = None;
+                            let removed = if self.states.is_full() {
+                                let slot = self.states.lru().expect("full LRU table is nonempty");
+                                if self.states.peek(slot).refcount != 0 {
+                                    warn!("MAX_CHUNKS is too small");
+                                    break;
+                                }
+                                Some(self.states.remove(slot))
+                            } else {
+                                None
+                            };
+                            let scratch_slot = self.extraction_scratch.alloc().expect("there are at least chunks_loaded_per_frame scratch slots per frame");
+                            frame.extracted.push(scratch_slot);
+                            let slot = self
+                                .states
+                                .insert(SurfaceState {
+                                    node,
+                                    chunk,
+                                    refcount: 1,
+                                })
+                                .expect("we ensure cache space is available above");
+                            value.surface = Some(slot);
+                            let storage = self.extraction_scratch.storage(scratch_slot);
+                            storage.copy_from_slice(&data[..]);
+                            if let Some(lru) = removed {
+                                sim.graph.get_mut(lru.node).as_mut().unwrap().chunks[lru.chunk]
+                                    .as_mut()
+                                    .unwrap()
+                                    .surface = None;
+                            }
+                            let node_is_odd = sim.graph.length(node) & 1 != 0;
+                            self.extraction_scratch.extract(
+                                device,
+                                &self.surface_extraction,
+                                scratch_slot,
+                                chunk.parity() ^ node_is_odd,
+                                cmd,
+                                (
+                                    self.surfaces.indirect_buffer(),
+                                    self.surfaces.indirect_offset(slot.0),
+                                ),
+                                (
+                                    self.surfaces.face_buffer(),
+                                    self.surfaces.face_offset(slot.0),
+                                ),
+                            );
+                            slot
                         }
-                        let node_is_odd = sim.graph.length(node) & 1 != 0;
-                        self.extraction_scratch.extract(
-                            device,
-                            &self.surface_extraction,
-                            scratch_slot,
-                            cube.parity() ^ node_is_odd,
-                            cmd,
-                            (
-                                self.surfaces.indirect_buffer(),
-                                self.surfaces.indirect_offset(slot.0),
-                            ),
-                            (
-                                self.surfaces.face_buffer(),
-                                self.surfaces.face_offset(slot.0),
-                            ),
-                        );
-                        slot
-                    }
-                    (None, &VoxelData::Solid(_)) => continue,
-                    (None, &VoxelData::Uninitialized) => continue,
-                },
-            };
-            frame.drawn.push(slot);
-            // Transfer transform
-            device.cmd_update_buffer(
-                cmd,
-                frame.surface.transforms(),
-                slot.0 as vk::DeviceSize * surface::TRANSFORM_SIZE,
-                &mem::transmute::<_, [u8; surface::TRANSFORM_SIZE as usize]>(*transform),
-            );
+                        (None, &VoxelData::Solid(_)) => continue,
+                        (None, &VoxelData::Uninitialized) => continue,
+                    },
+                };
+                frame.drawn.push(slot);
+                // Transfer transform
+                let chunk_transform = node_transform * chunk.chunk_to_node().map(|x| x as f32);
+                device.cmd_update_buffer(
+                    cmd,
+                    frame.surface.transforms(),
+                    slot.0 as vk::DeviceSize * surface::TRANSFORM_SIZE,
+                    &mem::transmute::<_, [u8; surface::TRANSFORM_SIZE as usize]>(chunk_transform),
+                );
+            }
         }
 
         device.cmd_pipeline_barrier(
@@ -234,6 +243,6 @@ const MAX_CHUNKS: u32 = 4096;
 
 struct SurfaceState {
     node: NodeId,
-    cube: common::dodeca::Vertex,
+    chunk: common::dodeca::Vertex,
     refcount: u32,
 }

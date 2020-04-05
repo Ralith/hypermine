@@ -6,10 +6,6 @@ use common::{
     world::{Material, SUBDIVISION_FACTOR},
 };
 
-// chunk filling constants
-const GAP: usize = 0;
-const SUB: usize = SUBDIVISION_FACTOR / 2;
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeStateKind {
     RootSky,
@@ -81,26 +77,26 @@ impl NodeState {
             .descenders(node)
             // you have to factor in the side representations so that nodes
             // with length 1 still get interesting hashes
-            .map(|(s, n)| hash(graph.get(n).as_ref().unwrap().spice, s as u64))
+            .map(|(s, n)| hash(graph.get(n).as_ref().unwrap().state.spice, s as u64))
             // now we mix together all the local hashes of the neighbors for this new node's
             // unique hash.
             .fold(hash(0, node_length as u64), hash);
 
         let mut d = graph
             .descenders(node)
-            .map(|(s, n)| (s, graph.get(n).as_ref().unwrap()));
+            .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
         let enviro = match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
-                let parent_state = graph.get(parent_node).as_ref().unwrap();
+                let parent_state = &graph.get(parent_node).as_ref().unwrap().state;
                 EnviroFactors::varied_from(parent_state.enviro, spice)
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
                     .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
                     .unwrap();
-                let ab_state = graph.get(ab_node).as_ref().unwrap();
+                let ab_state = &graph.get(ab_node).as_ref().unwrap().state;
                 EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
             }
             _ => unreachable!(),
@@ -121,61 +117,57 @@ impl NodeState {
     }
 }
 
-pub fn voxels(graph: &mut DualGraph, node: NodeId, cube: Vertex) -> VoxelData {
-    let enviros = chunk_incident_enviro_factors(graph, node, cube).unwrap();
+pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
+    let enviros = chunk_incident_enviro_factors(graph, node, chunk).unwrap();
 
     let mut voxels = VoxelData::Uninitialized;
 
-    for ([x, y, z], path) in cube.dual_vertices() {
-        let state = graph
-            .get(path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
-            .as_ref()
-            .unwrap();
-        let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
+    let state = &graph
+        .get(node)
+        .as_ref()
+        .expect("must only be called on populated nodes")
+        .state;
+    for z in 0..SUBDIVISION_FACTOR {
+        for y in 0..SUBDIVISION_FACTOR {
+            for x in 0..SUBDIVISION_FACTOR {
+                let coords = chunk_coords(x, y, z);
+                let cube_coords = coords * 0.5;
 
-        for z in GAP..(SUB - GAP) {
-            for y in GAP..(SUB - GAP) {
-                for x in GAP..(SUB - GAP) {
-                    let p = absolute_subchunk_coords(x, y, z, subchunk_offset);
-                    let q = relative_subchunk_coords(x, y, z, subchunk_offset);
+                let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, cube_coords) {
+                    r if r > 2.0 => (Material::Dirt, 1.0),
+                    r if r < 1.0 => (Material::Stone, -1.0),
+                    _ => (Material::Sand, -0.5),
+                };
 
-                    let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, p) {
-                        r if r > 2.0 => (Material::Dirt, 3.0),
-                        r if r < 1.0 => (Material::Stone, -3.0),
-                        _ => (Material::Sand, -1.0),
-                    };
+                // maximum max_elevation for this voxel according to the max_elevations
+                // of the incident nodes that dictate the content of this chunk
+                let max_e = trilerp(&enviros.max_elevations, cube_coords) - elevation_boost;
 
-                    // maximum max_elevation for this voxel according to the max_elevations
-                    // of the incident nodes that dictate the content of this chunk
-                    let max_e = trilerp(&enviros.max_elevations, p) - elevation_boost;
-
-                    if state.surface.voxel_elevation(q, cube) < max_e / -10.0 {
-                        voxels.data_mut()[index(p)] = voxel_mat;
-                    }
+                if state.surface.voxel_elevation(coords, chunk) < max_e / -10.0 {
+                    voxels.data_mut()[index(coords)] = voxel_mat;
                 }
             }
         }
+    }
 
-        // Planting trees on dirt. Trees consist of a block of wood and a block of leaves.
-        // The leaf block is on the opposite face of the wood block as the dirt block.
-        let loc: usize = 2;
-        let voxel_of_interest_index =
-            index(absolute_subchunk_coords(loc, loc, loc, subchunk_offset));
-        let neighbor_data = voxel_neighbors(na::Vector3::repeat(loc), subchunk_offset, &mut voxels);
+    // Planting trees on dirt. Trees consist of a block of wood and a block of leaves.
+    // The leaf block is on the opposite face of the wood block as the dirt block.
+    let loc: usize = 2;
+    let voxel_of_interest_index = index(chunk_coords(loc, loc, loc));
+    let neighbor_data = voxel_neighbors(na::Vector3::repeat(loc), &mut voxels);
 
-        let num_void_neighbors = neighbor_data
-            .iter()
-            .filter(|n| n.material == Material::Void)
-            .count();
+    let num_void_neighbors = neighbor_data
+        .iter()
+        .filter(|n| n.material == Material::Void)
+        .count();
 
-        // Only plant a tree if there is exactly one adjacent dirt block.
-        if num_void_neighbors == 5 {
-            for i in neighbor_data.iter() {
-                if i.material == Material::Dirt {
-                    voxels.data_mut()[voxel_of_interest_index] = Material::Wood;
-                    let leaf_location = index(i.abs_coords_opposing);
-                    voxels.data_mut()[leaf_location] = Material::Leaves;
-                }
+    // Only plant a tree if there is exactly one adjacent dirt block.
+    if num_void_neighbors == 5 {
+        for i in neighbor_data.iter() {
+            if i.material == Material::Dirt {
+                voxels.data_mut()[voxel_of_interest_index] = Material::Wood;
+                let leaf_location = index(i.abs_coords_opposing);
+                voxels.data_mut()[leaf_location] = Material::Leaves;
             }
         }
     }
@@ -188,18 +180,14 @@ pub struct NeighborData {
     material: Material,
 }
 
-fn voxel_neighbors(
-    coords: na::Vector3<usize>,
-    subchunk_offset: na::Vector3<usize>,
-    voxels: &mut VoxelData,
-) -> [NeighborData; 6] {
+fn voxel_neighbors(coords: na::Vector3<usize>, voxels: &mut VoxelData) -> [NeighborData; 6] {
     [
-        neighbor(coords, -1, 0, 0, subchunk_offset, voxels),
-        neighbor(coords, 1, 0, 0, subchunk_offset, voxels),
-        neighbor(coords, 0, -1, 0, subchunk_offset, voxels),
-        neighbor(coords, 0, 1, 0, subchunk_offset, voxels),
-        neighbor(coords, 0, 0, -1, subchunk_offset, voxels),
-        neighbor(coords, 0, 0, 1, subchunk_offset, voxels),
+        neighbor(coords, -1, 0, 0, voxels),
+        neighbor(coords, 1, 0, 0, voxels),
+        neighbor(coords, 0, -1, 0, voxels),
+        neighbor(coords, 0, 1, 0, voxels),
+        neighbor(coords, 0, 0, -1, voxels),
+        neighbor(coords, 0, 0, 1, voxels),
     ]
 }
 
@@ -208,20 +196,17 @@ pub fn neighbor(
     x: isize,
     y: isize,
     z: isize,
-    subchunk_offset: na::Vector3<usize>,
     voxels: &mut VoxelData,
 ) -> NeighborData {
-    let abs_coords = absolute_subchunk_coords(
+    let abs_coords = chunk_coords(
         (w.x as isize + x) as usize,
         (w.y as isize + y) as usize,
         (w.z as isize + z) as usize,
-        subchunk_offset,
     );
-    let abs_coords_opposing = absolute_subchunk_coords(
+    let abs_coords_opposing = chunk_coords(
         (w.x as isize - x) as usize,
         (w.y as isize - y) as usize,
         (w.z as isize - z) as usize,
-        subchunk_offset,
     );
     let material = voxels.data()[index(abs_coords)];
 
@@ -278,8 +263,21 @@ fn chunk_incident_enviro_factors(
 ) -> Option<ChunkIncidentEnviroFactors> {
     let mut i = cube
         .dual_vertices()
-        .map(|(_, path)| path.fold(node, |node, side| graph.neighbor(node, side).unwrap()))
-        .map(|n| graph.get(n).as_ref().unwrap().enviro);
+        .map(|(_, path)| {
+            path.fold(node, |node, side| {
+                graph
+                    .neighbor(node, side)
+                    .expect("must only be called on chunks surrounded by populated nodes")
+            })
+        })
+        .map(|n| {
+            graph
+                .get(n)
+                .as_ref()
+                .expect("must only be called on chunks surrounded by populated nodes")
+                .state
+                .enviro
+        });
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
@@ -329,7 +327,7 @@ impl Surface {
 
     /// The max_elevation of a single voxel wrt. this Surface
     fn voxel_elevation(&self, voxel: na::Vector3<f64>, cube: Vertex) -> f64 {
-        let pos = lorentz_normalize(&(cube.cube_to_node() * voxel.push(1.0)));
+        let pos = lorentz_normalize(&(cube.chunk_to_node() * voxel.push(1.0)));
         mip(&pos, &self.normal).asinh()
     }
 }
@@ -352,32 +350,10 @@ fn trilerp<N: na::RealField>(
     )
 }
 
-/// Turns an x, y, z, index into the voxel data of a subchunk into a
-/// coordinate in a unit chunk where the length of each side is one, relative to the canonical node.
-fn absolute_subchunk_coords(
-    x: usize,
-    y: usize,
-    z: usize,
-    subchunk_offset: na::Vector3<usize>,
-) -> na::Vector3<f64> {
-    (subchunk_offset * SUB + na::Vector3::new(x, y, z)).map(|x| x as f64 + 0.5)
-        / SUBDIVISION_FACTOR as f64
-}
-
-/// Turns an x, y, z, index into the voxel data of a subchunk into a
-/// coordinate in a unit chunk where the length of each side is one, relative to the node corresponding to the subchunk.
-fn relative_subchunk_coords(
-    x: usize,
-    y: usize,
-    z: usize,
-    subchunk_offset: na::Vector3<usize>,
-) -> na::Vector3<f64> {
-    let asc = absolute_subchunk_coords(x, y, z, subchunk_offset);
-    na::Vector3::new(
-        subchunk_offset[0] as f64 + (1.0 - 2.0 * subchunk_offset[0] as f64) * asc[0],
-        subchunk_offset[1] as f64 + (1.0 - 2.0 * subchunk_offset[1] as f64) * asc[1],
-        subchunk_offset[2] as f64 + (1.0 - 2.0 * subchunk_offset[2] as f64) * asc[2],
-    )
+/// Turns an x, y, z, index into the voxel data of a chunk into a coordinate in a unit chunk where
+/// the length of each side is one
+fn chunk_coords(x: usize, y: usize, z: usize) -> na::Vector3<f64> {
+    (na::Vector3::new(x, y, z)).map(|x| x as f64 + 0.5) / SUBDIVISION_FACTOR as f64
 }
 
 fn index(v: na::Vector3<f64>) -> usize {
@@ -402,14 +378,16 @@ fn hash(a: u64, b: u64) -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::sim::Node;
     use approx::*;
+    use common::Chunks;
 
     #[test]
     fn check_surface_flipped() {
         let root = Surface::at_root();
         assert_abs_diff_eq!(
-            root.voxel_elevation(na::Vector3::x(), Vertex::A),
-            root.voxel_elevation(na::Vector3::x(), Vertex::J) * -1.0,
+            root.voxel_elevation(na::Vector3::x() * 2.0, Vertex::A),
+            root.voxel_elevation(na::Vector3::x() * 2.0, Vertex::J) * -1.0,
             epsilon = 1e-5
         );
     }
@@ -430,7 +408,8 @@ mod test {
     fn chunk_indexing_normalized() {
         let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
         // (0.5, 0.5, 0.5) in localized coords
-        let center_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUB));
+        let center_index =
+            chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR / 2));
         // the point farthest from the origin, (1, 1, 1) in localized coords
         let anti_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR));
 
@@ -443,49 +422,48 @@ mod test {
     fn chunk_indexing_absolute() {
         let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
         // (0.5, 0.5, 0.5) in localized coords
-        let center_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUB));
+        let center_index =
+            chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR / 2));
         // the point farthest from the origin, (1, 1, 1) in localized coords
         let anti_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR));
 
-        assert_eq!(
-            index(absolute_subchunk_coords(0, 0, 0, na::zero())),
-            origin_index
-        );
+        assert_eq!(index(chunk_coords(0, 0, 0)), origin_index);
 
         // biggest possible index in subchunk closest to origin still isn't the center
         assert!(
-            index(absolute_subchunk_coords(
-                SUB - 1,
-                SUB - 1,
-                SUB - 1,
-                na::zero()
+            index(chunk_coords(
+                SUBDIVISION_FACTOR / 2 - 1,
+                SUBDIVISION_FACTOR / 2 - 1,
+                SUBDIVISION_FACTOR / 2 - 1,
             )) < center_index
         );
         // but the first chunk in the subchunk across from that is
         assert_eq!(
-            index(absolute_subchunk_coords(0, 0, 0, na::Vector3::repeat(1))),
+            index(chunk_coords(
+                SUBDIVISION_FACTOR / 2,
+                SUBDIVISION_FACTOR / 2,
+                SUBDIVISION_FACTOR / 2
+            )),
             center_index
         );
 
         // biggest possible index in subchunk closest to anti_origin is still not quite
         // the anti_origin
         assert!(
-            index(absolute_subchunk_coords(
-                SUB - 1,
-                SUB - 1,
-                SUB - 1,
-                na::Vector3::repeat(1)
+            index(chunk_coords(
+                SUBDIVISION_FACTOR - 1,
+                SUBDIVISION_FACTOR - 1,
+                SUBDIVISION_FACTOR - 1,
             )) < anti_index
         );
 
         // one is added in the chunk indexing so this works out fine, the
         // domain is still SUBDIVISION_FACTOR because 0 is included.
         assert_eq!(
-            index(absolute_subchunk_coords(
-                SUB - 1,
-                SUB - 1,
-                SUB - 1,
-                na::Vector3::repeat(1)
+            index(chunk_coords(
+                SUBDIVISION_FACTOR - 1,
+                SUBDIVISION_FACTOR - 1,
+                SUBDIVISION_FACTOR - 1,
             )),
             chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR - 1))
         );
@@ -498,10 +476,13 @@ mod test {
             let new_node = path.fold(NodeId::ROOT, |node, side| g.ensure_neighbor(node, side));
 
             // assigning state
-            *g.get_mut(new_node) = Some({
-                let mut state = NodeState::root();
-                state.enviro.max_elevation = i as i64 + 1;
-                state
+            *g.get_mut(new_node) = Some(Node {
+                state: {
+                    let mut state = NodeState::root();
+                    state.enviro.max_elevation = i as i64 + 1;
+                    state
+                },
+                chunks: Chunks::default(),
             });
         }
 
@@ -516,19 +497,17 @@ mod test {
         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
-        for ([x, y, z], _path) in Vertex::A.dual_vertices() {
-            let subchunk_offset = na::Vector3::new(x as usize, y as usize, z as usize);
-            for z in GAP..(SUB - GAP) {
-                for y in GAP..(SUB - GAP) {
-                    for x in GAP..(SUB - GAP) {
-                        let a = subchunk_offset * SUB + na::Vector3::new(x, y, z);
-                        let center = na::Vector3::repeat(SUB);
-                        if a == center {
-                            checked_center = true;
-                            let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
-                            let center_max_elevation = trilerp(&enviros.max_elevations, c);
-                            assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
-                        }
+        let center = na::Vector3::repeat(SUBDIVISION_FACTOR / 2);
+        'top: for z in 0..SUBDIVISION_FACTOR {
+            for y in 0..SUBDIVISION_FACTOR {
+                for x in 0..SUBDIVISION_FACTOR {
+                    let a = na::Vector3::new(x, y, z);
+                    if a == center {
+                        checked_center = true;
+                        let c = center.map(|x| x as f64) / SUBDIVISION_FACTOR as f64;
+                        let center_max_elevation = trilerp(&enviros.max_elevations, c);
+                        assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
+                        break 'top;
                     }
                 }
             }
@@ -637,7 +616,7 @@ mod test {
     fn check_surface_on_plane() {
         assert_abs_diff_eq!(
             Surface::at_root().voxel_elevation(
-                na::Vector3::new(0.5, 0.3, 0.9), // The first 0.5 is important, the plane is the midplane of the cube in Side::A direction
+                na::Vector3::new(1.0, 0.3, 0.9), // The first 1.0 is important, the plane is the midplane of the cube in Side::A direction
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             0.0,
@@ -667,7 +646,7 @@ mod test {
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             Surface::at_root().reflect(Side::A).voxel_elevation(
-                na::Vector3::new(0.0, 0.0, 0.0),
+                na::Vector3::new(1.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             epsilon = 1e-8,
@@ -680,7 +659,7 @@ mod test {
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             -Surface::at_root().voxel_elevation(
-                na::Vector3::new(1.0, 0.0, 0.0),
+                na::Vector3::new(2.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             epsilon = 1e-8,
@@ -693,7 +672,7 @@ mod test {
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             Surface::at_root().voxel_elevation(
-                na::Vector3::new(0.0, 0.0, 1.0),
+                na::Vector3::new(0.0, 0.0, 2.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             epsilon = 1e-8,
