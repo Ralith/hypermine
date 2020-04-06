@@ -302,12 +302,9 @@ impl VoxelData {
         }
     }
     pub fn data(&self) -> Box<[Material]> {
-        match self {
-            VoxelData::Dense(d) => Box::clone(d),
-            VoxelData::Solid(mat) => (0..(SUBDIVISION_FACTOR + 2).pow(3))
-                .map(|_| *mat)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+        match *self {
+            VoxelData::Dense(ref d) => Box::clone(d),
+            VoxelData::Solid(mat) => vec![mat; (usize::from(SUBDIVISION_FACTOR) + 2).pow(3)].into(),
         }
     }
 }
