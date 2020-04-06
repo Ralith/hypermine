@@ -26,7 +26,7 @@ pub use self::{
     base::Base,
     core::Core,
     draw::Draw,
-    gltf_mesh::GltfMesh,
+    gltf_mesh::{GlbFile, GltfScene},
     loader::{Asset, LoadCtx, LoadFuture, Loadable, Loader},
     lru_table::LruTable,
     meshes::{Mesh, Meshes},
