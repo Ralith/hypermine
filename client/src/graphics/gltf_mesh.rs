@@ -9,27 +9,26 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use ash::{version::DeviceV1_0, vk};
+use futures_util::future::{try_join_all, BoxFuture, FutureExt};
 use lahar::{BufferRegionAlloc, DedicatedImage};
-use tracing::trace;
+use tracing::{error, trace};
 
-use super::{meshes::Vertex, LoadCtx, LoadFuture, Loadable, Mesh};
+use super::{loader::Cleanup, meshes::Vertex, Base, LoadCtx, LoadFuture, Loadable, Mesh};
 
-pub struct GltfMesh {
+pub struct GlbFile {
     pub path: PathBuf,
 }
 
-impl Loadable for GltfMesh {
-    type Output = Mesh;
+impl Loadable for GlbFile {
+    type Output = GltfScene;
 
     fn load(self, ctx: &LoadCtx) -> LoadFuture<'_, Self::Output> {
         Box::pin(self.load(ctx))
     }
 }
 
-impl GltfMesh {
-    async fn load(self, ctx: &LoadCtx) -> Result<Mesh> {
-        let device = &*ctx.gfx.device;
-
+impl GlbFile {
+    async fn load(self, ctx: &LoadCtx) -> Result<GltfScene> {
         let path = ctx
             .cfg
             .find_asset(&self.path)
@@ -48,91 +47,155 @@ impl GltfMesh {
             .as_ref()
             .ok_or_else(|| anyhow!("missing binary payload"))?;
 
-        let mesh = gltf
+        let scene = gltf
             .default_scene()
-            .and_then(|scene| scene.nodes().filter_map(|node| node.mesh()).next())
-            .or_else(|| gltf.meshes().next())
-            .ok_or_else(|| anyhow!("does not contain a mesh"))?;
+            .ok_or_else(|| anyhow!("no default scene"))?;
+        let identity = na::Matrix4::identity();
+        let meshes = try_join_all(
+            scene
+                .nodes()
+                .map(|node| load_node(ctx, buffer, &identity, node)),
+        )
+        .await?
+        .into_iter()
+        .flatten()
+        .collect();
+        Ok(GltfScene(meshes))
+    }
+}
 
-        // TODO: Multiple primitives
-        let prim = mesh
-            .primitives()
-            .next()
-            .ok_or_else(|| anyhow!("selected mesh has no primitives"))?;
-        let texcoord_index = prim
-            .material()
-            .pbr_metallic_roughness()
-            .base_color_texture()
-            .map(|x| x.tex_coord());
+pub struct GltfScene(pub Vec<Mesh>);
 
-        // Concurrent upload
-        // TODO: Don't leak resources on error
-        let (geom, color) = tokio::join!(
-            load_geom(ctx, buffer, &prim, texcoord_index),
-            load_material(ctx, buffer, &prim)
-        );
-        let geom = geom?;
-        let color = color?;
-
-        unsafe {
-            let color_view = device
-                .create_image_view(
-                    &vk::ImageViewCreateInfo::builder()
-                        .image(color.handle)
-                        .view_type(vk::ImageViewType::TYPE_2D)
-                        .format(vk::Format::R8G8B8A8_SRGB)
-                        .subresource_range(vk::ImageSubresourceRange {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            base_mip_level: 0,
-                            level_count: 1,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        }),
-                    None,
-                )
-                .unwrap();
-            let pool = device
-                .create_descriptor_pool(
-                    &vk::DescriptorPoolCreateInfo::builder()
-                        .max_sets(1)
-                        .pool_sizes(&[vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                            descriptor_count: 1,
-                        }]),
-                    None,
-                )
-                .unwrap();
-            let ds = device
-                .allocate_descriptor_sets(
-                    &vk::DescriptorSetAllocateInfo::builder()
-                        .descriptor_pool(pool)
-                        .set_layouts(&[ctx.mesh_ds_layout]),
-                )
-                .unwrap()[0];
-            device.update_descriptor_sets(
-                &[vk::WriteDescriptorSet::builder()
-                    .dst_set(ds)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(&[vk::DescriptorImageInfo {
-                        sampler: vk::Sampler::null(),
-                        image_view: color_view,
-                        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                    }])
-                    .build()],
-                &[],
-            );
-
-            Ok(Mesh {
-                vertices: geom.vertices,
-                indices: geom.indices,
-                index_count: geom.index_count,
-                pool,
-                ds,
-                color,
-                color_view,
-            })
+impl Cleanup for GltfScene {
+    unsafe fn cleanup(self, gfx: &Base) {
+        for mesh in self.0 {
+            mesh.cleanup(gfx);
         }
+    }
+}
+
+fn load_node<'a>(
+    ctx: &'a LoadCtx,
+    buffer: &'a [u8],
+    transform: &'a na::Matrix4<f32>,
+    node: gltf::Node<'a>,
+) -> BoxFuture<'a, Result<Vec<Mesh>>> {
+    async move {
+        let transform = transform * na::Matrix4::from(node.transform().matrix());
+        let (mut local, children) = tokio::try_join!(
+            async {
+                if let Some(mesh) = node.mesh() {
+                    Ok(load_mesh(ctx, buffer, &transform, &mesh).await?)
+                } else {
+                    Ok(Vec::new())
+                }
+            },
+            try_join_all(
+                node.children()
+                    .map(|child| load_node(ctx, buffer, &transform, child))
+            )
+        )?;
+
+        local.extend(children.into_iter().flatten());
+
+        Ok(local)
+    }
+    .boxed()
+}
+
+async fn load_mesh(
+    ctx: &LoadCtx,
+    buffer: &[u8],
+    transform: &na::Matrix4<f32>,
+    mesh: &gltf::Mesh<'_>,
+) -> Result<Vec<Mesh>> {
+    Ok(try_join_all(
+        mesh.primitives()
+            .map(|x| load_primitive(ctx, buffer, transform, x)),
+    )
+    .await?)
+}
+
+async fn load_primitive(
+    ctx: &LoadCtx,
+    buffer: &[u8],
+    transform: &na::Matrix4<f32>,
+    prim: gltf::Primitive<'_>,
+) -> Result<Mesh> {
+    let device = &*ctx.gfx.device;
+    let texcoord_index = prim
+        .material()
+        .pbr_metallic_roughness()
+        .base_color_texture()
+        .map(|x| x.tex_coord());
+
+    // Concurrent upload
+    // TODO: Don't leak resources on error
+    let (geom, color) = tokio::join!(
+        load_geom(ctx, buffer, &prim, transform, texcoord_index),
+        load_material(ctx, buffer, &prim)
+    );
+    let geom = geom?;
+    let color = color?;
+
+    unsafe {
+        let color_view = device
+            .create_image_view(
+                &vk::ImageViewCreateInfo::builder()
+                    .image(color.handle)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(vk::Format::R8G8B8A8_SRGB)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    }),
+                None,
+            )
+            .unwrap();
+        let pool = device
+            .create_descriptor_pool(
+                &vk::DescriptorPoolCreateInfo::builder()
+                    .max_sets(1)
+                    .pool_sizes(&[vk::DescriptorPoolSize {
+                        ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                        descriptor_count: 1,
+                    }]),
+                None,
+            )
+            .unwrap();
+        let ds = device
+            .allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::builder()
+                    .descriptor_pool(pool)
+                    .set_layouts(&[ctx.mesh_ds_layout]),
+            )
+            .unwrap()[0];
+        device.update_descriptor_sets(
+            &[vk::WriteDescriptorSet::builder()
+                .dst_set(ds)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(&[vk::DescriptorImageInfo {
+                    sampler: vk::Sampler::null(),
+                    image_view: color_view,
+                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                }])
+                .build()],
+            &[],
+        );
+
+        Ok(Mesh {
+            vertices: geom.vertices,
+            indices: geom.indices,
+            index_count: geom.index_count,
+            pool,
+            ds,
+            color,
+            color_view,
+        })
     }
 }
 
@@ -146,8 +209,17 @@ async fn load_geom(
     ctx: &LoadCtx,
     buffer: &[u8],
     prim: &gltf::Primitive<'_>,
+    transform: &na::Matrix4<f32>,
     texcoord_index: Option<u32>,
 ) -> Result<Geometry> {
+    let normal_transform = match transform.try_inverse() {
+        None => {
+            error!("non-invertible transform");
+            na::Matrix4::identity()
+        }
+        Some(x) => x.transpose(),
+    };
+
     let prim = prim.reader(|x| {
         if let gltf::buffer::Source::Bin = x.source() {
             Some(buffer)
@@ -190,11 +262,17 @@ async fn load_geom(
     {
         let v = Vertex {
             // TODO: Principled scaling factor
-            position: na::Vector3::from(pos) * 4e-2,
+            position: na::Point3::from_homogeneous(
+                transform * (na::Point3::from(pos)).to_homogeneous(),
+            )
+            .unwrap_or_else(na::Point3::origin)
+                * 4e-2,
             texcoords: texcoords
                 .as_mut()
                 .map_or_else(na::zero, |x| x.next().unwrap().into()),
-            normal: na::Unit::new_unchecked(norm.into()),
+            normal: na::Unit::new_normalize(
+                (normal_transform * na::Vector3::from(norm).to_homogeneous()).xyz(),
+            ),
         };
         // write_unaligned accepts misaligned pointers
         #[allow(clippy::cast_ptr_alignment)]

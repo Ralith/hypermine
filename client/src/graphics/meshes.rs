@@ -206,7 +206,7 @@ impl Meshes {
 
 #[repr(C)]
 pub struct Vertex {
-    pub position: na::Vector3<f32>,
+    pub position: na::Point3<f32>,
     pub texcoords: na::Vector2<f32>,
     pub normal: na::Unit<na::Vector3<f32>>,
 }
