@@ -120,8 +120,9 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
     for z in 0..SUBDIVISION_FACTOR {
         for y in 0..SUBDIVISION_FACTOR {
             for x in 0..SUBDIVISION_FACTOR {
-                let coords = chunk_coords(x, y, z);
-                let cube_coords = coords * 0.5;
+                let coords = na::Vector3::new(x, y, z);
+                let center = voxel_center(coords);
+                let cube_coords = center * 0.5;
 
                 let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, cube_coords) {
                     r if r > 2.0 => (Material::Dirt, 1.0),
@@ -133,7 +134,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                 // of the incident nodes that dictate the content of this chunk
                 let max_e = trilerp(&enviros.max_elevations, cube_coords) - elevation_boost;
 
-                if state.surface.voxel_elevation(coords, chunk) < max_e / -10.0 {
+                if state.surface.voxel_elevation(center, chunk) < max_e / -10.0 {
                     voxels.data_mut()[index(coords)] = voxel_mat;
                 }
             }
@@ -142,9 +143,9 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
 
     // Planting trees on dirt. Trees consist of a block of wood and a block of leaves.
     // The leaf block is on the opposite face of the wood block as the dirt block.
-    let loc: usize = 2;
-    let voxel_of_interest_index = index(chunk_coords(loc, loc, loc));
-    let neighbor_data = voxel_neighbors(na::Vector3::repeat(loc), &mut voxels);
+    let loc = na::Vector3::repeat(2);
+    let voxel_of_interest_index = index(loc);
+    let neighbor_data = voxel_neighbors(loc, &mut voxels);
 
     let num_void_neighbors = neighbor_data
         .iter()
@@ -156,7 +157,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
         for i in neighbor_data.iter() {
             if i.material == Material::Dirt {
                 voxels.data_mut()[voxel_of_interest_index] = Material::Wood;
-                let leaf_location = index(i.abs_coords_opposing);
+                let leaf_location = index(i.coords_opposing);
                 voxels.data_mut()[leaf_location] = Material::Leaves;
             }
         }
@@ -166,11 +167,11 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
 }
 
 pub struct NeighborData {
-    abs_coords_opposing: na::Vector3<f64>,
+    coords_opposing: na::Vector3<u8>,
     material: Material,
 }
 
-fn voxel_neighbors(coords: na::Vector3<usize>, voxels: &mut VoxelData) -> [NeighborData; 6] {
+fn voxel_neighbors(coords: na::Vector3<u8>, voxels: &mut VoxelData) -> [NeighborData; 6] {
     [
         neighbor(coords, -1, 0, 0, voxels),
         neighbor(coords, 1, 0, 0, voxels),
@@ -181,27 +182,21 @@ fn voxel_neighbors(coords: na::Vector3<usize>, voxels: &mut VoxelData) -> [Neigh
     ]
 }
 
-pub fn neighbor(
-    w: na::Vector3<usize>,
-    x: isize,
-    y: isize,
-    z: isize,
-    voxels: &mut VoxelData,
-) -> NeighborData {
-    let abs_coords = chunk_coords(
-        (w.x as isize + x) as usize,
-        (w.y as isize + y) as usize,
-        (w.z as isize + z) as usize,
+pub fn neighbor(w: na::Vector3<u8>, x: i8, y: i8, z: i8, voxels: &mut VoxelData) -> NeighborData {
+    let coords = na::Vector3::new(
+        (w.x as i8 + x) as u8,
+        (w.y as i8 + y) as u8,
+        (w.z as i8 + z) as u8,
     );
-    let abs_coords_opposing = chunk_coords(
-        (w.x as isize - x) as usize,
-        (w.y as isize - y) as usize,
-        (w.z as isize - z) as usize,
+    let coords_opposing = na::Vector3::new(
+        (w.x as i8 - x) as u8,
+        (w.y as i8 - y) as u8,
+        (w.z as i8 - z) as u8,
     );
-    let material = voxels.data()[index(abs_coords)];
+    let material = voxels.data()[index(coords)];
 
     NeighborData {
-        abs_coords_opposing,
+        coords_opposing,
         material,
     }
 }
@@ -340,21 +335,16 @@ fn trilerp<N: na::RealField>(
     )
 }
 
-/// Turns an x, y, z, index into the voxel data of a chunk into a coordinate in a unit chunk where
-/// the length of each side is one
-fn chunk_coords(x: usize, y: usize, z: usize) -> na::Vector3<f64> {
-    (na::Vector3::new(x, y, z)).map(|x| x as f64 + 0.5) / SUBDIVISION_FACTOR as f64
+/// Location of the center of a voxel in a unit chunk
+fn voxel_center(voxel: na::Vector3<u8>) -> na::Vector3<f64> {
+    voxel.map(|x| f64::from(x) + 0.5) / f64::from(SUBDIVISION_FACTOR)
 }
 
-fn index(v: na::Vector3<f64>) -> usize {
-    chunk_coords_to_index_with_margin(v.map(|x| (x * SUBDIVISION_FACTOR as f64) as usize))
-}
-
-fn chunk_coords_to_index_with_margin(mut v: na::Vector3<usize>) -> usize {
-    v += na::Vector3::repeat(1);
+fn index(v: na::Vector3<u8>) -> usize {
+    let v = v.map(|x| usize::from(x) + 1);
 
     // LWM = Length (of cube sides) With Margins
-    const LWM: usize = SUBDIVISION_FACTOR + 2;
+    const LWM: usize = SUBDIVISION_FACTOR as usize + 2;
     v.x + v.y * LWM + v.z * LWM.pow(2)
 }
 
@@ -385,43 +375,29 @@ mod test {
     #[test]
     fn chunk_indexing_origin() {
         // (0, 0, 0) in localized coords
-        let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
+        let origin_index = 1
+            + (usize::from(SUBDIVISION_FACTOR) + 2)
+            + (usize::from(SUBDIVISION_FACTOR) + 2).pow(2);
 
         // simple sanity check
-        assert_eq!(
-            chunk_coords_to_index_with_margin(na::Vector3::repeat(0)),
-            origin_index
-        );
-    }
-
-    #[test]
-    fn chunk_indexing_normalized() {
-        let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
-        // (0.5, 0.5, 0.5) in localized coords
-        let center_index =
-            chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR / 2));
-        // the point farthest from the origin, (1, 1, 1) in localized coords
-        let anti_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR));
-
-        assert_eq!(index(na::Vector3::repeat(0.0)), origin_index);
-        assert_eq!(index(na::Vector3::repeat(0.5)), center_index);
-        assert_eq!(index(na::Vector3::repeat(1.0)), anti_index);
+        assert_eq!(index(na::Vector3::repeat(0)), origin_index);
     }
 
     #[test]
     fn chunk_indexing_absolute() {
-        let origin_index = 1 + (SUBDIVISION_FACTOR + 2) + (SUBDIVISION_FACTOR + 2).pow(2);
+        let origin_index = 1
+            + (usize::from(SUBDIVISION_FACTOR) + 2)
+            + (usize::from(SUBDIVISION_FACTOR) + 2).pow(2);
         // (0.5, 0.5, 0.5) in localized coords
-        let center_index =
-            chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR / 2));
+        let center_index = index(na::Vector3::repeat(SUBDIVISION_FACTOR / 2));
         // the point farthest from the origin, (1, 1, 1) in localized coords
-        let anti_index = chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR));
+        let anti_index = index(na::Vector3::repeat(SUBDIVISION_FACTOR));
 
-        assert_eq!(index(chunk_coords(0, 0, 0)), origin_index);
+        assert_eq!(index(na::Vector3::new(0, 0, 0)), origin_index);
 
         // biggest possible index in subchunk closest to origin still isn't the center
         assert!(
-            index(chunk_coords(
+            index(na::Vector3::new(
                 SUBDIVISION_FACTOR / 2 - 1,
                 SUBDIVISION_FACTOR / 2 - 1,
                 SUBDIVISION_FACTOR / 2 - 1,
@@ -429,7 +405,7 @@ mod test {
         );
         // but the first chunk in the subchunk across from that is
         assert_eq!(
-            index(chunk_coords(
+            index(na::Vector3::new(
                 SUBDIVISION_FACTOR / 2,
                 SUBDIVISION_FACTOR / 2,
                 SUBDIVISION_FACTOR / 2
@@ -440,7 +416,7 @@ mod test {
         // biggest possible index in subchunk closest to anti_origin is still not quite
         // the anti_origin
         assert!(
-            index(chunk_coords(
+            index(na::Vector3::new(
                 SUBDIVISION_FACTOR - 1,
                 SUBDIVISION_FACTOR - 1,
                 SUBDIVISION_FACTOR - 1,
@@ -450,12 +426,12 @@ mod test {
         // one is added in the chunk indexing so this works out fine, the
         // domain is still SUBDIVISION_FACTOR because 0 is included.
         assert_eq!(
-            index(chunk_coords(
+            index(na::Vector3::new(
                 SUBDIVISION_FACTOR - 1,
                 SUBDIVISION_FACTOR - 1,
                 SUBDIVISION_FACTOR - 1,
             )),
-            chunk_coords_to_index_with_margin(na::Vector3::repeat(SUBDIVISION_FACTOR - 1))
+            index(na::Vector3::repeat(SUBDIVISION_FACTOR - 1))
         );
     }
 

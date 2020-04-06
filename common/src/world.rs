@@ -1,4 +1,4 @@
-pub const SUBDIVISION_FACTOR: usize = 12;
+pub const SUBDIVISION_FACTOR: u8 = 12;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(u16)]
