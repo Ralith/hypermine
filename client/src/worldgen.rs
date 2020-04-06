@@ -9,7 +9,6 @@ use common::{
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeStateKind {
     RootSky,
-    Hole(usize),
     Sky,
     DeepSky,
     Land,
@@ -26,15 +25,6 @@ impl NodeStateKind {
             (RootSky, _) => match side {
                 _ if side.adjacent_to(Side::A) => Land,
                 Side::A => Sky,
-                Side::J => Hole(5),
-                _ => DeepLand,
-            },
-            (Hole(0), _) => match side {
-                Side::A | Side::J => Hole(5),
-                _ => Land,
-            },
-            (Hole(n), _) => match side {
-                Side::A | Side::J => Hole(n - 1),
                 _ => DeepLand,
             },
             (_, Side::A) => match self {
