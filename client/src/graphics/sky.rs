@@ -125,8 +125,21 @@ impl Sky {
         }
     }
 
-    pub unsafe fn draw(&mut self, device: &Device, cmd: vk::CommandBuffer) {
+    pub unsafe fn draw(
+        &mut self,
+        device: &Device,
+        common_ds: vk::DescriptorSet,
+        cmd: vk::CommandBuffer,
+    ) {
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+        device.cmd_bind_descriptor_sets(
+            cmd,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline_layout,
+            0,
+            &[common_ds],
+            &[],
+        );
         device.cmd_draw(cmd, 3, 1, 0, 0);
     }
 
