@@ -386,16 +386,8 @@ impl Draw {
             }
         }
 
-        device.cmd_bind_descriptor_sets(
-            cmd,
-            vk::PipelineBindPoint::GRAPHICS,
-            self.common_pipeline_layout,
-            0,
-            &[state.common_ds],
-            &[],
-        );
         // Sky goes last to save fillrate
-        self.sky.draw(device, cmd);
+        self.sky.draw(device, state.common_ds, cmd);
 
         // Finish up
         device.cmd_end_render_pass(cmd);
