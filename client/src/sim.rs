@@ -75,6 +75,10 @@ impl Sim {
         }
     }
 
+    pub fn connected(&self) -> bool {
+        self.step_interval.is_some()
+    }
+
     pub fn rotate(&mut self, delta: &na::UnitQuaternion<f32>) {
         self.orientation *= delta;
     }

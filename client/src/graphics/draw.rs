@@ -303,7 +303,9 @@ impl Draw {
                 .build(),
         );
 
-        self.voxels.prepare(device, &mut state.voxels, sim, cmd);
+        if sim.connected() {
+            self.voxels.prepare(device, &mut state.voxels, sim, cmd);
+        }
 
         // Ensure reads of just-transferred memory wait until it's ready
         device.cmd_pipeline_barrier(
