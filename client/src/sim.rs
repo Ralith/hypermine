@@ -288,7 +288,6 @@ pub struct Chunk {
 
 #[derive(PartialEq)]
 pub enum VoxelData {
-    Uninitialized,
     Solid(Material),
     Dense(Box<[Material]>),
 }
@@ -309,7 +308,6 @@ impl VoxelData {
                 .map(|_| *mat)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            VoxelData::Uninitialized => VoxelData::Solid(Material::Void).data(),
         }
     }
 }
