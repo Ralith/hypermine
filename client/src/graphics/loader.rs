@@ -250,9 +250,21 @@ impl<T: 'static + Cleanup> AnyTable for Table<T> {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Asset<T: 'static> {
     table: u32,
     index: u32,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<fn() -> T>,
 }
+
+impl<T: 'static> Clone for Asset<T> {
+    fn clone(&self) -> Self {
+        Self {
+            table: self.table,
+            index: self.index,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: 'static> Copy for Asset<T> {}
