@@ -126,7 +126,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
 
                 let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, cube_coords) {
                     r if r > 2.0 => (Material::Dirt, 1.0),
-                    r if r < 1.0 => (Material::Stone, -1.0),
+                    r if r < 1.0 => (Material::Water, -1.0),
                     _ => (Material::Sand, -0.5),
                 };
 

@@ -9,10 +9,11 @@ pub enum Material {
     Sand = 3,
     Wood = 4,
     Leaves = 5,
+    Water = 6,
 }
 
 impl Material {
-    pub const COUNT: usize = 6;
+    pub const COUNT: usize = 7;
 }
 
 impl Default for Material {
