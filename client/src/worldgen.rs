@@ -120,7 +120,7 @@ impl NodeState {
 pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
     let enviros = chunk_incident_enviro_factors(graph, node, chunk).unwrap();
 
-    let mut voxels = VoxelData::Uninitialized;
+    let mut voxels = VoxelData::Solid(Material::Void);
 
     let state = &graph
         .get(node)

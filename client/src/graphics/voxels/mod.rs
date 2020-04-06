@@ -157,7 +157,6 @@ impl Voxels {
                             slot
                         }
                         (None, &VoxelData::Solid(_)) => continue,
-                        (None, &VoxelData::Uninitialized) => continue,
                     },
                 };
                 frame.drawn.push(slot);
