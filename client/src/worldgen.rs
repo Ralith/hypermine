@@ -134,7 +134,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                 let max_e = elev;
 
                 if rain > 2.5 {
-                    voxel_mat = Material::Leaves;
+                    voxel_mat = Material::Sand;
                 }
                 if rain < -0.5 {
                     voxel_mat = Material::Stone;
@@ -147,7 +147,12 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                     voxel_mat = Material::Snow;
                 }
                 if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-                    voxel_mat = Material::Water;
+                    voxel_mat = match voxel_mat {
+                        Material::Dirt => Material::Grass_top,
+                        Material::Sand => Material::Redsand,
+                        Material::Stone => Material::Greystone,
+                        _ => Material::Valite,
+                    }
                 }
                 if slope_mod < 0_f64 {
                     //should not happen.
