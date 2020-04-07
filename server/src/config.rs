@@ -17,6 +17,7 @@ pub struct Config {
     pub rate: u16,
     pub view_distance: u32,
     pub input_queue_size_ms: u16,
+    pub chunk_size: u8,
 }
 
 impl Config {
@@ -38,6 +39,7 @@ impl Default for Config {
             rate: 10,
             view_distance: 3,
             input_queue_size_ms: 50,
+            chunk_size: 12,
         }
     }
 }

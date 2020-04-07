@@ -14,7 +14,7 @@ use common::{
     math,
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
-    world::{Material, SUBDIVISION_FACTOR},
+    world::Material,
     Chunks, EntityId, GraphEntities, Step,
 };
 
@@ -39,6 +39,7 @@ pub struct Sim {
     orientation: na::UnitQuaternion<f32>,
     step_interval: Option<Duration>,
     step: Option<Step>,
+    chunk_size: Option<u8>,
 
     // Input state
     since_input_sent: Duration,
@@ -64,6 +65,7 @@ impl Sim {
             orientation: na::one(),
             step_interval: None,
             step: None,
+            chunk_size: None,
 
             since_input_sent: Duration::new(0, 0),
             instantaneous_velocity: na::zero(),
@@ -75,16 +77,16 @@ impl Sim {
         }
     }
 
-    pub fn connected(&self) -> bool {
-        self.step_interval.is_some()
-    }
-
     pub fn rotate(&mut self, delta: &na::UnitQuaternion<f32>) {
         self.orientation *= delta;
     }
 
     pub fn velocity(&mut self, v: na::Vector3<f32>) {
         self.instantaneous_velocity = v;
+    }
+
+    pub fn chunk_size(&self) -> Option<u8> {
+        self.chunk_size
     }
 
     pub fn step(&mut self, dt: Duration) {
@@ -128,6 +130,9 @@ impl Sim {
             Hello(msg) => {
                 self.local_character_id = Some(msg.character);
                 self.step_interval = Some(Duration::from_secs(1) / msg.rate as u32);
+                self.chunk_size = Some(msg.chunk_size);
+                // Populate the root node
+                populate_fresh_nodes(&mut self.graph, msg.chunk_size);
             }
             Spawns(msg) => self.handle_spawns(msg),
             StateDelta(msg) => {
@@ -193,7 +198,7 @@ impl Sim {
         for node in &msg.nodes {
             self.graph.insert_child(node.parent, node.side);
         }
-        populate_fresh_nodes(&mut self.graph);
+        populate_fresh_nodes(&mut self.graph, self.chunk_size.unwrap());
     }
 
     fn spawn(
@@ -292,24 +297,25 @@ pub enum VoxelData {
     Dense(Box<[Material]>),
 }
 impl VoxelData {
-    pub fn data_mut(&mut self) -> &mut [Material] {
-        match self {
-            VoxelData::Dense(d) => d,
-            _ => {
-                *self = VoxelData::Dense(self.data());
-                self.data_mut()
+    pub fn data_mut(&mut self, dimension: u8) -> &mut [Material] {
+        match *self {
+            VoxelData::Dense(ref mut d) => d,
+            VoxelData::Solid(mat) => {
+                *self = VoxelData::Dense(vec![mat; (usize::from(dimension) + 2).pow(3)].into());
+                self.data_mut(dimension)
             }
         }
     }
-    pub fn data(&self) -> Box<[Material]> {
+
+    pub fn get(&self, index: usize) -> Material {
         match *self {
-            VoxelData::Dense(ref d) => Box::clone(d),
-            VoxelData::Solid(mat) => vec![mat; (usize::from(SUBDIVISION_FACTOR) + 2).pow(3)].into(),
+            VoxelData::Dense(ref d) => d[index],
+            VoxelData::Solid(mat) => mat,
         }
     }
 }
 
-fn populate_fresh_nodes(graph: &mut DualGraph) {
+fn populate_fresh_nodes(graph: &mut DualGraph, dimension: u8) {
     let fresh = graph.fresh().to_vec();
     graph.clear_fresh();
     for &node in &fresh {
@@ -327,7 +333,7 @@ fn populate_fresh_nodes(graph: &mut DualGraph) {
                         .neighbor(node, side)
                         .expect("chunks whose outward-facing neighbors are all along descenders lie between populated cubes")
                 });
-                populate_chunk(graph, node, vert);
+                populate_chunk(graph, dimension, node, vert);
             }
         }
     }
@@ -347,13 +353,13 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
     });
 }
 
-fn populate_chunk(graph: &mut DualGraph, node: NodeId, chunk: dodeca::Vertex) {
+fn populate_chunk(graph: &mut DualGraph, dimension: u8, node: NodeId, chunk: dodeca::Vertex) {
     graph
         .get_mut(node)
         .as_mut()
         .expect("must not be called on an unpopulated node")
         .chunks[chunk] = Some(Chunk {
         surface: None,
-        voxels: worldgen::voxels(graph, node, chunk),
+        voxels: worldgen::voxels(graph, node, chunk, dimension),
     });
 }

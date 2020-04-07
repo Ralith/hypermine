@@ -17,7 +17,7 @@ use crate::{
     sim::VoxelData,
     Config, Sim,
 };
-use common::{dodeca::Vertex, graph::NodeId, world::SUBDIVISION_FACTOR};
+use common::{dodeca::Vertex, graph::NodeId};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
@@ -32,9 +32,15 @@ pub struct Voxels {
 }
 
 impl Voxels {
-    pub fn new(gfx: &Base, config: Arc<Config>, loader: &mut Loader, frames: u32) -> Self {
-        let max_supported_chunks = gfx.limits.max_storage_buffer_range
-            / (8 * 3 * (SUBDIVISION_FACTOR.pow(3) + SUBDIVISION_FACTOR.pow(2))) as u32;
+    pub fn new(
+        gfx: &Base,
+        config: Arc<Config>,
+        loader: &mut Loader,
+        dimension: u32,
+        frames: u32,
+    ) -> Self {
+        let max_faces = 3 * (dimension.pow(3) + dimension.pow(2));
+        let max_supported_chunks = gfx.limits.max_storage_buffer_range / (8 * max_faces);
         let max_chunks = if MAX_CHUNKS > max_supported_chunks {
             warn!(
                 "clamping max chunks to {} due to SSBO size limit",
@@ -44,14 +50,14 @@ impl Voxels {
         } else {
             MAX_CHUNKS
         };
-        let surfaces = DrawBuffer::new(gfx, max_chunks, SUBDIVISION_FACTOR as u32);
+        let surfaces = DrawBuffer::new(gfx, max_chunks, dimension);
         let draw = Surface::new(gfx, loader, &surfaces, frames);
         let surface_extraction = SurfaceExtraction::new(gfx);
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
             gfx,
             &surface_extraction,
             config.chunks_loaded_per_frame * frames,
-            SUBDIVISION_FACTOR as u32,
+            dimension,
         );
         Self {
             config,

@@ -66,6 +66,7 @@ pub fn run() -> Result<()> {
             rate: cfg.rate,
             view_distance: cfg.view_distance,
             input_queue_size: Duration::from_millis(cfg.input_queue_size_ms as u64),
+            chunk_size: cfg.chunk_size,
         },
     )
 }

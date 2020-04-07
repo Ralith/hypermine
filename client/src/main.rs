@@ -47,6 +47,7 @@ fn main() {
                     rate: 4,
                     view_distance: 3,
                     input_queue_size: Duration::from_millis(10),
+                    chunk_size: 12,
                 },
             ) {
                 eprintln!("{:#}", e);
