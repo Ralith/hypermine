@@ -152,7 +152,6 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                     //should not happen.
                     voxel_mat = Material::Wood;
                 }
-                
 
                 if state.surface.voxel_elevation(center, chunk) < max_e / -10.0 {
                     voxels.data_mut()[index(coords)] = voxel_mat;
