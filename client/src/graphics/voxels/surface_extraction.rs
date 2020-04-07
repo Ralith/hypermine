@@ -163,6 +163,10 @@ impl SurfaceExtraction {
 /// Scratch space for actually performing the extraction
 pub struct ScratchBuffer {
     dimension: u32,
+    /// Size of a single entry in the voxel buffer
+    voxel_buffer_unit: vk::DeviceSize,
+    /// Size of a single entry in the count buffer
+    count_buffer_unit: vk::DeviceSize,
     voxels_staging: DedicatedMapping<[Material]>,
     voxels: DedicatedBuffer,
     counts: DedicatedBuffer,
@@ -174,18 +178,25 @@ pub struct ScratchBuffer {
 impl ScratchBuffer {
     pub fn new(gfx: &Base, ctx: &SurfaceExtraction, concurrency: u32, dimension: u32) -> Self {
         let device = &*gfx.device;
+        // Padded by 2 on each dimension so each voxel of interest has a full neighborhood
+        let voxel_buffer_unit = round_up(
+            mem::size_of::<Material>() as vk::DeviceSize * (dimension as vk::DeviceSize + 2).pow(3),
+            // Pad at least to multiples of 4 so the shaders can safely read in 32 bit units
+            gfx.limits.min_storage_buffer_offset_alignment.max(4),
+        );
+        let voxels_size = concurrency as vk::DeviceSize * voxel_buffer_unit;
+
+        let count_buffer_unit = round_up(
+            4 * dispatch_count(dimension),
+            gfx.limits.min_storage_buffer_offset_alignment,
+        );
+        let count_size = concurrency as vk::DeviceSize * count_buffer_unit;
         unsafe {
-            // Padded by 2 on each dimension so each voxel of interest has a full neighborhood
-            let mut voxels_size = concurrency * (dimension + 2).pow(3);
-            if voxels_size % 2 == 1 {
-                // Pad to even length so the shaders can safely read in 32 bit units
-                voxels_size += 1;
-            }
             let voxels_staging = DedicatedMapping::zeroed_array(
                 device,
                 &gfx.memory_properties,
                 vk::BufferUsageFlags::TRANSFER_SRC,
-                voxels_size as usize,
+                (voxels_size / mem::size_of::<Material>() as vk::DeviceSize) as usize,
             );
             gfx.set_name(voxels_staging.buffer(), cstr!("voxels staging"));
 
@@ -193,10 +204,7 @@ impl ScratchBuffer {
                 device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
-                    .size(
-                        mem::size_of::<Material>() as vk::DeviceSize
-                            * voxels_size as vk::DeviceSize,
-                    )
+                    .size(voxels_size)
                     .usage(
                         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
                     )
@@ -205,12 +213,11 @@ impl ScratchBuffer {
             );
             gfx.set_name(voxels.handle, cstr!("voxels"));
 
-            let dispatch_count = dispatch_count(dimension);
             let counts = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
-                    .size(dispatch_count * 4 * concurrency as vk::DeviceSize)
+                    .size(count_size)
                     .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -238,6 +245,8 @@ impl ScratchBuffer {
 
             Self {
                 dimension,
+                voxel_buffer_unit,
+                count_buffer_unit,
                 voxels_staging,
                 voxels,
                 counts,
@@ -285,11 +294,10 @@ impl ScratchBuffer {
         let dispatch_count = dispatch_count(self.dimension);
         self.voxels_staging.flush(device);
 
-        let counts_offset = (dispatch_count as usize * index * 4) as vk::DeviceSize;
+        let counts_offset = self.count_buffer_unit * index as vk::DeviceSize;
         let counts_range = dispatch_count as vk::DeviceSize * 4;
 
-        let voxels_offset =
-            (voxel_count * index) as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
+        let voxels_offset = self.voxel_buffer_unit * index as vk::DeviceSize;
         let voxels_range =
             voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
 
@@ -511,6 +519,7 @@ pub struct DrawBuffer {
     indirect: DedicatedBuffer,
     faces: DedicatedBuffer,
     dimension: u32,
+    face_buffer_unit: vk::DeviceSize,
 }
 
 impl DrawBuffer {
@@ -518,6 +527,13 @@ impl DrawBuffer {
     /// along each edge
     pub fn new(gfx: &Base, count: u32, dimension: u32) -> Self {
         let device = &*gfx.device;
+
+        let max_faces = 3 * (dimension.pow(3) + dimension.pow(2));
+        let face_buffer_unit = round_up(
+            max_faces as vk::DeviceSize * FACE_SIZE,
+            gfx.limits.min_storage_buffer_offset_alignment,
+        );
+        let face_buffer_size = count as vk::DeviceSize * face_buffer_unit;
 
         unsafe {
             let indirect = DedicatedBuffer::new(
@@ -534,12 +550,11 @@ impl DrawBuffer {
             );
             gfx.set_name(indirect.handle, cstr!("indirect"));
 
-            let max_faces = 3 * (dimension.pow(3) + dimension.pow(2));
             let faces = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
-                    .size((count * max_faces) as vk::DeviceSize * FACE_SIZE)
+                    .size(face_buffer_size)
                     .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -550,6 +565,7 @@ impl DrawBuffer {
                 indirect,
                 faces,
                 dimension,
+                face_buffer_unit,
             }
         }
     }
@@ -566,8 +582,7 @@ impl DrawBuffer {
 
     /// The offset into the face buffer at which a chunk's face data can be found
     pub fn face_offset(&self, chunk: u32) -> vk::DeviceSize {
-        let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
-        vk::DeviceSize::from(chunk) * max_faces as vk::DeviceSize * FACE_SIZE
+        vk::DeviceSize::from(chunk) * self.face_buffer_unit
     }
 
     /// The offset into the indirect buffer at which a chunk's face data can be found
@@ -590,3 +605,7 @@ impl DrawBuffer {
 const INDIRECT_SIZE: vk::DeviceSize = 16;
 
 const FACE_SIZE: vk::DeviceSize = 8;
+
+fn round_up(value: vk::DeviceSize, alignment: vk::DeviceSize) -> vk::DeviceSize {
+    ((value + alignment - 1) / alignment) * alignment
+}
