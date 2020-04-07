@@ -134,17 +134,17 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                 let mut max_e = elev;
 
 
-                if (rain > 2.5){
+                if rain > 2.5{
                     voxel_mat = Material::Leaves;
                 }
-                if (rain < -0.5){
+                if rain < -0.5{
                     voxel_mat = Material::Stone;
                 }
 
 
                 //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
                 let temp_mod = (temp + 0.5_f64).rem_euclid( 7_f64);
-                if (temp_mod <= 1_f64){
+                if temp_mod <= 1_f64{
                     voxel_mat = Material::Snow;
                 }
 
@@ -152,7 +152,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                     voxel_mat = Material::Water;
                 }
 
-                if (temp_mod < 0_f64){ //should not happen.
+                if temp_mod < 0_f64{ //should not happen.
                     voxel_mat = Material::Wood;
                 }
 
