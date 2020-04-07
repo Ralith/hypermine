@@ -140,7 +140,6 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                     voxel_mat = Material::Stone;
                 }
 
-
                 //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
                 let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
                 if slope_mod <= 1_f64 {
@@ -148,7 +147,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                 }
                 if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
                     voxel_mat = match voxel_mat {
-                        Material::Dirt => Material::Grass_top,
+                        Material::Dirt => Material::Grass,
                         Material::Sand => Material::Redsand,
                         Material::Stone => Material::Greystone,
                         _ => Material::Valite,
@@ -158,7 +157,6 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                     //should not happen.
                     voxel_mat = Material::Wood;
                 }
-
 
                 if state.surface.voxel_elevation(center, chunk) < max_e / -10.0 {
                     voxels.data_mut()[index(coords)] = voxel_mat;
@@ -239,9 +237,9 @@ impl EnviroFactors {
         Self {
             slopeiness: parent.slopeiness + (1 - ((spice % 78) / 26) as i64),
             max_elevation: parent.max_elevation
-                + ( (3 - parent.slopeiness.rem_euclid(7)) + (3 -
-                ( parent.slopeiness + (1 - ((spice % 78) / 26) as i64)) //slopeiness
-                .rem_euclid(7)))
+                + ((3 - parent.slopeiness.rem_euclid(7))
+                    + (3 - (parent.slopeiness + (1 - ((spice % 78) / 26) as i64)) //slopeiness
+                        .rem_euclid(7)))
                 + (1 - ((spice % 30) / 10) as i64),
             temperature: parent.temperature + (1 - ((spice % 15) / 5) as i64),
             rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
