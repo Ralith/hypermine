@@ -34,12 +34,10 @@ pub struct Sim {
     pub graph_entities: GraphEntities,
     entity_ids: FxHashMap<EntityId, Entity>,
     pub world: hecs::World,
-    local_character_id: Option<EntityId>,
+    pub params: Option<Parameters>,
     pub local_character: Option<Entity>,
     orientation: na::UnitQuaternion<f32>,
-    step_interval: Option<Duration>,
     step: Option<Step>,
-    chunk_size: Option<u8>,
 
     // Input state
     since_input_sent: Duration,
@@ -60,12 +58,10 @@ impl Sim {
             graph_entities: GraphEntities::new(),
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
-            local_character_id: None,
+            params: None,
             local_character: None,
             orientation: na::one(),
-            step_interval: None,
             step: None,
-            chunk_size: None,
 
             since_input_sent: Duration::new(0, 0),
             instantaneous_velocity: na::zero(),
@@ -85,8 +81,8 @@ impl Sim {
         self.instantaneous_velocity = v;
     }
 
-    pub fn chunk_size(&self) -> Option<u8> {
-        self.chunk_size
+    pub fn params(&self) -> Option<&Parameters> {
+        self.params.as_ref()
     }
 
     pub fn step(&mut self, dt: Duration) {
@@ -97,7 +93,7 @@ impl Sim {
         }
 
         self.since_input_sent += dt;
-        if let Some(step_interval) = self.step_interval {
+        if let Some(step_interval) = self.params.as_ref().map(|x| x.step_interval) {
             if let Some(overflow) = self.since_input_sent.checked_sub(step_interval) {
                 self.average_velocity += self.instantaneous_velocity
                     * (dt - overflow).as_secs_f32()
@@ -128,9 +124,11 @@ impl Sim {
                 error!("connection lost: {}", e);
             }
             Hello(msg) => {
-                self.local_character_id = Some(msg.character);
-                self.step_interval = Some(Duration::from_secs(1) / msg.rate as u32);
-                self.chunk_size = Some(msg.chunk_size);
+                self.params = Some(Parameters {
+                    character_id: msg.character,
+                    step_interval: Duration::from_secs(1) / u32::from(msg.rate),
+                    chunk_size: msg.chunk_size,
+                });
                 // Populate the root node
                 populate_fresh_nodes(&mut self.graph, msg.chunk_size);
             }
@@ -162,7 +160,7 @@ impl Sim {
     }
 
     fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: Position) {
-        if self.local_character_id == Some(id) {
+        if self.params.as_ref().map_or(false, |x| x.character_id == id) {
             self.prediction.reconcile(latest_input, new_pos);
         }
         match self.entity_ids.get(&id) {
@@ -198,7 +196,13 @@ impl Sim {
         for node in &msg.nodes {
             self.graph.insert_child(node.parent, node.side);
         }
-        populate_fresh_nodes(&mut self.graph, self.chunk_size.unwrap());
+        populate_fresh_nodes(
+            &mut self.graph,
+            self.params
+                .as_ref()
+                .expect("spawns are processed after ServerHello")
+                .chunk_size,
+        );
     }
 
     fn spawn(
@@ -226,7 +230,7 @@ impl Sim {
         if let Some(node) = node {
             self.graph_entities.insert(node, entity);
         }
-        if id == self.local_character_id.expect("spawn before ServerHello") {
+        if id == self.params.as_ref().unwrap().character_id {
             self.local_character = Some(entity);
         }
         if let Some(x) = self.entity_ids.insert(id, entity) {
@@ -239,7 +243,7 @@ impl Sim {
         let (direction, speed) = sanitize_motion_input(self.orientation * self.average_velocity);
         let generation = self.prediction.push(
             &direction,
-            speed * self.step_interval.as_ref().unwrap().as_secs_f32(),
+            speed * self.params.as_ref().unwrap().step_interval.as_secs_f32(),
         );
 
         // Any failure here will be better handled in handle_net's ConnectionLost case
@@ -253,13 +257,13 @@ impl Sim {
     pub fn view(&self) -> Position {
         let mut result = *self.prediction.predicted();
         result.local *= self.orientation.to_homogeneous();
-        if let Some(step_interval) = self.step_interval {
+        if let Some(ref params) = self.params {
             // Apply input that hasn't been sent yet
             let (direction, speed) = sanitize_motion_input(self.average_velocity);
             // We multiply by the entire timestep rather than the time so far because
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
             // future.
-            let distance = speed * step_interval.as_secs_f32();
+            let distance = speed * params.step_interval.as_secs_f32();
             result.local *= math::translate_along(&direction, distance);
         }
         result
@@ -284,6 +288,13 @@ impl Sim {
             .despawn(entity)
             .expect("destroyed nonexistent entity");
     }
+}
+
+/// Simulation details received on connect
+pub struct Parameters {
+    pub step_interval: Duration,
+    pub chunk_size: u8,
+    pub character_id: EntityId,
 }
 
 pub struct Chunk {
