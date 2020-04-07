@@ -113,15 +113,15 @@ impl Window {
                         (clockwise as u8 as f32 - anticlockwise as u8 as f32) * 5e-2,
                     ));
 
-                    let had_chunk_size = self.sim.chunk_size().is_some();
+                    let had_params = self.sim.params().is_some();
 
                     let this_frame = Instant::now();
                     self.sim.step(this_frame - last_frame);
                     last_frame = this_frame;
 
-                    if !had_chunk_size {
-                        if let Some(chunk_size) = self.sim.chunk_size() {
-                            self.draw.as_mut().unwrap().on_connect(chunk_size);
+                    if !had_params {
+                        if let Some(params) = self.sim.params() {
+                            self.draw.as_mut().unwrap().on_connect(params.chunk_size);
                         }
                     }
 
