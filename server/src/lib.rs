@@ -28,6 +28,8 @@ pub struct SimConfig {
     pub rate: u16,
     pub view_distance: u32,
     pub input_queue_size: Duration,
+    /// Number of voxels along the edge of a chunk
+    pub chunk_size: u8,
 }
 
 #[tokio::main]
@@ -148,6 +150,7 @@ impl Server {
                 let server_hello = proto::ServerHello {
                     character: id,
                     rate: self.cfg.rate,
+                    chunk_size: self.cfg.chunk_size,
                 };
                 tokio::spawn(async move {
                     // Errors will be handled by recv task

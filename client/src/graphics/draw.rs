@@ -35,8 +35,11 @@ pub struct Draw {
     /// Drives async asset loading
     loader: Loader,
 
+    //
     // Rendering pipelines
-    voxels: Voxels,
+    //
+    /// Populated after connect, once the voxel configuration is known
+    voxels: Option<Voxels>,
     meshes: Meshes,
     sky: Sky,
 
@@ -117,8 +120,6 @@ impl Draw {
 
             let mut loader = Loader::new(cfg.clone(), gfx.clone());
 
-            let voxels = Voxels::new(&gfx, cfg.clone(), &mut loader, PIPELINE_DEPTH);
-
             // Construct the per-frame states
             let states = cmds
                 .into_iter()
@@ -156,7 +157,7 @@ impl Draw {
                         used: false,
                         in_flight: false,
 
-                        voxels: voxels::Frame::new(&gfx, &voxels),
+                        voxels: None,
                     };
                     gfx.set_name(x.cmd, cstr!("frame"));
                     gfx.set_name(x.image_acquired, cstr!("image acquired"));
@@ -193,7 +194,7 @@ impl Draw {
 
                 loader,
 
-                voxels,
+                voxels: None,
                 meshes,
                 sky,
 
@@ -203,6 +204,20 @@ impl Draw {
                 character_model,
             }
         }
+    }
+
+    pub fn on_connect(&mut self, chunk_dimension: u8) {
+        let voxels = Voxels::new(
+            &self.gfx,
+            self.cfg.clone(),
+            &mut self.loader,
+            u32::from(chunk_dimension),
+            PIPELINE_DEPTH,
+        );
+        for state in &mut self.states {
+            state.voxels = Some(voxels::Frame::new(&self.gfx, &voxels));
+        }
+        self.voxels = Some(voxels);
     }
 
     /// Waits for a frame's worth of resources to become available for use in rendering a new frame
@@ -303,8 +318,8 @@ impl Draw {
                 .build(),
         );
 
-        if sim.connected() {
-            self.voxels.prepare(device, &mut state.voxels, sim, cmd);
+        if let Some(ref mut voxels) = self.voxels {
+            voxels.prepare(device, state.voxels.as_mut().unwrap(), sim, cmd);
         }
 
         // Ensure reads of just-transferred memory wait until it's ready
@@ -365,27 +380,32 @@ impl Draw {
         device.cmd_set_scissor(cmd, 0, &scissors);
 
         // Record the actual rendering commands
-        if sim.connected() {
-            self.voxels
-                .draw(device, &self.loader, state.common_ds, &state.voxels, cmd);
+        if let Some(ref mut voxels) = self.voxels {
+            voxels.draw(
+                device,
+                &self.loader,
+                state.common_ds,
+                state.voxels.as_ref().unwrap(),
+                cmd,
+            );
+        }
 
-            for (node, transform) in sim.graph.nearby_nodes(view, self.cfg.view_distance) {
-                for &entity in sim.graph_entities.get(node) {
-                    if sim.local_character == Some(entity) {
-                        // Don't draw ourself
-                        continue;
-                    }
-                    let pos = sim
-                        .world
-                        .get::<Position>(entity)
-                        .expect("positionless entity in graph");
-                    if let Some(character_model) = self.loader.get(self.character_model) {
-                        if let Ok(ch) = sim.world.get::<Character>(entity) {
-                            let transform = transform * pos.local * ch.orientation.to_homogeneous();
-                            for mesh in &character_model.0 {
-                                self.meshes
-                                    .draw(device, state.common_ds, cmd, mesh, &transform);
-                            }
+        for (node, transform) in sim.graph.nearby_nodes(view, self.cfg.view_distance) {
+            for &entity in sim.graph_entities.get(node) {
+                if sim.local_character == Some(entity) {
+                    // Don't draw ourself
+                    continue;
+                }
+                let pos = sim
+                    .world
+                    .get::<Position>(entity)
+                    .expect("positionless entity in graph");
+                if let Some(character_model) = self.loader.get(self.character_model) {
+                    if let Ok(ch) = sim.world.get::<Character>(entity) {
+                        let transform = transform * pos.local * ch.orientation.to_homogeneous();
+                        for mesh in &character_model.0 {
+                            self.meshes
+                                .draw(device, state.common_ds, cmd, mesh, &transform);
                         }
                     }
                 }
@@ -462,7 +482,9 @@ impl Drop for Draw {
                 device.destroy_semaphore(state.image_acquired, None);
                 device.destroy_fence(state.fence, None);
                 state.uniforms.destroy(device);
-                state.voxels.destroy(device);
+                if let Some(mut voxels) = state.voxels.take() {
+                    voxels.destroy(device);
+                }
             }
             device.destroy_command_pool(self.cmd_pool, None);
             device.destroy_query_pool(self.timestamp_pool, None);
@@ -470,7 +492,9 @@ impl Drop for Draw {
             device.destroy_pipeline_layout(self.common_pipeline_layout, None);
             self.sky.destroy(device);
             self.meshes.destroy(device);
-            self.voxels.destroy(device);
+            if let Some(mut voxels) = self.voxels.take() {
+                voxels.destroy(device);
+            }
         }
     }
 }
@@ -496,7 +520,7 @@ struct State {
     in_flight: bool,
 
     // Per-pipeline states
-    voxels: voxels::Frame,
+    voxels: Option<voxels::Frame>,
 }
 
 /// Data stored in the common uniform buffer

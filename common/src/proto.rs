@@ -11,6 +11,8 @@ pub struct ClientHello {
 pub struct ServerHello {
     pub character: EntityId,
     pub rate: u16,
+    /// Number of voxels along the edge of a chunk
+    pub chunk_size: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
