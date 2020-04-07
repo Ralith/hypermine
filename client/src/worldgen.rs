@@ -232,6 +232,8 @@ impl EnviroFactors {
             max_elevation: parent.max_elevation
                 + (1 - ((spice % 30) / 10) as i64)
                 + (3 - parent.temperature.rem_euclid(7)),
+            //temperature is not simulating physical temperature in this build, rather it is a stand-in for an
+            //abstract measure of change in elevation because adding new factors takes a lot of work.
             temperature: parent.temperature + (1 - ((spice % 78) / 26) as i64),
             rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
         }
