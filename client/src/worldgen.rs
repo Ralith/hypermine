@@ -129,7 +129,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                 let temp = trilerp(&enviros.temperatures, cube_coords);
 
                 let mut voxel_mat = Material::Dirt;
-                let mut max_e = elev;
+                let max_e = elev;
 
                 if rain > 2.5 {
                     voxel_mat = Material::Leaves;
