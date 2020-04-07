@@ -11,7 +11,7 @@ pub enum Material {
     Leaves = 5,
     Water = 6,
     Snow = 7,
-    Grass_top = 8,
+    Grass = 8,
     Redsand = 9,
     Redstone = 10,
     Valite = 11,
