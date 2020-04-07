@@ -144,7 +144,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                     voxel_mat = Material::Snow;
                 }
 
-                if (temp_mod >= 3_f64) && (temp_mod <= 4_f64) {
+                if temp_mod >= 3.0 && temp_mod <= 4.0 {
                     voxel_mat = Material::Water;
                 }
 
