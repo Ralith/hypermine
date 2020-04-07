@@ -140,7 +140,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
 
                 //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
                 let temp_mod = (temp + 0.5_f64).rem_euclid(7_f64);
-                if temp_mod <= 1_f64 {
+                if temp_mod <= 1.0 {
                     voxel_mat = Material::Snow;
                 }
 
