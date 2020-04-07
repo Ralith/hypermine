@@ -127,36 +127,32 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                 let elev = trilerp(&enviros.max_elevations, cube_coords);
                 let rain = trilerp(&enviros.rainfalls, cube_coords);
                 let temp = trilerp(&enviros.temperatures, cube_coords);
-                //let mut elevation_boost = 0_f64;
-
 
                 let mut voxel_mat = Material::Dirt;
                 let mut max_e = elev;
 
-
-                if rain > 2.5{
+                if rain > 2.5 {
                     voxel_mat = Material::Leaves;
                 }
-                if rain < -0.5{
+                if rain < -0.5 {
                     voxel_mat = Material::Stone;
                 }
 
-
                 //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
-                let temp_mod = (temp + 0.5_f64).rem_euclid( 7_f64);
-                if temp_mod <= 1_f64{
+                let temp_mod = (temp + 0.5_f64).rem_euclid(7_f64);
+                if temp_mod <= 1_f64 {
                     voxel_mat = Material::Snow;
                 }
 
-                if (temp_mod >= 3_f64)&&(temp_mod <= 4_f64){
+                if (temp_mod >= 3_f64) && (temp_mod <= 4_f64) {
                     voxel_mat = Material::Water;
                 }
 
-                if temp_mod < 0_f64{ //should not happen.
+                if temp_mod < 0_f64 {
+                    //should not happen.
                     voxel_mat = Material::Wood;
                 }
-
-                //max_e -= elevation_boost;
+                
 
                 if state.surface.voxel_elevation(center, chunk) < max_e / -10.0 {
                     voxels.data_mut()[index(coords)] = voxel_mat;
@@ -233,9 +229,10 @@ struct EnviroFactors {
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
-
         Self {
-            max_elevation: parent.max_elevation + (1 - ((spice % 30) / 10) as i64) + (3 - parent.temperature.rem_euclid(7)),
+            max_elevation: parent.max_elevation
+                + (1 - ((spice % 30) / 10) as i64)
+                + (3 - parent.temperature.rem_euclid(7)),
             temperature: parent.temperature + (1 - ((spice % 78) / 26) as i64),
             rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
         }
