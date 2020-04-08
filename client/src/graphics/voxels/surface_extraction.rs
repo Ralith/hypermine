@@ -271,9 +271,9 @@ impl ScratchBuffer {
 
     /// Includes a one-voxel margin around the entire volume
     pub fn storage(&mut self, index: u32) -> &mut [Material] {
-        let size = (self.dimension + 2).pow(3) as usize;
-        let index = index as usize;
-        &mut self.voxels_staging[size * index..size * (index + 1)]
+        let start = index as usize * (self.voxel_buffer_unit as usize / mem::size_of::<Material>());
+        let length = (self.dimension + 2).pow(3) as usize;
+        &mut self.voxels_staging[start..start + length]
     }
 
     #[allow(clippy::too_many_arguments)] // Refactoring ideas welcome
