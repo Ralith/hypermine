@@ -14,7 +14,7 @@ server = { path = "../server" }
 tracing = "0.1.10"
 tracing-subscriber = { version = "0.2", default-features = false, features = ["env-filter", "smallvec", "fmt", "ansi", "chrono", "parking_lot"] }
 ash = "0.29"
-lahar = { git = "https://github.com/Ralith/lahar", rev = "343a8bf6396f233e8c801abdf8bcf46f48b705bc" }
+lahar = { git = "https://github.com/Ralith/lahar", rev = "0b22a0c92a1ea93ae1ed0c9481d85eaa6eb41ad4" }
 winit = "0.22"
 ash-window = "0.1.0"
 directories = "2.0.2"
