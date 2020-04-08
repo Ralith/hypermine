@@ -56,6 +56,7 @@ impl NodeState {
                 max_elevation: 0,
                 temperature: 0,
                 rainfall: 0,
+                slopeiness: 3,
             },
         }
     }
@@ -124,15 +125,37 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex) -> VoxelData {
                 let center = voxel_center(coords);
                 let cube_coords = center * 0.5;
 
-                let (voxel_mat, elevation_boost) = match trilerp(&enviros.rainfalls, cube_coords) {
-                    r if r > 2.0 => (Material::Dirt, 1.0),
-                    r if r < 1.0 => (Material::Stone, -1.0),
-                    _ => (Material::Sand, -0.5),
-                };
+                let elev = trilerp(&enviros.max_elevations, cube_coords);
+                let rain = trilerp(&enviros.rainfalls, cube_coords);
+                let slope = trilerp(&enviros.slopeiness, cube_coords);
 
-                // maximum max_elevation for this voxel according to the max_elevations
-                // of the incident nodes that dictate the content of this chunk
-                let max_e = trilerp(&enviros.max_elevations, cube_coords) - elevation_boost;
+                let mut voxel_mat = Material::Dirt;
+                let max_e = elev;
+
+                if rain > 2.5 {
+                    voxel_mat = Material::Sand;
+                }
+                if rain < -0.5 {
+                    voxel_mat = Material::Stone;
+                }
+
+                //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
+                let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+                if slope_mod <= 1_f64 {
+                    voxel_mat = Material::Snow;
+                }
+                if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
+                    voxel_mat = match voxel_mat {
+                        Material::Dirt => Material::Grass,
+                        Material::Sand => Material::Redsand,
+                        Material::Stone => Material::Greystone,
+                        _ => Material::Valite,
+                    }
+                }
+                if slope_mod < 0_f64 {
+                    //should not happen.
+                    voxel_mat = Material::Wood;
+                }
 
                 if state.surface.voxel_elevation(center, chunk) < max_e / -10.0 {
                     voxels.data_mut()[index(coords)] = voxel_mat;
@@ -206,11 +229,17 @@ struct EnviroFactors {
     max_elevation: i64,
     temperature: i64,
     rainfall: i64,
+    slopeiness: i64,
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         Self {
-            max_elevation: parent.max_elevation + (1 - ((spice % 30) / 10) as i64),
+            slopeiness: parent.slopeiness + (1 - ((spice % 78) / 26) as i64),
+            max_elevation: parent.max_elevation
+                + ((3 - parent.slopeiness.rem_euclid(7))
+                    + (3 - (parent.slopeiness + (1 - ((spice % 78) / 26) as i64)) //slopeiness
+                        .rem_euclid(7)))
+                + (1 - ((spice % 30) / 10) as i64),
             temperature: parent.temperature + (1 - ((spice % 15) / 5) as i64),
             rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
         }
@@ -220,20 +249,23 @@ impl EnviroFactors {
             max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
             temperature: a.temperature + (b.temperature - ab.temperature),
             rainfall: a.rainfall + (b.rainfall - ab.rainfall),
+            slopeiness: a.slopeiness + (b.slopeiness - ab.slopeiness),
         }
     }
 }
-impl Into<(f64, f64, f64)> for EnviroFactors {
-    fn into(self) -> (f64, f64, f64) {
+impl Into<(f64, f64, f64, f64)> for EnviroFactors {
+    fn into(self) -> (f64, f64, f64, f64) {
         (
             self.max_elevation as f64,
             self.temperature as f64,
             self.rainfall as f64,
+            self.slopeiness as f64,
         )
     }
 }
 struct ChunkIncidentEnviroFactors {
     max_elevations: [f64; 8],
+    slopeiness: [f64; 8],
     #[allow(dead_code)]
     temperatures: [f64; 8],
     rainfalls: [f64; 8],
@@ -266,19 +298,20 @@ fn chunk_incident_enviro_factors(
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
-    let (e1, t1, r1) = i.next()?.into();
-    let (e2, t2, r2) = i.next()?.into();
-    let (e3, t3, r3) = i.next()?.into();
-    let (e4, t4, r4) = i.next()?.into();
-    let (e5, t5, r5) = i.next()?.into();
-    let (e6, t6, r6) = i.next()?.into();
-    let (e7, t7, r7) = i.next()?.into();
-    let (e8, t8, r8) = i.next()?.into();
+    let (e1, t1, r1, h1) = i.next()?.into();
+    let (e2, t2, r2, h2) = i.next()?.into();
+    let (e3, t3, r3, h3) = i.next()?.into();
+    let (e4, t4, r4, h4) = i.next()?.into();
+    let (e5, t5, r5, h5) = i.next()?.into();
+    let (e6, t6, r6, h6) = i.next()?.into();
+    let (e7, t7, r7, h7) = i.next()?.into();
+    let (e8, t8, r8, h8) = i.next()?.into();
 
     Some(ChunkIncidentEnviroFactors {
         max_elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
         temperatures: [t1, t2, t3, t4, t5, t6, t7, t8],
         rainfalls: [r1, r2, r3, r4, r5, r6, r7, r8],
+        slopeiness: [h1, h2, h3, h4, h5, h6, h7, h8],
     })
 }
 
