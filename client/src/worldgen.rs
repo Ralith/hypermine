@@ -240,12 +240,11 @@ struct EnviroFactors {
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
+        let slopeiness = parent.slopeiness + (1 - ((spice % 78) / 26) as i64);
         Self {
-            slopeiness: parent.slopeiness + (1 - ((spice % 78) / 26) as i64),
+            slopeiness,
             max_elevation: parent.max_elevation
-                + ((3 - parent.slopeiness.rem_euclid(7))
-                    + (3 - (parent.slopeiness + (1 - ((spice % 78) / 26) as i64)) //slopeiness
-                        .rem_euclid(7)))
+                + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
                 + (1 - ((spice % 30) / 10) as i64),
             temperature: parent.temperature + (1 - ((spice % 15) / 5) as i64),
             rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
