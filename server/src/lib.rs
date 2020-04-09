@@ -26,7 +26,7 @@ pub struct NetParams {
 
 pub struct SimConfig {
     pub rate: u16,
-    pub view_distance: u32,
+    pub view_distance: f64,
     pub input_queue_size: Duration,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: u8,

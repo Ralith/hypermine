@@ -33,6 +33,7 @@ fn main() {
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
         let key = cert.serialize_private_key_der();
         let cert = cert.serialize_der().unwrap();
+        let view_distance = config.view_distance;
 
         std::thread::spawn(move || {
             if let Err(e) = server::run(
@@ -45,7 +46,7 @@ fn main() {
                 },
                 server::SimConfig {
                     rate: 4,
-                    view_distance: 3,
+                    view_distance,
                     input_queue_size: Duration::from_millis(10),
                     chunk_size: 12,
                 },

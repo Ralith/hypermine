@@ -15,7 +15,7 @@ pub struct Config {
     pub private_key: Option<PathBuf>,
     pub listen: SocketAddr,
     pub rate: u16,
-    pub view_distance: u32,
+    pub view_distance: f64,
     pub input_queue_size_ms: u16,
     pub chunk_size: u8,
 }
@@ -37,7 +37,7 @@ impl Default for Config {
             private_key: None,
             listen: SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 1234),
             rate: 10,
-            view_distance: 3,
+            view_distance: 3.0,
             input_queue_size_ms: 50,
             chunk_size: 12,
         }

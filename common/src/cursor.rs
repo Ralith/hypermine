@@ -128,6 +128,7 @@ lazy_static! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto::Position;
 
     #[test]
     fn neighbor_sanity() {
@@ -143,7 +144,7 @@ mod tests {
     #[test]
     fn cursor_identities() {
         let mut graph = Graph::<()>::new();
-        graph.ensure_nearby(NodeId::ROOT, 3);
+        graph.ensure_nearby(&Position::origin(), 3.0);
         let start = Cursor::from_vertex(NodeId::ROOT, Vertex::A);
         let wiggle = |dir| {
             let x = start.step(&graph, dir).unwrap();
