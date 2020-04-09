@@ -92,7 +92,7 @@ impl Voxels {
             // there's no point trying to draw.
             return;
         }
-        let mut nodes = sim.graph.nearby_nodes(view, self.config.view_distance);
+        let mut nodes = sim.graph.nearby_nodes(&view, self.config.view_distance);
         nodes.sort_unstable_by_key(|&(node, _)| sim.graph.length(node));
         for &(node, ref node_transform) in &nodes {
             for chunk in Vertex::iter() {

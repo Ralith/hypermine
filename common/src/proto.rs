@@ -21,6 +21,15 @@ pub struct Position {
     pub local: na::Matrix4<f32>,
 }
 
+impl Position {
+    pub fn origin() -> Self {
+        Self {
+            node: NodeId::ROOT,
+            local: na::Matrix4::identity(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateDelta {
     pub step: Step,

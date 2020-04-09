@@ -390,7 +390,7 @@ impl Draw {
             );
         }
 
-        for (node, transform) in sim.graph.nearby_nodes(view, self.cfg.view_distance) {
+        for (node, transform) in sim.graph.nearby_nodes(&view, self.cfg.view_distance) {
             for &entity in sim.graph_entities.get(node) {
                 if sim.local_character == Some(entity) {
                     // Don't draw ourself

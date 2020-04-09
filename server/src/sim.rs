@@ -4,7 +4,7 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use tracing::{debug, error_span, info, trace};
+use tracing::{error_span, info, trace};
 
 use crate::SimConfig;
 use common::{
@@ -39,7 +39,7 @@ impl Sim {
         };
         result
             .graph
-            .ensure_nearby(NodeId::ROOT, result.cfg.view_distance);
+            .ensure_nearby(&Position::origin(), result.cfg.view_distance);
         result
     }
 
@@ -104,21 +104,16 @@ impl Sim {
         let _guard = span.enter();
 
         // Simulate
-        for (_, (&id, ch, pos)) in self
-            .world
-            .query::<(&EntityId, &Character, &mut Position)>()
-            .iter()
-        {
+        for (_, (ch, pos)) in self.world.query::<(&Character, &mut Position)>().iter() {
             let next_xf =
                 pos.local * math::translate_along(&ch.direction, ch.speed / self.cfg.rate as f32);
             pos.local = math::renormalize_isometry(&next_xf);
             let (next_node, transition_xf) = self.graph.normalize_transform(pos.node, &pos.local);
             if next_node != pos.node {
-                debug!(%id, node = ?next_node, "transition");
                 pos.node = next_node;
                 pos.local = transition_xf * pos.local;
-                self.graph.ensure_nearby(next_node, self.cfg.view_distance);
             }
+            self.graph.ensure_nearby(pos, self.cfg.view_distance);
         }
 
         // Capture state changes for broadcast to clients
