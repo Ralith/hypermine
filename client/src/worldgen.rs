@@ -118,6 +118,32 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
         .as_ref()
         .expect("must only be called on populated nodes")
         .state;
+
+    // Determine whether this chunk might contain a boundary between solid and void
+    let mut me_min = enviros.max_elevations[0];
+    let mut me_max = enviros.max_elevations[0];
+    for &me in &enviros.max_elevations[1..] {
+        me_min = me_min.min(me);
+        me_max = me_max.max(me);
+    }
+    // Maximum difference between elevations at the center of a chunk and any other point in the chunk
+    // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
+    // empirically.
+    const ELEVATION_MARGIN: f64 = 0.7;
+    let center_elevation = state
+        .surface
+        .voxel_elevation(na::Vector3::repeat(0.5), chunk);
+    if center_elevation + ELEVATION_MARGIN < me_max / -10.0 {
+        // The whole chunk is underground
+        // TODO: More accurate VoxelData
+        return VoxelData::Solid(Material::Stone);
+    }
+
+    if center_elevation - ELEVATION_MARGIN > me_min / -10.0 {
+        // The whole chunk is above ground
+        return VoxelData::Solid(Material::Void);
+    }
+
     for z in 0..dimension {
         for y in 0..dimension {
             for x in 0..dimension {
