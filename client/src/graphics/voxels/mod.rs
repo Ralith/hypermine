@@ -150,6 +150,7 @@ impl Voxels {
                                 &self.surface_extraction,
                                 scratch_slot,
                                 chunk.parity() ^ node_is_odd,
+                                slot.0,
                                 cmd,
                                 (
                                     self.surfaces.indirect_buffer(),
@@ -201,10 +202,14 @@ impl Voxels {
         frame: &Frame,
         cmd: vk::CommandBuffer,
     ) {
-        if !self
-            .draw
-            .bind(device, loader, common_ds, &frame.surface, cmd)
-        {
+        if !self.draw.bind(
+            device,
+            loader,
+            self.surfaces.dimension(),
+            common_ds,
+            &frame.surface,
+            cmd,
+        ) {
             return;
         }
         for chunk in &frame.drawn {

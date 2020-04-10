@@ -10,13 +10,14 @@ layout(set = 0, binding = 2) writeonly restrict buffer Indirect {
     uint vertex_count;
     uint instance_count;
     uint first_vertex;
-    uint first_index;
+    uint first_instance;
 };
 layout(set = 0, binding = 3) writeonly restrict buffer Surfaces {
     Surface surfaces[];
 };
 layout(push_constant) uniform Uniforms {
     uint offset;
+    uint draw_id;
     bool reverse_winding;
 };
 
@@ -82,7 +83,7 @@ void main() {
         vertex_count = count * 6; // two triangles per face
         instance_count = 1;
         first_vertex = offset * 6;
-        first_index = 0;
+        first_instance = draw_id;
     }
 
     Face info;

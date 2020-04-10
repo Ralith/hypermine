@@ -85,6 +85,7 @@ impl SurfaceExtractionTest {
                 &self.extract,
                 0,
                 false,
+                DIMENSION as u32,
                 self.cmd,
                 (self.indirect.buffer(), 0),
                 (self.vertices.buffer(), 0),

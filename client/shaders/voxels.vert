@@ -1,4 +1,4 @@
-#version 450
+#version 460
 
 #include "common.h"
 #include "surface-extraction/surface.h"
@@ -16,7 +16,6 @@ layout(set = 2, binding = 0) readonly restrict buffer Transforms {
 };
 
 layout(push_constant) uniform PushConstants {
-    uint draw_index;
     uint dimension;
 };
 
@@ -61,5 +60,5 @@ void main()  {
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
     vec3 relative_coords = vertices[axis][vertex] + pos;
-    gl_Position = view_projection * transform[draw_index] * vec4(relative_coords / dimension, 1);
+    gl_Position = view_projection * transform[gl_BaseInstance] * vec4(relative_coords / dimension, 1);
 }
