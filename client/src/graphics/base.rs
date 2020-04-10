@@ -158,26 +158,50 @@ impl Base {
                                 ..Default::default()
                             },
                         ])
-                        .subpasses(&[vk::SubpassDescription::builder()
-                            .color_attachments(&[vk::AttachmentReference {
-                                attachment: 0,
-                                layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                            }])
-                            .depth_stencil_attachment(&vk::AttachmentReference {
-                                attachment: 1,
-                                layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                            })
-                            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                            .build()])
-                        .dependencies(&[vk::SubpassDependency {
-                            src_subpass: vk::SUBPASS_EXTERNAL,
-                            dst_subpass: 0,
-                            src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                            dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                            dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ
-                                | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                            ..Default::default()
-                        }]),
+                        .subpasses(&[
+                            vk::SubpassDescription::builder()
+                                .color_attachments(&[vk::AttachmentReference {
+                                    attachment: 0,
+                                    layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                                }])
+                                .depth_stencil_attachment(&vk::AttachmentReference {
+                                    attachment: 1,
+                                    layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                                })
+                                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+                                .build(),
+                            vk::SubpassDescription::builder()
+                                .color_attachments(&[vk::AttachmentReference {
+                                    attachment: 0,
+                                    layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                                }])
+                                .input_attachments(&[vk::AttachmentReference {
+                                    attachment: 1,
+                                    layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                                }])
+                                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+                                .build(),
+                        ])
+                        .dependencies(&[
+                            vk::SubpassDependency {
+                                src_subpass: vk::SUBPASS_EXTERNAL,
+                                dst_subpass: 0,
+                                src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ
+                                    | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                                ..Default::default()
+                            },
+                            vk::SubpassDependency {
+                                src_subpass: 0,
+                                dst_subpass: 1,
+                                src_stage_mask: vk::PipelineStageFlags::LATE_FRAGMENT_TESTS, // depth write
+                                dst_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS, // depth read
+                                src_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                                dst_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+                                dependency_flags: vk::DependencyFlags::BY_REGION,
+                            },
+                        ]),
                     None,
                 )
                 .unwrap();
@@ -198,12 +222,21 @@ impl Base {
             let common_layout = device
                 .create_descriptor_set_layout(
                     &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                        // Uniforms
                         vk::DescriptorSetLayoutBinding {
                             binding: 0,
                             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::VERTEX
                                 | vk::ShaderStageFlags::FRAGMENT,
+                            p_immutable_samplers: ptr::null(),
+                        },
+                        // Depth buffer
+                        vk::DescriptorSetLayoutBinding {
+                            binding: 1,
+                            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
+                            descriptor_count: 1,
+                            stage_flags: vk::ShaderStageFlags::FRAGMENT,
                             p_immutable_samplers: ptr::null(),
                         },
                     ]),

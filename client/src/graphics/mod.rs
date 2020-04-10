@@ -10,12 +10,12 @@ macro_rules! cstr {
 mod base;
 mod core;
 mod draw;
+mod fog;
 mod gltf_mesh;
 mod loader;
 pub mod lru_table;
 mod meshes;
 mod png_array;
-mod sky;
 mod voxels;
 mod window;
 
@@ -26,12 +26,12 @@ pub use self::{
     base::Base,
     core::Core,
     draw::Draw,
+    fog::Fog,
     gltf_mesh::{GlbFile, GltfScene},
     loader::{Asset, LoadCtx, LoadFuture, Loadable, Loader},
     lru_table::LruTable,
     meshes::{Mesh, Meshes},
     png_array::PngArray,
-    sky::Sky,
     voxels::Voxels,
     window::{EarlyWindow, Window},
 };

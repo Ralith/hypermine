@@ -14,7 +14,7 @@ layout(push_constant) uniform PushConstants {
 };
 
 void main() {
-    gl_Position = projection * transform * vec4(position, 1);
+    gl_Position = view_projection * transform * vec4(position, 1);
     texcoords_out = texcoords;
     normal_out = transform * vec4(normal, 0);
 }
