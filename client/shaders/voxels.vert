@@ -11,7 +11,7 @@ layout(set = 1, binding = 0) readonly restrict buffer Surfaces {
 };
 
 layout(set = 2, binding = 0) readonly restrict buffer Transforms {
-    // Maps from cube space ([0..1]^3) to view space
+    // Maps from cube space ([0..1]^3) to local node space
     mat4 transform[];
 };
 
@@ -61,5 +61,5 @@ void main()  {
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
     vec3 relative_coords = vertices[axis][vertex] + pos;
-    gl_Position = projection * transform[draw_index] * vec4(relative_coords / dimension, 1);
+    gl_Position = view_projection * transform[draw_index] * vec4(relative_coords / dimension, 1);
 }

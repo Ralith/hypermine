@@ -4,7 +4,11 @@
 const float PI = 3.14159265;
 
 layout(set = 0, binding = 0) uniform Common {
-    mat4 projection;
+    // Maps local node space to clip space
+    mat4 view_projection;
+    // Maps clip space to view space
+    mat4 inverse_projection;
+    float fog_density;
     float time;
 };
 

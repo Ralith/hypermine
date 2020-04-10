@@ -5,7 +5,7 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 use tracing::info;
 
-use super::{loader::Asset, voxels, Base, GltfScene, Loader, Meshes, Sky, Voxels};
+use super::{loader::Asset, voxels, Base, Fog, GltfScene, Loader, Meshes, Voxels};
 use crate::{Config, Sim};
 use common::proto::{Character, Position};
 
@@ -41,7 +41,7 @@ pub struct Draw {
     /// Populated after connect, once the voxel configuration is known
     voxels: Option<Voxels>,
     meshes: Meshes,
-    sky: Sky,
+    fog: Fog,
 
     /// Reusable storage for barriers that prevent races between image upload and read
     image_barriers: Vec<vk::ImageMemoryBarrier>,
@@ -103,10 +103,16 @@ impl Draw {
                 .create_descriptor_pool(
                     &vk::DescriptorPoolCreateInfo::builder()
                         .max_sets(PIPELINE_DEPTH)
-                        .pool_sizes(&[vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::UNIFORM_BUFFER,
-                            descriptor_count: PIPELINE_DEPTH,
-                        }]),
+                        .pool_sizes(&[
+                            vk::DescriptorPoolSize {
+                                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                                descriptor_count: PIPELINE_DEPTH,
+                            },
+                            vk::DescriptorPoolSize {
+                                ty: vk::DescriptorType::INPUT_ATTACHMENT,
+                                descriptor_count: PIPELINE_DEPTH,
+                            },
+                        ]),
                     None,
                 )
                 .unwrap();
@@ -133,6 +139,7 @@ impl Draw {
                     device.update_descriptor_sets(
                         &[vk::WriteDescriptorSet::builder()
                             .dst_set(common_ds)
+                            .dst_binding(0)
                             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                             .buffer_info(&[vk::DescriptorBufferInfo {
                                 buffer: uniforms.buffer(),
@@ -169,7 +176,7 @@ impl Draw {
 
             let meshes = Meshes::new(&gfx, loader.ctx().mesh_ds_layout);
 
-            let sky = Sky::new(&gfx);
+            let fog = Fog::new(&gfx);
 
             gfx.save_pipeline_cache();
 
@@ -196,7 +203,7 @@ impl Draw {
 
                 voxels: None,
                 meshes,
-                sky,
+                fog,
 
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
@@ -249,24 +256,42 @@ impl Draw {
         &mut self,
         sim: &mut Sim,
         framebuffer: vk::Framebuffer,
+        depth_view: vk::ImageView,
         extent: vk::Extent2D,
         present: vk::Semaphore,
         projection: na::Matrix4<f32>,
     ) {
         let view = sim.view();
-        let projection = projection * view.local.try_inverse().unwrap();
+        let view_projection = projection * view.local.try_inverse().unwrap();
         self.loader.drive();
 
         let device = &*self.gfx.device;
         let state_index = self.next_state;
         let state = &mut self.states[self.next_state];
         let cmd = state.cmd;
+
         // We're using this state again, so put the fence back in the unsignaled state and compute
         // the next frame to use
         device.reset_fences(&[state.fence]).unwrap();
         self.next_state = (self.next_state + 1) % PIPELINE_DEPTH as usize;
-        let first_query = state_index as u32 * TIMESTAMPS_PER_FRAME;
 
+        // Set up framebuffer attachments
+        device.update_descriptor_sets(
+            &[vk::WriteDescriptorSet::builder()
+                .dst_set(state.common_ds)
+                .dst_binding(1)
+                .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+                .image_info(&[vk::DescriptorImageInfo {
+                    sampler: vk::Sampler::null(),
+                    image_view: depth_view,
+                    image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                }])
+                .build()],
+            &[],
+        );
+
+        // Handle completed queries
+        let first_query = state_index as u32 * TIMESTAMPS_PER_FRAME;
         if state.used {
             // Collect timestamps from the last time we drew this frame
             let mut queries = [0u64; TIMESTAMPS_PER_FRAME as usize];
@@ -412,8 +437,9 @@ impl Draw {
             }
         }
 
-        // Sky goes last to save fillrate
-        self.sky.draw(device, state.common_ds, cmd);
+        device.cmd_next_subpass(cmd, vk::SubpassContents::INLINE);
+
+        self.fog.draw(device, state.common_ds, cmd);
 
         // Finish up
         device.cmd_end_render_pass(cmd);
@@ -429,7 +455,11 @@ impl Draw {
         state.uniforms.write(
             device,
             Uniforms {
-                projection,
+                view_projection,
+                inverse_projection: projection.try_inverse().unwrap(),
+                // Only 1e-2 of color should be visible from view_distance, assuming
+                // exponential-squared fog
+                fog_density: ((1.0f64 / 1e-2).ln().sqrt() / self.cfg.view_distance) as f32,
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             },
         );
@@ -490,7 +520,7 @@ impl Drop for Draw {
             device.destroy_query_pool(self.timestamp_pool, None);
             device.destroy_descriptor_pool(self.common_descriptor_pool, None);
             device.destroy_pipeline_layout(self.common_pipeline_layout, None);
-            self.sky.destroy(device);
+            self.fog.destroy(device);
             self.meshes.destroy(device);
             if let Some(mut voxels) = self.voxels.take() {
                 voxels.destroy(device);
@@ -531,7 +561,9 @@ struct State {
 #[derive(Copy, Clone)]
 struct Uniforms {
     /// Camera projection matrix
-    projection: na::Matrix4<f32>,
+    view_projection: na::Matrix4<f32>,
+    inverse_projection: na::Matrix4<f32>,
+    fog_density: f32,
     /// Cycles through [0,1) once per second for simple animation effects
     time: f32,
 }

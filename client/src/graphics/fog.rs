@@ -5,14 +5,14 @@ use super::Base;
 use common::defer;
 
 const VERT: &[u32] = include_glsl!("shaders/fullscreen.vert");
-const FRAG: &[u32] = include_glsl!("shaders/sky.frag");
+const FRAG: &[u32] = include_glsl!("shaders/fog.frag");
 
-pub struct Sky {
+pub struct Fog {
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
 }
 
-impl Sky {
+impl Fog {
     pub fn new(gfx: &Base) -> Self {
         let device = &*gfx.device;
         unsafe {
@@ -77,16 +77,15 @@ impl Sky {
                         )
                         .depth_stencil_state(
                             &vk::PipelineDepthStencilStateCreateInfo::builder()
-                                .depth_test_enable(true)
-                                .depth_write_enable(false)
-                                .depth_compare_op(vk::CompareOp::GREATER_OR_EQUAL),
+                                .depth_test_enable(false)
+                                .depth_write_enable(false),
                         )
                         .color_blend_state(
                             &vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[
                                 vk::PipelineColorBlendAttachmentState {
                                     blend_enable: vk::TRUE,
-                                    src_color_blend_factor: vk::BlendFactor::ONE,
-                                    dst_color_blend_factor: vk::BlendFactor::ONE,
+                                    src_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                                    dst_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
                                     color_blend_op: vk::BlendOp::ADD,
                                     color_write_mask: vk::ColorComponentFlags::R
                                         | vk::ColorComponentFlags::G
@@ -103,7 +102,7 @@ impl Sky {
                         )
                         .layout(pipeline_layout)
                         .render_pass(gfx.render_pass)
-                        .subpass(0)
+                        .subpass(1)
                         .build()],
                     None,
                 )
@@ -111,7 +110,7 @@ impl Sky {
                 .into_iter();
 
             let pipeline = pipelines.next().unwrap();
-            gfx.set_name(pipeline, cstr!("sky"));
+            gfx.set_name(pipeline, cstr!("fog"));
 
             // Clean up the shaders explicitly, so the defer guards don't hold onto references we're
             // moving into `Self` to be returned

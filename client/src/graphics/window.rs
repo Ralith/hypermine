@@ -236,6 +236,7 @@ impl Window {
             draw.draw(
                 &mut self.sim,
                 frame.buffer,
+                frame.depth_view,
                 swapchain.state.extent,
                 frame.present,
                 projection(0.01, (aspect_ratio * vfov.tan()).atan(), vfov),
@@ -465,7 +466,10 @@ impl SwapchainState {
                         .mip_levels(1)
                         .array_layers(1)
                         .samples(vk::SampleCountFlags::TYPE_1)
-                        .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
+                        .usage(
+                            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                                | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+                        ),
                 );
                 gfx.set_name(depth.handle, cstr!("depth"));
                 gfx.set_name(depth.memory, cstr!("depth"));
