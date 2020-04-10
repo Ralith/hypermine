@@ -66,7 +66,7 @@ impl SurfaceExtraction {
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
                             offset: 0,
-                            size: 8,
+                            size: 12,
                         }]),
                     None,
                 )
@@ -283,6 +283,7 @@ impl ScratchBuffer {
         ctx: &SurfaceExtraction,
         index: u32,
         reverse_winding: bool,
+        draw_id: u32,
         cmd: vk::CommandBuffer,
         indirect: (vk::Buffer, vk::DeviceSize),
         face: (vk::Buffer, vk::DeviceSize),
@@ -416,15 +417,12 @@ impl ScratchBuffer {
                 &[],
             );
 
-            let mut push_constants = [0; 8];
-            push_constants[0..4].copy_from_slice(&i.to_ne_bytes());
-            push_constants[5] = u8::from(reverse_winding);
             device.cmd_push_constants(
                 cmd,
                 ctx.pipeline_layout,
                 vk::ShaderStageFlags::COMPUTE,
                 0,
-                &push_constants,
+                &i.to_ne_bytes(),
             );
             device.cmd_dispatch(
                 cmd,
@@ -454,12 +452,16 @@ impl ScratchBuffer {
         );
 
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.emit);
+        let mut push_constants = [0; 12];
+        push_constants[0..4].copy_from_slice(&((face.1 / FACE_SIZE) as u32).to_ne_bytes());
+        push_constants[4..8].copy_from_slice(&draw_id.to_ne_bytes());
+        push_constants[9] = u8::from(reverse_winding);
         device.cmd_push_constants(
             cmd,
             ctx.pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
-            &((face.1 / FACE_SIZE) as u32).to_ne_bytes(),
+            &push_constants,
         );
         device.cmd_dispatch(
             cmd,
