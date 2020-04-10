@@ -37,7 +37,7 @@ impl Default for Config {
             private_key: None,
             listen: SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 1234),
             rate: 10,
-            view_distance: 3.0,
+            view_distance: 3.5,
             input_queue_size_ms: 50,
             chunk_size: 12,
         }
