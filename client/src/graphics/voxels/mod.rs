@@ -244,7 +244,7 @@ impl Frame {
 }
 
 /// Maximum number of concurrently drawn voxel chunks
-const MAX_CHUNKS: u32 = 4096;
+const MAX_CHUNKS: u32 = 8192;
 
 struct SurfaceState {
     node: NodeId,
