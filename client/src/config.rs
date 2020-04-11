@@ -8,12 +8,14 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, info};
 
+use server::SimConfig;
+
 pub struct Config {
     pub name: Arc<str>,
     pub data_dir: PathBuf,
-    pub view_distance: f64,
     pub chunks_loaded_per_frame: u32,
     pub server: Option<SocketAddr>,
+    pub simulation: SimConfig,
 }
 
 impl Config {
@@ -24,7 +26,7 @@ impl Config {
         let RawConfig {
             name,
             data_dir,
-            view_distance,
+            simulation,
             chunks_loaded_per_frame,
             server,
         } = match fs::read(&path) {
@@ -48,9 +50,9 @@ impl Config {
         Config {
             name: name.unwrap_or_else(|| whoami::user().into()),
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
-            view_distance: view_distance.unwrap_or(3.5),
             chunks_loaded_per_frame: chunks_loaded_per_frame.unwrap_or(16),
             server,
+            simulation: simulation.unwrap_or_else(SimConfig::default),
         }
     }
 
@@ -82,7 +84,7 @@ impl Config {
 struct RawConfig {
     name: Option<Arc<str>>,
     data_dir: Option<PathBuf>,
-    view_distance: Option<f64>,
     chunks_loaded_per_frame: Option<u32>,
     server: Option<SocketAddr>,
+    simulation: Option<SimConfig>,
 }
