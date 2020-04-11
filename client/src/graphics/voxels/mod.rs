@@ -17,7 +17,7 @@ use crate::{
     sim::VoxelData,
     Config, Sim,
 };
-use common::{dodeca::Vertex, graph::NodeId};
+use common::{dodeca::Vertex, graph::NodeId, math};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
@@ -93,7 +93,14 @@ impl Voxels {
             return;
         }
         let mut nodes = sim.graph.nearby_nodes(&view, self.config.view_distance);
-        nodes.sort_unstable_by_key(|&(node, _)| sim.graph.length(node));
+        // Sort nodes by distance to the view to prioritize loading closer data and improve early Z
+        // performance
+        let view_pos = view.local * math::origin();
+        nodes.sort_unstable_by(|&(_, ref xf_a), &(_, ref xf_b)| {
+            math::distance(&view_pos, &(xf_a * math::origin()))
+                .partial_cmp(&math::distance(&view_pos, &(xf_b * math::origin())))
+                .unwrap_or(std::cmp::Ordering::Less)
+        });
         for &(node, ref node_transform) in &nodes {
             for chunk in Vertex::iter() {
                 // Fetch existing chunk, or extract surface of new chunk
