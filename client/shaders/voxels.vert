@@ -3,16 +3,14 @@
 #include "common.h"
 #include "surface-extraction/surface.h"
 
+// Maps from cube space ([0..1]^3) to local node space
+layout(location = 0) in mat4 transform;
+
 layout(location = 0) out vec3 texcoords_out;
 layout(location = 1) out float occlusion;
 
 layout(set = 1, binding = 0) readonly restrict buffer Surfaces {
     Surface surfaces[];
-};
-
-layout(set = 2, binding = 0) readonly restrict buffer Transforms {
-    // Maps from cube space ([0..1]^3) to local node space
-    mat4 transform[];
 };
 
 layout(push_constant) uniform PushConstants {
@@ -60,5 +58,5 @@ void main()  {
     texcoords_out = vec3(uv, get_mat(s) - 1);
     occlusion = get_occlusion(s, uv);
     vec3 relative_coords = vertices[axis][vertex] + pos;
-    gl_Position = view_projection * transform[gl_BaseInstance] * vec4(relative_coords / dimension, 1);
+    gl_Position = view_projection * transform * vec4(relative_coords / dimension, 1);
 }
