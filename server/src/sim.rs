@@ -23,11 +23,13 @@ pub struct Sim {
     graph: Graph<Empty>,
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
+    meters_to_absolute: f32,
 }
 
 impl Sim {
     pub fn new(cfg: Arc<SimConfig>) -> Self {
         let mut result = Self {
+            meters_to_absolute: common::meters_to_absolute(cfg.chunk_size, cfg.voxel_size),
             cfg,
             rng: SmallRng::from_entropy(),
             step: 0,
@@ -69,7 +71,7 @@ impl Sim {
         let mut ch = self.world.get_mut::<Character>(entity)?;
         let (direction, speed) = sanitize_motion_input(command.velocity);
         ch.direction = direction;
-        ch.speed = speed;
+        ch.speed = speed * self.cfg.movement_speed * self.meters_to_absolute;
         ch.orientation = command.orientation;
         Ok(())
     }
