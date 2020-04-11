@@ -13,7 +13,6 @@ const FRAG: &[u32] = include_glsl!("shaders/voxels.frag");
 
 pub struct Surface {
     static_ds_layout: vk::DescriptorSetLayout,
-    frame_ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
@@ -23,7 +22,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(gfx: &Base, loader: &mut Loader, buffer: &DrawBuffer, frames: u32) -> Self {
+    pub fn new(gfx: &Base, loader: &mut Loader, buffer: &DrawBuffer) -> Self {
         let device = &*gfx.device;
         unsafe {
             // Construct the shader modules
@@ -59,29 +58,15 @@ impl Surface {
                     None,
                 )
                 .unwrap();
-            let frame_ds_layout = device
-                .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
-                        vk::DescriptorSetLayoutBinding {
-                            binding: 0,
-                            descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
-                            descriptor_count: 1,
-                            stage_flags: vk::ShaderStageFlags::VERTEX,
-                            p_immutable_samplers: ptr::null(),
-                        },
-                    ]),
-                    None,
-                )
-                .unwrap();
 
             let descriptor_pool = device
                 .create_descriptor_pool(
                     &vk::DescriptorPoolCreateInfo::builder()
-                        .max_sets(1 + frames)
+                        .max_sets(1)
                         .pool_sizes(&[
                             vk::DescriptorPoolSize {
                                 ty: vk::DescriptorType::STORAGE_BUFFER,
-                                descriptor_count: 1 + frames,
+                                descriptor_count: 1,
                             },
                             vk::DescriptorPoolSize {
                                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -116,7 +101,7 @@ impl Surface {
             let pipeline_layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&[gfx.common_layout, static_ds_layout, frame_ds_layout])
+                        .set_layouts(&[gfx.common_layout, static_ds_layout])
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::VERTEX,
                             offset: 0,
@@ -145,7 +130,40 @@ impl Surface {
                                 ..Default::default()
                             },
                         ])
-                        .vertex_input_state(&vk::PipelineVertexInputStateCreateInfo::default())
+                        .vertex_input_state(
+                            &vk::PipelineVertexInputStateCreateInfo::builder()
+                                .vertex_binding_descriptions(&[vk::VertexInputBindingDescription {
+                                    binding: 0,
+                                    stride: TRANSFORM_SIZE as u32,
+                                    input_rate: vk::VertexInputRate::INSTANCE,
+                                }])
+                                .vertex_attribute_descriptions(&[
+                                    vk::VertexInputAttributeDescription {
+                                        location: 0,
+                                        binding: 0,
+                                        format: vk::Format::R32G32B32A32_SFLOAT,
+                                        offset: 0,
+                                    },
+                                    vk::VertexInputAttributeDescription {
+                                        location: 1,
+                                        binding: 0,
+                                        format: vk::Format::R32G32B32A32_SFLOAT,
+                                        offset: 16,
+                                    },
+                                    vk::VertexInputAttributeDescription {
+                                        location: 2,
+                                        binding: 0,
+                                        format: vk::Format::R32G32B32A32_SFLOAT,
+                                        offset: 32,
+                                    },
+                                    vk::VertexInputAttributeDescription {
+                                        location: 3,
+                                        binding: 0,
+                                        format: vk::Format::R32G32B32A32_SFLOAT,
+                                        offset: 48,
+                                    },
+                                ]),
+                        )
                         .input_assembly_state(
                             &vk::PipelineInputAssemblyStateCreateInfo::builder()
                                 .topology(vk::PrimitiveTopology::TRIANGLE_LIST),
@@ -219,7 +237,6 @@ impl Surface {
 
             Self {
                 static_ds_layout,
-                frame_ds_layout,
                 pipeline_layout,
                 pipeline,
                 descriptor_pool,
@@ -281,9 +298,10 @@ impl Surface {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_layout,
             0,
-            &[common_ds, self.ds, frame.ds],
+            &[common_ds, self.ds],
             &[],
         );
+        device.cmd_bind_vertex_buffers(cmd, 0, &[frame.transforms.handle], &[0]);
 
         device.cmd_push_constants(
             cmd,
@@ -316,7 +334,6 @@ impl Surface {
         device.destroy_pipeline(self.pipeline, None);
         device.destroy_pipeline_layout(self.pipeline_layout, None);
         device.destroy_descriptor_set_layout(self.static_ds_layout, None);
-        device.destroy_descriptor_set_layout(self.frame_ds_layout, None);
         device.destroy_descriptor_pool(self.descriptor_pool, None);
         if self.colors_view != vk::ImageView::null() {
             device.destroy_image_view(self.colors_view, None);
@@ -326,48 +343,22 @@ impl Surface {
 
 pub struct Frame {
     transforms: DedicatedBuffer,
-    ds: vk::DescriptorSet,
 }
 
 impl Frame {
-    pub fn new(gfx: &Base, parent: &Surface, count: u32) -> Self {
+    pub fn new(gfx: &Base, count: u32) -> Self {
         unsafe {
             let transforms = DedicatedBuffer::new(
                 &gfx.device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
                     .size(vk::DeviceSize::from(count) * TRANSFORM_SIZE)
-                    .usage(
-                        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
-                    )
+                    .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST)
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
             );
             gfx.set_name(transforms.handle, cstr!("voxel transforms"));
-
-            let ds = gfx
-                .device
-                .allocate_descriptor_sets(
-                    &vk::DescriptorSetAllocateInfo::builder()
-                        .descriptor_pool(parent.descriptor_pool)
-                        .set_layouts(&[parent.frame_ds_layout]),
-                )
-                .unwrap()[0];
-            gfx.device.update_descriptor_sets(
-                &[vk::WriteDescriptorSet::builder()
-                    .dst_set(ds)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: transforms.handle,
-                        offset: 0,
-                        range: vk::WHOLE_SIZE,
-                    }])
-                    .build()],
-                &[],
-            );
-
-            Self { transforms, ds }
+            Self { transforms }
         }
     }
 

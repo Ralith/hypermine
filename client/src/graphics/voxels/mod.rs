@@ -51,7 +51,7 @@ impl Voxels {
             MAX_CHUNKS
         };
         let surfaces = DrawBuffer::new(gfx, max_chunks, dimension);
-        let draw = Surface::new(gfx, loader, &surfaces, frames);
+        let draw = Surface::new(gfx, loader, &surfaces);
         let surface_extraction = SurfaceExtraction::new(gfx);
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
             gfx,
@@ -250,7 +250,7 @@ impl Frame {
 impl Frame {
     pub fn new(gfx: &Base, ctx: &Voxels) -> Self {
         Self {
-            surface: surface::Frame::new(gfx, &ctx.draw, ctx.states.capacity()),
+            surface: surface::Frame::new(gfx, ctx.states.capacity()),
             extracted: Vec::new(),
             drawn: Vec::new(),
         }
