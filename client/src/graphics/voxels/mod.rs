@@ -94,7 +94,7 @@ impl Voxels {
         }
         let mut nodes = sim
             .graph
-            .nearby_nodes(&view, self.config.simulation.view_distance);
+            .nearby_nodes(&view, f64::from(self.config.local_simulation.view_distance));
         // Sort nodes by distance to the view to prioritize loading closer data and improve early Z
         // performance
         let view_pos = view.local * math::origin();

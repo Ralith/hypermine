@@ -6,7 +6,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use server::SimConfig;
+
+use common::SimConfigRaw;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -15,7 +16,8 @@ pub struct Config {
     pub certificate_chain: Option<PathBuf>,
     pub private_key: Option<PathBuf>,
     pub listen: SocketAddr,
-    pub simulation: SimConfig,
+    #[serde(default)]
+    pub simulation: SimConfigRaw,
 }
 
 impl Config {
@@ -34,7 +36,7 @@ impl Default for Config {
             certificate_chain: None,
             private_key: None,
             listen: SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 1234),
-            simulation: SimConfig::default(),
+            simulation: SimConfigRaw::default(),
         }
     }
 }

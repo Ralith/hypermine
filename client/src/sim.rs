@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use fxhash::FxHashMap;
 use hecs::Entity;
@@ -6,7 +6,7 @@ use tracing::{debug, error, trace};
 
 use crate::{
     graphics::lru_table::SlotId, net, prediction::PredictedMotion, worldgen, worldgen::NodeState,
-    Config, Net,
+    Net,
 };
 use common::{
     dodeca,
@@ -27,9 +27,7 @@ pub struct Node {
 
 /// Game state
 pub struct Sim {
-    cfg: Arc<Config>,
     net: Net,
-    meters_to_absolute: f32,
 
     // World state
     pub graph: DualGraph,
@@ -56,13 +54,9 @@ pub struct Sim {
 }
 
 impl Sim {
-    pub fn new(net: Net, cfg: Arc<Config>) -> Self {
+    pub fn new(net: Net) -> Self {
         Self {
             net,
-            meters_to_absolute: common::meters_to_absolute(
-                cfg.simulation.chunk_size,
-                cfg.simulation.voxel_size,
-            ),
 
             graph: Graph::new(),
             graph_entities: GraphEntities::new(),
@@ -80,8 +74,6 @@ impl Sim {
                 node: NodeId::ROOT,
                 local: na::one(),
             }),
-
-            cfg,
         }
     }
 
@@ -140,6 +132,8 @@ impl Sim {
                     character_id: msg.character,
                     step_interval: Duration::from_secs(1) / u32::from(msg.rate),
                     chunk_size: msg.chunk_size,
+                    meters_to_absolute: msg.meters_to_absolute,
+                    movement_speed: msg.movement_speed,
                 });
                 // Populate the root node
                 populate_fresh_nodes(&mut self.graph, msg.chunk_size);
@@ -253,11 +247,11 @@ impl Sim {
 
     fn send_input(&mut self) {
         let (direction, speed) = sanitize_motion_input(self.orientation * self.average_velocity);
+        let params = self.params.as_ref().unwrap();
         let generation = self.prediction.push(
             &direction,
             speed
-                * self.cfg.simulation.movement_speed
-                * self.meters_to_absolute
+                * params.movement_speed
                 * self.params.as_ref().unwrap().step_interval.as_secs_f32(),
         );
 
@@ -278,10 +272,7 @@ impl Sim {
             // We multiply by the entire timestep rather than the time so far because
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
             // future.
-            let distance = speed
-                * self.cfg.simulation.movement_speed
-                * self.meters_to_absolute
-                * params.step_interval.as_secs_f32();
+            let distance = speed * params.movement_speed * params.step_interval.as_secs_f32();
             result.local *= math::translate_along(&direction, distance);
         }
         result
@@ -312,6 +303,9 @@ impl Sim {
 pub struct Parameters {
     pub step_interval: Duration,
     pub chunk_size: u8,
+    pub meters_to_absolute: f32,
+    /// Absolute units
+    pub movement_speed: f32,
     pub character_id: EntityId,
 }
 

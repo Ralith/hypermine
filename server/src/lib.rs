@@ -10,12 +10,11 @@ use std::{
 use anyhow::{Context, Error, Result};
 use futures::{select, StreamExt, TryStreamExt};
 use hecs::Entity;
-use serde::{Deserialize, Serialize};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
 use tracing::{debug, error, error_span, info, trace};
 
-use common::{codec, proto};
+use common::{codec, proto, SimConfig};
 use input_queue::InputQueue;
 use sim::Sim;
 
@@ -23,33 +22,6 @@ pub struct NetParams {
     pub certificate_chain: quinn::CertificateChain,
     pub private_key: quinn::PrivateKey,
     pub socket: UdpSocket,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct SimConfig {
-    pub rate: u16,
-    pub view_distance: f64,
-    pub input_queue_size_ms: u16,
-    /// Number of voxels along the edge of a chunk
-    pub chunk_size: u8,
-    /// Approximate length of the edge of a voxel in meters
-    pub voxel_size: f32,
-    /// Character movement speed in m/s
-    pub movement_speed: f32,
-}
-
-impl Default for SimConfig {
-    fn default() -> Self {
-        Self {
-            rate: 10,
-            view_distance: 3.5,
-            input_queue_size_ms: 50,
-            chunk_size: 12,
-            voxel_size: 1.0,
-            movement_speed: 4.0,
-        }
-    }
 }
 
 #[tokio::main]
@@ -105,10 +77,7 @@ impl Server {
         // Apply queued inputs
         for (id, client) in &mut self.clients {
             if let Some(ref handles) = client.handles {
-                if let Some(cmd) = client.inputs.pop(
-                    now,
-                    Duration::from_millis(self.cfg.input_queue_size_ms.into()),
-                ) {
+                if let Some(cmd) = client.inputs.pop(now, self.cfg.input_queue_size) {
                     client.latest_input_processed = cmd.generation;
                     if let Err(e) = self.sim.command(handles.character, cmd) {
                         error!(client = ?id, "couldn't process command: {}", e);
@@ -174,7 +143,8 @@ impl Server {
                     character: id,
                     rate: self.cfg.rate,
                     chunk_size: self.cfg.chunk_size,
-                    voxel_size: self.cfg.voxel_size,
+                    meters_to_absolute: self.cfg.meters_to_absolute,
+                    movement_speed: self.cfg.movement_speed,
                 };
                 tokio::spawn(async move {
                     // Errors will be handled by recv task

@@ -32,7 +32,7 @@ fn main() {
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
         let key = cert.serialize_private_key_der();
         let cert = cert.serialize_der().unwrap();
-        let sim_cfg = config.simulation.clone();
+        let sim_cfg = config.local_simulation.clone();
 
         std::thread::spawn(move || {
             if let Err(e) = server::run(
@@ -62,7 +62,7 @@ fn main() {
 
     // Kick off networking
     let net = net::spawn(config.clone());
-    let sim = Sim::new(net, config.clone());
+    let sim = Sim::new(net);
 
     // Finish creating the window, including the Vulkan resources used to render to it
     let window = graphics::Window::new(window, core.clone(), config, sim);

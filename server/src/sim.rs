@@ -6,12 +6,11 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use tracing::{error_span, info, trace};
 
-use crate::SimConfig;
 use common::{
     graph::{Graph, NodeId},
     math,
     proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
-    sanitize_motion_input, EntityId, Step,
+    sanitize_motion_input, EntityId, SimConfig, Step,
 };
 
 pub struct Sim {
@@ -23,13 +22,11 @@ pub struct Sim {
     graph: Graph<Empty>,
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
-    meters_to_absolute: f32,
 }
 
 impl Sim {
     pub fn new(cfg: Arc<SimConfig>) -> Self {
         let mut result = Self {
-            meters_to_absolute: common::meters_to_absolute(cfg.chunk_size, cfg.voxel_size),
             cfg,
             rng: SmallRng::from_entropy(),
             step: 0,
@@ -41,7 +38,7 @@ impl Sim {
         };
         result
             .graph
-            .ensure_nearby(&Position::origin(), result.cfg.view_distance);
+            .ensure_nearby(&Position::origin(), f64::from(result.cfg.view_distance));
         result
     }
 
@@ -71,7 +68,7 @@ impl Sim {
         let mut ch = self.world.get_mut::<Character>(entity)?;
         let (direction, speed) = sanitize_motion_input(command.velocity);
         ch.direction = direction;
-        ch.speed = speed * self.cfg.movement_speed * self.meters_to_absolute;
+        ch.speed = speed * self.cfg.movement_speed;
         ch.orientation = command.orientation;
         Ok(())
     }
@@ -115,7 +112,8 @@ impl Sim {
                 pos.node = next_node;
                 pos.local = transition_xf * pos.local;
             }
-            self.graph.ensure_nearby(pos, self.cfg.view_distance);
+            self.graph
+                .ensure_nearby(pos, f64::from(self.cfg.view_distance));
         }
 
         // Capture state changes for broadcast to clients
