@@ -53,7 +53,7 @@ impl NodeState {
             surface: Surface::at_root(),
             spice: 0,
             enviro: EnviroFactors {
-                max_elevation: 0,
+                max_elevation: -2,
                 temperature: 0,
                 rainfall: 0,
                 slopeiness: 3,
