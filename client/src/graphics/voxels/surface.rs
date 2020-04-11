@@ -1,7 +1,7 @@
 use std::ptr;
 
 use ash::{version::DeviceV1_0, vk, Device};
-use lahar::{DedicatedBuffer, DedicatedImage};
+use lahar::{DedicatedImage, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
 use super::surface_extraction::DrawBuffer;
@@ -301,7 +301,7 @@ impl Surface {
             &[common_ds, self.ds],
             &[],
         );
-        device.cmd_bind_vertex_buffers(cmd, 0, &[frame.transforms.handle], &[0]);
+        device.cmd_bind_vertex_buffers(cmd, 0, &[frame.transforms.buffer()], &[0]);
 
         device.cmd_push_constants(
             cmd,
@@ -342,28 +342,25 @@ impl Surface {
 }
 
 pub struct Frame {
-    transforms: DedicatedBuffer,
+    transforms: DedicatedMapping<[na::Matrix4<f32>]>,
 }
 
 impl Frame {
     pub fn new(gfx: &Base, count: u32) -> Self {
         unsafe {
-            let transforms = DedicatedBuffer::new(
+            let transforms = DedicatedMapping::zeroed_array(
                 &gfx.device,
                 &gfx.memory_properties,
-                &vk::BufferCreateInfo::builder()
-                    .size(vk::DeviceSize::from(count) * TRANSFORM_SIZE)
-                    .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST)
-                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
-                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+                vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                count as usize * TRANSFORM_SIZE as usize,
             );
-            gfx.set_name(transforms.handle, cstr!("voxel transforms"));
+            gfx.set_name(transforms.buffer(), cstr!("voxel transforms"));
             Self { transforms }
         }
     }
 
-    pub fn transforms(&self) -> vk::Buffer {
-        self.transforms.handle
+    pub fn transforms_mut(&mut self) -> &mut [na::Matrix4<f32>] {
+        &mut self.transforms
     }
 }
 
