@@ -6,6 +6,7 @@ use anyhow::{anyhow, Context, Result};
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use tracing::warn;
 
+use common::SimConfig;
 use config::Config;
 
 fn main() {
@@ -62,6 +63,6 @@ pub fn run() -> Result<()> {
             private_key,
             socket: UdpSocket::bind(&cfg.listen).context("binding socket")?,
         },
-        cfg.simulation,
+        SimConfig::from_raw(&cfg.simulation),
     )
 }
