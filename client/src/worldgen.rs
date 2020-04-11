@@ -133,13 +133,13 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     let center_elevation = state
         .surface
         .voxel_elevation(na::Vector3::repeat(0.5), chunk);
-    if center_elevation + ELEVATION_MARGIN < me_max / -10.0 {
+    if center_elevation - ELEVATION_MARGIN > me_max / 10.0 {
         // The whole chunk is underground
         // TODO: More accurate VoxelData
         return VoxelData::Solid(Material::Stone);
     }
 
-    if center_elevation - ELEVATION_MARGIN > me_min / -10.0 {
+    if center_elevation + ELEVATION_MARGIN < me_min / 10.0 {
         // The whole chunk is above ground
         return VoxelData::Solid(Material::Void);
     }
@@ -183,7 +183,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                     voxel_mat = Material::Wood;
                 }
 
-                if state.surface.voxel_elevation(center, chunk) < max_e / -10.0 {
+                if state.surface.voxel_elevation(center, chunk) < max_e / 10.0 {
                     voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
                 }
             }
@@ -378,7 +378,7 @@ impl Surface {
     /// The max_elevation of a single voxel wrt. this Surface
     fn voxel_elevation(&self, voxel: na::Vector3<f64>, cube: Vertex) -> f64 {
         let pos = lorentz_normalize(&(cube.chunk_to_node() * voxel.push(1.0)));
-        mip(&pos, &self.normal).asinh()
+        mip(&self.normal, &pos).asinh()
     }
 }
 
