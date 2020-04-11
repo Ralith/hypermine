@@ -76,3 +76,20 @@ pub fn sanitize_motion_input(v: na::Vector3<f32>) -> (na::Unit<na::Vector3<f32>>
         (direction, speed.min(1.0))
     }
 }
+
+/// Compute the scaling factor from meters to absolute units, given the number of voxels in a chunk
+/// and the approximate size of a voxel in meters.
+///
+/// Curved spaces have a notion of absolute distance, defined with respect to the curvature. We
+/// mostly work in those units, but the conversion from meters, used to scale the player and assets
+/// and so forth, is configurable. This effectively allows for configurable curvature.
+///
+/// Note that exact voxel size varies within each chunk. We reference the mean width of the voxels
+/// along the X axis through the center of a chunk.
+pub fn meters_to_absolute(chunk_size: u8, voxel_size: f32) -> f32 {
+    let a = dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(1.0, 0.5, 0.5, 1.0);
+    let b = dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(0.0, 0.5, 0.5, 1.0);
+    let minimum_chunk_face_separation = math::distance(&a, &b);
+    let absolute_voxel_size = minimum_chunk_face_separation / f64::from(chunk_size);
+    absolute_voxel_size as f32 / voxel_size
+}

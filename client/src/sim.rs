@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use fxhash::FxHashMap;
 use hecs::Entity;
@@ -6,7 +6,7 @@ use tracing::{debug, error, trace};
 
 use crate::{
     graphics::lru_table::SlotId, net, prediction::PredictedMotion, worldgen, worldgen::NodeState,
-    Net,
+    Config, Net,
 };
 use common::{
     dodeca,
@@ -27,7 +27,9 @@ pub struct Node {
 
 /// Game state
 pub struct Sim {
+    cfg: Arc<Config>,
     net: Net,
+    meters_to_absolute: f32,
 
     // World state
     pub graph: DualGraph,
@@ -42,17 +44,25 @@ pub struct Sim {
     // Input state
     since_input_sent: Duration,
     /// Most recent input
+    ///
+    /// Units are relative to movement speed.
     instantaneous_velocity: na::Vector3<f32>,
     /// Average input over the current time step. The portion of the timestep which has not yet
     /// elapsed is considered to have zero input.
+    ///
+    /// Units are relative to movement speed.
     average_velocity: na::Vector3<f32>,
     prediction: PredictedMotion,
 }
 
 impl Sim {
-    pub fn new(net: Net) -> Self {
+    pub fn new(net: Net, cfg: Arc<Config>) -> Self {
         Self {
             net,
+            meters_to_absolute: common::meters_to_absolute(
+                cfg.simulation.chunk_size,
+                cfg.simulation.voxel_size,
+            ),
 
             graph: Graph::new(),
             graph_entities: GraphEntities::new(),
@@ -70,6 +80,8 @@ impl Sim {
                 node: NodeId::ROOT,
                 local: na::one(),
             }),
+
+            cfg,
         }
     }
 
@@ -243,7 +255,10 @@ impl Sim {
         let (direction, speed) = sanitize_motion_input(self.orientation * self.average_velocity);
         let generation = self.prediction.push(
             &direction,
-            speed * self.params.as_ref().unwrap().step_interval.as_secs_f32(),
+            speed
+                * self.cfg.simulation.movement_speed
+                * self.meters_to_absolute
+                * self.params.as_ref().unwrap().step_interval.as_secs_f32(),
         );
 
         // Any failure here will be better handled in handle_net's ConnectionLost case
@@ -263,7 +278,10 @@ impl Sim {
             // We multiply by the entire timestep rather than the time so far because
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
             // future.
-            let distance = speed * params.step_interval.as_secs_f32();
+            let distance = speed
+                * self.cfg.simulation.movement_speed
+                * self.meters_to_absolute
+                * params.step_interval.as_secs_f32();
             result.local *= math::translate_along(&direction, distance);
         }
         result

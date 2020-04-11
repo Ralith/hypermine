@@ -13,6 +13,8 @@ pub struct ServerHello {
     pub rate: u16,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: u8,
+    /// Approximate length of the edge of a voxel in meters
+    pub voxel_size: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
