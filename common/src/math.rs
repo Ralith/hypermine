@@ -3,9 +3,6 @@
 //! Vector4 values are assumed to be homogeneous Klein model coordinates unless otherwise
 //! stated. Note that Minkowski model coordinates are valid Klein coordinates, but not vis versa.
 
-mod isometry;
-pub use isometry::Isometry;
-
 use na::{RealField, Scalar};
 use serde::{Deserialize, Serialize};
 
