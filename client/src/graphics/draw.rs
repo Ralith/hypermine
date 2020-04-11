@@ -415,7 +415,10 @@ impl Draw {
             );
         }
 
-        for (node, transform) in sim.graph.nearby_nodes(&view, self.cfg.view_distance) {
+        for (node, transform) in sim
+            .graph
+            .nearby_nodes(&view, self.cfg.simulation.view_distance)
+        {
             for &entity in sim.graph_entities.get(node) {
                 if sim.local_character == Some(entity) {
                     // Don't draw ourself
@@ -459,7 +462,8 @@ impl Draw {
                 inverse_projection: projection.try_inverse().unwrap(),
                 // Only 1e-2 of color should be visible from view_distance, assuming
                 // exponential-squared fog
-                fog_density: ((1.0f64 / 1e-2).ln().sqrt() / self.cfg.view_distance) as f32,
+                fog_density: ((1.0f64 / 1e-2).ln().sqrt() / self.cfg.simulation.view_distance)
+                    as f32,
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             },
         );

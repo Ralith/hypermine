@@ -8,7 +8,6 @@ mod worldgen;
 use std::{
     net::{SocketAddr, UdpSocket},
     sync::Arc,
-    time::Duration,
 };
 
 use config::Config;
@@ -33,7 +32,7 @@ fn main() {
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
         let key = cert.serialize_private_key_der();
         let cert = cert.serialize_der().unwrap();
-        let view_distance = config.view_distance;
+        let sim_cfg = config.simulation.clone();
 
         std::thread::spawn(move || {
             if let Err(e) = server::run(
@@ -44,12 +43,7 @@ fn main() {
                     private_key: quinn::PrivateKey::from_der(&key).unwrap(),
                     socket,
                 },
-                server::SimConfig {
-                    rate: 4,
-                    view_distance,
-                    input_queue_size: Duration::from_millis(10),
-                    chunk_size: 12,
-                },
+                sim_cfg,
             ) {
                 eprintln!("{:#}", e);
                 std::process::exit(1);

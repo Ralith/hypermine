@@ -10,6 +10,7 @@ use std::{
 use anyhow::{Context, Error, Result};
 use futures::{select, StreamExt, TryStreamExt};
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
 use tracing::{debug, error, error_span, info, trace};
@@ -24,12 +25,25 @@ pub struct NetParams {
     pub socket: UdpSocket,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct SimConfig {
     pub rate: u16,
     pub view_distance: f64,
-    pub input_queue_size: Duration,
+    pub input_queue_size_ms: u16,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: u8,
+}
+
+impl Default for SimConfig {
+    fn default() -> Self {
+        Self {
+            rate: 10,
+            view_distance: 3.5,
+            input_queue_size_ms: 50,
+            chunk_size: 12,
+        }
+    }
 }
 
 #[tokio::main]
@@ -85,7 +99,10 @@ impl Server {
         // Apply queued inputs
         for (id, client) in &mut self.clients {
             if let Some(ref handles) = client.handles {
-                if let Some(cmd) = client.inputs.pop(now, self.cfg.input_queue_size) {
+                if let Some(cmd) = client.inputs.pop(
+                    now,
+                    Duration::from_millis(self.cfg.input_queue_size_ms.into()),
+                ) {
                     client.latest_input_processed = cmd.generation;
                     if let Err(e) = self.sim.command(handles.character, cmd) {
                         error!(client = ?id, "couldn't process command: {}", e);
