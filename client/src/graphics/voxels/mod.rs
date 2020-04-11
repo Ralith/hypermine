@@ -4,10 +4,9 @@ mod surface_extraction;
 #[cfg(test)]
 mod tests;
 
-use std::mem;
 use std::sync::Arc;
 
-use ash::{version::DeviceV1_0, vk, Device};
+use ash::{vk, Device};
 
 use tracing::warn;
 
@@ -177,30 +176,10 @@ impl Voxels {
                 };
                 frame.drawn.push(slot);
                 // Transfer transform
-                let chunk_transform = node_transform * chunk.chunk_to_node().map(|x| x as f32);
-                device.cmd_update_buffer(
-                    cmd,
-                    frame.surface.transforms(),
-                    slot.0 as vk::DeviceSize * surface::TRANSFORM_SIZE,
-                    &mem::transmute::<_, [u8; surface::TRANSFORM_SIZE as usize]>(chunk_transform),
-                );
+                frame.surface.transforms_mut()[slot.0 as usize] =
+                    node_transform * chunk.chunk_to_node().map(|x| x as f32);
             }
         }
-
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::DependencyFlags::default(),
-            &[],
-            &[vk::BufferMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                .buffer(frame.surface.transforms())
-                .size(vk::WHOLE_SIZE)
-                .build()],
-            &[],
-        );
     }
 
     pub unsafe fn draw(
