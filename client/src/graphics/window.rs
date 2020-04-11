@@ -121,7 +121,7 @@ impl Window {
 
                     if !had_params {
                         if let Some(params) = self.sim.params() {
-                            self.draw.as_mut().unwrap().on_connect(params.chunk_size);
+                            self.draw.as_mut().unwrap().configure(params);
                         }
                     }
 

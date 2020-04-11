@@ -261,12 +261,10 @@ async fn load_geom(
         .zip(v_staging.chunks_exact_mut(mem::size_of::<Vertex>()))
     {
         let v = Vertex {
-            // TODO: Principled scaling factor
             position: na::Point3::from_homogeneous(
                 transform * (na::Point3::from(pos)).to_homogeneous(),
             )
-            .unwrap_or_else(na::Point3::origin)
-                * 4e-2,
+            .unwrap_or_else(na::Point3::origin),
             texcoords: texcoords
                 .as_mut()
                 .map_or_else(na::zero, |x| x.next().unwrap().into()),

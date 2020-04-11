@@ -6,7 +6,7 @@ use lahar::Staged;
 use tracing::info;
 
 use super::{loader::Asset, voxels, Base, Fog, GltfScene, Loader, Meshes, Voxels};
-use crate::{Config, Sim};
+use crate::{sim, Config, Sim};
 use common::proto::{Character, Position};
 
 /// Manages rendering, independent of what is being rendered to
@@ -213,12 +213,13 @@ impl Draw {
         }
     }
 
-    pub fn on_connect(&mut self, chunk_dimension: u8) {
+    /// Called with server-defined world parameters once they're known
+    pub fn configure(&mut self, params: &sim::Parameters) {
         let voxels = Voxels::new(
             &self.gfx,
             self.cfg.clone(),
             &mut self.loader,
-            u32::from(chunk_dimension),
+            u32::from(params.chunk_size),
             PIPELINE_DEPTH,
         );
         for state in &mut self.states {
@@ -415,25 +416,30 @@ impl Draw {
             );
         }
 
-        for (node, transform) in sim
-            .graph
-            .nearby_nodes(&view, f64::from(self.cfg.local_simulation.view_distance))
-        {
-            for &entity in sim.graph_entities.get(node) {
-                if sim.local_character == Some(entity) {
-                    // Don't draw ourself
-                    continue;
-                }
-                let pos = sim
-                    .world
-                    .get::<Position>(entity)
-                    .expect("positionless entity in graph");
-                if let Some(character_model) = self.loader.get(self.character_model) {
-                    if let Ok(ch) = sim.world.get::<Character>(entity) {
-                        let transform = transform * pos.local * ch.orientation.to_homogeneous();
-                        for mesh in &character_model.0 {
-                            self.meshes
-                                .draw(device, state.common_ds, cmd, mesh, &transform);
+        if let Some(params) = sim.params() {
+            for (node, transform) in sim
+                .graph
+                .nearby_nodes(&view, f64::from(self.cfg.local_simulation.view_distance))
+            {
+                for &entity in sim.graph_entities.get(node) {
+                    if sim.local_character == Some(entity) {
+                        // Don't draw ourself
+                        continue;
+                    }
+                    let pos = sim
+                        .world
+                        .get::<Position>(entity)
+                        .expect("positionless entity in graph");
+                    if let Some(character_model) = self.loader.get(self.character_model) {
+                        if let Ok(ch) = sim.world.get::<Character>(entity) {
+                            let transform = transform
+                                * pos.local
+                                * na::Matrix4::new_scaling(params.meters_to_absolute)
+                                * ch.orientation.to_homogeneous();
+                            for mesh in &character_model.0 {
+                                self.meshes
+                                    .draw(device, state.common_ds, cmd, mesh, &transform);
+                            }
                         }
                     }
                 }
