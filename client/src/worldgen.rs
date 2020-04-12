@@ -161,36 +161,27 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                 let max_e = elev;
 
                 if temp < -2.0 {
-
                     if rain < -2.0 {
                         voxel_mat = Material::Gravelstone;
-                    } 
-                    else if rain < 2.0 {
+                    } else if rain < 2.0 {
                         voxel_mat = Material::Stone;
-                    }
-                    else {
+                    } else {
                         voxel_mat = Material::Greystone;
                     }
                 } else if temp < 2.0 {
                     if rain < -2.0 {
                         voxel_mat = Material::Graveldirt;
-                    } 
-                    else if rain < 2.0 {
+                    } else if rain < 2.0 {
                         voxel_mat = Material::Dirt;
-                    }
-                    else {
+                    } else {
                         voxel_mat = Material::Grass;
                     }
+                } else if rain < -2.0 {
+                    voxel_mat = Material::Redsand;
+                } else if rain < 2.0 {
+                    voxel_mat = Material::Sand;
                 } else {
-                    if rain < -2.0 {
-                        voxel_mat = Material::Redsand;
-                    } 
-                    else if rain < 2.0 {
-                        voxel_mat = Material::Sand;
-                    }
-                    else {
-                        voxel_mat = Material::Flowergrass;
-                    }
+                    voxel_mat = Material::Flowergrass;
                 }
 
                 //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
@@ -227,7 +218,10 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     // Only plant a tree if there is exactly one adjacent dirt block.
     if num_void_neighbors == 5 {
         for i in neighbor_data.iter() {
-            if (i.material == Material::Dirt) || (i.material == Material::Grass) || (i.material == Material::Flowergrass) {
+            if (i.material == Material::Dirt)
+                || (i.material == Material::Grass)
+                || (i.material == Material::Flowergrass)
+            {
                 voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
                 let leaf_location = index(dimension, i.coords_opposing);
                 voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
@@ -288,7 +282,6 @@ struct EnviroFactors {
     slopeiness: i64,
 }
 impl EnviroFactors {
-
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
@@ -418,33 +411,40 @@ fn trilerp<N: na::RealField>(
         if t < threshold1 {
             out = v0;
         } else if t < threshold2 {
-            let s = (t - threshold1)/(threshold2 - threshold1);
+            let s = (t - threshold1) / (threshold2 - threshold1);
             // S-shaped curve that in practice is barely different to a straight line
-            out = (v0-v1)*s*s*s + (v0-v1)*s*s*s + (v1-v0)*s*s + (v1-v0)*s*s + (v1-v0)*s*s + v0;
+            out = (v0 - v1) * s * s * s
+                + (v0 - v1) * s * s * s
+                + (v1 - v0) * s * s
+                + (v1 - v0) * s * s
+                + (v1 - v0) * s * s
+                + v0;
         } else {
             out = v1;
         }
         out
     }
-    fn bilerp<N: na::RealField>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>,
+    fn bilerp<N: na::RealField>(
+        v00: N,
+        v01: N,
+        v10: N,
+        v11: N,
+        t: na::Vector2<N>,
         threshold1: N,
-        threshold2: N,) -> N {
-        lerp(lerp(v00, v01, t.x,
+        threshold2: N,
+    ) -> N {
+        lerp(
+            lerp(v00, v01, t.x, threshold1, threshold2),
+            lerp(v10, v11, t.x, threshold1, threshold2),
+            t.y,
             threshold1,
-            threshold2), lerp(v10, v11, t.x,
-                threshold1,
-                threshold2), t.y,
-                threshold1,
-                threshold2)
+            threshold2,
+        )
     }
 
     lerp(
-        bilerp(v000, v100, v010, v110, t.xy(),
-        threshold1,
-        threshold2),
-        bilerp(v001, v101, v011, v111, t.xy(),
-        threshold1,
-        threshold2),
+        bilerp(v000, v100, v010, v110, t.xy(), threshold1, threshold2),
+        bilerp(v001, v101, v011, v111, t.xy(), threshold1, threshold2),
         t.z,
         threshold1,
         threshold2,
