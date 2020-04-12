@@ -461,10 +461,7 @@ impl Draw {
             Uniforms {
                 view_projection,
                 inverse_projection: projection.try_inverse().unwrap(),
-                // Only 1e-2 of color should be visible from view_distance, assuming
-                // exponential-squared fog
-                fog_density: ((1.0f32 / 1e-2).ln().sqrt()
-                    / self.cfg.local_simulation.view_distance),
+                fog_density: (0.5 / self.cfg.local_simulation.view_distance),
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             },
         );
