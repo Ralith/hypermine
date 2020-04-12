@@ -133,13 +133,14 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     // empirically.
     const ELEVATION_MARGIN: f64 = 0.7;
     let center_elevation = state.surface.elevation(na::Vector3::repeat(0.5), chunk);
-    if center_elevation - ELEVATION_MARGIN > me_max / 10.0 {
+    let threshold = 10.0;
+    if center_elevation - ELEVATION_MARGIN > me_max / threshold {
         // The whole chunk is underground
         // TODO: More accurate VoxelData
         return VoxelData::Solid(Material::Stone);
     }
 
-    if center_elevation + ELEVATION_MARGIN < me_min / 10.0 {
+    if center_elevation + ELEVATION_MARGIN < me_min / threshold {
         // The whole chunk is above ground
         return VoxelData::Solid(Material::Void);
     }
@@ -151,10 +152,10 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                 let center = voxel_center(dimension, coords);
                 let cube_coords = center * 0.5;
 
-                let elev = trilerp(&enviros.max_elevations, cube_coords);
-                let rain = trilerp(&enviros.rainfalls, cube_coords);
-                let temp = trilerp(&enviros.temperatures, cube_coords);
-                let slope = trilerp(&enviros.slopeiness, cube_coords);
+                let elev = trilerp(&enviros.max_elevations, cube_coords, 0.2, 0.8);
+                let rain = trilerp(&enviros.rainfalls, cube_coords, 0.2, 0.8);
+                let temp = trilerp(&enviros.temperatures, cube_coords, 0.2, 0.8);
+                let slope = trilerp(&enviros.slopeiness, cube_coords, 0.2, 0.8);
 
                 let mut voxel_mat;
                 let max_e = elev;
@@ -205,7 +206,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                     }
                 }
 
-                if state.surface.elevation(center, chunk) < max_e / 10.0 {
+                if state.surface.elevation(center, chunk) < max_e / threshold {
                     voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
                 }
             }
@@ -323,7 +324,6 @@ impl Into<(f64, f64, f64, f64)> for EnviroFactors {
 struct ChunkIncidentEnviroFactors {
     max_elevations: [f64; 8],
     slopeiness: [f64; 8],
-    #[allow(dead_code)]
     temperatures: [f64; 8],
     rainfalls: [f64; 8],
 }
@@ -410,18 +410,44 @@ impl Surface {
 fn trilerp<N: na::RealField>(
     &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
     t: na::Vector3<N>,
+    threshold1: N,
+    threshold2: N,
 ) -> N {
-    fn lerp<N: na::RealField>(v0: N, v1: N, t: N) -> N {
-        v0 * (N::one() - t) + v1 * t
+    fn lerp<N: na::RealField>(v0: N, v1: N, t: N, threshold1: N, threshold2: N) -> N {
+        let out: N;
+        if t < threshold1 {
+            out = v0;
+        } else if t < threshold2 {
+            let s = (t - threshold1)/(threshold2 - threshold1);
+            // S-shaped curve that in practice is barely different to a straight line
+            out = (v0-v1)*s*s*s + (v0-v1)*s*s*s + (v1-v0)*s*s + (v1-v0)*s*s + (v1-v0)*s*s + v0;
+        } else {
+            out = v1;
+        }
+        out
     }
-    fn bilerp<N: na::RealField>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>) -> N {
-        lerp(lerp(v00, v01, t.x), lerp(v10, v11, t.x), t.y)
+    fn bilerp<N: na::RealField>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>,
+        threshold1: N,
+        threshold2: N,) -> N {
+        lerp(lerp(v00, v01, t.x,
+            threshold1,
+            threshold2), lerp(v10, v11, t.x,
+                threshold1,
+                threshold2), t.y,
+                threshold1,
+                threshold2)
     }
 
     lerp(
-        bilerp(v000, v100, v010, v110, t.xy()),
-        bilerp(v001, v101, v011, v111, t.xy()),
+        bilerp(v000, v100, v010, v110, t.xy(),
+        threshold1,
+        threshold2),
+        bilerp(v001, v101, v011, v111, t.xy(),
+        threshold1,
+        threshold2),
         t.z,
+        threshold1,
+        threshold2,
     )
 }
 
