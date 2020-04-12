@@ -461,7 +461,7 @@ impl Draw {
             Uniforms {
                 view_projection,
                 inverse_projection: projection.try_inverse().unwrap(),
-                fog_density: (0.5 / self.cfg.local_simulation.view_distance),
+                fog_density: (1.0 / self.cfg.local_simulation.view_distance),
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             },
         );

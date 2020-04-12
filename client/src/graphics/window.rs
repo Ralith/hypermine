@@ -263,7 +263,7 @@ impl Window {
                 swapchain.state.extent.width as f32 / swapchain.state.extent.height as f32;
             let frame = &swapchain.state.frames[frame_id as usize];
             // Render the frame
-            let vfov = f32::consts::FRAC_PI_4;
+            let vfov = f32::consts::FRAC_PI_4*1.2;
             draw.draw(
                 &mut self.sim,
                 frame.buffer,
