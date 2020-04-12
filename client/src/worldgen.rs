@@ -153,16 +153,43 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
 
                 let elev = trilerp(&enviros.max_elevations, cube_coords);
                 let rain = trilerp(&enviros.rainfalls, cube_coords);
+                let temp = trilerp(&enviros.temperatures, cube_coords);
                 let slope = trilerp(&enviros.slopeiness, cube_coords);
 
-                let mut voxel_mat = Material::Dirt;
+                let mut voxel_mat;
                 let max_e = elev;
 
-                if rain > 2.5 {
-                    voxel_mat = Material::Sand;
-                }
-                if rain < -0.5 {
-                    voxel_mat = Material::Stone;
+                if temp < -2.0 {
+
+                    if rain < -2.0 {
+                        voxel_mat = Material::Gravelstone;
+                    } 
+                    else if rain < 2.0 {
+                        voxel_mat = Material::Stone;
+                    }
+                    else {
+                        voxel_mat = Material::Greystone;
+                    }
+                } else if temp < 2.0 {
+                    if rain < -2.0 {
+                        voxel_mat = Material::Graveldirt;
+                    } 
+                    else if rain < 2.0 {
+                        voxel_mat = Material::Dirt;
+                    }
+                    else {
+                        voxel_mat = Material::Grass;
+                    }
+                } else {
+                    if rain < -2.0 {
+                        voxel_mat = Material::Redsand;
+                    } 
+                    else if rain < 2.0 {
+                        voxel_mat = Material::Sand;
+                    }
+                    else {
+                        voxel_mat = Material::Flowergrass;
+                    }
                 }
 
                 //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
@@ -172,15 +199,10 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                 }
                 if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
                     voxel_mat = match voxel_mat {
-                        Material::Dirt => Material::Grass,
-                        Material::Sand => Material::Redsand,
-                        Material::Stone => Material::Greystone,
-                        _ => Material::Valite,
+                        Material::Flowergrass => Material::Bigflowergrass,
+                        Material::Greystone => Material::Blackstone,
+                        _ => voxel_mat,
                     }
-                }
-                if slope_mod < 0_f64 {
-                    //should not happen.
-                    voxel_mat = Material::Wood;
                 }
 
                 if state.surface.elevation(center, chunk) < max_e / 10.0 {
@@ -192,7 +214,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
 
     // Planting trees on dirt. Trees consist of a block of wood and a block of leaves.
     // The leaf block is on the opposite face of the wood block as the dirt block.
-    let loc = na::Vector3::repeat(2);
+    let loc = na::Vector3::repeat(4);
     let voxel_of_interest_index = index(dimension, loc);
     let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
 
@@ -204,7 +226,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     // Only plant a tree if there is exactly one adjacent dirt block.
     if num_void_neighbors == 5 {
         for i in neighbor_data.iter() {
-            if i.material == Material::Dirt {
+            if (i.material == Material::Dirt) || (i.material == Material::Grass) || (i.material == Material::Flowergrass) {
                 voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
                 let leaf_location = index(dimension, i.coords_opposing);
                 voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
@@ -265,6 +287,7 @@ struct EnviroFactors {
     slopeiness: i64,
 }
 impl EnviroFactors {
+
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);

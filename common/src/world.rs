@@ -14,10 +14,15 @@ pub enum Material {
     Redstone = 10,
     Valite = 11,
     Greystone = 12,
+    Flowergrass = 13,
+    Gravelstone = 14,
+    Graveldirt = 15,
+    Blackstone = 16,
+    Bigflowergrass = 17,
 }
 
 impl Material {
-    pub const COUNT: usize = 13;
+    pub const COUNT: usize = 18;
 }
 
 impl Default for Material {
