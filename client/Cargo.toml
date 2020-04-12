@@ -36,6 +36,8 @@ hecs = "0.2.9"
 rcgen = { version = "0.7.0", default-features = false }
 memoffset = "0.5"
 gltf = { version = "0.15.2", default-features = false, features = ["utils"] }
+rand = "0.7.3"
+rand_pcg = "0.2.1"
 
 [features]
 default = ["use-repo-assets"]

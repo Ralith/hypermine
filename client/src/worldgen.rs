@@ -1,3 +1,5 @@
+use rand::{distributions::Uniform, Rng, SeedableRng};
+
 use crate::sim::{DualGraph, VoxelData};
 use common::{
     dodeca::{Side, Vertex},
@@ -266,14 +268,16 @@ struct EnviroFactors {
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
-        let slopeiness = parent.slopeiness + (1 - ((spice % 78) / 26) as i64);
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
+        let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
+        let slopeiness = parent.slopeiness + rng.sample(&plus_or_minus_one);
         Self {
             slopeiness,
             max_elevation: parent.max_elevation
                 + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
-                + (1 - ((spice % 30) / 10) as i64),
-            temperature: parent.temperature + (1 - ((spice % 15) / 5) as i64),
-            rainfall: parent.rainfall + (1 - ((spice % 90) / 30) as i64),
+                + rng.sample(&plus_or_minus_one),
+            temperature: parent.temperature + rng.sample(&plus_or_minus_one),
+            rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
         }
     }
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
