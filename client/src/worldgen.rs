@@ -132,9 +132,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
     // empirically.
     const ELEVATION_MARGIN: f64 = 0.7;
-    let center_elevation = state
-        .surface
-        .voxel_elevation(na::Vector3::repeat(0.5), chunk);
+    let center_elevation = state.surface.elevation(na::Vector3::repeat(0.5), chunk);
     if center_elevation - ELEVATION_MARGIN > me_max / 10.0 {
         // The whole chunk is underground
         // TODO: More accurate VoxelData
@@ -185,7 +183,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                     voxel_mat = Material::Wood;
                 }
 
-                if state.surface.voxel_elevation(center, chunk) < max_e / 10.0 {
+                if state.surface.elevation(center, chunk) < max_e / 10.0 {
                     voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
                 }
             }
@@ -379,9 +377,9 @@ impl Surface {
         }
     }
 
-    /// The max_elevation of a single voxel wrt. this Surface
-    fn voxel_elevation(&self, voxel: na::Vector3<f64>, cube: Vertex) -> f64 {
-        let pos = lorentz_normalize(&(cube.chunk_to_node() * voxel.push(1.0)));
+    /// Distance from a point in a chunk to the surface
+    fn elevation(&self, chunk_coord: na::Vector3<f64>, chunk: Vertex) -> f64 {
+        let pos = lorentz_normalize(&(chunk.chunk_to_node() * chunk_coord.push(1.0)));
         mip(&self.normal, &pos).asinh()
     }
 }
@@ -437,8 +435,8 @@ mod test {
     fn check_surface_flipped() {
         let root = Surface::at_root();
         assert_abs_diff_eq!(
-            root.voxel_elevation(na::Vector3::x() * 2.0, Vertex::A),
-            root.voxel_elevation(na::Vector3::x() * 2.0, Vertex::J) * -1.0,
+            root.elevation(na::Vector3::x() * 2.0, Vertex::A),
+            root.elevation(na::Vector3::x() * 2.0, Vertex::J) * -1.0,
             epsilon = 1e-5
         );
     }
@@ -644,7 +642,7 @@ mod test {
     #[test]
     fn check_surface_on_plane() {
         assert_abs_diff_eq!(
-            Surface::at_root().voxel_elevation(
+            Surface::at_root().elevation(
                 na::Vector3::new(1.0, 0.3, 0.9), // The first 1.0 is important, the plane is the midplane of the cube in Side::A direction
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
@@ -654,14 +652,14 @@ mod test {
     }
 
     #[test]
-    fn check_voxel_elevation_consistency() {
+    fn check_elevation_consistency() {
         // A cube corner should have the same elevation seen from different cubes
         assert_abs_diff_eq!(
-            Surface::at_root().voxel_elevation(
+            Surface::at_root().elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            Surface::at_root().voxel_elevation(
+            Surface::at_root().elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::F, Side::H, Side::J).unwrap()
             ),
@@ -670,11 +668,11 @@ mod test {
 
         // The same corner should have the same elevation when represented from the same cube at different corners
         assert_abs_diff_eq!(
-            Surface::at_root().voxel_elevation(
+            Surface::at_root().elevation(
                 na::Vector3::new(1.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            Surface::at_root().reflect(Side::A).voxel_elevation(
+            Surface::at_root().reflect(Side::A).elevation(
                 na::Vector3::new(1.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
@@ -683,11 +681,11 @@ mod test {
 
         // Corners of midplane cubes separated by the midplane should have the same elevation with a different sign
         assert_abs_diff_eq!(
-            Surface::at_root().voxel_elevation(
+            Surface::at_root().elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            -Surface::at_root().voxel_elevation(
+            -Surface::at_root().elevation(
                 na::Vector3::new(2.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
@@ -696,11 +694,11 @@ mod test {
 
         // Corners of midplane cubes not separated by the midplane should have the same elevation
         assert_abs_diff_eq!(
-            Surface::at_root().voxel_elevation(
+            Surface::at_root().elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            Surface::at_root().voxel_elevation(
+            Surface::at_root().elevation(
                 na::Vector3::new(0.0, 0.0, 2.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
