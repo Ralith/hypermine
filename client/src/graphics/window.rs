@@ -7,7 +7,9 @@ use ash::{extensions::khr, version::DeviceV1_0, vk};
 use lahar::DedicatedImage;
 use tracing::info;
 use winit::{
-    event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{
+        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     window::{Window as WinitWindow, WindowBuilder},
 };
@@ -128,13 +130,6 @@ impl Window {
                     self.draw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
-                    DeviceEvent::Button {
-                        button: 1,
-                        state: ElementState::Pressed,
-                    } => {
-                        let _ = self.window.set_cursor_grab(true);
-                        self.window.set_cursor_visible(false);
-                    }
                     DeviceEvent::MouseMotion { delta } if focused => {
                         const SENSITIVITY: f32 = 2e-3;
                         let rot = na::UnitQuaternion::from_axis_angle(
@@ -152,6 +147,14 @@ impl Window {
                     WindowEvent::CloseRequested => {
                         info!("exiting due to closed window");
                         *control_flow = ControlFlow::Exit;
+                    }
+                    WindowEvent::MouseInput {
+                        button: MouseButton::Left,
+                        state: ElementState::Pressed,
+                        ..
+                    } => {
+                        let _ = self.window.set_cursor_grab(true);
+                        self.window.set_cursor_visible(false);
                     }
                     WindowEvent::KeyboardInput {
                         input:
