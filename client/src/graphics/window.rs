@@ -48,6 +48,7 @@ pub struct Window {
     surface_fn: khr::Surface,
     surface: vk::SurfaceKHR,
     swapchain: Option<SwapchainMgr>,
+    swapchain_needs_update: bool,
     draw: Option<Draw>,
     sim: Sim,
 }
@@ -68,6 +69,7 @@ impl Window {
             surface,
             surface_fn,
             swapchain: None,
+            swapchain_needs_update: false,
             draw: None,
             sim,
         }
@@ -144,6 +146,13 @@ impl Window {
                     _ => {}
                 },
                 Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::Resized(_) => {
+                        // Some environments may not emit the vulkan signals that recommend or
+                        // require surface reconstruction, so we need to check for messages from the
+                        // windowing system too. We defer actually performing the update until
+                        // drawing to avoid doing unnecessary work between frames.
+                        self.swapchain_needs_update = true;
+                    }
                     WindowEvent::CloseRequested => {
                         info!("exiting due to closed window");
                         *control_flow = ControlFlow::Exit;
@@ -208,23 +217,26 @@ impl Window {
     fn draw(&mut self) {
         let swapchain = self.swapchain.as_mut().unwrap();
         let draw = self.draw.as_mut().unwrap();
-        let mut needs_update;
         unsafe {
             // Wait for a frame's worth of rendering resources to become available
             draw.wait();
             // Get the index of the swapchain image we'll render to
             let frame_id = loop {
+                // Check whether the window has been resized or similar
+                if self.swapchain_needs_update {
+                    // Wait for all in-flight frames to complete so we don't have a use-after-free
+                    draw.wait_idle();
+                    // Recreate the swapchain at a new size (or whatever)
+                    swapchain.update(&self.surface_fn, self.surface);
+                    self.swapchain_needs_update = false;
+                }
                 match swapchain.acquire_next_image(draw.image_acquired()) {
-                    Ok((idx, sub)) => {
-                        needs_update = sub;
+                    Ok((idx, suboptimal)) => {
+                        self.swapchain_needs_update = suboptimal;
                         break idx;
                     }
-                    // New swapchain needed immediately (usually due to resize)
                     Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                        // Wait for in-flight frames to complete so we don't have a use-after-free
-                        draw.wait_idle();
-                        // Recreate the swapchain
-                        swapchain.update(&self.surface_fn, self.surface);
+                        self.swapchain_needs_update = true;
                     }
                     Err(e) => {
                         panic!("acquire_next_image: {}", e);
@@ -248,17 +260,10 @@ impl Window {
             match swapchain.queue_present(frame_id) {
                 Ok(false) => {}
                 Ok(true) | Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                    needs_update = true;
+                    self.swapchain_needs_update = true;
                 }
                 Err(e) => panic!("queue_present: {}", e),
             };
-            // New swapchain needed (usually due to resize)
-            if needs_update {
-                // Wait for in-flight frames to complete so we don't have a use-after-free
-                draw.wait_idle();
-                // Recreate the swapchain
-                swapchain.update(&self.surface_fn, self.surface);
-            }
         }
     }
 }
