@@ -7,6 +7,7 @@ use ash::{extensions::khr, version::DeviceV1_0, vk};
 use lahar::DedicatedImage;
 use tracing::info;
 use winit::{
+    dpi::PhysicalSize,
     event::{
         DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
     },
@@ -89,7 +90,11 @@ impl Window {
     /// Run the event loop until process exit
     pub fn run(mut self, gfx: Arc<Base>) -> ! {
         // Allocate the presentable images we'll be rendering to
-        self.swapchain = Some(SwapchainMgr::new(&self, gfx.clone()));
+        self.swapchain = Some(SwapchainMgr::new(
+            &self,
+            gfx.clone(),
+            self.window.inner_size(),
+        ));
         // Construct the core rendering object
         self.draw = Some(Draw::new(gfx, self.config.clone()));
         let mut forward = false;
@@ -227,7 +232,7 @@ impl Window {
                     // Wait for all in-flight frames to complete so we don't have a use-after-free
                     draw.wait_idle();
                     // Recreate the swapchain at a new size (or whatever)
-                    swapchain.update(&self.surface_fn, self.surface);
+                    swapchain.update(&self.surface_fn, self.surface, self.window.inner_size());
                     self.swapchain_needs_update = false;
                 }
                 match swapchain.acquire_next_image(draw.image_acquired()) {
@@ -285,7 +290,7 @@ struct SwapchainMgr {
 
 impl SwapchainMgr {
     /// Construct a swapchain manager for a certain window
-    fn new(window: &Window, gfx: Arc<Base>) -> Self {
+    fn new(window: &Window, gfx: Arc<Base>, fallback_size: PhysicalSize<u32>) -> Self {
         let device = &*gfx.device;
         let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, &*device);
         let surface_formats = unsafe {
@@ -320,6 +325,7 @@ impl SwapchainMgr {
                     window.surface,
                     desired_format,
                     vk::SwapchainKHR::null(),
+                    fallback_size,
                 )
             },
             format: desired_format,
@@ -330,7 +336,12 @@ impl SwapchainMgr {
     ///
     /// # Safety
     /// - There must be no operations scheduled that access the current swapchain
-    unsafe fn update(&mut self, surface_fn: &khr::Surface, surface: vk::SurfaceKHR) {
+    unsafe fn update(
+        &mut self,
+        surface_fn: &khr::Surface,
+        surface: vk::SurfaceKHR,
+        fallback_size: PhysicalSize<u32>,
+    ) {
         self.state = SwapchainState::new(
             surface_fn,
             self.state.swapchain_fn.clone(),
@@ -338,6 +349,7 @@ impl SwapchainMgr {
             surface,
             self.format,
             self.state.handle,
+            fallback_size,
         );
     }
 
@@ -380,6 +392,7 @@ impl SwapchainState {
         surface: vk::SurfaceKHR,
         format: vk::SurfaceFormatKHR,
         old: vk::SwapchainKHR,
+        fallback_size: PhysicalSize<u32>,
     ) -> Self {
         let device = &*gfx.device;
 
@@ -387,9 +400,10 @@ impl SwapchainState {
             .get_physical_device_surface_capabilities(gfx.physical, surface)
             .unwrap();
         let extent = match surface_capabilities.current_extent.width {
+            // If Vulkan doesn't know, winit probably does. Known to apply at least to Wayland.
             std::u32::MAX => vk::Extent2D {
-                width: 1280,
-                height: 1024,
+                width: fallback_size.width,
+                height: fallback_size.height,
             },
             _ => surface_capabilities.current_extent,
         };
