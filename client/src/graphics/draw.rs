@@ -1,9 +1,9 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
-use tracing::info;
+use metrics::timing;
 
 use super::{loader::Asset, voxels, Base, Fog, GltfScene, Loader, Meshes, Voxels};
 use crate::{sim, Config, Sim};
@@ -23,8 +23,6 @@ pub struct Draw {
     next_state: usize,
     /// A reference time
     epoch: Instant,
-    /// Average duration of a frame, in nanoseconds
-    frame_time: Option<f32>,
     /// The lowest common denominator between the interfaces of our graphics pipelines
     ///
     /// Represents e.g. the binding for common uniforms
@@ -195,7 +193,6 @@ impl Draw {
                 states,
                 next_state: 0,
                 epoch: Instant::now(),
-                frame_time: None,
                 common_pipeline_layout,
                 common_descriptor_pool,
 
@@ -262,6 +259,7 @@ impl Draw {
         present: vk::Semaphore,
         projection: na::Matrix4<f32>,
     ) {
+        let draw_started = Instant::now();
         let view = sim.view();
         let view_projection = projection * view.local.try_inverse().unwrap();
         self.loader.drive();
@@ -307,11 +305,8 @@ impl Draw {
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 )
                 .unwrap();
-            let dt = self.gfx.limits.timestamp_period * (queries[1] - queries[0]) as f32;
-            self.frame_time = Some(match self.frame_time {
-                None => dt,
-                Some(prev) => prev * 0.9 + dt * 0.1,
-            });
+            let nanos = self.gfx.limits.timestamp_period * (queries[1] - queries[0]) as f32;
+            timing!("frame.gpu", nanos as u64);
         }
 
         device
@@ -489,6 +484,7 @@ impl Draw {
             .unwrap();
         state.used = true;
         state.in_flight = true;
+        timing!("frame.cpu", draw_started.elapsed());
     }
 
     /// Wait for all drawing to complete
@@ -502,16 +498,10 @@ impl Draw {
             }
         }
     }
-
-    /// Moving average of how long it takes the GPU to render a frame
-    pub fn frame_time(&self) -> Duration {
-        Duration::from_nanos(self.frame_time.map_or(0, |x| x as u64))
-    }
 }
 
 impl Drop for Draw {
     fn drop(&mut self) {
-        info!("average frame time: {:?}", self.frame_time());
         let device = &*self.gfx.device;
         unsafe {
             for state in &mut self.states {

@@ -45,6 +45,7 @@ pub struct Window {
     _core: Arc<Core>,
     window: WinitWindow,
     config: Arc<Config>,
+    metrics: Arc<crate::metrics::Recorder>,
     event_loop: Option<EventLoop<()>>,
     surface_fn: khr::Surface,
     surface: vk::SurfaceKHR,
@@ -56,7 +57,13 @@ pub struct Window {
 
 impl Window {
     /// Finish constructing a window
-    pub fn new(early: EarlyWindow, core: Arc<Core>, config: Arc<Config>, sim: Sim) -> Self {
+    pub fn new(
+        early: EarlyWindow,
+        core: Arc<Core>,
+        config: Arc<Config>,
+        metrics: Arc<crate::metrics::Recorder>,
+        sim: Sim,
+    ) -> Self {
         let surface = unsafe {
             ash_window::create_surface(&core.entry, &core.instance, &early.window, None).unwrap()
         };
@@ -66,6 +73,7 @@ impl Window {
             _core: core,
             window: early.window,
             config,
+            metrics,
             event_loop: Some(early.event_loop),
             surface,
             surface_fn,
@@ -214,6 +222,9 @@ impl Window {
                     }
                     _ => {}
                 },
+                Event::LoopDestroyed => {
+                    self.metrics.report();
+                }
                 _ => {}
             });
     }
