@@ -1,5 +1,6 @@
 mod config;
 mod graphics;
+mod metrics;
 mod net;
 mod prediction;
 mod sim;
@@ -19,6 +20,7 @@ use ash::extensions::khr;
 fn main() {
     // Set up logging
     tracing_subscriber::fmt::init();
+    let metrics = crate::metrics::init();
 
     let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
     let mut config = Config::load(&dirs);
@@ -65,7 +67,7 @@ fn main() {
     let sim = Sim::new(net);
 
     // Finish creating the window, including the Vulkan resources used to render to it
-    let window = graphics::Window::new(window, core.clone(), config, sim);
+    let window = graphics::Window::new(window, core.clone(), config, metrics, sim);
 
     // Initialize widely-shared graphics resources
     let gfx = Arc::new(

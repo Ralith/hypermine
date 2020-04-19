@@ -4,10 +4,10 @@ mod surface_extraction;
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use ash::{vk, Device};
-
+use metrics::timing;
 use tracing::warn;
 
 use super::lru_table::LruTable;
@@ -91,9 +91,14 @@ impl Voxels {
             // there's no point trying to draw.
             return;
         }
+        let graph_traversal_started = Instant::now();
         let mut nodes = sim
             .graph
             .nearby_nodes(&view, f64::from(self.config.local_simulation.view_distance));
+        timing!(
+            "frame.cpu.voxels.graph_traversal",
+            graph_traversal_started.elapsed()
+        );
         // Sort nodes by distance to the view to prioritize loading closer data and improve early Z
         // performance
         let view_pos = view.local * math::origin();
@@ -102,6 +107,7 @@ impl Voxels {
                 .partial_cmp(&math::distance(&view_pos, &(xf_b * math::origin())))
                 .unwrap_or(std::cmp::Ordering::Less)
         });
+        let node_scan_started = Instant::now();
         for &(node, ref node_transform) in &nodes {
             for chunk in Vertex::iter() {
                 // Fetch existing chunk, or extract surface of new chunk
@@ -180,6 +186,7 @@ impl Voxels {
                     node_transform * chunk.chunk_to_node().map(|x| x as f32);
             }
         }
+        timing!("frame.cpu.voxels.node_scan", node_scan_started.elapsed());
     }
 
     pub unsafe fn draw(
@@ -190,6 +197,7 @@ impl Voxels {
         frame: &Frame,
         cmd: vk::CommandBuffer,
     ) {
+        let started = Instant::now();
         if !self.draw.bind(
             device,
             loader,
@@ -203,6 +211,7 @@ impl Voxels {
         for chunk in &frame.drawn {
             self.draw.draw(device, cmd, &self.surfaces, chunk.0);
         }
+        timing!("frame.cpu.voxels.draw", started.elapsed());
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {
