@@ -159,8 +159,13 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
 
                 let block = triserp(&enviros.blockinesses, cube_coords, 0.2, 0.8);
                 // map real number block to interval (0, 0.25), biased towards 0
-                let triserp_threshold = 2.0f64.powf(block)/(8.0+2.0f64.powf(block)) * 0.25;
-                let elev = triserp(&enviros.max_elevations, cube_coords, triserp_threshold, 1.0 - triserp_threshold);
+                let triserp_threshold = 2.0f64.powf(block) / (8.0 + 2.0f64.powf(block)) * 0.25;
+                let elev = triserp(
+                    &enviros.max_elevations,
+                    cube_coords,
+                    triserp_threshold,
+                    1.0 - triserp_threshold,
+                );
 
                 let mut voxel_mat;
                 let max_e;
@@ -584,7 +589,8 @@ mod test {
         }
 
         // see corresponding test for trilerp
-        let center_max_elevation = trilerp(&enviros.max_elevations, na::Vector3::repeat(0.5));
+        let center_max_elevation =
+            triserp(&enviros.max_elevations, na::Vector3::repeat(0.5), 0.0, 1.0);
         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
@@ -596,7 +602,7 @@ mod test {
                     if a == center {
                         checked_center = true;
                         let c = center.map(|x| x as f64) / CHUNK_SIZE as f64;
-                        let center_max_elevation = trilerp(&enviros.max_elevations, c);
+                        let center_max_elevation = triserp(&enviros.max_elevations, c, 0.0, 1.0);
                         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
                         break 'top;
                     }
@@ -613,91 +619,113 @@ mod test {
     fn check_trilerp() {
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 0.0, 0.0)
+                na::Vector3::new(0.0, 0.0, 0.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(1.0, 0.0, 0.0)
+                na::Vector3::new(1.0, 0.0, 0.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 1.0, 0.0)
+                na::Vector3::new(0.0, 1.0, 0.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-                na::Vector3::new(1.0, 1.0, 0.0)
+                na::Vector3::new(1.0, 1.0, 0.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 0.0, 1.0)
+                na::Vector3::new(0.0, 0.0, 1.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                na::Vector3::new(1.0, 0.0, 1.0)
+                na::Vector3::new(1.0, 0.0, 1.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 1.0, 1.0)
+                na::Vector3::new(0.0, 1.0, 1.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            trilerp(
+            triserp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-                na::Vector3::new(1.0, 1.0, 1.0)
+                na::Vector3::new(1.0, 1.0, 1.0),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
             0.5,
-            trilerp(
+            triserp(
                 &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
-                na::Vector3::new(0.5, 0.5, 0.5)
+                na::Vector3::new(0.5, 0.5, 0.5),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             0.5,
-            trilerp(
+            triserp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
-                na::Vector3::new(0.5, 0.5, 0.5)
+                na::Vector3::new(0.5, 0.5, 0.5),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
             4.5,
-            trilerp(
+            triserp(
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
-                na::Vector3::new(0.5, 0.5, 0.5)
+                na::Vector3::new(0.5, 0.5, 0.5),
+                0.0,
+                1.0
             ),
             epsilon = 1e-8,
         );
