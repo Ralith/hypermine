@@ -54,21 +54,35 @@ impl Core {
 
             let name = cstr!("hypermine");
 
-            let instance = entry
-                .create_instance(
-                    &vk::InstanceCreateInfo::builder()
-                        .application_info(
-                            &vk::ApplicationInfo::builder()
-                                .application_name(name)
-                                .application_version(0)
-                                .engine_name(name)
-                                .engine_version(0)
-                                .api_version(ash::vk_make_version!(1, 1, 0)),
-                        )
-                        .enabled_extension_names(&exts),
-                    None,
+            let app_info = vk::ApplicationInfo::builder()
+                .application_name(name)
+                .application_version(0)
+                .engine_name(name)
+                .engine_version(0)
+                .api_version(ash::vk_make_version!(1, 1, 0));
+            let mut instance_info = vk::InstanceCreateInfo::builder()
+                .application_info(&app_info)
+                .enabled_extension_names(&exts);
+
+            let mut debug_utils_messenger_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+                .message_severity(
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
                 )
-                .unwrap();
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                )
+                .pfn_user_callback(Some(messenger_callback))
+                .user_data(ptr::null_mut());
+            if has_debug {
+                instance_info = instance_info.push_next(&mut debug_utils_messenger_info);
+            }
+
+            let instance = entry.create_instance(&instance_info, None).unwrap();
             // Guards ensure we clean up gracefully if something panics
             let instance_guard = defer(|| instance.destroy_instance(None));
             let debug_utils;
@@ -77,23 +91,7 @@ impl Core {
                 // Configure Vulkan diagnostic message logging
                 let utils = DebugUtils::new(&entry, &instance);
                 messenger = utils
-                    .create_debug_utils_messenger(
-                        &vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                            .message_severity(
-                                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                                    | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
-                            )
-                            .message_type(
-                                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                            )
-                            .pfn_user_callback(Some(messenger_callback))
-                            .user_data(ptr::null_mut()),
-                        None,
-                    )
+                    .create_debug_utils_messenger(&debug_utils_messenger_info, None)
                     .unwrap();
                 debug_utils = Some(utils);
             } else {
