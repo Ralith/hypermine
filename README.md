@@ -1,3 +1,8 @@
+## Build and Run
+
+See the [wiki](https://github.com/Ralith/hypermine/wiki) for instructions on how to build and run
+
+
 ## License
 
 Licensed under either of
