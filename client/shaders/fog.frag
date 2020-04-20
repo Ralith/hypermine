@@ -15,17 +15,6 @@ void main() {
     vec3 view_pos = scaled_view_pos.xyz / scaled_view_pos.w;
     // Hyperbolic distance
     float dist = atanh(min(length(view_pos), 1));
-    // piecewise constant/exponential dropoff fog
-    float terrain_proportion;
-    float threshold = 1.0;
-    if (dist <= threshold)
-    {
-        terrain_proportion = 1.0;
-    } 
-    else 
-    {
-        terrain_proportion = exp(-(dist - threshold) * fog_density); 
-    }
-    // 
-    fog = vec4(0.2, 0.15, 0.8, terrain_proportion);
+    // Exponential-squared fog
+    fog = vec4(0.2, 0.15, 0.8, exp(-pow(dist * fog_density, 2)));
 }

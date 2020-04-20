@@ -134,14 +134,14 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     // empirically.
     const ELEVATION_MARGIN: f64 = 0.7;
     let center_elevation = state.surface.elevation(na::Vector3::repeat(0.5), chunk);
-    let threshold = 10.0;
-    if center_elevation - ELEVATION_MARGIN > me_max / threshold {
+    const ELEVATION_SCALE: f64 = 10.0;
+    if center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE {
         // The whole chunk is underground
         // TODO: More accurate VoxelData
         return VoxelData::Solid(Material::Stone);
     }
 
-    if center_elevation + ELEVATION_MARGIN < me_min / threshold {
+    if center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE {
         // The whole chunk is above ground
         return VoxelData::Solid(Material::Void);
     }
@@ -153,19 +153,14 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                 let center = voxel_center(dimension, coords);
                 let cube_coords = center * 0.5;
 
-                let rain = triserp(&enviros.rainfalls, cube_coords, 0.2, 0.8);
-                let temp = triserp(&enviros.temperatures, cube_coords, 0.2, 0.8);
-                let slope = triserp(&enviros.slopeinesses, cube_coords, 0.2, 0.8);
+                let rain = trilerp(&enviros.rainfalls, cube_coords);
+                let temp = trilerp(&enviros.temperatures, cube_coords);
+                let slope = triserp(&enviros.slopeinesses, cube_coords, 0.2);
 
-                let block = triserp(&enviros.blockinesses, cube_coords, 0.2, 0.8);
+                let block = triserp(&enviros.blockinesses, cube_coords, 0.2);
                 // map real number block to interval (0, 0.25), biased towards 0
-                let triserp_threshold = 2.0f64.powf(block) / (8.0 + 2.0f64.powf(block)) * 0.25;
-                let elev = triserp(
-                    &enviros.max_elevations,
-                    cube_coords,
-                    triserp_threshold,
-                    1.0 - triserp_threshold,
-                );
+                let threshold = 2.0f64.powf(block) / (8.0 + 2.0f64.powf(block)) * 0.25;
+                let elev = triserp(&enviros.max_elevations, cube_coords, threshold);
 
                 let mut voxel_mat;
                 let max_e;
@@ -214,7 +209,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                     max_e = elev;
                 }
 
-                if state.surface.elevation(center, chunk) < max_e / threshold {
+                if state.surface.elevation(center, chunk) < max_e / ELEVATION_SCALE {
                     voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
                 }
             }
@@ -423,26 +418,43 @@ impl Surface {
     }
 }
 
+fn trilerp<N: na::RealField>(
+    &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
+    t: na::Vector3<N>,
+) -> N {
+    fn lerp<N: na::RealField>(v0: N, v1: N, t: N) -> N {
+        v0 * (N::one() - t) + v1 * t
+    }
+    fn bilerp<N: na::RealField>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>) -> N {
+        lerp(lerp(v00, v01, t.x), lerp(v10, v11, t.x), t.y)
+    }
+
+    lerp(
+        bilerp(v000, v100, v010, v110, t.xy()),
+        bilerp(v001, v101, v011, v111, t.xy()),
+        t.z,
+    )
+}
+
+// serp interpolates between two values v0 and v1 over the interval [0, 1] by yielding
+// v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
+// such that the overall shape is an S-shaped piecewise function.
+// threshold should be between 0 and 0.5.
+// If threshold is 0, triserp is identical to trilerp.
 fn triserp<N: na::RealField>(
     &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
     t: na::Vector3<N>,
-    threshold1: N,
-    threshold2: N,
+    threshold: N,
 ) -> N {
-    fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold1: N, threshold2: N) -> N {
-        let out: N;
-        if t < threshold1 {
-            out = v0;
-        } else if t < threshold2 {
-            let s = (t - threshold1) / (threshold2 - threshold1);
-            // S-shaped curve that in practice is barely different to a straight line
-            out = na::convert::<_, N>(2.0) * (v0 - v1) * s * s * s
-                + na::convert::<_, N>(3.0) * (v1 - v0) * s * s
-                + v0;
+    fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
+        if t < threshold {
+            v0
+        } else if t < (N::one() - threshold) {
+            let s = (t - threshold) / ((N::one() - threshold) - threshold);
+            v0 * (N::one() - s) + v1 * s
         } else {
-            out = v1;
+            v1
         }
-        out
     }
     fn biserp<N: na::RealField>(
         v00: N,
@@ -450,24 +462,21 @@ fn triserp<N: na::RealField>(
         v10: N,
         v11: N,
         t: na::Vector2<N>,
-        threshold1: N,
-        threshold2: N,
+        threshold: N,
     ) -> N {
         serp(
-            serp(v00, v01, t.x, threshold1, threshold2),
-            serp(v10, v11, t.x, threshold1, threshold2),
+            serp(v00, v01, t.x, threshold),
+            serp(v10, v11, t.x, threshold),
             t.y,
-            threshold1,
-            threshold2,
+            threshold,
         )
     }
 
     serp(
-        biserp(v000, v100, v010, v110, t.xy(), threshold1, threshold2),
-        biserp(v001, v101, v011, v111, t.xy(), threshold1, threshold2),
+        biserp(v000, v100, v010, v110, t.xy(), threshold),
+        biserp(v001, v101, v011, v111, t.xy(), threshold),
         t.z,
-        threshold1,
-        threshold2,
+        threshold,
     )
 }
 
@@ -589,8 +598,7 @@ mod test {
         }
 
         // see corresponding test for trilerp
-        let center_max_elevation =
-            triserp(&enviros.max_elevations, na::Vector3::repeat(0.5), 0.0, 1.0);
+        let center_max_elevation = triserp(&enviros.max_elevations, na::Vector3::repeat(0.5), 0.0);
         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
@@ -602,7 +610,7 @@ mod test {
                     if a == center {
                         checked_center = true;
                         let c = center.map(|x| x as f64) / CHUNK_SIZE as f64;
-                        let center_max_elevation = triserp(&enviros.max_elevations, c, 0.0, 1.0);
+                        let center_max_elevation = triserp(&enviros.max_elevations, c, 0.0);
                         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
                         break 'top;
                     }
@@ -616,116 +624,94 @@ mod test {
     }
 
     #[test]
-    fn check_trilerp() {
+    fn check_trilerp_and_triserp() {
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 0.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 0.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 0.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 na::Vector3::new(1.0, 1.0, 0.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 0.0, 1.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 na::Vector3::new(1.0, 0.0, 1.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 na::Vector3::new(0.0, 1.0, 1.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             1.0,
-            triserp(
+            trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
                 na::Vector3::new(1.0, 1.0, 1.0),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
             0.5,
-            triserp(
+            trilerp(
                 &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
         assert_abs_diff_eq!(
             0.5,
-            triserp(
+            trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
                 na::Vector3::new(0.5, 0.5, 0.5),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
 
         assert_abs_diff_eq!(
             4.5,
-            triserp(
+            trilerp(
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
                 na::Vector3::new(0.5, 0.5, 0.5),
-                0.0,
-                1.0
             ),
             epsilon = 1e-8,
         );
