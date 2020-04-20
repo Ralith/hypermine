@@ -1,4 +1,4 @@
-## Build and Run
+## Installation
 
 See the [wiki](https://github.com/Ralith/hypermine/wiki) for instructions on how to build and run
 
