@@ -155,16 +155,24 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
 
                 let rain = trilerp(&enviros.rainfalls, cube_coords);
                 let temp = trilerp(&enviros.temperatures, cube_coords);
-                let slope = triserp(&enviros.slopeinesses, cube_coords, 0.2);
 
+                // Factors directly related to max_e, the threshold value that
+                // determines whether or not a voxel contains a non-void material, are
+                // interpolated within a chunk by a nonlinear function that results in
+                // bumpier scalar fields than the usual lerp function. The greater the
+                // threshold parameter, the bumpier the scalar field.
+                let slope = triserp(&enviros.slopeinesses, cube_coords, 0.2);
                 let block = triserp(&enviros.blockinesses, cube_coords, 0.2);
-                // map real number block to interval (0, 0.25), biased towards 0
+                // block is a real number, threshold is in (0, 0.25) and biased towards 0
+                // This causes the level of terrain bumpiness to vary over space.
                 let threshold = 2.0f64.powf(block) / (8.0 + 2.0f64.powf(block)) * 0.25;
                 let elev = triserp(&enviros.max_elevations, cube_coords, threshold);
 
                 let mut voxel_mat;
                 let max_e;
 
+                // Nine basic terrain types based on combinations of
+                // low/medium/high temperature and humidity.
                 if temp < -2.0 {
                     if rain < -2.0 {
                         voxel_mat = Material::Gravelstone;
@@ -189,8 +197,10 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                     voxel_mat = Material::Flowergrass;
                 }
 
-                //peaks should roughly tend to be snow-covered
+                // Additional adjustments alter both block material and elevation
+                // for a bit of extra variety.
                 let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+                // peaks should roughly tend to be snow-covered
                 if slope_mod <= 1_f64 {
                     if temp < 0.0 {
                         voxel_mat = Material::Snow;
@@ -216,8 +226,9 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
         }
     }
 
-    // Planting trees on dirt. Trees consist of a block of wood and a block of leaves.
-    // The leaf block is on the opposite face of the wood block as the dirt block.
+    // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
+    // and a block of leaves. The leaf block is on the opposite face of the
+    // wood block as the ground block.
     let loc = na::Vector3::repeat(4);
     let voxel_of_interest_index = index(dimension, loc);
     let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
@@ -227,7 +238,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
         .filter(|n| n.material == Material::Void)
         .count();
 
-    // Only plant a tree if there is exactly one adjacent dirt block.
+    // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
     if num_void_neighbors == 5 {
         for i in neighbor_data.iter() {
             if (i.material == Material::Dirt)
