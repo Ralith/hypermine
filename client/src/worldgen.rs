@@ -624,7 +624,7 @@ mod test {
     }
 
     #[test]
-    fn check_trilerp_and_triserp() {
+    fn check_trilerp() {
         assert_abs_diff_eq!(
             1.0,
             trilerp(
@@ -712,6 +712,56 @@ mod test {
             trilerp(
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
                 na::Vector3::new(0.5, 0.5, 0.5),
+            ),
+            epsilon = 1e-8,
+        );
+    }
+
+    #[test]
+    fn check_triserp() {
+        assert_abs_diff_eq!(
+            1.0,
+            triserp(
+                &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                na::Vector3::new(0.0, 0.0, 0.0),
+                0.25
+            ),
+            epsilon = 1e-8,
+        );
+        assert_abs_diff_eq!(
+            1.0,
+            triserp(
+                &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                na::Vector3::new(0.25, 0.25, 0.25),
+                0.25
+            ),
+            epsilon = 1e-8,
+        );
+        assert_abs_diff_eq!(
+            0.0,
+            triserp(
+                &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                na::Vector3::new(0.75, 0.75, 0.75),
+                0.25
+            ),
+            epsilon = 1e-8,
+        );
+
+        assert_abs_diff_eq!(
+            4.5,
+            triserp(
+                &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
+                na::Vector3::new(0.5, 0.5, 0.5),
+                0.0
+            ),
+            epsilon = 1e-8,
+        );
+        assert_abs_diff_eq!(
+            4.5,
+            triserp(
+                &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
+                na::Vector3::new(0.5, 0.5, 0.5),
+                0.45
             ),
             epsilon = 1e-8,
         );
