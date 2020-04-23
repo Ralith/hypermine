@@ -155,18 +155,18 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
 
                 let rain = trilerp(&enviros.rainfalls, cube_coords);
                 let temp = trilerp(&enviros.temperatures, cube_coords);
+                let slope = trilerp(&enviros.slopeinesses, cube_coords);
 
-                // Factors directly related to max_e, the threshold value that
-                // determines whether or not a voxel contains a non-void material, are
-                // interpolated within a chunk by a nonlinear function that results in
-                // bumpier scalar fields than the usual lerp function. The greater the
-                // threshold parameter, the bumpier the scalar field.
-                let slope = triserp(&enviros.slopeinesses, cube_coords, 0.2);
-                let block = triserp(&enviros.blockinesses, cube_coords, 0.2);
-                // block is a real number, threshold is in (0, 0.25) and biased towards 0
+                // block is a real number, threshold is in (0, 0.2) and biased towards 0
                 // This causes the level of terrain bumpiness to vary over space.
-                let threshold = 2.0f64.powf(block) / (8.0 + 2.0f64.powf(block)) * 0.25;
-                let elev = triserp(&enviros.max_elevations, cube_coords, threshold);
+                let block = trilerp(&enviros.blockinesses, cube_coords);
+                let threshold = 2.0f64.powf(block) / (4.0 + 2.0f64.powf(block)) * 0.2;
+                let elev_raw = trilerp(&enviros.max_elevations, cube_coords);
+                let terracing_scale = 5.0; // This is not wavelength in number of blocks
+                let elev_floor = (elev_raw / terracing_scale).floor();
+                let elev_rem = elev_raw / terracing_scale - elev_floor;
+                let elev =
+                    terracing_scale * elev_floor + serp(0.0, terracing_scale, elev_rem, threshold);
 
                 let mut voxel_mat;
                 let max_e;
@@ -451,44 +451,15 @@ fn trilerp<N: na::RealField>(
 // v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
 // such that the overall shape is an S-shaped piecewise function.
 // threshold should be between 0 and 0.5.
-// If threshold is 0, triserp is identical to trilerp.
-fn triserp<N: na::RealField>(
-    &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
-    t: na::Vector3<N>,
-    threshold: N,
-) -> N {
-    fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
-        if t < threshold {
-            v0
-        } else if t < (N::one() - threshold) {
-            let s = (t - threshold) / ((N::one() - threshold) - threshold);
-            v0 * (N::one() - s) + v1 * s
-        } else {
-            v1
-        }
+fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
+    if t < threshold {
+        v0
+    } else if t < (N::one() - threshold) {
+        let s = (t - threshold) / ((N::one() - threshold) - threshold);
+        v0 * (N::one() - s) + v1 * s
+    } else {
+        v1
     }
-    fn biserp<N: na::RealField>(
-        v00: N,
-        v01: N,
-        v10: N,
-        v11: N,
-        t: na::Vector2<N>,
-        threshold: N,
-    ) -> N {
-        serp(
-            serp(v00, v01, t.x, threshold),
-            serp(v10, v11, t.x, threshold),
-            t.y,
-            threshold,
-        )
-    }
-
-    serp(
-        biserp(v000, v100, v010, v110, t.xy(), threshold),
-        biserp(v001, v101, v011, v111, t.xy(), threshold),
-        t.z,
-        threshold,
-    )
 }
 
 /// Location of the center of a voxel in a unit chunk
@@ -609,7 +580,7 @@ mod test {
         }
 
         // see corresponding test for trilerp
-        let center_max_elevation = triserp(&enviros.max_elevations, na::Vector3::repeat(0.5), 0.0);
+        let center_max_elevation = trilerp(&enviros.max_elevations, na::Vector3::repeat(0.5));
         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
@@ -621,7 +592,7 @@ mod test {
                     if a == center {
                         checked_center = true;
                         let c = center.map(|x| x as f64) / CHUNK_SIZE as f64;
-                        let center_max_elevation = triserp(&enviros.max_elevations, c, 0.0);
+                        let center_max_elevation = trilerp(&enviros.max_elevations, c);
                         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
                         break 'top;
                     }
@@ -723,56 +694,6 @@ mod test {
             trilerp(
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
                 na::Vector3::new(0.5, 0.5, 0.5),
-            ),
-            epsilon = 1e-8,
-        );
-    }
-
-    #[test]
-    fn check_triserp() {
-        assert_abs_diff_eq!(
-            1.0,
-            triserp(
-                &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 0.0, 0.0),
-                0.25
-            ),
-            epsilon = 1e-8,
-        );
-        assert_abs_diff_eq!(
-            1.0,
-            triserp(
-                &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.25, 0.25, 0.25),
-                0.25
-            ),
-            epsilon = 1e-8,
-        );
-        assert_abs_diff_eq!(
-            0.0,
-            triserp(
-                &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.75, 0.75, 0.75),
-                0.25
-            ),
-            epsilon = 1e-8,
-        );
-
-        assert_abs_diff_eq!(
-            4.5,
-            triserp(
-                &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
-                na::Vector3::new(0.5, 0.5, 0.5),
-                0.0
-            ),
-            epsilon = 1e-8,
-        );
-        assert_abs_diff_eq!(
-            4.5,
-            triserp(
-                &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
-                na::Vector3::new(0.5, 0.5, 0.5),
-                0.45
             ),
             epsilon = 1e-8,
         );
