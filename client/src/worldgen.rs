@@ -59,6 +59,7 @@ impl NodeState {
                 temperature: 0,
                 rainfall: 0,
                 slopeiness: 3,
+                blockiness: 0,
             },
         }
     }
@@ -133,13 +134,14 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     // empirically.
     const ELEVATION_MARGIN: f64 = 0.7;
     let center_elevation = state.surface.elevation(na::Vector3::repeat(0.5), chunk);
-    if center_elevation - ELEVATION_MARGIN > me_max / 10.0 {
+    const ELEVATION_SCALE: f64 = 10.0;
+    if center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE {
         // The whole chunk is underground
         // TODO: More accurate VoxelData
         return VoxelData::Solid(Material::Stone);
     }
 
-    if center_elevation + ELEVATION_MARGIN < me_min / 10.0 {
+    if center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE {
         // The whole chunk is above ground
         return VoxelData::Solid(Material::Void);
     }
@@ -151,48 +153,83 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
                 let center = voxel_center(dimension, coords);
                 let cube_coords = center * 0.5;
 
-                let elev = trilerp(&enviros.max_elevations, cube_coords);
                 let rain = trilerp(&enviros.rainfalls, cube_coords);
-                let slope = trilerp(&enviros.slopeiness, cube_coords);
+                let temp = trilerp(&enviros.temperatures, cube_coords);
+                let slope = trilerp(&enviros.slopeinesses, cube_coords);
 
-                let mut voxel_mat = Material::Dirt;
-                let max_e = elev;
+                // block is a real number, threshold is in (0, 0.2) and biased towards 0
+                // This causes the level of terrain bumpiness to vary over space.
+                let block = trilerp(&enviros.blockinesses, cube_coords);
+                let threshold = 2.0f64.powf(block) / (4.0 + 2.0f64.powf(block)) * 0.2;
+                let elev_raw = trilerp(&enviros.max_elevations, cube_coords);
+                let terracing_scale = 5.0; // This is not wavelength in number of blocks
+                let elev_floor = (elev_raw / terracing_scale).floor();
+                let elev_rem = elev_raw / terracing_scale - elev_floor;
+                let elev =
+                    terracing_scale * elev_floor + serp(0.0, terracing_scale, elev_rem, threshold);
 
-                if rain > 2.5 {
-                    voxel_mat = Material::Sand;
-                }
-                if rain < -0.5 {
-                    voxel_mat = Material::Stone;
-                }
+                let mut voxel_mat;
+                let max_e;
 
-                //peaks should roughly tend to be snow-covered, and valleys should roughly be watery.
-                let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
-                if slope_mod <= 1_f64 {
-                    voxel_mat = Material::Snow;
-                }
-                if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-                    voxel_mat = match voxel_mat {
-                        Material::Dirt => Material::Grass,
-                        Material::Sand => Material::Redsand,
-                        Material::Stone => Material::Greystone,
-                        _ => Material::Valite,
+                // Nine basic terrain types based on combinations of
+                // low/medium/high temperature and humidity.
+                if temp < -2.0 {
+                    if rain < -2.0 {
+                        voxel_mat = Material::Gravelstone;
+                    } else if rain < 2.0 {
+                        voxel_mat = Material::Stone;
+                    } else {
+                        voxel_mat = Material::Greystone;
                     }
-                }
-                if slope_mod < 0_f64 {
-                    //should not happen.
-                    voxel_mat = Material::Wood;
+                } else if temp < 2.0 {
+                    if rain < -2.0 {
+                        voxel_mat = Material::Graveldirt;
+                    } else if rain < 2.0 {
+                        voxel_mat = Material::Dirt;
+                    } else {
+                        voxel_mat = Material::Grass;
+                    }
+                } else if rain < -2.0 {
+                    voxel_mat = Material::Redsand;
+                } else if rain < 2.0 {
+                    voxel_mat = Material::Sand;
+                } else {
+                    voxel_mat = Material::Flowergrass;
                 }
 
-                if state.surface.elevation(center, chunk) < max_e / 10.0 {
+                // Additional adjustments alter both block material and elevation
+                // for a bit of extra variety.
+                let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+                // peaks should roughly tend to be snow-covered
+                if slope_mod <= 1_f64 {
+                    if temp < 0.0 {
+                        voxel_mat = Material::Snow;
+                        max_e = elev + 0.25;
+                    } else {
+                        max_e = elev;
+                    }
+                } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
+                    voxel_mat = match voxel_mat {
+                        Material::Flowergrass => Material::Bigflowergrass,
+                        Material::Greystone => Material::Blackstone,
+                        _ => voxel_mat,
+                    };
+                    max_e = elev - 0.25;
+                } else {
+                    max_e = elev;
+                }
+
+                if state.surface.elevation(center, chunk) < max_e / ELEVATION_SCALE {
                     voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
                 }
             }
         }
     }
 
-    // Planting trees on dirt. Trees consist of a block of wood and a block of leaves.
-    // The leaf block is on the opposite face of the wood block as the dirt block.
-    let loc = na::Vector3::repeat(2);
+    // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
+    // and a block of leaves. The leaf block is on the opposite face of the
+    // wood block as the ground block.
+    let loc = na::Vector3::repeat(4);
     let voxel_of_interest_index = index(dimension, loc);
     let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
 
@@ -201,10 +238,13 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
         .filter(|n| n.material == Material::Void)
         .count();
 
-    // Only plant a tree if there is exactly one adjacent dirt block.
+    // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
     if num_void_neighbors == 5 {
         for i in neighbor_data.iter() {
-            if i.material == Material::Dirt {
+            if (i.material == Material::Dirt)
+                || (i.material == Material::Grass)
+                || (i.material == Material::Flowergrass)
+            {
                 voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
                 let leaf_location = index(dimension, i.coords_opposing);
                 voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
@@ -263,6 +303,7 @@ struct EnviroFactors {
     temperature: i64,
     rainfall: i64,
     slopeiness: i64,
+    blockiness: i64,
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
@@ -276,6 +317,7 @@ impl EnviroFactors {
                 + rng.sample(&plus_or_minus_one),
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
+            blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
         }
     }
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
@@ -284,25 +326,27 @@ impl EnviroFactors {
             temperature: a.temperature + (b.temperature - ab.temperature),
             rainfall: a.rainfall + (b.rainfall - ab.rainfall),
             slopeiness: a.slopeiness + (b.slopeiness - ab.slopeiness),
+            blockiness: a.blockiness + (b.blockiness - ab.blockiness),
         }
     }
 }
-impl Into<(f64, f64, f64, f64)> for EnviroFactors {
-    fn into(self) -> (f64, f64, f64, f64) {
+impl Into<(f64, f64, f64, f64, f64)> for EnviroFactors {
+    fn into(self) -> (f64, f64, f64, f64, f64) {
         (
             self.max_elevation as f64,
             self.temperature as f64,
             self.rainfall as f64,
             self.slopeiness as f64,
+            self.blockiness as f64,
         )
     }
 }
 struct ChunkIncidentEnviroFactors {
     max_elevations: [f64; 8],
-    slopeiness: [f64; 8],
-    #[allow(dead_code)]
     temperatures: [f64; 8],
     rainfalls: [f64; 8],
+    slopeinesses: [f64; 8],
+    blockinesses: [f64; 8],
 }
 
 /// Returns the max_elevation values for the nodes that are incident to this chunk,
@@ -332,20 +376,21 @@ fn chunk_incident_enviro_factors(
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
-    let (e1, t1, r1, h1) = i.next()?.into();
-    let (e2, t2, r2, h2) = i.next()?.into();
-    let (e3, t3, r3, h3) = i.next()?.into();
-    let (e4, t4, r4, h4) = i.next()?.into();
-    let (e5, t5, r5, h5) = i.next()?.into();
-    let (e6, t6, r6, h6) = i.next()?.into();
-    let (e7, t7, r7, h7) = i.next()?.into();
-    let (e8, t8, r8, h8) = i.next()?.into();
+    let (e1, t1, r1, h1, b1) = i.next()?.into();
+    let (e2, t2, r2, h2, b2) = i.next()?.into();
+    let (e3, t3, r3, h3, b3) = i.next()?.into();
+    let (e4, t4, r4, h4, b4) = i.next()?.into();
+    let (e5, t5, r5, h5, b5) = i.next()?.into();
+    let (e6, t6, r6, h6, b6) = i.next()?.into();
+    let (e7, t7, r7, h7, b7) = i.next()?.into();
+    let (e8, t8, r8, h8, b8) = i.next()?.into();
 
     Some(ChunkIncidentEnviroFactors {
         max_elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
         temperatures: [t1, t2, t3, t4, t5, t6, t7, t8],
         rainfalls: [r1, r2, r3, r4, r5, r6, r7, r8],
-        slopeiness: [h1, h2, h3, h4, h5, h6, h7, h8],
+        slopeinesses: [h1, h2, h3, h4, h5, h6, h7, h8],
+        blockinesses: [b1, b2, b3, b4, b5, b6, b7, b8],
     })
 }
 
@@ -400,6 +445,21 @@ fn trilerp<N: na::RealField>(
         bilerp(v001, v101, v011, v111, t.xy()),
         t.z,
     )
+}
+
+// serp interpolates between two values v0 and v1 over the interval [0, 1] by yielding
+// v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
+// such that the overall shape is an S-shaped piecewise function.
+// threshold should be between 0 and 0.5.
+fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
+    if t < threshold {
+        v0
+    } else if t < (N::one() - threshold) {
+        let s = (t - threshold) / ((N::one() - threshold) - threshold);
+        v0 * (N::one() - s) + v1 * s
+    } else {
+        v1
+    }
 }
 
 /// Location of the center of a voxel in a unit chunk
@@ -551,7 +611,7 @@ mod test {
             1.0,
             trilerp(
                 &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 0.0, 0.0)
+                na::Vector3::new(0.0, 0.0, 0.0),
             ),
             epsilon = 1e-8,
         );
@@ -559,7 +619,7 @@ mod test {
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(1.0, 0.0, 0.0)
+                na::Vector3::new(1.0, 0.0, 0.0),
             ),
             epsilon = 1e-8,
         );
@@ -567,7 +627,7 @@ mod test {
             1.0,
             trilerp(
                 &[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 1.0, 0.0)
+                na::Vector3::new(0.0, 1.0, 0.0),
             ),
             epsilon = 1e-8,
         );
@@ -575,7 +635,7 @@ mod test {
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-                na::Vector3::new(1.0, 1.0, 0.0)
+                na::Vector3::new(1.0, 1.0, 0.0),
             ),
             epsilon = 1e-8,
         );
@@ -583,7 +643,7 @@ mod test {
             1.0,
             trilerp(
                 &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 0.0, 1.0)
+                na::Vector3::new(0.0, 0.0, 1.0),
             ),
             epsilon = 1e-8,
         );
@@ -591,7 +651,7 @@ mod test {
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                na::Vector3::new(1.0, 0.0, 1.0)
+                na::Vector3::new(1.0, 0.0, 1.0),
             ),
             epsilon = 1e-8,
         );
@@ -599,7 +659,7 @@ mod test {
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-                na::Vector3::new(0.0, 1.0, 1.0)
+                na::Vector3::new(0.0, 1.0, 1.0),
             ),
             epsilon = 1e-8,
         );
@@ -607,7 +667,7 @@ mod test {
             1.0,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-                na::Vector3::new(1.0, 1.0, 1.0)
+                na::Vector3::new(1.0, 1.0, 1.0),
             ),
             epsilon = 1e-8,
         );
@@ -616,7 +676,7 @@ mod test {
             0.5,
             trilerp(
                 &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
-                na::Vector3::new(0.5, 0.5, 0.5)
+                na::Vector3::new(0.5, 0.5, 0.5),
             ),
             epsilon = 1e-8,
         );
@@ -624,7 +684,7 @@ mod test {
             0.5,
             trilerp(
                 &[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
-                na::Vector3::new(0.5, 0.5, 0.5)
+                na::Vector3::new(0.5, 0.5, 0.5),
             ),
             epsilon = 1e-8,
         );
@@ -633,7 +693,7 @@ mod test {
             4.5,
             trilerp(
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
-                na::Vector3::new(0.5, 0.5, 0.5)
+                na::Vector3::new(0.5, 0.5, 0.5),
             ),
             epsilon = 1e-8,
         );

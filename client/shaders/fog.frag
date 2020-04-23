@@ -16,5 +16,5 @@ void main() {
     // Hyperbolic distance
     float dist = atanh(min(length(view_pos), 1));
     // Exponential-squared fog
-    fog = vec4(0.5, 0.5, 0.5, exp(-pow(dist * fog_density, 2)));
+    fog = vec4(0.2, 0.15, 0.8, exp(-pow(dist * fog_density, 2)));
 }
