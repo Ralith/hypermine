@@ -65,8 +65,6 @@ impl NodeState {
     }
 
     pub fn child(&self, graph: &DualGraph, node: NodeId, side: Side) -> Self {
-        let node_length = graph.length(node);
-
         let spice = graph
             .descenders(node)
             // you have to factor in the side representations so that nodes
@@ -74,7 +72,7 @@ impl NodeState {
             .map(|(s, n)| hash(graph.get(n).as_ref().unwrap().state.spice, s as u64))
             // now we mix together all the local hashes of the neighbors for this new node's
             // unique hash.
-            .fold(hash(0, node_length as u64), hash);
+            .fold(0, hash);
 
         let mut d = graph
             .descenders(node)
