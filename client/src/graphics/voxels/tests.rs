@@ -157,13 +157,7 @@ fn surface_extraction() {
     test.run();
 
     assert_eq!(
-        *test.indirect,
-        VkDrawIndirectCommand {
-            vertex_count: 0,
-            instance_count: 1,
-            first_vertex: 0,
-            first_instance: 0
-        },
+        test.indirect.vertex_count, 0,
         "empty chunks have no surfaces"
     );
 
@@ -174,13 +168,7 @@ fn surface_extraction() {
     test.run();
 
     assert_eq!(
-        *test.indirect,
-        VkDrawIndirectCommand {
-            vertex_count: 0,
-            instance_count: 1,
-            first_vertex: 0,
-            first_instance: 0
-        },
+        test.indirect.vertex_count, 0,
         "solid chunks have no surfaces"
     );
 
@@ -200,13 +188,8 @@ fn surface_extraction() {
     test.run();
 
     assert_eq!(
-        *test.indirect,
-        VkDrawIndirectCommand {
-            vertex_count: 6 * DIMENSION.pow(2) as u32,
-            instance_count: 1,
-            first_vertex: 0,
-            first_instance: 0
-        },
+        test.indirect.vertex_count,
+        6 * DIMENSION.pow(2) as u32,
         "half-solid chunks have n^2 surfaces"
     );
     assert_eq!(
