@@ -19,7 +19,7 @@ use ash::extensions::khr;
 
 fn main() {
     // Set up logging
-    tracing_subscriber::fmt::init();
+    common::init_tracing();
     let metrics = crate::metrics::init();
 
     let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();

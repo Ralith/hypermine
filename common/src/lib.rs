@@ -78,3 +78,14 @@ pub fn sanitize_motion_input(v: na::Vector3<f32>) -> (na::Unit<na::Vector3<f32>>
         (direction, speed.min(1.0))
     }
 }
+
+pub fn init_tracing() {
+    use tracing_subscriber::{
+        filter, fmt, layer::SubscriberExt, registry, util::SubscriberInitExt,
+    };
+
+    registry()
+        .with(fmt::layer().with_target(false))
+        .with(filter::EnvFilter::from_default_env())
+        .init();
+}

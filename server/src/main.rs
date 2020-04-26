@@ -11,7 +11,7 @@ use config::Config;
 
 fn main() {
     // Set up logging
-    tracing_subscriber::fmt::init();
+    common::init_tracing();
 
     if let Err(e) = run() {
         eprintln!("{:#}", e);
