@@ -79,13 +79,20 @@ pub fn sanitize_motion_input(v: na::Vector3<f32>) -> (na::Unit<na::Vector3<f32>>
     }
 }
 
+pub fn tracing_guard() -> tracing::dispatcher::DefaultGuard {
+    use tracing_subscriber::util::SubscriberInitExt;
+    tracing_subscriber().set_default()
+}
+
 pub fn init_tracing() {
-    use tracing_subscriber::{
-        filter, fmt, layer::SubscriberExt, registry, util::SubscriberInitExt,
-    };
+    use tracing_subscriber::util::SubscriberInitExt;
+    tracing_subscriber().init();
+}
+
+fn tracing_subscriber() -> impl tracing::Subscriber {
+    use tracing_subscriber::{filter, fmt, layer::SubscriberExt, registry};
 
     registry()
         .with(fmt::layer().with_target(false))
         .with(filter::EnvFilter::from_default_env())
-        .init();
 }

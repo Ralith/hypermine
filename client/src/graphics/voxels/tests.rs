@@ -147,7 +147,7 @@ struct Vertex {
 fn surface_extraction() {
     assert_eq!(mem::size_of::<Vertex>(), 8);
 
-    let _ = tracing_subscriber::fmt::try_init();
+    let _guard = common::tracing_guard();
     let mut test = SurfaceExtractionTest::new();
 
     for x in test.scratch.storage(0) {
