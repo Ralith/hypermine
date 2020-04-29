@@ -12,10 +12,10 @@ license = "Apache-2.0 OR Zlib"
 common = { path = "../common" }
 server = { path = "../server" }
 tracing = "0.1.10"
-ash = "0.29"
-lahar = { git = "https://github.com/Ralith/lahar", rev = "0b22a0c92a1ea93ae1ed0c9481d85eaa6eb41ad4" }
+ash = "0.30"
+lahar = { git = "https://github.com/Ralith/lahar", rev = "38e6ea95280c4cf582ca56807b7540a957ab6ef4" }
 winit = "0.22"
-ash-window = "0.1.0"
+ash-window = "0.3.0"
 directories = "2.0.2"
 vk-shader-macros = "0.2.2"
 na = { package = "nalgebra", version = "0.19" }

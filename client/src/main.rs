@@ -57,10 +57,7 @@ fn main() {
     // Create the OS window
     let window = graphics::EarlyWindow::new();
     // Initialize Vulkan with the extensions needed to render to the window
-    let core = Arc::new(graphics::Core::new(&[
-        khr::Surface::name(),
-        window.required_extension(),
-    ]));
+    let core = Arc::new(graphics::Core::new(&window.required_extensions()));
 
     // Kick off networking
     let net = net::spawn(config.clone());
