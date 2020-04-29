@@ -96,13 +96,23 @@ impl Sim {
             self.handle_net(msg);
         }
 
-        self.since_input_sent += dt;
         if let Some(step_interval) = self.params.as_ref().map(|x| x.step_interval) {
+            self.since_input_sent += dt;
             if let Some(overflow) = self.since_input_sent.checked_sub(step_interval) {
+                // At least one step interval has passed since we last sent input, so it's time to
+                // send again.
+
+                // Update average velocity for the time between the last input sample and the end of
+                // the previous step. dt > overflow because we check whether a step has elapsed
+                // after each increment.
                 self.average_velocity += self.instantaneous_velocity
                     * (dt - overflow).as_secs_f32()
                     / step_interval.as_secs_f32();
+
+                // Send fresh input
                 self.send_input();
+
+                // Reset state for the next step
                 if overflow > step_interval {
                     // If it's been more than two timesteps since we last sent input, skip ahead
                     // rather than spamming the server.
@@ -115,6 +125,7 @@ impl Sim {
                     self.since_input_sent = overflow;
                 }
             } else {
+                // Update average velocity for the time within the current step
                 self.average_velocity +=
                     self.instantaneous_velocity * dt.as_secs_f32() / step_interval.as_secs_f32();
             }
