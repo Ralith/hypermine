@@ -59,7 +59,7 @@ impl Core {
                 .application_version(0)
                 .engine_name(name)
                 .engine_version(0)
-                .api_version(ash::vk_make_version!(1, 1, 0));
+                .api_version(vk::make_version(1, 1, 0));
             let mut instance_info = vk::InstanceCreateInfo::builder()
                 .application_info(&app_info)
                 .enabled_extension_names(&exts);

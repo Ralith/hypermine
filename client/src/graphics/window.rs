@@ -35,8 +35,8 @@ impl EarlyWindow {
     }
 
     /// Identify the Vulkan extension needed to render to this window
-    pub fn required_extension(&self) -> &'static CStr {
-        ash_window::enumerate_required_extension(&self.window)
+    pub fn required_extensions(&self) -> Vec<&'static CStr> {
+        ash_window::enumerate_required_extensions(&self.window).expect("unsupported platform")
     }
 }
 
@@ -87,11 +87,9 @@ impl Window {
     /// Determine whether this window can be rendered to from a particular device and queue family
     pub fn supports(&self, physical: vk::PhysicalDevice, queue_family_index: u32) -> bool {
         unsafe {
-            self.surface_fn.get_physical_device_surface_support(
-                physical,
-                queue_family_index,
-                self.surface,
-            )
+            self.surface_fn
+                .get_physical_device_surface_support(physical, queue_family_index, self.surface)
+                .unwrap()
         }
     }
 
