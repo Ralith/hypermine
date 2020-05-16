@@ -2,6 +2,9 @@ use std::ops::{Index, IndexMut};
 
 use crate::dodeca::Vertex;
 
+/// A table of chunks contained by a single node
+///
+/// Each chunk is 1/8 of a cube whose vertices are at the centers of nodes.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Chunks<T> {
     values: [T; 20],
