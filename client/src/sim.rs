@@ -393,6 +393,8 @@ fn populate_chunk(graph: &mut DualGraph, dimension: u8, node: NodeId, chunk: dod
         .expect("must not be called on an unpopulated node")
         .chunks[chunk] = Some(Chunk {
         surface: None,
-        voxels: worldgen::voxels(graph, node, chunk, dimension),
+        voxels: worldgen::ChunkParams::new(graph, node, chunk)
+            .expect("incident nodes must all be populated")
+            .generate_voxels(dimension),
     });
 }

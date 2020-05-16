@@ -109,148 +109,161 @@ impl NodeState {
     }
 }
 
-pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> VoxelData {
-    let enviros = chunk_incident_enviro_factors(graph, node, chunk).unwrap();
+/// Data needed to generate a chunk
+pub struct ChunkParams {
+    chunk: Vertex,
+    env: ChunkIncidentEnviroFactors,
+    surface: Surface,
+}
 
-    let mut voxels = VoxelData::Solid(Material::Void);
-
-    let state = &graph
-        .get(node)
-        .as_ref()
-        .expect("must only be called on populated nodes")
-        .state;
-
-    // Determine whether this chunk might contain a boundary between solid and void
-    let mut me_min = enviros.max_elevations[0];
-    let mut me_max = enviros.max_elevations[0];
-    for &me in &enviros.max_elevations[1..] {
-        me_min = me_min.min(me);
-        me_max = me_max.max(me);
-    }
-    // Maximum difference between elevations at the center of a chunk and any other point in the chunk
-    // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
-    // empirically.
-    const ELEVATION_MARGIN: f64 = 0.7;
-    let center_elevation = state.surface.elevation(na::Vector3::repeat(0.5), chunk);
-    const ELEVATION_SCALE: f64 = 10.0;
-    if center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE {
-        // The whole chunk is underground
-        // TODO: More accurate VoxelData
-        return VoxelData::Solid(Material::Stone);
+impl ChunkParams {
+    /// Extract data necessary to generate a chunk
+    ///
+    /// Returns `None` if an unpopulated node is needed.
+    pub fn new(graph: &DualGraph, node: NodeId, chunk: Vertex) -> Option<Self> {
+        Some(Self {
+            chunk,
+            env: chunk_incident_enviro_factors(graph, node, chunk)?,
+            surface: graph.get(node).as_ref()?.state.surface,
+        })
     }
 
-    if center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE {
-        // The whole chunk is above ground
-        return VoxelData::Solid(Material::Void);
-    }
+    /// Generate voxels making up the chunk
+    pub fn generate_voxels(&self, dimension: u8) -> VoxelData {
+        // Determine whether this chunk might contain a boundary between solid and void
+        let mut me_min = self.env.max_elevations[0];
+        let mut me_max = self.env.max_elevations[0];
+        for &me in &self.env.max_elevations[1..] {
+            me_min = me_min.min(me);
+            me_max = me_max.max(me);
+        }
+        // Maximum difference between elevations at the center of a chunk and any other point in the chunk
+        // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
+        // empirically.
+        const ELEVATION_MARGIN: f64 = 0.7;
+        let center_elevation = self.surface.elevation(na::Vector3::repeat(0.5), self.chunk);
+        const ELEVATION_SCALE: f64 = 10.0;
+        if center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE {
+            // The whole chunk is underground
+            // TODO: More accurate VoxelData
+            return VoxelData::Solid(Material::Stone);
+        }
 
-    for z in 0..dimension {
-        for y in 0..dimension {
-            for x in 0..dimension {
-                let coords = na::Vector3::new(x, y, z);
-                let center = voxel_center(dimension, coords);
-                let cube_coords = center * 0.5;
+        if center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE {
+            // The whole chunk is above ground
+            return VoxelData::Solid(Material::Void);
+        }
 
-                let rain = trilerp(&enviros.rainfalls, cube_coords);
-                let temp = trilerp(&enviros.temperatures, cube_coords);
-                let slope = trilerp(&enviros.slopeinesses, cube_coords);
+        let mut voxels = VoxelData::Solid(Material::Void);
 
-                // block is a real number, threshold is in (0, 0.2) and biased towards 0
-                // This causes the level of terrain bumpiness to vary over space.
-                let block = trilerp(&enviros.blockinesses, cube_coords);
-                let threshold = 2.0f64.powf(block) / (4.0 + 2.0f64.powf(block)) * 0.2;
-                let elev_raw = trilerp(&enviros.max_elevations, cube_coords);
-                let terracing_scale = 5.0; // This is not wavelength in number of blocks
-                let elev_floor = (elev_raw / terracing_scale).floor();
-                let elev_rem = elev_raw / terracing_scale - elev_floor;
-                let elev =
-                    terracing_scale * elev_floor + serp(0.0, terracing_scale, elev_rem, threshold);
+        for z in 0..dimension {
+            for y in 0..dimension {
+                for x in 0..dimension {
+                    let coords = na::Vector3::new(x, y, z);
+                    let center = voxel_center(dimension, coords);
+                    let cube_coords = center * 0.5;
 
-                let mut voxel_mat;
-                let max_e;
+                    let rain = trilerp(&self.env.rainfalls, cube_coords);
+                    let temp = trilerp(&self.env.temperatures, cube_coords);
+                    let slope = trilerp(&self.env.slopeinesses, cube_coords);
 
-                // Nine basic terrain types based on combinations of
-                // low/medium/high temperature and humidity.
-                if temp < -2.0 {
-                    if rain < -2.0 {
-                        voxel_mat = Material::Gravelstone;
+                    // block is a real number, threshold is in (0, 0.2) and biased towards 0
+                    // This causes the level of terrain bumpiness to vary over space.
+                    let block = trilerp(&self.env.blockinesses, cube_coords);
+                    let threshold = 2.0f64.powf(block) / (4.0 + 2.0f64.powf(block)) * 0.2;
+                    let elev_raw = trilerp(&self.env.max_elevations, cube_coords);
+                    let terracing_scale = 5.0; // This is not wavelength in number of blocks
+                    let elev_floor = (elev_raw / terracing_scale).floor();
+                    let elev_rem = elev_raw / terracing_scale - elev_floor;
+                    let elev = terracing_scale * elev_floor
+                        + serp(0.0, terracing_scale, elev_rem, threshold);
+
+                    let mut voxel_mat;
+                    let max_e;
+
+                    // Nine basic terrain types based on combinations of
+                    // low/medium/high temperature and humidity.
+                    if temp < -2.0 {
+                        if rain < -2.0 {
+                            voxel_mat = Material::Gravelstone;
+                        } else if rain < 2.0 {
+                            voxel_mat = Material::Stone;
+                        } else {
+                            voxel_mat = Material::Greystone;
+                        }
+                    } else if temp < 2.0 {
+                        if rain < -2.0 {
+                            voxel_mat = Material::Graveldirt;
+                        } else if rain < 2.0 {
+                            voxel_mat = Material::Dirt;
+                        } else {
+                            voxel_mat = Material::Grass;
+                        }
+                    } else if rain < -2.0 {
+                        voxel_mat = Material::Redsand;
                     } else if rain < 2.0 {
-                        voxel_mat = Material::Stone;
+                        voxel_mat = Material::Sand;
                     } else {
-                        voxel_mat = Material::Greystone;
+                        voxel_mat = Material::Flowergrass;
                     }
-                } else if temp < 2.0 {
-                    if rain < -2.0 {
-                        voxel_mat = Material::Graveldirt;
-                    } else if rain < 2.0 {
-                        voxel_mat = Material::Dirt;
-                    } else {
-                        voxel_mat = Material::Grass;
-                    }
-                } else if rain < -2.0 {
-                    voxel_mat = Material::Redsand;
-                } else if rain < 2.0 {
-                    voxel_mat = Material::Sand;
-                } else {
-                    voxel_mat = Material::Flowergrass;
-                }
 
-                // Additional adjustments alter both block material and elevation
-                // for a bit of extra variety.
-                let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
-                // peaks should roughly tend to be snow-covered
-                if slope_mod <= 1_f64 {
-                    if temp < 0.0 {
-                        voxel_mat = Material::Snow;
-                        max_e = elev + 0.25;
+                    // Additional adjustments alter both block material and elevation
+                    // for a bit of extra variety.
+                    let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+                    // peaks should roughly tend to be snow-covered
+                    if slope_mod <= 1_f64 {
+                        if temp < 0.0 {
+                            voxel_mat = Material::Snow;
+                            max_e = elev + 0.25;
+                        } else {
+                            max_e = elev;
+                        }
+                    } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
+                        voxel_mat = match voxel_mat {
+                            Material::Flowergrass => Material::Bigflowergrass,
+                            Material::Greystone => Material::Blackstone,
+                            _ => voxel_mat,
+                        };
+                        max_e = elev - 0.25;
                     } else {
                         max_e = elev;
                     }
-                } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-                    voxel_mat = match voxel_mat {
-                        Material::Flowergrass => Material::Bigflowergrass,
-                        Material::Greystone => Material::Blackstone,
-                        _ => voxel_mat,
-                    };
-                    max_e = elev - 0.25;
-                } else {
-                    max_e = elev;
-                }
 
-                if state.surface.elevation(center, chunk) < max_e / ELEVATION_SCALE {
-                    voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
+                    if self.surface.elevation(center, self.chunk) < max_e / ELEVATION_SCALE {
+                        voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
+                    }
                 }
             }
         }
-    }
 
-    // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
-    // and a block of leaves. The leaf block is on the opposite face of the
-    // wood block as the ground block.
-    let loc = na::Vector3::repeat(4);
-    let voxel_of_interest_index = index(dimension, loc);
-    let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
+        // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
+        // and a block of leaves. The leaf block is on the opposite face of the
+        // wood block as the ground block.
+        let loc = na::Vector3::repeat(4);
+        let voxel_of_interest_index = index(dimension, loc);
+        let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
 
-    let num_void_neighbors = neighbor_data
-        .iter()
-        .filter(|n| n.material == Material::Void)
-        .count();
+        let num_void_neighbors = neighbor_data
+            .iter()
+            .filter(|n| n.material == Material::Void)
+            .count();
 
-    // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
-    if num_void_neighbors == 5 {
-        for i in neighbor_data.iter() {
-            if (i.material == Material::Dirt)
-                || (i.material == Material::Grass)
-                || (i.material == Material::Flowergrass)
-            {
-                voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
-                let leaf_location = index(dimension, i.coords_opposing);
-                voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
+        // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
+        if num_void_neighbors == 5 {
+            for i in neighbor_data.iter() {
+                if (i.material == Material::Dirt)
+                    || (i.material == Material::Grass)
+                    || (i.material == Material::Flowergrass)
+                {
+                    voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
+                    let leaf_location = index(dimension, i.coords_opposing);
+                    voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
+                }
             }
         }
-    }
 
-    voxels
+        voxels
+    }
 }
 
 struct NeighborData {
@@ -393,6 +406,7 @@ fn chunk_incident_enviro_factors(
 }
 
 /// Keeps track of the canonical surface wrt. the NodeState this is stored in
+#[derive(Debug, Copy, Clone)]
 struct Surface {
     normal: na::Vector4<f64>,
 }
