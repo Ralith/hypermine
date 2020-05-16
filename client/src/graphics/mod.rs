@@ -13,7 +13,6 @@ mod draw;
 mod fog;
 mod gltf_mesh;
 mod loader;
-pub mod lru_table;
 mod meshes;
 mod png_array;
 mod voxels;
@@ -29,7 +28,6 @@ pub use self::{
     fog::Fog,
     gltf_mesh::{GlbFile, GltfScene},
     loader::{Asset, LoadCtx, LoadFuture, Loadable, Loader},
-    lru_table::LruTable,
     meshes::{Mesh, Meshes},
     png_array::PngArray,
     voxels::Voxels,

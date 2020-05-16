@@ -10,13 +10,12 @@ use ash::{vk, Device};
 use metrics::timing;
 use tracing::warn;
 
-use super::lru_table::LruTable;
 use crate::{
     graphics::{Base, Loader},
     sim::VoxelData,
     Config, Sim,
 };
-use common::{dodeca::Vertex, graph::NodeId, math};
+use common::{dodeca::Vertex, graph::NodeId, math, LruSlab};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
@@ -26,7 +25,7 @@ pub struct Voxels {
     surface_extraction: SurfaceExtraction,
     extraction_scratch: ScratchBuffer,
     surfaces: DrawBuffer,
-    states: LruTable<SurfaceState>,
+    states: LruSlab<SurfaceState>,
     draw: Surface,
 }
 
@@ -63,7 +62,7 @@ impl Voxels {
             surface_extraction,
             extraction_scratch,
             surfaces,
-            states: LruTable::with_capacity(max_chunks),
+            states: LruSlab::with_capacity(max_chunks),
             draw,
         }
     }
@@ -226,7 +225,7 @@ pub struct Frame {
     surface: surface::Frame,
     /// Scratch slots completed in this frame
     extracted: Vec<u32>,
-    drawn: Vec<super::lru_table::SlotId>,
+    drawn: Vec<common::lru_slab::SlotId>,
 }
 
 impl Frame {

@@ -1,12 +1,12 @@
 /// A fixed-size random-access table that maintains an LRU list in constant time
-pub struct LruTable<T> {
+pub struct LruSlab<T> {
     slots: Box<[Slot<T>]>,
     free: Vec<SlotId>,
     head: SlotId,
     tail: SlotId,
 }
 
-impl<T> LruTable<T> {
+impl<T> LruSlab<T> {
     pub fn with_capacity(n: u32) -> Self {
         assert!(n != u32::max_value(), "capacity too large");
         Self {
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn lru_order() {
-        let mut cache = LruTable::with_capacity(4);
+        let mut cache = LruSlab::with_capacity(4);
         let b = cache.insert(1).unwrap();
         let _a = cache.insert(0).unwrap();
         let d = cache.insert(3).unwrap();

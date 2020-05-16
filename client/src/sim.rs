@@ -4,13 +4,11 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
 
-use crate::{
-    graphics::lru_table::SlotId, net, prediction::PredictedMotion, worldgen, worldgen::NodeState,
-    Net,
-};
+use crate::{net, prediction::PredictedMotion, worldgen, worldgen::NodeState, Net};
 use common::{
     dodeca,
     graph::{Graph, NodeId},
+    lru_slab::SlotId,
     math,
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
