@@ -27,6 +27,7 @@ pub struct Voxels {
     surfaces: DrawBuffer,
     states: LruSlab<SurfaceState>,
     draw: Surface,
+    max_chunks: u32,
 }
 
 impl Voxels {
@@ -64,6 +65,7 @@ impl Voxels {
             surfaces,
             states: LruSlab::with_capacity(max_chunks),
             draw,
+            max_chunks,
         }
     }
 
@@ -128,7 +130,7 @@ impl Voxels {
                             {
                                 continue;
                             }
-                            let removed = if self.states.is_full() {
+                            let removed = if self.states.len() == self.max_chunks {
                                 let slot = self.states.lru().expect("full LRU table is nonempty");
                                 if self.states.peek(slot).refcount != 0 {
                                     warn!("MAX_CHUNKS is too small");
@@ -140,14 +142,11 @@ impl Voxels {
                             };
                             let scratch_slot = self.extraction_scratch.alloc().expect("there are at least chunks_loaded_per_frame scratch slots per frame");
                             frame.extracted.push(scratch_slot);
-                            let slot = self
-                                .states
-                                .insert(SurfaceState {
-                                    node,
-                                    chunk,
-                                    refcount: 1,
-                                })
-                                .expect("we ensure cache space is available above");
+                            let slot = self.states.insert(SurfaceState {
+                                node,
+                                chunk,
+                                refcount: 1,
+                            });
                             value.surface = Some(slot);
                             let storage = self.extraction_scratch.storage(scratch_slot);
                             storage.copy_from_slice(&data[..]);
