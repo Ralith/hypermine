@@ -9,7 +9,7 @@ use common::{
 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum NodeStateKind {
+enum NodeStateKind {
     RootSky,
     Sky,
     DeepSky,
@@ -19,10 +19,10 @@ pub enum NodeStateKind {
 use NodeStateKind::*;
 
 impl NodeStateKind {
-    pub const ROOT: Self = RootSky;
+    const ROOT: Self = RootSky;
 
     /// What state comes after this state, from a given side?
-    pub fn child(self, side: Side) -> Self {
+    fn child(self, side: Side) -> Self {
         match (self, side) {
             (RootSky, _) => match side {
                 _ if side.adjacent_to(Side::A) => Land,
@@ -253,7 +253,7 @@ pub fn voxels(graph: &DualGraph, node: NodeId, chunk: Vertex, dimension: u8) -> 
     voxels
 }
 
-pub struct NeighborData {
+struct NeighborData {
     coords_opposing: na::Vector3<u8>,
     material: Material,
 }
@@ -269,7 +269,7 @@ fn voxel_neighbors(dim: u8, coords: na::Vector3<u8>, voxels: &mut VoxelData) -> 
     ]
 }
 
-pub fn neighbor(
+fn neighbor(
     dimension: u8,
     w: na::Vector3<u8>,
     x: i8,
@@ -393,7 +393,7 @@ fn chunk_incident_enviro_factors(
 }
 
 /// Keeps track of the canonical surface wrt. the NodeState this is stored in
-pub struct Surface {
+struct Surface {
     normal: na::Vector4<f64>,
 }
 impl Surface {
