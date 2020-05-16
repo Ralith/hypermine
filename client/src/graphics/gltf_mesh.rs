@@ -13,7 +13,8 @@ use futures_util::future::{try_join_all, BoxFuture, FutureExt};
 use lahar::{BufferRegionAlloc, DedicatedImage};
 use tracing::{error, trace};
 
-use super::{loader::Cleanup, meshes::Vertex, Base, LoadCtx, LoadFuture, Loadable, Mesh};
+use super::{meshes::Vertex, Base, Mesh};
+use crate::loader::{Cleanup, LoadCtx, LoadFuture, Loadable};
 
 pub struct GlbFile {
     pub path: PathBuf,

@@ -223,7 +223,7 @@ pub struct Mesh {
     pub color_view: vk::ImageView,
 }
 
-impl super::loader::Cleanup for Mesh {
+impl crate::loader::Cleanup for Mesh {
     unsafe fn cleanup(mut self, gfx: &Base) {
         let device = &*gfx.device;
         device.destroy_descriptor_pool(self.pool, None);

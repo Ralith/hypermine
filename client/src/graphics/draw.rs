@@ -5,8 +5,8 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 use metrics::timing;
 
-use super::{loader::Asset, voxels, Base, Fog, GltfScene, Loader, Meshes, Voxels};
-use crate::{sim, Config, Sim};
+use super::{voxels, Base, Fog, GltfScene, Meshes, Voxels};
+use crate::{sim, Asset, Config, Loader, Sim};
 use common::proto::{Character, Position};
 
 /// Manages rendering, independent of what is being rendered to

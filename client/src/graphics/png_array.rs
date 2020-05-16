@@ -5,7 +5,7 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::DedicatedImage;
 use tracing::trace;
 
-use super::{LoadCtx, LoadFuture, Loadable};
+use crate::loader::{LoadCtx, LoadFuture, Loadable};
 
 pub struct PngArray {
     pub path: PathBuf,

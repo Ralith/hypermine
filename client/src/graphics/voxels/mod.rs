@@ -10,11 +10,7 @@ use ash::{vk, Device};
 use metrics::timing;
 use tracing::warn;
 
-use crate::{
-    graphics::{Base, Loader},
-    sim::VoxelData,
-    Config, Sim,
-};
+use crate::{graphics::Base, sim::VoxelData, Config, Loader, Sim};
 use common::{dodeca::Vertex, graph::NodeId, math, LruSlab};
 
 use surface::Surface;
