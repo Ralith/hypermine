@@ -5,7 +5,7 @@ use lahar::{DedicatedImage, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
 use super::surface_extraction::DrawBuffer;
-use crate::graphics::{Asset, Base, Loader};
+use crate::{graphics::Base, Asset, Loader};
 use common::{defer, world::Material};
 
 const VERT: &[u32] = include_glsl!("shaders/voxels.vert");

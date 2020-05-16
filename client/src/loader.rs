@@ -13,8 +13,7 @@ use lahar::{transfer, transfer::TransferHandle, BufferRegion, DedicatedImage, St
 use tokio::sync::mpsc;
 use tracing::error;
 
-use super::Base;
-use crate::Config;
+use crate::{graphics::Base, Config};
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
