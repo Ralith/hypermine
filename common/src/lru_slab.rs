@@ -1,32 +1,39 @@
 /// A fixed-size random-access table that maintains an LRU list in constant time
 pub struct LruSlab<T> {
     slots: Box<[Slot<T>]>,
-    free: Vec<SlotId>,
+    /// Most recently used
     head: SlotId,
+    /// Least recently used
     tail: SlotId,
+    /// First unused
+    free: SlotId,
 }
 
 impl<T> LruSlab<T> {
-    pub fn with_capacity(n: u32) -> Self {
-        assert!(n != u32::max_value(), "capacity too large");
+    pub fn with_capacity(capacity: u32) -> Self {
+        assert!(capacity != u32::max_value(), "capacity too large");
         Self {
-            slots: (0..n)
-                .map(|_| Slot {
+            slots: (0..capacity)
+                .map(|n| Slot {
                     value: None,
                     prev: SlotId::NONE,
-                    next: SlotId::NONE,
+                    next: if n + 1 == capacity {
+                        SlotId::NONE
+                    } else {
+                        SlotId(n + 1)
+                    },
                 })
                 .collect::<Vec<_>>()
                 .into(),
-            free: (0..n).map(SlotId).collect(),
             head: SlotId::NONE,
             tail: SlotId::NONE,
+            free: SlotId(0),
         }
     }
 
     /// Whether `insert` is guaranteed to return `None`
     pub fn is_full(&self) -> bool {
-        self.free.is_empty()
+        self.free == SlotId::NONE
     }
 
     pub fn capacity(&self) -> u32 {
@@ -37,14 +44,11 @@ impl<T> LruSlab<T> {
     ///
     /// The returned slot is marked as the most recently used.
     pub fn insert(&mut self, value: T) -> Option<SlotId> {
-        let id = self.free.pop()?;
+        let id = self.alloc()?;
         let idx = id.0 as usize;
 
-        debug_assert!(self.slots[idx].value.is_none(), "corrupt lru list");
+        debug_assert!(self.slots[idx].value.is_none(), "corrupt free list");
         self.slots[idx].value = Some(value);
-
-        debug_assert_eq!(self.slots[idx].next, SlotId::NONE, "corrupt lru list");
-        debug_assert_eq!(self.slots[idx].prev, SlotId::NONE, "corrupt lru list");
         self.link_at_head(id);
 
         Some(id)
@@ -62,10 +66,9 @@ impl<T> LruSlab<T> {
 
     pub fn remove(&mut self, slot: SlotId) -> T {
         self.unlink(slot);
-        self.free.push(slot);
-        // To help make corruption obvious, empty slots have no next/prev
+        self.slots[slot.0 as usize].next = self.free;
         self.slots[slot.0 as usize].prev = SlotId::NONE;
-        self.slots[slot.0 as usize].next = SlotId::NONE;
+        self.free = slot;
         self.slots[slot.0 as usize]
             .value
             .take()
@@ -88,6 +91,24 @@ impl<T> LruSlab<T> {
         self.slots[slot.0 as usize].value.as_mut().unwrap()
     }
 
+    /// Walks the container from most to least recently used
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter {
+            slots: &self.slots[..],
+            next: self.head,
+        }
+    }
+
+    /// Remove a slot from the freelist
+    fn alloc(&mut self) -> Option<SlotId> {
+        if self.free == SlotId::NONE {
+            return None;
+        }
+        let slot = self.free;
+        self.free = self.slots[slot.0 as usize].next;
+        Some(slot)
+    }
+
     /// Mark `slot` as the most recently used
     fn freshen(&mut self, slot: SlotId) {
         if self.slots[slot.0 as usize].prev == SlotId::NONE {
@@ -105,6 +126,7 @@ impl<T> LruSlab<T> {
         let idx = slot.0 as usize;
         if self.head == SlotId::NONE {
             // List was empty
+            self.slots[idx].next = SlotId::NONE;
             self.tail = slot;
         } else {
             self.slots[idx].next = self.head;
@@ -133,7 +155,9 @@ impl<T> LruSlab<T> {
 
 struct Slot<T> {
     value: Option<T>,
+    /// Next slot in the LRU or free list
     next: SlotId,
+    /// Previous slot in the LRU list; NONE when free
     prev: SlotId,
 }
 
@@ -144,6 +168,24 @@ impl SlotId {
     const NONE: Self = SlotId(u32::max_value());
 }
 
+pub struct Iter<'a, T> {
+    slots: &'a [Slot<T>],
+    next: SlotId,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<&'a T> {
+        if self.next == SlotId::NONE {
+            return None;
+        }
+        let idx = self.next.0 as usize;
+        let result = self.slots[idx].value.as_ref().expect("corrupt LRU list");
+        self.next = self.slots[idx].next;
+        Some(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,21 +193,35 @@ mod tests {
     #[test]
     fn lru_order() {
         let mut cache = LruSlab::with_capacity(4);
-        let b = cache.insert(1).unwrap();
-        let _a = cache.insert(0).unwrap();
-        let d = cache.insert(3).unwrap();
-        let c = cache.insert(2).unwrap();
+        let b = cache.insert('b').unwrap();
+        assert_eq!(cache.iter().collect::<String>(), "b");
+        let _a = cache.insert('a').unwrap();
+        assert_eq!(cache.iter().collect::<String>(), "ab");
+        let d = cache.insert('d').unwrap();
+        assert_eq!(cache.iter().collect::<String>(), "dab");
+        let c = cache.insert('c').unwrap();
+        assert_eq!(cache.iter().collect::<String>(), "cdab");
 
-        assert!(cache.insert(42).is_none());
+        assert!(cache.insert('e').is_none());
 
         cache.get_mut(b);
         cache.get_mut(c);
         cache.get_mut(d);
 
-        assert_eq!(cache.remove(cache.lru().unwrap()), 0);
-        assert_eq!(cache.remove(cache.lru().unwrap()), 1);
-        assert_eq!(cache.remove(cache.lru().unwrap()), 2);
-        assert_eq!(cache.remove(cache.lru().unwrap()), 3);
+        assert_eq!(cache.remove(cache.lru().unwrap()), 'a');
+        assert_eq!(cache.remove(cache.lru().unwrap()), 'b');
+        assert_eq!(cache.remove(cache.lru().unwrap()), 'c');
+        assert_eq!(cache.remove(cache.lru().unwrap()), 'd');
         assert!(cache.lru().is_none());
+    }
+
+    #[test]
+    fn slot_reuse() {
+        let mut cache = LruSlab::with_capacity(1);
+        let a = cache.insert('a').unwrap();
+        assert!(cache.insert('b').is_none());
+        cache.remove(a);
+        let a_prime = cache.insert('a').unwrap();
+        assert_eq!(a, a_prime);
     }
 }
