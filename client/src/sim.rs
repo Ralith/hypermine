@@ -371,7 +371,6 @@ fn populate_fresh_nodes(graph: &mut DualGraph, dimension: u8) {
             }
         }
     }
-    graph.clear_fresh();
 }
 
 fn populate_node(graph: &mut DualGraph, node: NodeId) {
