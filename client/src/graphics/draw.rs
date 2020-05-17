@@ -5,7 +5,7 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 use metrics::timing;
 
-use super::{voxels, Base, Fog, GltfScene, Meshes, Voxels};
+use super::{fog, voxels, Base, Fog, GltfScene, Meshes, Voxels};
 use crate::{sim, Asset, Config, Loader, Sim};
 use common::proto::{Character, Position};
 
@@ -461,10 +461,7 @@ impl Draw {
             Uniforms {
                 view_projection,
                 inverse_projection: projection.try_inverse().unwrap(),
-                // Only 1e-2 of color should be visible from view_distance, assuming
-                // exponential-squared fog
-                fog_density: ((1.0f32 / 1e-2).ln().sqrt()
-                    / self.cfg.local_simulation.view_distance),
+                fog_density: fog::density(self.cfg.local_simulation.view_distance, 1e-3, 5.0),
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             },
         );

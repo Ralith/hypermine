@@ -16,6 +16,6 @@ void main() {
     float view_length = length(view_pos);
     // Convert to true hyperbolic distance, taking care to respect atanh's domain
     float dist = view_length >= 1.0 ? INFINITY : atanh(view_length);
-    // Exponential-squared fog
-    fog = vec4(0.5, 0.65, 0.8, exp(-pow(dist * fog_density, 2)));
+    // Exponential^k fog
+    fog = vec4(0.5, 0.65, 0.8, exp(-pow(dist * fog_density, 5)));
 }
