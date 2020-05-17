@@ -19,6 +19,6 @@ pub use self::{
     gltf_mesh::{GlbFile, GltfScene},
     meshes::{Mesh, Meshes},
     png_array::PngArray,
-    voxels::Voxels,
+    voxels::{Chunk, Voxels},
     window::{EarlyWindow, Window},
 };

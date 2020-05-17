@@ -10,8 +10,13 @@ use ash::{vk, Device};
 use metrics::timing;
 use tracing::warn;
 
-use crate::{graphics::Base, sim::VoxelData, Config, Loader, Sim};
-use common::{dodeca::Vertex, graph::NodeId, math, LruSlab};
+use crate::{
+    graphics::Base,
+    loader::{Cleanup, LoadCtx, LoadFuture, Loadable, WorkQueue},
+    sim::VoxelData,
+    worldgen, Config, Loader, Sim,
+};
+use common::{dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
@@ -24,6 +29,7 @@ pub struct Voxels {
     states: LruSlab<SurfaceState>,
     draw: Surface,
     max_chunks: u32,
+    worldgen: WorkQueue<ChunkDesc>,
 }
 
 impl Voxels {
@@ -51,10 +57,11 @@ impl Voxels {
         let extraction_scratch = surface_extraction::ScratchBuffer::new(
             gfx,
             &surface_extraction,
-            config.chunks_loaded_per_frame * frames,
+            config.chunk_load_parallelism * frames,
             dimension,
         );
         Self {
+            worldgen: loader.make_queue(config.chunk_load_parallelism as usize),
             config,
             surface_extraction,
             extraction_scratch,
@@ -79,6 +86,13 @@ impl Voxels {
         }
         for chunk in frame.drawn.drain(..) {
             self.states.peek_mut(chunk).refcount -= 1;
+        }
+        while let Some(chunk) = self.worldgen.poll() {
+            sim.graph.get_mut(chunk.node).as_mut().unwrap().chunks[chunk.chunk] =
+                Chunk::Populated {
+                    surface: None,
+                    voxels: chunk.voxels,
+                };
         }
 
         // Determine what to load/render
@@ -106,6 +120,7 @@ impl Voxels {
         });
         let node_scan_started = Instant::now();
         for &(node, ref node_transform) in &nodes {
+            use Chunk::*;
             for chunk in Vertex::iter() {
                 // Fetch existing chunk, or extract surface of new chunk
                 let slot = match sim
@@ -115,14 +130,37 @@ impl Voxels {
                     .expect("all nodes must be populated before rendering")
                     .chunks[chunk]
                 {
-                    None => continue,
-                    Some(ref mut value) => match (value.surface, &value.voxels) {
-                        (Some(x), _) => {
+                    Generating => continue,
+                    Fresh => {
+                        // Generate voxel data
+                        if let Some(params) = worldgen::ChunkParams::new(&sim.graph, node, chunk) {
+                            if self
+                                .worldgen
+                                .load(ChunkDesc {
+                                    node,
+                                    params,
+                                    dimension: self.surfaces.dimension() as u8,
+                                })
+                                .is_ok()
+                            {
+                                sim.graph.get_mut(node).as_mut().unwrap().chunks[chunk] =
+                                    Generating;
+                            }
+                        }
+                        continue;
+                    }
+                    Populated {
+                        ref mut surface,
+                        ref voxels,
+                    } => match (surface, voxels) {
+                        (&mut Some(x), _) => {
+                            // Render an extracted surface
                             self.states.get_mut(x).refcount += 1;
                             x
                         }
-                        (None, &VoxelData::Dense(ref data)) => {
-                            if frame.extracted.len() == self.config.chunks_loaded_per_frame as usize
+                        (&mut ref mut surface @ None, &VoxelData::Dense(ref data)) => {
+                            // Extract a surface
+                            if frame.extracted.len() == self.config.chunk_load_parallelism as usize
                             {
                                 continue;
                             }
@@ -143,14 +181,17 @@ impl Voxels {
                                 chunk,
                                 refcount: 1,
                             });
-                            value.surface = Some(slot);
+                            *surface = Some(slot);
                             let storage = self.extraction_scratch.storage(scratch_slot);
                             storage.copy_from_slice(&data[..]);
                             if let Some(lru) = removed {
-                                sim.graph.get_mut(lru.node).as_mut().unwrap().chunks[lru.chunk]
-                                    .as_mut()
-                                    .unwrap()
-                                    .surface = None;
+                                if let Populated {
+                                    ref mut surface, ..
+                                } =
+                                    sim.graph.get_mut(lru.node).as_mut().unwrap().chunks[lru.chunk]
+                                {
+                                    *surface = None;
+                                }
                             }
                             let node_is_odd = sim.graph.length(node) & 1 != 0;
                             self.extraction_scratch.extract(
@@ -220,7 +261,7 @@ pub struct Frame {
     surface: surface::Frame,
     /// Scratch slots completed in this frame
     extracted: Vec<u32>,
-    drawn: Vec<common::lru_slab::SlotId>,
+    drawn: Vec<SlotId>,
 }
 
 impl Frame {
@@ -246,4 +287,48 @@ struct SurfaceState {
     node: NodeId,
     chunk: common::dodeca::Vertex,
     refcount: u32,
+}
+
+struct ChunkDesc {
+    node: NodeId,
+    params: worldgen::ChunkParams,
+    dimension: u8,
+}
+
+struct LoadedChunk {
+    node: NodeId,
+    chunk: Vertex,
+    voxels: VoxelData,
+}
+
+impl Cleanup for LoadedChunk {
+    unsafe fn cleanup(self, _gfx: &Base) {}
+}
+
+impl Loadable for ChunkDesc {
+    type Output = LoadedChunk;
+    fn load(self, _ctx: &LoadCtx) -> LoadFuture<'_, Self::Output> {
+        Box::pin(async move {
+            Ok(LoadedChunk {
+                node: self.node,
+                chunk: self.params.chunk(),
+                voxels: self.params.generate_voxels(self.dimension),
+            })
+        })
+    }
+}
+
+pub enum Chunk {
+    Fresh,
+    Generating,
+    Populated {
+        voxels: VoxelData,
+        surface: Option<SlotId>,
+    },
+}
+
+impl Default for Chunk {
+    fn default() -> Self {
+        Chunk::Fresh
+    }
 }

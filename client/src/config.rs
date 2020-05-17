@@ -13,7 +13,7 @@ use common::{SimConfig, SimConfigRaw};
 pub struct Config {
     pub name: Arc<str>,
     pub data_dir: PathBuf,
-    pub chunks_loaded_per_frame: u32,
+    pub chunk_load_parallelism: u32,
     pub server: Option<SocketAddr>,
     pub local_simulation: SimConfig,
 }
@@ -27,7 +27,7 @@ impl Config {
             name,
             data_dir,
             local_simulation,
-            chunks_loaded_per_frame,
+            chunk_load_parallelism,
             server,
         } = match fs::read(&path) {
             Ok(data) => match toml::from_slice(&data) {
@@ -50,7 +50,7 @@ impl Config {
         Config {
             name: name.unwrap_or_else(|| whoami::user().into()),
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
-            chunks_loaded_per_frame: chunks_loaded_per_frame.unwrap_or(16),
+            chunk_load_parallelism: chunk_load_parallelism.unwrap_or(16),
             server,
             local_simulation: SimConfig::from_raw(&local_simulation),
         }
@@ -84,7 +84,7 @@ impl Config {
 struct RawConfig {
     name: Option<Arc<str>>,
     data_dir: Option<PathBuf>,
-    chunks_loaded_per_frame: Option<u32>,
+    chunk_load_parallelism: Option<u32>,
     server: Option<SocketAddr>,
     #[serde(default)]
     local_simulation: SimConfigRaw,
