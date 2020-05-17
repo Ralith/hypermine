@@ -147,6 +147,43 @@ impl Loader {
         }
     }
 
+    pub fn make_queue<T: Loadable>(&mut self, capacity: usize) -> WorkQueue<T> {
+        let (input_send, mut input_recv) = mpsc::channel::<T>(capacity);
+        let (output_send, output_recv) = mpsc::channel::<T::Output>(capacity);
+        let shared = self.shared.clone();
+        self.runtime.spawn(async move {
+            while let Some(x) = input_recv.recv().await {
+                let shared = shared.clone();
+                let mut out = output_send.clone();
+                tokio::spawn(async move {
+                    match shared.ctx.load(x).await {
+                        Ok(x) => {
+                            if let Err(e) = out.send(x).await {
+                                unsafe {
+                                    e.0.cleanup(&shared.ctx.gfx);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!(
+                                "streaming {} load failed: {:#}",
+                                std::any::type_name::<T>(),
+                                e
+                            );
+                        }
+                    }
+                });
+            }
+        });
+        WorkQueue {
+            shared: self.shared.clone(),
+            send: input_send,
+            recv: output_recv,
+            capacity,
+            fill: 0,
+        }
+    }
+
     /// Invoke `finish` functions of spawned loading operations
     pub fn drive(&mut self) {
         self.reactor.poll().unwrap();
@@ -267,3 +304,56 @@ impl<T: 'static> Clone for Asset<T> {
 }
 
 impl<T: 'static> Copy for Asset<T> {}
+
+/// A bounded-capacity queue for streaming specific data (e.g. terrain chunks)
+///
+/// Limiting capacity ensures predictable memory usage and helps focus computational resources on
+/// recent requests when the total number of requests that could be submitted is large. This is
+/// particularly useful for terrain, where recent requests are more likely to be close to the
+/// viewpoint.
+pub struct WorkQueue<T: Loadable> {
+    shared: Arc<Shared>,
+    send: mpsc::Sender<T>,
+    recv: mpsc::Receiver<T::Output>,
+    capacity: usize,
+    fill: usize,
+}
+
+impl<T: Loadable> WorkQueue<T> {
+    /// Begin loading a single item, if capacity is available
+    pub fn load(&mut self, x: T) -> Result<(), T> {
+        use tokio::sync::mpsc::error::TrySendError::*;
+        if self.fill == self.capacity {
+            return Err(x);
+        }
+        self.fill += 1;
+        self.send.try_send(x).map_err(|e| {
+            self.fill -= 1;
+            match e {
+                Full(x) => x,
+                Closed(x) => x,
+            }
+        })
+    }
+
+    /// Fetch a load result if one is ready, freeing capacity
+    pub fn poll(&mut self) -> Option<T::Output> {
+        let result = self.recv.try_recv().ok()?;
+        self.fill -= 1;
+        Some(result)
+    }
+}
+
+impl<T: Loadable> Drop for WorkQueue<T> {
+    fn drop(&mut self) {
+        // Ensure any future completions will be cleaned up by the loader
+        self.recv.close();
+        // Gracefully drain already-completed tasks
+        while let Ok(x) = self.recv.try_recv() {
+            self.fill -= 1;
+            unsafe {
+                x.cleanup(&self.shared.ctx.gfx);
+            }
+        }
+    }
+}

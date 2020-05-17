@@ -4,11 +4,9 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
 
-use crate::{net, prediction::PredictedMotion, worldgen, worldgen::NodeState, Net};
+use crate::{graphics::Chunk, net, prediction::PredictedMotion, worldgen::NodeState, Net};
 use common::{
-    dodeca,
     graph::{Graph, NodeId},
-    lru_slab::SlotId,
     math,
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
@@ -22,7 +20,7 @@ pub struct Node {
     pub state: NodeState,
     /// We can only populate chunks which lie within a cube of populated nodes, so nodes on the edge
     /// of the graph always have some `None` chunks.
-    pub chunks: Chunks<Option<Chunk>>,
+    pub chunks: Chunks<Chunk>,
 }
 
 /// Game state
@@ -147,7 +145,7 @@ impl Sim {
                     movement_speed: msg.movement_speed,
                 });
                 // Populate the root node
-                populate_fresh_nodes(&mut self.graph, msg.chunk_size);
+                populate_fresh_nodes(&mut self.graph);
             }
             Spawns(msg) => self.handle_spawns(msg),
             StateDelta(msg) => {
@@ -213,13 +211,7 @@ impl Sim {
         for node in &msg.nodes {
             self.graph.insert_child(node.parent, node.side);
         }
-        populate_fresh_nodes(
-            &mut self.graph,
-            self.params
-                .as_ref()
-                .expect("spawns are processed after ServerHello")
-                .chunk_size,
-        );
+        populate_fresh_nodes(&mut self.graph);
     }
 
     fn spawn(
@@ -320,11 +312,6 @@ pub struct Parameters {
     pub character_id: EntityId,
 }
 
-pub struct Chunk {
-    pub surface: Option<SlotId>,
-    pub voxels: VoxelData,
-}
-
 #[derive(PartialEq)]
 pub enum VoxelData {
     Solid(Material),
@@ -349,27 +336,11 @@ impl VoxelData {
     }
 }
 
-fn populate_fresh_nodes(graph: &mut DualGraph, dimension: u8) {
+fn populate_fresh_nodes(graph: &mut DualGraph) {
     let fresh = graph.fresh().to_vec();
     graph.clear_fresh();
     for &node in &fresh {
         populate_node(graph, node);
-    }
-    for &node in &fresh {
-        let mut d = graph.descenders(node).map(|(side, _node)| side);
-        // If this node has three descenders, it completes a cube, and we can populate all eight
-        // chunks within that cube
-        if let (Some(a), Some(b), Some(c)) = (d.next(), d.next(), d.next()) {
-            let vert = dodeca::Vertex::from_sides(a, b, c).expect("descenders are adjacent");
-            for (_, path) in vert.dual_vertices() {
-                let node = path.fold(node, |node, side| {
-                    graph
-                        .neighbor(node, side)
-                        .expect("chunks whose outward-facing neighbors are all along descenders lie between populated cubes")
-                });
-                populate_chunk(graph, dimension, node, vert);
-            }
-        }
     }
 }
 
@@ -383,18 +354,5 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
             })
             .unwrap_or_else(NodeState::root),
         chunks: Chunks::default(),
-    });
-}
-
-fn populate_chunk(graph: &mut DualGraph, dimension: u8, node: NodeId, chunk: dodeca::Vertex) {
-    graph
-        .get_mut(node)
-        .as_mut()
-        .expect("must not be called on an unpopulated node")
-        .chunks[chunk] = Some(Chunk {
-        surface: None,
-        voxels: worldgen::ChunkParams::new(graph, node, chunk)
-            .expect("incident nodes must all be populated")
-            .generate_voxels(dimension),
     });
 }

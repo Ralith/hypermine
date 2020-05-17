@@ -128,6 +128,10 @@ impl ChunkParams {
         })
     }
 
+    pub fn chunk(&self) -> Vertex {
+        self.chunk
+    }
+
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self, dimension: u8) -> VoxelData {
         // Determine whether this chunk might contain a boundary between solid and void
@@ -362,6 +366,8 @@ struct ChunkIncidentEnviroFactors {
 
 /// Returns the max_elevation values for the nodes that are incident to this chunk,
 /// sorted and converted to f64 for use in functions like trilerp.
+///
+/// Returns `None` if not all incident nodes are populated.
 fn chunk_incident_enviro_factors(
     graph: &DualGraph,
     node: NodeId,
@@ -369,21 +375,8 @@ fn chunk_incident_enviro_factors(
 ) -> Option<ChunkIncidentEnviroFactors> {
     let mut i = cube
         .dual_vertices()
-        .map(|(_, path)| {
-            path.fold(node, |node, side| {
-                graph
-                    .neighbor(node, side)
-                    .expect("must only be called on chunks surrounded by populated nodes")
-            })
-        })
-        .map(|n| {
-            graph
-                .get(n)
-                .as_ref()
-                .expect("must only be called on chunks surrounded by populated nodes")
-                .state
-                .enviro
-        });
+        .map(|(_, mut path)| path.try_fold(node, |node, side| graph.neighbor(node, side)))
+        .filter_map(|node| Some(graph.get(node?).as_ref()?.state.enviro));
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
