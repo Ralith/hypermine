@@ -147,3 +147,9 @@ impl Fog {
         device.destroy_pipeline_layout(self.pipeline_layout, None);
     }
 }
+
+/// Compute the density value that will lead to a certain transmission from points at a certain
+/// distance, for a certain fog exponent
+pub fn density(distance: f32, transmission: f32, exponent: f32) -> f32 {
+    transmission.recip().ln().powf(exponent.recip()) / distance
+}
