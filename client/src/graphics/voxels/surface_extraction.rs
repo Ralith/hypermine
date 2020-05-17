@@ -173,6 +173,7 @@ pub struct ScratchBuffer {
     descriptor_pool: vk::DescriptorPool,
     descriptor_sets: Vec<vk::DescriptorSet>,
     free_slots: Vec<u32>,
+    concurrency: u32,
 }
 
 impl ScratchBuffer {
@@ -253,6 +254,7 @@ impl ScratchBuffer {
                 descriptor_pool,
                 descriptor_sets,
                 free_slots: (0..concurrency).collect(),
+                concurrency,
             }
         }
     }
@@ -288,6 +290,12 @@ impl ScratchBuffer {
         indirect: (vk::Buffer, vk::DeviceSize),
         face: (vk::Buffer, vk::DeviceSize),
     ) {
+        assert!(
+            index < self.concurrency,
+            "index {} out of bounds for concurrency {}",
+            index,
+            self.concurrency
+        );
         let index = index as usize;
 
         let voxel_count = (self.dimension + 2).pow(3) as usize;
@@ -522,6 +530,7 @@ pub struct DrawBuffer {
     faces: DedicatedBuffer,
     dimension: u32,
     face_buffer_unit: vk::DeviceSize,
+    count: u32,
 }
 
 impl DrawBuffer {
@@ -568,6 +577,7 @@ impl DrawBuffer {
                 faces,
                 dimension,
                 face_buffer_unit,
+                count,
             }
         }
     }
@@ -584,11 +594,13 @@ impl DrawBuffer {
 
     /// The offset into the face buffer at which a chunk's face data can be found
     pub fn face_offset(&self, chunk: u32) -> vk::DeviceSize {
+        assert!(chunk < self.count);
         vk::DeviceSize::from(chunk) * self.face_buffer_unit
     }
 
     /// The offset into the indirect buffer at which a chunk's face data can be found
     pub fn indirect_offset(&self, chunk: u32) -> vk::DeviceSize {
+        assert!(chunk < self.count);
         vk::DeviceSize::from(chunk) * INDIRECT_SIZE
     }
 
