@@ -56,6 +56,7 @@ impl Sim {
             orientation: na::one(),
         };
         let entity = self.world.spawn((id, position, character));
+        self.entity_ids.insert(id, entity);
         self.spawns.push(entity);
         (id, entity)
     }
