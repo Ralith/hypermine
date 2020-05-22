@@ -15,7 +15,7 @@ use winit::{
     window::{Window as WinitWindow, WindowBuilder},
 };
 
-use super::{Base, Core, Draw};
+use super::{projection, Base, Core, Draw};
 use crate::{Config, Sim};
 
 /// OS window
@@ -260,15 +260,17 @@ impl Window {
             let aspect_ratio =
                 swapchain.state.extent.width as f32 / swapchain.state.extent.height as f32;
             let frame = &swapchain.state.frames[frame_id as usize];
-            // Render the frame
             let vfov = f32::consts::FRAC_PI_4 * 1.2;
+            let hfov = (aspect_ratio * vfov.tan()).atan();
+            let proj = projection(-hfov, hfov, -vfov, vfov, 0.01);
+            // Render the frame
             draw.draw(
                 &mut self.sim,
                 frame.buffer,
                 frame.depth_view,
                 swapchain.state.extent,
                 frame.present,
-                projection(0.01, (aspect_ratio * vfov.tan()).atan(), vfov),
+                proj.into(),
             );
             // Submit the frame to be presented on the window
             match swapchain.queue_present(frame_id) {
@@ -580,22 +582,4 @@ struct Frame {
     buffer: vk::Framebuffer,
     /// Semaphore used to ensure the frame isn't presented until rendering completes
     present: vk::Semaphore,
-}
-
-#[rustfmt::skip]
-/// Compute right-handed y-up inverse Z projection matrix with far plane at infinity.
-fn projection(znear: f32, horizontal_half_fov: f32, vertical_half_fov: f32) -> na::Matrix4<f32> {
-    let right = horizontal_half_fov.tan();
-    let left = -right;
-    let top = vertical_half_fov.tan();
-    let bottom = -top;
-    let idx = 1.0 / (right - left);
-    let idy = 1.0 / (bottom - top);
-    let sx = right + left;
-    let sy = bottom + top;
-    na::Matrix4::new(
-        2.0 * idx,       0.0, sx * idx, 0.0,
-              0.0, 2.0 * idy, sy * idy, 0.0,
-              0.0,       0.0,      0.0, znear,
-              0.0,       0.0,     -1.0, 0.0)
 }
