@@ -60,6 +60,7 @@ impl NodeStateRoad {
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane,
+    road_state: NodeStateRoad,
     spice: u64,
     enviro: EnviroFactors,
 }
@@ -110,6 +111,7 @@ impl NodeState {
         };
 
         let child_kind = self.kind.clone().child(side);
+        let child_road = self.road_state.clone(side);
 
         Self {
             kind: child_kind,
@@ -118,6 +120,7 @@ impl NodeState {
                 Sky => -Plane::from(Side::A),
                 _ => self.surface.reflect(side),
             },
+            road_state: child_road,
             spice,
             enviro,
         }
