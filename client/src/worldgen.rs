@@ -272,10 +272,10 @@ impl ChunkParams {
                         if voxel_antihubness.abs() <= 0.3_f64{
 
                             if voxel_elevation.abs() <= 0.075_f64{
-                                road_mat = Material::Greystone;
+                                road_mat = Material::GreyBrick;
                             }
                             else if voxel_elevation < 0_f64 {
-                                road_mat = Material::Wood;
+                                road_mat = Material::WoodPlanks;
                             }
                             else if voxel_elevation <= 0.9_f64{
                                 road_mat = Material::Void;
@@ -283,7 +283,7 @@ impl ChunkParams {
 
                             if voxel_antihubness.abs() <= 0.15_f64{
                                 road_mat = match road_mat{
-                                    Material::Greystone => Material::Blackstone,
+                                    Material::GreyBrick => Material::Blackstone,
                                     _ => road_mat,
                                 }
                             }
