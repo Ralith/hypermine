@@ -262,11 +262,33 @@ impl ChunkParams {
                         voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
                     }
 
+                    //road generation
                     if self.is_road{
                         let plane = Plane::from(Side::B);
+                        let mut road_mat = voxels.data_mut(dimension)[index(dimension, coords)];
+
                         let voxel_antihubness = plane.elevation(center, self.chunk);
-                        if (voxel_elevation.abs() <= 0.075_f64 ) && (voxel_antihubness.abs() <= 0.3_f64){
-                            voxels.data_mut(dimension)[index(dimension, coords)] = Material::Greystone;
+
+                        if voxel_antihubness.abs() <= 0.3_f64{
+
+                            if voxel_elevation.abs() <= 0.075_f64{
+                                road_mat = Material::Greystone;
+                            }
+                            else if voxel_elevation < 0_f64 {
+                                road_mat = Material::Wood;
+                            }
+                            else if voxel_elevation <= 1.5_f64{
+                                road_mat = Material::Void;
+                            }
+
+                            if voxel_antihubness.abs() <= 0.15_f64{
+                                road_mat = match road_mat{
+                                    Material::Greystone => Material::Blackstone,
+                                    _ => road_mat,
+                                }
+                            }
+
+                            voxels.data_mut(dimension)[index(dimension, coords)] = road_mat;
                         }
 
                     }
