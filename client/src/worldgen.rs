@@ -230,7 +230,7 @@ impl ChunkParams {
         if !(voxel_elevation < max_e / ChunkParams::ELEVATION_SCALE) {
             voxel_mat = Material::Void;
         }
-        return voxel_mat;
+        voxel_mat;
     }
 
     fn generate_road(&self, center: na::Vector3<f64>) -> Material {
@@ -256,14 +256,14 @@ impl ChunkParams {
                 }
             }
         }
-        return road_mat;
+        road_mat;
     }
 
     ///Declare what Material should be generated if different structures ask for different Materials
     //safe to modify to artistic taste
     fn combine_voxels(mat1: Material, mat2: Material) -> Material {
         //Material1 has higher precedence
-        return match (mat1, mat2){
+        match (mat1, mat2){
             (Material::Void, _) => mat2,
             (_, Material::Void) => mat1,
             (_, _) => mat1,
