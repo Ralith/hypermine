@@ -132,6 +132,7 @@ pub struct ChunkParams {
     chunk: Vertex,
     env: ChunkIncidentEnviroFactors,
     surface: Plane,
+    is_road: bool,
 }
 
 impl ChunkParams {
@@ -143,6 +144,14 @@ impl ChunkParams {
             chunk,
             env: chunk_incident_enviro_factors(graph, node, chunk)?,
             surface: graph.get(node).as_ref()?.state.surface,
+            is_road: (
+                        (graph.get(node).as_ref()?.state.road_state == West) ||
+                      (graph.get(node).as_ref()?.state.road_state == East)
+            ) &&
+                (
+                    (graph.get(node).as_ref()?.state.kind == Land) ||
+                        (graph.get(node).as_ref()?.state.kind == Sky)
+                )
         })
     }
 
