@@ -140,18 +140,13 @@ impl ChunkParams {
     ///
     /// Returns `None` if an unpopulated node is needed.
     pub fn new(graph: &DualGraph, node: NodeId, chunk: Vertex) -> Option<Self> {
+        let state = &graph.get(node).as_ref()?.state;
         Some(Self {
             chunk,
             env: chunk_incident_enviro_factors(graph, node, chunk)?,
-            surface: graph.get(node).as_ref()?.state.surface,
-            is_road: (
-                        (graph.get(node).as_ref()?.state.road_state == West) ||
-                      (graph.get(node).as_ref()?.state.road_state == East)
-            ) &&
-                (
-                    (graph.get(node).as_ref()?.state.kind == Land) ||
-                        (graph.get(node).as_ref()?.state.kind == Sky)
-                )
+            surface: state.surface,
+            is_road: ((state.kind == Land) || (state.kind == Sky))
+                 && ((state.road_state == East ) || (state.road_state == West)),
         })
     }
 
