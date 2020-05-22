@@ -32,6 +32,31 @@ impl NodeStateKind {
     }
 }
 
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum NodeStateRoad {
+    East,
+    DeepEast,
+    West,
+    DeepWest,
+}
+use NodeStateRoad::*;
+
+impl NodeStateRoad {
+    const ROOT: Self = West;
+
+    /// What state comes after this state, from a given side?
+    fn child(self, side: Side) -> Self {
+        match (self, side) {
+            (East, Side::B) => West,
+            (West, Side::B) => East,
+            (East, _) if !side.adjacent_to(Side::B) => DeepEast,
+            (West, _) if !side.adjacent_to(Side::B) => DeepWest,
+            _ => self,
+        }
+    }
+}
+
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane,
