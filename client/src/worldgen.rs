@@ -10,7 +10,6 @@ use common::{
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
-    RootSky,
     Sky,
     DeepSky,
     Land,
@@ -19,24 +18,15 @@ enum NodeStateKind {
 use NodeStateKind::*;
 
 impl NodeStateKind {
-    const ROOT: Self = RootSky;
+    const ROOT: Self = Land;
 
     /// What state comes after this state, from a given side?
     fn child(self, side: Side) -> Self {
         match (self, side) {
-            (RootSky, _) => match side {
-                _ if side.adjacent_to(Side::A) => Land,
-                Side::A => Sky,
-                _ => DeepLand,
-            },
-            (_, Side::A) => match self {
-                Sky => Land,
-                Land => Sky,
-                _ => self,
-            },
-            _ if side.adjacent_to(Side::A) => self,
-            (Sky, _) => DeepSky,
-            (Land, _) => DeepLand,
+            (Sky, Side::A) => Land,
+            (Land, Side::A) => Sky,
+            (Sky, _) if !side.adjacent_to(Side::A) => DeepSky,
+            (Land, _) if !side.adjacent_to(Side::A) => DeepLand,
             _ => self,
         }
     }
