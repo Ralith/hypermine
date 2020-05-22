@@ -230,7 +230,8 @@ impl ChunkParams {
         if !(voxel_elevation < max_e / ChunkParams::ELEVATION_SCALE) {
             voxel_mat = Material::Void;
         }
-        voxel_mat;
+
+        voxel_mat
     }
 
     fn generate_road(&self, center: na::Vector3<f64>) -> Material {
@@ -256,7 +257,7 @@ impl ChunkParams {
                 }
             }
         }
-        road_mat;
+        road_mat
     }
 
     ///Declare what Material should be generated if different structures ask for different Materials
