@@ -261,7 +261,7 @@ impl ChunkParams {
     }
 
     ///Declare what Material should be generated if different structures ask for different Materials
-    //safe to modify to artistic taste
+    // safe to modify to artistic taste
     fn combine_voxels(mat1: Material, mat2: Material) -> Material {
         //Material1 has higher precedence
         match (mat1, mat2){
@@ -304,8 +304,8 @@ impl ChunkParams {
                     let coords = na::Vector3::new(x, y, z);
                     let center = voxel_center(dimension, coords);
 
-                    //road generation
-                    if self.is_road{
+                    // road generation
+                    if self.is_road {
                         voxels.data_mut(dimension)[index(dimension, coords)] =
                             ChunkParams::combine_voxels(self.generate_road(center), self.generate_terrain(center));
                     }
