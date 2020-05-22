@@ -157,7 +157,7 @@ impl ChunkParams {
 
     const ELEVATION_SCALE: f64 = 10.0;
 
-    fn generate_terrain(&self, center: na::Vector3<f64>) -> Material{
+    fn generate_terrain(&self, center: na::Vector3<f64>) -> Material {
         let cube_coords = center * 0.5;
 
         let rain = trilerp(&self.env.rainfalls, cube_coords);
@@ -233,7 +233,7 @@ impl ChunkParams {
         return voxel_mat;
     }
 
-    fn generate_road(&self, center: na::Vector3<f64>) -> Material{
+    fn generate_road(&self, center: na::Vector3<f64>) -> Material {
         let plane = Plane::from(Side::B);
         let mut road_mat: Material = Material::Void;
 
@@ -261,7 +261,7 @@ impl ChunkParams {
 
     ///Declare what Material should be generated if different structures ask for different Materials
     //safe to modify to artistic taste
-    fn combine_voxels(mat1: Material, mat2: Material) -> Material{
+    fn combine_voxels(mat1: Material, mat2: Material) -> Material {
         //Material1 has higher precedence
         return match (mat1, mat2){
             (Material::Void, _) => mat2,
