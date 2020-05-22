@@ -155,6 +155,8 @@ impl ChunkParams {
         self.chunk
     }
 
+    const ELEVATION_SCALE: f64 = 10.0;
+
     fn generate_terrain(&self, center: na::Vector3<f64>) -> Material{
         let cube_coords = center * 0.5;
 
@@ -225,7 +227,7 @@ impl ChunkParams {
         }
 
         let voxel_elevation = self.surface.elevation(center, self.chunk);
-        if !(voxel_elevation < max_e / ELEVATION_SCALE) {
+        if !(voxel_elevation < max_e / ChunkParams::ELEVATION_SCALE) {
             voxel_mat = Material::Void;
         }
         return voxel_mat;
@@ -288,14 +290,13 @@ impl ChunkParams {
         // empirically.
         const ELEVATION_MARGIN: f64 = 0.7;
         let center_elevation = self.surface.elevation(na::Vector3::repeat(0.5), self.chunk);
-        const ELEVATION_SCALE: f64 = 10.0;
-        if (center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE) && !self.is_road  {
+        if (center_elevation - ELEVATION_MARGIN > me_max / ChunkParams::ELEVATION_SCALE) && !self.is_road  {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Stone);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE) && !self.is_road {
+        if (center_elevation + ELEVATION_MARGIN < me_min / ChunkParams::ELEVATION_SCALE) && !self.is_road {
             // The whole chunk is above ground
             return VoxelData::Solid(Material::Void);
         }
