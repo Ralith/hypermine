@@ -233,25 +233,27 @@ impl ChunkParams {
         // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
         // and a block of leaves. The leaf block is on the opposite face of the
         // wood block as the ground block.
-        let loc = na::Vector3::repeat(4);
-        let voxel_of_interest_index = index(dimension, loc);
-        let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
+        if dimension > 2 {
+            let loc = na::Vector3::repeat(dimension / 2);
+            let voxel_of_interest_index = index(dimension, loc);
+            let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
 
-        let num_void_neighbors = neighbor_data
-            .iter()
-            .filter(|n| n.material == Material::Void)
-            .count();
+            let num_void_neighbors = neighbor_data
+                .iter()
+                .filter(|n| n.material == Material::Void)
+                .count();
 
-        // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
-        if num_void_neighbors == 5 {
-            for i in neighbor_data.iter() {
-                if (i.material == Material::Dirt)
-                    || (i.material == Material::Grass)
-                    || (i.material == Material::Flowergrass)
-                {
-                    voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
-                    let leaf_location = index(dimension, i.coords_opposing);
-                    voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
+            // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
+            if num_void_neighbors == 5 {
+                for i in neighbor_data.iter() {
+                    if (i.material == Material::Dirt)
+                        || (i.material == Material::Grass)
+                        || (i.material == Material::Flowergrass)
+                    {
+                        voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
+                        let leaf_location = index(dimension, i.coords_opposing);
+                        voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
+                    }
                 }
             }
         }
