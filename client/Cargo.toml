@@ -32,7 +32,7 @@ futures-util = "0.3.1"
 rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
 webpki = "0.21.0"
 hecs = "0.2.9"
-rcgen = { version = "0.7.0", default-features = false }
+rcgen = { version = "0.8.2", default-features = false }
 memoffset = "0.5"
 gltf = { version = "0.15.2", default-features = false, features = ["utils"] }
 rand = "0.7.3"
