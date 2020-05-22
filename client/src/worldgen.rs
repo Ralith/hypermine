@@ -111,7 +111,7 @@ impl NodeState {
         };
 
         let child_kind = self.kind.clone().child(side);
-        let child_road = self.road_state.clone(side);
+        let child_road = self.road_state.clone().child(side);
 
         Self {
             kind: child_kind,
@@ -169,13 +169,13 @@ impl ChunkParams {
         const ELEVATION_MARGIN: f64 = 0.7;
         let center_elevation = self.surface.elevation(na::Vector3::repeat(0.5), self.chunk);
         const ELEVATION_SCALE: f64 = 10.0;
-        if center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE {
+        if (center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE) && !self.is_road  {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Stone);
         }
 
-        if center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE {
+        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE) && !self.is_road {
             // The whole chunk is above ground
             return VoxelData::Solid(Material::Void);
         }
