@@ -268,8 +268,6 @@ impl ChunkParams {
     fn combine_voxels(mat1: Material, mat2: Material) -> Material{
         //Material1 has higher precedence
         return match (mat1, mat2){
-            (Material::ReservedVoid, _) => Material::ReservedVoid,
-            (_, Material::ReservedVoid) => Material::ReservedVoid,
             (Material::Void, _) => mat2,
             (_, Material::Void) => mat1,
             (_, _) => mat1,

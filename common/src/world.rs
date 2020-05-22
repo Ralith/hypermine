@@ -25,7 +25,7 @@ pub enum Material {
 }
 
 impl Material {
-    pub const COUNT: usize = 20;
+    pub const COUNT: usize = 21;
 }
 
 impl Default for Material {
