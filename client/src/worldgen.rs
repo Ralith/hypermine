@@ -32,7 +32,6 @@ impl NodeStateKind {
     }
 }
 
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateRoad {
     East,
@@ -147,7 +146,7 @@ impl ChunkParams {
             env: chunk_incident_enviro_factors(graph, node, chunk)?,
             surface: state.surface,
             is_road: ((state.kind == Land) || (state.kind == Sky))
-                 && ((state.road_state == East ) || (state.road_state == West)),
+                && ((state.road_state == East) || (state.road_state == West)),
         })
     }
 
@@ -172,8 +171,7 @@ impl ChunkParams {
         let terracing_scale = 5.0; // This is not wavelength in number of blocks
         let elev_floor = (elev_raw / terracing_scale).floor();
         let elev_rem = elev_raw / terracing_scale - elev_floor;
-        let elev = terracing_scale * elev_floor
-            + serp(0.0, terracing_scale, elev_rem, threshold);
+        let elev = terracing_scale * elev_floor + serp(0.0, terracing_scale, elev_rem, threshold);
 
         let mut voxel_mat;
         let max_e;
@@ -227,7 +225,7 @@ impl ChunkParams {
         }
 
         let voxel_elevation = self.surface.elevation(center, self.chunk);
-        if !(voxel_elevation < max_e / ChunkParams::ELEVATION_SCALE) {
+        if voxel_elevation >= max_e / ChunkParams::ELEVATION_SCALE {
             voxel_mat = Material::Void;
         }
 
@@ -241,17 +239,16 @@ impl ChunkParams {
         let voxel_antihubness = plane.elevation(center, self.chunk);
         let voxel_elevation = self.surface.elevation(center, self.chunk);
 
-        if voxel_antihubness.abs() <= 0.3_f64{
-
-            if voxel_elevation.abs() <= 0.075_f64{
+        if voxel_antihubness.abs() <= 0.3_f64 {
+            if voxel_elevation.abs() <= 0.075_f64 {
                 road_mat = Material::GreyBrick;
             } else if voxel_elevation < 0_f64 {
                 road_mat = Material::WoodPlanks;
-            } else if voxel_elevation <= 0.9_f64{
+            } else if voxel_elevation <= 0.9_f64 {
                 road_mat = Material::Void; //make this something that overwrites terrain.
             }
-            if voxel_antihubness.abs() <= 0.15_f64{
-                road_mat = match road_mat{
+            if voxel_antihubness.abs() <= 0.15_f64 {
+                road_mat = match road_mat {
                     Material::GreyBrick => Material::WhiteBrick,
                     _ => road_mat,
                 }
@@ -264,7 +261,7 @@ impl ChunkParams {
     // safe to modify to artistic taste
     fn combine_voxels(mat1: Material, mat2: Material) -> Material {
         //Material1 has higher precedence
-        match (mat1, mat2){
+        match (mat1, mat2) {
             (Material::Void, _) => mat2,
             (_, Material::Void) => mat1,
             (_, _) => mat1,
@@ -285,13 +282,17 @@ impl ChunkParams {
         // empirically.
         const ELEVATION_MARGIN: f64 = 0.7;
         let center_elevation = self.surface.elevation(na::Vector3::repeat(0.5), self.chunk);
-        if (center_elevation - ELEVATION_MARGIN > me_max / ChunkParams::ELEVATION_SCALE) && !self.is_road  {
+        if (center_elevation - ELEVATION_MARGIN > me_max / ChunkParams::ELEVATION_SCALE)
+            && !self.is_road
+        {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Stone);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / ChunkParams::ELEVATION_SCALE) && !self.is_road {
+        if (center_elevation + ELEVATION_MARGIN < me_min / ChunkParams::ELEVATION_SCALE)
+            && !self.is_road
+        {
             // The whole chunk is above ground
             return VoxelData::Solid(Material::Void);
         }
@@ -307,10 +308,13 @@ impl ChunkParams {
                     // road generation
                     if self.is_road {
                         voxels.data_mut(dimension)[index(dimension, coords)] =
-                            ChunkParams::combine_voxels(self.generate_road(center), self.generate_terrain(center));
-                    }
-                    else {
-                        voxels.data_mut(dimension)[index(dimension, coords)] = self.generate_terrain(center);
+                            ChunkParams::combine_voxels(
+                                self.generate_road(center),
+                                self.generate_terrain(center),
+                            );
+                    } else {
+                        voxels.data_mut(dimension)[index(dimension, coords)] =
+                            self.generate_terrain(center);
                     }
                 }
             }
