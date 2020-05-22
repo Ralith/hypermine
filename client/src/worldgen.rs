@@ -34,7 +34,7 @@ impl NodeStateKind {
 
 pub struct NodeState {
     kind: NodeStateKind,
-    surface: Surface,
+    surface: Plane,
     spice: u64,
     enviro: EnviroFactors,
 }
@@ -42,7 +42,7 @@ impl NodeState {
     pub fn root() -> Self {
         Self {
             kind: NodeStateKind::ROOT,
-            surface: Surface::from(Side::A),
+            surface: Plane::from(Side::A),
             spice: 0,
             enviro: EnviroFactors {
                 max_elevation: -2,
@@ -89,8 +89,8 @@ impl NodeState {
         Self {
             kind: child_kind,
             surface: match child_kind {
-                Land => Surface::from(Side::A),
-                Sky => -Surface::from(Side::A),
+                Land => Plane::from(Side::A),
+                Sky => -Plane::from(Side::A),
                 _ => self.surface.reflect(side),
             },
             spice,
@@ -103,7 +103,7 @@ impl NodeState {
 pub struct ChunkParams {
     chunk: Vertex,
     env: ChunkIncidentEnviroFactors,
-    surface: Surface,
+    surface: Plane,
 }
 
 impl ChunkParams {
@@ -390,11 +390,11 @@ fn chunk_incident_enviro_factors(
 
 /// Keeps track of the canonical surface wrt. the NodeState this is stored in
 #[derive(Debug, Copy, Clone)]
-struct Surface {
+struct Plane {
     normal: na::Vector4<f64>,
 }
 
-impl From<Side> for Surface {
+impl From<Side> for Plane {
     /// A surface overlapping with a particular dodecahedron side
     fn from(side: Side) -> Self {
         let n = side.reflection().column(3).map(|x| x as f64) - origin();
@@ -404,7 +404,7 @@ impl From<Side> for Surface {
     }
 }
 
-impl std::ops::Neg for Surface {
+impl std::ops::Neg for Plane {
     type Output = Self;
     fn neg(self) -> Self {
         Self {
@@ -413,8 +413,8 @@ impl std::ops::Neg for Surface {
     }
 }
 
-impl Surface {
-    /// Returns a new Surface relative to a node on a certain side of this one
+impl Plane {
+    /// Returns a new Plane relative to a node on a certain side of this one
     fn reflect(&self, side: Side) -> Self {
         Self {
             normal: lorentz_normalize(&(side.reflection() * self.normal)),
@@ -492,7 +492,7 @@ mod test {
 
     #[test]
     fn check_surface_flipped() {
-        let root = Surface::from(Side::A);
+        let root = Plane::from(Side::A);
         assert_abs_diff_eq!(
             root.elevation(na::Vector3::x() * 2.0, Vertex::A),
             root.elevation(na::Vector3::x() * 2.0, Vertex::J) * -1.0,
@@ -701,7 +701,7 @@ mod test {
     #[test]
     fn check_surface_on_plane() {
         assert_abs_diff_eq!(
-            Surface::from(Side::A).elevation(
+            Plane::from(Side::A).elevation(
                 na::Vector3::new(1.0, 0.3, 0.9), // The first 1.0 is important, the plane is the midplane of the cube in Side::A direction
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
@@ -714,11 +714,11 @@ mod test {
     fn check_elevation_consistency() {
         // A cube corner should have the same elevation seen from different cubes
         assert_abs_diff_eq!(
-            Surface::from(Side::A).elevation(
+            Plane::from(Side::A).elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            Surface::from(Side::A).elevation(
+            Plane::from(Side::A).elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::F, Side::H, Side::J).unwrap()
             ),
@@ -727,11 +727,11 @@ mod test {
 
         // The same corner should have the same elevation when represented from the same cube at different corners
         assert_abs_diff_eq!(
-            Surface::from(Side::A).elevation(
+            Plane::from(Side::A).elevation(
                 na::Vector3::new(1.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            Surface::from(Side::A).reflect(Side::A).elevation(
+            Plane::from(Side::A).reflect(Side::A).elevation(
                 na::Vector3::new(1.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
@@ -740,11 +740,11 @@ mod test {
 
         // Corners of midplane cubes separated by the midplane should have the same elevation with a different sign
         assert_abs_diff_eq!(
-            Surface::from(Side::A).elevation(
+            Plane::from(Side::A).elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            -Surface::from(Side::A).elevation(
+            -Plane::from(Side::A).elevation(
                 na::Vector3::new(2.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
@@ -753,11 +753,11 @@ mod test {
 
         // Corners of midplane cubes not separated by the midplane should have the same elevation
         assert_abs_diff_eq!(
-            Surface::from(Side::A).elevation(
+            Plane::from(Side::A).elevation(
                 na::Vector3::new(0.0, 0.0, 0.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
-            Surface::from(Side::A).elevation(
+            Plane::from(Side::A).elevation(
                 na::Vector3::new(0.0, 0.0, 2.0),
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
