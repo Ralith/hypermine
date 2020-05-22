@@ -277,7 +277,7 @@ impl ChunkParams {
                             else if voxel_elevation < 0_f64 {
                                 road_mat = Material::Wood;
                             }
-                            else if voxel_elevation <= 1.5_f64{
+                            else if voxel_elevation <= 0.9_f64{
                                 road_mat = Material::Void;
                             }
 
