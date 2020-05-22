@@ -69,6 +69,7 @@ impl NodeState {
         Self {
             kind: NodeStateKind::ROOT,
             surface: Plane::from(Side::A),
+            road_state: NodeStateRoad::ROOT,
             spice: 0,
             enviro: EnviroFactors {
                 max_elevation: -2,
