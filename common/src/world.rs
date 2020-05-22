@@ -19,10 +19,13 @@ pub enum Material {
     Graveldirt = 15,
     Blackstone = 16,
     Bigflowergrass = 17,
+    GreyBrick = 18,
+    WoodPlanks = 19,
+    WhiteBrick = 20,
 }
 
 impl Material {
-    pub const COUNT: usize = 18;
+    pub const COUNT: usize = 21;
 }
 
 impl Default for Material {

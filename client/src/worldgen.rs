@@ -32,9 +32,34 @@ impl NodeStateKind {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum NodeStateRoad {
+    East,
+    DeepEast,
+    West,
+    DeepWest,
+}
+use NodeStateRoad::*;
+
+impl NodeStateRoad {
+    const ROOT: Self = West;
+
+    /// What state comes after this state, from a given side?
+    fn child(self, side: Side) -> Self {
+        match (self, side) {
+            (East, Side::B) => West,
+            (West, Side::B) => East,
+            (East, _) if !side.adjacent_to(Side::B) => DeepEast,
+            (West, _) if !side.adjacent_to(Side::B) => DeepWest,
+            _ => self,
+        }
+    }
+}
+
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane,
+    road_state: NodeStateRoad,
     spice: u64,
     enviro: EnviroFactors,
 }
@@ -43,6 +68,7 @@ impl NodeState {
         Self {
             kind: NodeStateKind::ROOT,
             surface: Plane::from(Side::A),
+            road_state: NodeStateRoad::ROOT,
             spice: 0,
             enviro: EnviroFactors {
                 max_elevation: -2,
@@ -85,6 +111,7 @@ impl NodeState {
         };
 
         let child_kind = self.kind.clone().child(side);
+        let child_road = self.road_state.clone().child(side);
 
         Self {
             kind: child_kind,
@@ -93,6 +120,7 @@ impl NodeState {
                 Sky => -Plane::from(Side::A),
                 _ => self.surface.reflect(side),
             },
+            road_state: child_road,
             spice,
             enviro,
         }
@@ -104,6 +132,7 @@ pub struct ChunkParams {
     chunk: Vertex,
     env: ChunkIncidentEnviroFactors,
     surface: Plane,
+    is_road: bool,
 }
 
 impl ChunkParams {
@@ -111,15 +140,131 @@ impl ChunkParams {
     ///
     /// Returns `None` if an unpopulated node is needed.
     pub fn new(graph: &DualGraph, node: NodeId, chunk: Vertex) -> Option<Self> {
+        let state = &graph.get(node).as_ref()?.state;
         Some(Self {
             chunk,
             env: chunk_incident_enviro_factors(graph, node, chunk)?,
-            surface: graph.get(node).as_ref()?.state.surface,
+            surface: state.surface,
+            is_road: ((state.kind == Land) || (state.kind == Sky))
+                && ((state.road_state == East) || (state.road_state == West)),
         })
     }
 
     pub fn chunk(&self) -> Vertex {
         self.chunk
+    }
+
+    const ELEVATION_SCALE: f64 = 10.0;
+
+    fn generate_terrain(&self, center: na::Vector3<f64>) -> Material {
+        let cube_coords = center * 0.5;
+
+        let rain = trilerp(&self.env.rainfalls, cube_coords);
+        let temp = trilerp(&self.env.temperatures, cube_coords);
+        let slope = trilerp(&self.env.slopeinesses, cube_coords);
+
+        // block is a real number, threshold is in (0, 0.2) and biased towards 0
+        // This causes the level of terrain bumpiness to vary over space.
+        let block = trilerp(&self.env.blockinesses, cube_coords);
+        let threshold = 2.0f64.powf(block) / (4.0 + 2.0f64.powf(block)) * 0.2;
+        let elev_raw = trilerp(&self.env.max_elevations, cube_coords);
+        let terracing_scale = 5.0; // This is not wavelength in number of blocks
+        let elev_floor = (elev_raw / terracing_scale).floor();
+        let elev_rem = elev_raw / terracing_scale - elev_floor;
+        let elev = terracing_scale * elev_floor + serp(0.0, terracing_scale, elev_rem, threshold);
+
+        let mut voxel_mat;
+        let max_e;
+
+        // Nine basic terrain types based on combinations of
+        // low/medium/high temperature and humidity.
+        if temp < -2.0 {
+            if rain < -2.0 {
+                voxel_mat = Material::Gravelstone;
+            } else if rain < 2.0 {
+                voxel_mat = Material::Stone;
+            } else {
+                voxel_mat = Material::Greystone;
+            }
+        } else if temp < 2.0 {
+            if rain < -2.0 {
+                voxel_mat = Material::Graveldirt;
+            } else if rain < 2.0 {
+                voxel_mat = Material::Dirt;
+            } else {
+                voxel_mat = Material::Grass;
+            }
+        } else if rain < -2.0 {
+            voxel_mat = Material::Redsand;
+        } else if rain < 2.0 {
+            voxel_mat = Material::Sand;
+        } else {
+            voxel_mat = Material::Flowergrass;
+        }
+
+        // Additional adjustments alter both block material and elevation
+        // for a bit of extra variety.
+        let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+        // peaks should roughly tend to be snow-covered
+        if slope_mod <= 1_f64 {
+            if temp < 0.0 {
+                voxel_mat = Material::Snow;
+                max_e = elev + 0.25;
+            } else {
+                max_e = elev;
+            }
+        } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
+            voxel_mat = match voxel_mat {
+                Material::Flowergrass => Material::Bigflowergrass,
+                Material::Greystone => Material::Blackstone,
+                _ => voxel_mat,
+            };
+            max_e = elev - 0.25;
+        } else {
+            max_e = elev;
+        }
+
+        let voxel_elevation = self.surface.elevation(center, self.chunk);
+        if voxel_elevation >= max_e / ChunkParams::ELEVATION_SCALE {
+            voxel_mat = Material::Void;
+        }
+
+        voxel_mat
+    }
+
+    fn generate_road(&self, center: na::Vector3<f64>) -> Material {
+        let plane = Plane::from(Side::B);
+        let mut road_mat: Material = Material::Void;
+
+        let voxel_antihubness = plane.elevation(center, self.chunk);
+        let voxel_elevation = self.surface.elevation(center, self.chunk);
+        if voxel_antihubness.abs() <= 0.3_f64 {
+            if voxel_elevation.abs() <= 0.075_f64 {
+                road_mat = Material::GreyBrick;
+            } else if voxel_elevation < 0_f64 {
+                road_mat = Material::WoodPlanks;
+            } else if voxel_elevation <= 0.9_f64 {
+                road_mat = Material::Void; //make this something that overwrites terrain.
+            }
+            if voxel_antihubness.abs() <= 0.15_f64 {
+                road_mat = match road_mat {
+                    Material::GreyBrick => Material::WhiteBrick,
+                    _ => road_mat,
+                }
+            }
+        }
+        road_mat
+    }
+
+    /// Declare what Material should be generated if different structures ask for different Materials
+    // safe to modify to artistic taste
+    fn combine_voxels(mat1: Material, mat2: Material) -> Material {
+        // Material1 has higher precedence
+        match (mat1, mat2) {
+            (Material::Void, _) => mat2,
+            (_, Material::Void) => mat1,
+            (_, _) => mat1,
+        }
     }
 
     /// Generate voxels making up the chunk
@@ -136,14 +281,17 @@ impl ChunkParams {
         // empirically.
         const ELEVATION_MARGIN: f64 = 0.7;
         let center_elevation = self.surface.elevation(na::Vector3::repeat(0.5), self.chunk);
-        const ELEVATION_SCALE: f64 = 10.0;
-        if center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE {
+        if (center_elevation - ELEVATION_MARGIN > me_max / ChunkParams::ELEVATION_SCALE)
+            && !self.is_road
+        {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Stone);
         }
 
-        if center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE {
+        if (center_elevation + ELEVATION_MARGIN < me_min / ChunkParams::ELEVATION_SCALE)
+            && !self.is_road
+        {
             // The whole chunk is above ground
             return VoxelData::Solid(Material::Void);
         }
@@ -155,76 +303,17 @@ impl ChunkParams {
                 for x in 0..dimension {
                     let coords = na::Vector3::new(x, y, z);
                     let center = voxel_center(dimension, coords);
-                    let cube_coords = center * 0.5;
 
-                    let rain = trilerp(&self.env.rainfalls, cube_coords);
-                    let temp = trilerp(&self.env.temperatures, cube_coords);
-                    let slope = trilerp(&self.env.slopeinesses, cube_coords);
-
-                    // block is a real number, threshold is in (0, 0.2) and biased towards 0
-                    // This causes the level of terrain bumpiness to vary over space.
-                    let block = trilerp(&self.env.blockinesses, cube_coords);
-                    let threshold = 2.0f64.powf(block) / (4.0 + 2.0f64.powf(block)) * 0.2;
-                    let elev_raw = trilerp(&self.env.max_elevations, cube_coords);
-                    let terracing_scale = 5.0; // This is not wavelength in number of blocks
-                    let elev_floor = (elev_raw / terracing_scale).floor();
-                    let elev_rem = elev_raw / terracing_scale - elev_floor;
-                    let elev = terracing_scale * elev_floor
-                        + serp(0.0, terracing_scale, elev_rem, threshold);
-
-                    let mut voxel_mat;
-                    let max_e;
-
-                    // Nine basic terrain types based on combinations of
-                    // low/medium/high temperature and humidity.
-                    if temp < -2.0 {
-                        if rain < -2.0 {
-                            voxel_mat = Material::Gravelstone;
-                        } else if rain < 2.0 {
-                            voxel_mat = Material::Stone;
-                        } else {
-                            voxel_mat = Material::Greystone;
-                        }
-                    } else if temp < 2.0 {
-                        if rain < -2.0 {
-                            voxel_mat = Material::Graveldirt;
-                        } else if rain < 2.0 {
-                            voxel_mat = Material::Dirt;
-                        } else {
-                            voxel_mat = Material::Grass;
-                        }
-                    } else if rain < -2.0 {
-                        voxel_mat = Material::Redsand;
-                    } else if rain < 2.0 {
-                        voxel_mat = Material::Sand;
+                    // road generation
+                    if self.is_road {
+                        voxels.data_mut(dimension)[index(dimension, coords)] =
+                            ChunkParams::combine_voxels(
+                                self.generate_road(center),
+                                self.generate_terrain(center),
+                            );
                     } else {
-                        voxel_mat = Material::Flowergrass;
-                    }
-
-                    // Additional adjustments alter both block material and elevation
-                    // for a bit of extra variety.
-                    let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
-                    // peaks should roughly tend to be snow-covered
-                    if slope_mod <= 1_f64 {
-                        if temp < 0.0 {
-                            voxel_mat = Material::Snow;
-                            max_e = elev + 0.25;
-                        } else {
-                            max_e = elev;
-                        }
-                    } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-                        voxel_mat = match voxel_mat {
-                            Material::Flowergrass => Material::Bigflowergrass,
-                            Material::Greystone => Material::Blackstone,
-                            _ => voxel_mat,
-                        };
-                        max_e = elev - 0.25;
-                    } else {
-                        max_e = elev;
-                    }
-
-                    if self.surface.elevation(center, self.chunk) < max_e / ELEVATION_SCALE {
-                        voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
+                        voxels.data_mut(dimension)[index(dimension, coords)] =
+                            self.generate_terrain(center);
                     }
                 }
             }
