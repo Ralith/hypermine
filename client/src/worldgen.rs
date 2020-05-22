@@ -256,10 +256,10 @@ impl ChunkParams {
         road_mat
     }
 
-    ///Declare what Material should be generated if different structures ask for different Materials
+    /// Declare what Material should be generated if different structures ask for different Materials
     // safe to modify to artistic taste
     fn combine_voxels(mat1: Material, mat2: Material) -> Material {
-        //Material1 has higher precedence
+        // Material1 has higher precedence
         match (mat1, mat2) {
             (Material::Void, _) => mat2,
             (_, Material::Void) => mat1,
