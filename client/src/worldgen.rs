@@ -40,6 +40,7 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
+use common::world::Material::WoodPlanks;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -244,8 +245,6 @@ impl ChunkParams {
         if voxel_antihubness.abs() <= 0.3_f64 {
             if voxel_elevation.abs() <= 0.075_f64 {
                 road_mat = Material::GreyBrick;
-            } else if voxel_elevation < 0_f64 {
-                road_mat = Material::WoodPlanks;
             } else if voxel_elevation <= 0.9_f64 {
                 road_mat = Material::Void; //make this something that overwrites terrain.
             }
@@ -258,6 +257,20 @@ impl ChunkParams {
         }
         road_mat
     }
+
+    fn generate_road_support(&self, na::Vector3<f64>) -> Material {
+        let plane = Plane::from(Side::B);
+        let mut support_mat: Material = Material::Void;
+        let voxel_antihubness = plane.elevation(center, self.chunk);
+
+        if voxel_antihubness.abs() <= 0.3_f64 {
+            support_mat = WoodPlanks;
+        }
+
+        support_mat
+
+    }
+
 
     /// Declare what Material should be generated if different structures ask for different Materials
     // safe to modify to artistic taste
@@ -293,7 +306,7 @@ impl ChunkParams {
         }
 
         if (center_elevation + ELEVATION_MARGIN < me_min / ChunkParams::ELEVATION_SCALE)
-            && !self.is_road
+            && !(self.is_road || self.is_road_support) //only test for road support here
         {
             // The whole chunk is above ground
             return VoxelData::Solid(Material::Void);
@@ -313,6 +326,12 @@ impl ChunkParams {
                             ChunkParams::combine_voxels(
                                 self.generate_road(center),
                                 self.generate_terrain(center),
+                            );
+                    } else if self.is_road_support {
+                        voxels.data_mut(dimension)[index(dimension, coords)] =
+                            ChunkParams::combine_voxels(
+                                self.generate_terrain(center),
+                                self.generate_road_support(center)
                             );
                     } else {
                         voxels.data_mut(dimension)[index(dimension, coords)] =
