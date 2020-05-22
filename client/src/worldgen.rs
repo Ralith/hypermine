@@ -283,7 +283,7 @@ impl ChunkParams {
 
                             if voxel_antihubness.abs() <= 0.15_f64{
                                 road_mat = match road_mat{
-                                    Material::GreyBrick => Material::Blackstone,
+                                    Material::GreyBrick => Material::WhiteBrick,
                                     _ => road_mat,
                                 }
                             }
