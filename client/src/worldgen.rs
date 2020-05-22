@@ -232,38 +232,29 @@ impl ChunkParams {
         voxel_mat
     }
 
-    fn generate_road(&self, center: na::Vector3<f64>) -> Material {
-        let plane = Plane::from(Side::B);
-        let mut road_mat: Material = Material::Void;
+    fn generate_road(&self, center: na::Vector3<f64>) -> Option<Material> {
+        let plane = -Plane::from(Side::B);
 
-        let voxel_antihubness = plane.elevation(center, self.chunk);
-        let voxel_elevation = self.surface.elevation(center, self.chunk);
-        if voxel_antihubness.abs() <= 0.3_f64 {
-            if voxel_elevation.abs() <= 0.075_f64 {
-                road_mat = Material::GreyBrick;
-            } else if voxel_elevation < 0_f64 {
-                road_mat = Material::WoodPlanks;
-            } else if voxel_elevation <= 0.9_f64 {
-                road_mat = Material::Void; //make this something that overwrites terrain.
-            }
-            if voxel_antihubness.abs() <= 0.15_f64 {
-                road_mat = match road_mat {
-                    Material::GreyBrick => Material::WhiteBrick,
-                    _ => road_mat,
-                }
-            }
+        let horizontal_distance = plane.elevation(center, self.chunk);
+        let elevation = self.surface.elevation(center, self.chunk);
+        if horizontal_distance > 0.3 {
+            return None;
         }
-        road_mat
-    }
-
-    /// Declare what Material should be generated if different structures ask for different Materials
-    // safe to modify to artistic taste
-    fn combine_voxels(mat1: Material, mat2: Material) -> Material {
-        // Material1 has higher precedence
-        match (mat1, mat2) {
-            (Material::Void, _) => mat2,
-            (_, Material::Void) => mat1,
-            (_, _) => mat1,
+        if elevation < 0.0 {
+            Some(Material::WoodPlanks) // Support structure
+        } else if elevation < 0.075 {
+            // Surface
+            Some(if horizontal_distance < 0.15 {
+                // Inner
+                Material::WhiteBrick
+            } else {
+                // Outer
+                Material::GreyBrick
+            })
+        } else if elevation < 0.9 {
+            Some(Material::Void) // Tunnel
+        } else {
+            None
         }
     }
 
@@ -305,15 +296,14 @@ impl ChunkParams {
                     let center = voxel_center(dimension, coords);
 
                     // road generation
-                    if self.is_road {
-                        voxels.data_mut(dimension)[index(dimension, coords)] =
-                            ChunkParams::combine_voxels(
-                                self.generate_road(center),
-                                self.generate_terrain(center),
-                            );
+                    let mat = if self.is_road {
+                        self.generate_road(center)
                     } else {
-                        voxels.data_mut(dimension)[index(dimension, coords)] =
-                            self.generate_terrain(center);
+                        None
+                    };
+                    let mat = mat.unwrap_or_else(|| self.generate_terrain(center));
+                    if mat != Material::Void {
+                        voxels.data_mut(dimension)[index(dimension, coords)] = mat;
                     }
                 }
             }
