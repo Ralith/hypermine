@@ -256,9 +256,21 @@ impl ChunkParams {
                         max_e = elev;
                     }
 
-                    if self.surface.elevation(center, self.chunk) < max_e / ELEVATION_SCALE {
+
+                    let voxel_elevation = self.surface.elevation(center, self.chunk);
+                    if voxel_elevation < max_e / ELEVATION_SCALE {
                         voxels.data_mut(dimension)[index(dimension, coords)] = voxel_mat;
                     }
+
+                    if self.is_road{
+                        let plane = Plane::from(Side::B);
+                        let voxel_antihubness = plane.elevation(center, self.chunk);
+                        if (voxel_elevation.abs() <= 0.075_f64 ) && (voxel_antihubness.abs() <= 0.3_f64){
+                            voxels.data_mut(dimension)[index(dimension, coords)] = Material::Greystone;
+                        }
+
+                    }
+
                 }
             }
         }
