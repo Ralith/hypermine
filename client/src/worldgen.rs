@@ -244,21 +244,17 @@ impl ChunkParams {
 
             if voxel_elevation.abs() <= 0.075_f64{
                 road_mat = Material::GreyBrick;
-            }
-            else if voxel_elevation < 0_f64 {
+            } else if voxel_elevation < 0_f64 {
                 road_mat = Material::WoodPlanks;
+            } else if voxel_elevation <= 0.9_f64{
+                road_mat = Material::Void; //make this something that overwrites terrain.
             }
-            else if voxel_elevation <= 0.9_f64{
-                road_mat = Material::Void;
-            }
-
             if voxel_antihubness.abs() <= 0.15_f64{
                 road_mat = match road_mat{
                     Material::GreyBrick => Material::WhiteBrick,
                     _ => road_mat,
                 }
             }
-
         }
         return road_mat;
     }
