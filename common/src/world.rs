@@ -22,11 +22,10 @@ pub enum Material {
     GreyBrick = 18,
     WoodPlanks = 19,
     WhiteBrick = 20,
-    ReservedVoid = 21,
 }
 
 impl Material {
-    pub const COUNT: usize = 21;
+    pub const COUNT: usize = 20;
 }
 
 impl Default for Material {
