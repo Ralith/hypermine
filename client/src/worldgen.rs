@@ -41,7 +41,6 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
-use term::terminfo::Error::MalformedTerminfo;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -156,7 +155,7 @@ impl ChunkParams {
         self.chunk
     }
 
-    fn generate_terrain(&self, center: chunk_coord) -> Material{
+    fn generate_terrain(&self, center: na::Vector3<f64>) -> Material{
         let cube_coords = center * 0.5;
 
         let rain = trilerp(&self.env.rainfalls, cube_coords);
@@ -226,13 +225,13 @@ impl ChunkParams {
         }
 
         let voxel_elevation = self.surface.elevation(center, self.chunk);
-        if !voxel_elevation < max_e / ELEVATION_SCALE {
+        if !(voxel_elevation < max_e / ELEVATION_SCALE) {
             voxel_mat = Material::Void;
         }
         return voxel_mat;
     }
 
-    fn generate_road(&self, center: chunk_coord) -> Material{
+    fn generate_road(&self, center: na::Vector3<f64>) -> Material{
         let plane = Plane::from(Side::B);
         let mut road_mat: Material = Material::Void;
 
@@ -311,10 +310,12 @@ impl ChunkParams {
 
                     //road generation
                     if self.is_road{
-
-
+                        voxels.data_mut(dimension)[index(dimension, coords)] =
+                            ChunkParams::combine_voxels(self.generate_road(center), self.generate_terrain(center));
                     }
-
+                    else {
+                        voxels.data_mut(dimension)[index(dimension, coords)] = self.generate_terrain(center);
+                    }
                 }
             }
         }
