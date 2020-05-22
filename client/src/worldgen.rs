@@ -238,7 +238,6 @@ impl ChunkParams {
 
         let voxel_antihubness = plane.elevation(center, self.chunk);
         let voxel_elevation = self.surface.elevation(center, self.chunk);
-
         if voxel_antihubness.abs() <= 0.3_f64 {
             if voxel_elevation.abs() <= 0.075_f64 {
                 road_mat = Material::GreyBrick;
