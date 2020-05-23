@@ -306,6 +306,8 @@ impl ChunkParams {
                     // road generation
                     let mat = if self.is_road {
                         self.generate_road(center)
+                    } else if self.is_road_support{
+                        self.generate_road_support(center)
                     } else {
                         None
                     };
