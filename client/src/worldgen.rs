@@ -40,7 +40,6 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
-use term::terminfo::Error::MalformedTerminfo;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -263,9 +262,8 @@ impl ChunkParams {
         let horizontal_distance = plane.elevation(center, self.chunk);
 
         if horizontal_distance > 0.3 {
-            return Some(Material::WoodPlanks);
-        }
-        else {
+            Some(Material::WoodPlanks)
+        } else {
             None
         }
     }
@@ -290,7 +288,9 @@ impl ChunkParams {
             return VoxelData::Solid(Material::Stone);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE) && !(self.is_road||self.is_road_support) {
+        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE)
+            && !(self.is_road || self.is_road_support)
+        {
             // The whole chunk is above ground and not part of the road
             return VoxelData::Solid(Material::Void);
         }
@@ -306,7 +306,7 @@ impl ChunkParams {
                     // road generation
                     let mat = if self.is_road {
                         self.generate_road(center)
-                    } else if self.is_road_support{
+                    } else if self.is_road_support {
                         self.generate_road_support(center)
                     } else {
                         None
