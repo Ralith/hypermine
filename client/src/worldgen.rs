@@ -40,6 +40,7 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
+use term::terminfo::Error::MalformedTerminfo;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -241,9 +242,7 @@ impl ChunkParams {
         if horizontal_distance > 0.3 {
             return None;
         }
-        if elevation < 0.0 {
-            Some(Material::WoodPlanks) // Support structure
-        } else if elevation < 0.075 {
+        if elevation < 0.075 {
             // Surface
             Some(if horizontal_distance < 0.15 {
                 // Inner
@@ -255,6 +254,18 @@ impl ChunkParams {
         } else if elevation < 0.9 {
             Some(Material::Void) // Tunnel
         } else {
+            None
+        }
+    }
+
+    fn generate_road_support(&self, center: na::Vector3<f64>) -> Option<Material> {
+        let plane = -Plane::from(Side::B);
+        let horizontal_distance = plane.elevation(center, self.chunk);
+
+        if horizontal_distance > 0.3 {
+            return Some(Material::WoodPlanks);
+        }
+        else {
             None
         }
     }
