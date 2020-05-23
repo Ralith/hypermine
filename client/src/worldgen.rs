@@ -290,8 +290,8 @@ impl ChunkParams {
             return VoxelData::Solid(Material::Stone);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE) && !self.is_road {
-            // The whole chunk is above ground
+        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE) && !(self.is_road||self.is_road_support) {
+            // The whole chunk is above ground and not part of the road
             return VoxelData::Solid(Material::Void);
         }
 
