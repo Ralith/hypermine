@@ -40,7 +40,6 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
-use common::world::Material::WoodPlanks;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -149,7 +148,7 @@ impl ChunkParams {
             surface: state.surface,
             is_road: (state.kind == Sky)
                 && ((state.road_state == East) || (state.road_state == West)),
-            is_road_support: ((state.kind == Land)  || (state.kind == DeepLand))
+            is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
         })
     }
@@ -268,9 +267,7 @@ impl ChunkParams {
         }
 
         support_mat
-
     }
-
 
     /// Declare what Material should be generated if different structures ask for different Materials
     // safe to modify to artistic taste
@@ -306,7 +303,8 @@ impl ChunkParams {
         }
 
         if (center_elevation + ELEVATION_MARGIN < me_min / ChunkParams::ELEVATION_SCALE)
-            && !(self.is_road || self.is_road_support) //only test for road support here
+            && !(self.is_road || self.is_road_support)
+        //only test for road support here
         {
             // The whole chunk is above ground
             return VoxelData::Solid(Material::Void);
@@ -331,7 +329,7 @@ impl ChunkParams {
                         voxels.data_mut(dimension)[index(dimension, coords)] =
                             ChunkParams::combine_voxels(
                                 self.generate_terrain(center),
-                                self.generate_road_support(center)
+                                self.generate_road_support(center),
                             );
                     } else {
                         voxels.data_mut(dimension)[index(dimension, coords)] =
