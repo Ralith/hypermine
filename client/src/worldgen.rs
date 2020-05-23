@@ -133,6 +133,7 @@ pub struct ChunkParams {
     env: ChunkIncidentEnviroFactors,
     surface: Plane,
     is_road: bool,
+    is_road_support: bool,
 }
 
 impl ChunkParams {
@@ -145,7 +146,9 @@ impl ChunkParams {
             chunk,
             env: chunk_incident_enviro_factors(graph, node, chunk)?,
             surface: state.surface,
-            is_road: ((state.kind == Land) || (state.kind == Sky))
+            is_road: state.kind == Sky
+                && ((state.road_state == East) || (state.road_state == West)),
+            is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
         })
     }
@@ -238,9 +241,7 @@ impl ChunkParams {
         if horizontal_distance > 0.3 {
             return None;
         }
-        if elevation < 0.0 {
-            Some(Material::WoodPlanks) // Support structure
-        } else if elevation < 0.075 {
+        if elevation < 0.075 {
             // Surface
             Some(if horizontal_distance < 0.15 {
                 // Inner
@@ -251,6 +252,17 @@ impl ChunkParams {
             })
         } else if elevation < 0.9 {
             Some(Material::Void) // Tunnel
+        } else {
+            None
+        }
+    }
+
+    fn generate_road_support(&self, center: na::Vector3<f64>) -> Option<Material> {
+        let plane = -Plane::from(Side::B);
+        let horizontal_distance = plane.elevation(center, self.chunk);
+
+        if horizontal_distance < 0.3 {
+            Some(Material::WoodPlanks)
         } else {
             None
         }
@@ -276,8 +288,10 @@ impl ChunkParams {
             return VoxelData::Solid(Material::Stone);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE) && !self.is_road {
-            // The whole chunk is above ground
+        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE)
+            && !(self.is_road || self.is_road_support)
+        {
+            // The whole chunk is above ground and not part of the road
             return VoxelData::Solid(Material::Void);
         }
 
@@ -292,6 +306,8 @@ impl ChunkParams {
                     // road generation
                     let mat = if self.is_road {
                         self.generate_road(center)
+                    } else if self.is_road_support {
+                        self.generate_road_support(center)
                     } else {
                         None
                     };
