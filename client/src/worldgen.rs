@@ -501,7 +501,13 @@ impl Plane {
     /// Distance from a point in a chunk to the surface
     fn elevation(&self, chunk_coord: na::Vector3<f64>, chunk: Vertex) -> f64 {
         let pos = lorentz_normalize(&(chunk.chunk_to_node() * chunk_coord.push(1.0)));
-        mip(&self.normal, &pos).asinh()
+        let mip_value = mip(&self.normal, &pos);
+        if mip_value < 0.0 {
+            // Workaround for a bug in .asinh() for large negative values
+            -mip_value.abs().asinh()
+        } else {
+            mip_value.asinh()
+        }
     }
 }
 
