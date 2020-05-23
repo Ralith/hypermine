@@ -133,6 +133,7 @@ pub struct ChunkParams {
     env: ChunkIncidentEnviroFactors,
     surface: Plane,
     is_road: bool,
+    is_road_support: bool,
 }
 
 impl ChunkParams {
@@ -145,7 +146,9 @@ impl ChunkParams {
             chunk,
             env: chunk_incident_enviro_factors(graph, node, chunk)?,
             surface: state.surface,
-            is_road: ((state.kind == Land) || (state.kind == Sky))
+            is_road: state.kind == Land
+                && ((state.road_state == East) || (state.road_state == West)),
+            is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
         })
     }
