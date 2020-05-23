@@ -149,7 +149,7 @@ impl ChunkParams {
             surface: state.surface,
             is_road: (state.kind == Sky)
                 && ((state.road_state == East) || (state.road_state == West)),
-            is_road_support: (state.kind == Land)  || (state.kind == DeepLand)
+            is_road_support: ((state.kind == Land)  || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
         })
     }
@@ -258,7 +258,7 @@ impl ChunkParams {
         road_mat
     }
 
-    fn generate_road_support(&self, na::Vector3<f64>) -> Material {
+    fn generate_road_support(&self, center: na::Vector3<f64>) -> Material {
         let plane = Plane::from(Side::B);
         let mut support_mat: Material = Material::Void;
         let voxel_antihubness = plane.elevation(center, self.chunk);
