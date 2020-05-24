@@ -40,6 +40,7 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
+use term::terminfo::Error::MalformedTerminfo;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -265,22 +266,15 @@ impl ChunkParams {
         let plane = -Plane::from(Side::B);
         let horizontal_distance = plane.elevation(center, self.chunk);
 
-        if horizontal_distance < 0.3 {
-            let mat = self
-                .generate_trussing(coords)
-                .unwrap_or_else(|| Material::WoodPlanks);
-            if mat == Material::Void {
-                None
-            } else {
-                Some(mat)
-            }
+        if (horizontal_distance < 0.3) && (trussing_at(coords)) {
+                Some(Material::WoodPlanks)
         } else {
             None
         }
     }
 
-    ///carve out a truss-shaped hole
-    fn generate_trussing(&self, coords: na::Vector3<u8>) -> Option<Material> {
+    /// Make a truss-shaped template
+    fn generate_trussing(&self, coords: na::Vector3<u8>) -> bool {
         //Generates planar diagonals, but corner is offset
         let mut criteria_met = 0_u32;
         let x = coords[0];
@@ -310,9 +304,9 @@ impl ChunkParams {
         }
 
         if criteria_met >= 2 {
-            return None; //will get angry without return keyword.
+            return true; //will get angry without return keyword.
         }
-        Some(Material::Void)
+        false
     }
 
     /// Generate voxels making up the chunk
