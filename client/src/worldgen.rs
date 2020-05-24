@@ -257,12 +257,18 @@ impl ChunkParams {
         }
     }
 
-    fn generate_road_support(&self, center: na::Vector3<f64>, coords: na::Vector3<u8>) -> Option<Material> {
+    fn generate_road_support(
+        &self,
+        center: na::Vector3<f64>,
+        coords: na::Vector3<u8>,
+    ) -> Option<Material> {
         let plane = -Plane::from(Side::B);
         let horizontal_distance = plane.elevation(center, self.chunk);
 
         if horizontal_distance < 0.3 {
-            let mat = self.generate_trussing(coords).unwrap_or_else(|| Material::WoodPlanks);
+            let mat = self
+                .generate_trussing(coords)
+                .unwrap_or_else(|| Material::WoodPlanks);
             if mat == Material::Void {
                 None
             } else {
@@ -282,18 +288,29 @@ impl ChunkParams {
         let z = coords[2];
 
         //straight lines
-        if x == 8 { criteria_met += 1; }
-        if y == 8 { criteria_met += 1; }
-        if z == 8 { criteria_met += 1; }
+        if x == 8 {
+            criteria_met += 1;
+        }
+        if y == 8 {
+            criteria_met += 1;
+        }
+        if z == 8 {
+            criteria_met += 1;
+        }
 
         //main diagonal
-        if (x == y) { criteria_met += 1; }
-        if (y == z) { criteria_met += 1; }
-        if (x == z) { criteria_met += 1; }
+        if x == y {
+            criteria_met += 1;
+        }
+        if y == z {
+            criteria_met += 1;
+        }
+        if x == z {
+            criteria_met += 1;
+        }
 
-        if criteria_met >= 2
-        {
-            return None; //will get angry without return keyword
+        if criteria_met >= 2 {
+            return None; //will get angry without return keyword.
         }
         Some(Material::Void)
     }
