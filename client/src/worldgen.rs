@@ -129,10 +129,16 @@ impl NodeState {
 
 /// Data needed to generate a chunk
 pub struct ChunkParams {
+    /// Number of voxels along an edge
+    dimension: u8,
+    /// Which vertex of the containing node this chunk lies against
     chunk: Vertex,
     env: ChunkIncidentEnviroFactors,
+    /// Reference plane for the terrain surface
     surface: Plane,
+    /// Whether this chunk contains a segment of the road
     is_road: bool,
+    /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
 }
 
@@ -140,9 +146,10 @@ impl ChunkParams {
     /// Extract data necessary to generate a chunk
     ///
     /// Returns `None` if an unpopulated node is needed.
-    pub fn new(graph: &DualGraph, node: NodeId, chunk: Vertex) -> Option<Self> {
+    pub fn new(dimension: u8, graph: &DualGraph, node: NodeId, chunk: Vertex) -> Option<Self> {
         let state = &graph.get(node).as_ref()?.state;
         Some(Self {
+            dimension,
             chunk,
             env: chunk_incident_enviro_factors(graph, node, chunk)?,
             surface: state.surface,
@@ -269,7 +276,7 @@ impl ChunkParams {
     }
 
     /// Generate voxels making up the chunk
-    pub fn generate_voxels(&self, dimension: u8) -> VoxelData {
+    pub fn generate_voxels(&self) -> VoxelData {
         // Determine whether this chunk might contain a boundary between solid and void
         let mut me_min = self.env.max_elevations[0];
         let mut me_max = self.env.max_elevations[0];
@@ -297,11 +304,11 @@ impl ChunkParams {
 
         let mut voxels = VoxelData::Solid(Material::Void);
 
-        for z in 0..dimension {
-            for y in 0..dimension {
-                for x in 0..dimension {
+        for z in 0..self.dimension {
+            for y in 0..self.dimension {
+                for x in 0..self.dimension {
                     let coords = na::Vector3::new(x, y, z);
-                    let center = voxel_center(dimension, coords);
+                    let center = voxel_center(self.dimension, coords);
 
                     // road generation
                     let mat = if self.is_road {
@@ -313,7 +320,7 @@ impl ChunkParams {
                     };
                     let mat = mat.unwrap_or_else(|| self.generate_terrain(center));
                     if mat != Material::Void {
-                        voxels.data_mut(dimension)[index(dimension, coords)] = mat;
+                        voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
                     }
                 }
             }
@@ -322,10 +329,10 @@ impl ChunkParams {
         // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
         // and a block of leaves. The leaf block is on the opposite face of the
         // wood block as the ground block.
-        if dimension > 2 {
-            let loc = na::Vector3::repeat(dimension / 2);
-            let voxel_of_interest_index = index(dimension, loc);
-            let neighbor_data = voxel_neighbors(dimension, loc, &mut voxels);
+        if self.dimension > 2 {
+            let loc = na::Vector3::repeat(self.dimension / 2);
+            let voxel_of_interest_index = index(self.dimension, loc);
+            let neighbor_data = voxel_neighbors(self.dimension, loc, &mut voxels);
 
             let num_void_neighbors = neighbor_data
                 .iter()
@@ -339,9 +346,9 @@ impl ChunkParams {
                         || (i.material == Material::Grass)
                         || (i.material == Material::Flowergrass)
                     {
-                        voxels.data_mut(dimension)[voxel_of_interest_index] = Material::Wood;
-                        let leaf_location = index(dimension, i.coords_opposing);
-                        voxels.data_mut(dimension)[leaf_location] = Material::Leaves;
+                        voxels.data_mut(self.dimension)[voxel_of_interest_index] = Material::Wood;
+                        let leaf_location = index(self.dimension, i.coords_opposing);
+                        voxels.data_mut(self.dimension)[leaf_location] = Material::Leaves;
                     }
                 }
             }
