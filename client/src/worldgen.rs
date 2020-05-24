@@ -262,9 +262,23 @@ impl ChunkParams {
         let horizontal_distance = plane.elevation(center, self.chunk);
 
         if horizontal_distance < 0.3 {
-            Some(Material::WoodPlanks)
+            let mat = self.generate_trussing(center).unwrap_or_else(|| Material::WoodPlanks);
+            if mat == Material::Void {
+                None
+            } else {
+                Some(mat)
+            }
         } else {
             None
+        }
+    }
+
+    //carve out a truss-shaped hole
+    fn generate_trussing(&self, center: na::Vector3<f64>) -> Option<Material> {
+        if (center[0]  == center[1]) && (center[1] == center[2]) {
+            None
+        } else {
+            Some(Material::Void)
         }
     }
 
