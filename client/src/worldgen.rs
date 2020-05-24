@@ -267,7 +267,7 @@ impl ChunkParams {
 
 
 
-    fn generate_road_support(&self, center: na::Vector3<f64>) -> Option<Material> {
+    fn generate_road_support(&self, center: na::Vector3<f64>, coords: na::Vector3<u8>) -> Option<Material> {
         let plane = -Plane::from(Side::B);
         let horizontal_distance = plane.elevation(center, self.chunk);
 
@@ -278,7 +278,6 @@ impl ChunkParams {
         }
     }
 
-<<<<<<< HEAD
     /// Make a truss-shaped template
     fn trussing_at(&self, coords: na::Vector3<u8>) -> bool {
         //Generates planar diagonals, but corner is offset
@@ -315,8 +314,7 @@ impl ChunkParams {
         false
     }
 
-=======
->>>>>>> dimension-availability
+
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self) -> VoxelData {
         // Determine whether this chunk might contain a boundary between solid and void
@@ -356,11 +354,7 @@ impl ChunkParams {
                     let mat = if self.is_road {
                         self.generate_road(center)
                     } else if self.is_road_support {
-<<<<<<< HEAD
                         self.generate_road_support(center, coords)
-=======
-                        self.generate_road_support(center)
->>>>>>> dimension-availability
                     } else {
                         None
                     };
