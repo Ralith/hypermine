@@ -283,8 +283,8 @@ impl ChunkParams {
 
         //straight lines
         if x == 8 { criteria_met += 1; }
-        if x == 8 { criteria_met += 1; }
-        if x == 8 { criteria_met += 1; }
+        if y == 8 { criteria_met += 1; }
+        if z == 8 { criteria_met += 1; }
 
         //main diagonal
         if (x == y) && (x != z) { criteria_met += 1; }
