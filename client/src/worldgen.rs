@@ -280,13 +280,14 @@ impl ChunkParams {
         let y = coords[1];
         let z = coords[2];
         if ((x == 4) &&
-            (y == 4)||(z == 4) ||(y - z == 6))
-            ||
+            (y == 4)||(z == 4) || (y - z == 6)
+            ) ||
             ((y == 4) &&
-                (x == 4)||(z == 4) ||(x - z == 6))
-            ||
+                (x == 4) || (z == 4) || (x - z == 6)
+            ) ||
             ((z == 4) &&
-                (y == 4)||(x == 4) ||(x - z == 6))
+                (y == 4)||(x == 4) || (x - z == 6)
+            )
         {
             return None; //will get angry without return keyword
         }
