@@ -279,7 +279,7 @@ impl ChunkParams {
         let x = coords[0];
         let y = coords[1];
         let z = coords[2];
-        if !((x == 4) &&
+        if ((x == 4) &&
             (y == 4)||(z == 4) ||(y - z == 6))
             ||
             ((y == 4) &&
@@ -288,7 +288,7 @@ impl ChunkParams {
             ((z == 4) &&
                 (y == 4)||(x == 4) ||(x - z == 6))
         {
-            None
+            return None; //will get angry without return keyword
         }
         Some(Material::Void)
     }
