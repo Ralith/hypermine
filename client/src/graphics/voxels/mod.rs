@@ -133,16 +133,13 @@ impl Voxels {
                     Generating => continue,
                     Fresh => {
                         // Generate voxel data
-                        if let Some(params) = worldgen::ChunkParams::new(&sim.graph, node, chunk) {
-                            if self
-                                .worldgen
-                                .load(ChunkDesc {
-                                    node,
-                                    params,
-                                    dimension: self.surfaces.dimension() as u8,
-                                })
-                                .is_ok()
-                            {
+                        if let Some(params) = worldgen::ChunkParams::new(
+                            self.surfaces.dimension() as u8,
+                            &sim.graph,
+                            node,
+                            chunk,
+                        ) {
+                            if self.worldgen.load(ChunkDesc { node, params }).is_ok() {
                                 sim.graph.get_mut(node).as_mut().unwrap().chunks[chunk] =
                                     Generating;
                             }
@@ -292,7 +289,6 @@ struct SurfaceState {
 struct ChunkDesc {
     node: NodeId,
     params: worldgen::ChunkParams,
-    dimension: u8,
 }
 
 struct LoadedChunk {
@@ -312,7 +308,7 @@ impl Loadable for ChunkDesc {
             Ok(LoadedChunk {
                 node: self.node,
                 chunk: self.params.chunk(),
-                voxels: self.params.generate_voxels(self.dimension),
+                voxels: self.params.generate_voxels(),
             })
         })
     }
