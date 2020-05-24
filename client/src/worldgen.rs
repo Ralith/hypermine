@@ -287,9 +287,9 @@ impl ChunkParams {
         if z == 8 { criteria_met += 1; }
 
         //main diagonal
-        if (x == y) && (x != z) { criteria_met += 1; }
-        if (y == z) && (y != z) { criteria_met += 1; }
-        if (x == z) && (x != y) { criteria_met += 1; }
+        if (x == y) { criteria_met += 1; }
+        if (y == z) { criteria_met += 1; }
+        if (x == z) { criteria_met += 1; }
 
         if criteria_met >= 2
         {
