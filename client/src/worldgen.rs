@@ -275,7 +275,22 @@ impl ChunkParams {
 
     ///carve out a truss-shaped hole
     fn generate_trussing(&self, coords: na::Vector3<u8>) -> Option<Material> {
-        
+        //Generates planar diagonals, but corner is offset
+        let x = coords[0];
+        let y = coords[1];
+        let z = coords[2];
+        if !((x == 4) &&
+            (y == 4)||(z == 4) ||(y - z == 6))
+            ||
+            ((y == 4) &&
+                (x == 4)||(z == 4) ||(x - z == 6))
+            /*||
+            ((z == 4) &&
+                (y == 4)||(x == 4) ||(x - z == 6))*/
+        {
+            None
+        }
+        Some(Material::Void)
     }
 
     /// Generate voxels making up the chunk
@@ -317,7 +332,7 @@ impl ChunkParams {
                     let mat = if self.is_road {
                         self.generate_road(center)
                     } else if self.is_road_support {
-                        self.generate_road_support(center)
+                        self.generate_road_support(center, coords)
                     } else {
                         None
                     };
