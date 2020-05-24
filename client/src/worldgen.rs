@@ -276,18 +276,10 @@ impl ChunkParams {
     ///carve out a truss-shaped hole
     fn generate_trussing(&self, coords: na::Vector3<u8>) -> Option<Material> {
         //Generates planar diagonals, but corner is offset
-        let x = coords[0];
-        let y = coords[1];
-        let z = coords[2];
-        if ((x == 4) &&
-            (y == 4)||(z == 4) || (y - z == 6)
-            ) ||
-            ((y == 4) &&
-                (x == 4) || (z == 4) || (x - z == 6)
-            ) ||
-            ((z == 4) &&
-                (y == 4)||(x == 4) || (x - z == 6)
-            )
+        let x = (coords[0] == 8) as u32;
+        let y = (coords[1] == 8) as u32;
+        let z = (coords[2] == 8) as u32;
+        if x + y + z >= 2
         {
             return None; //will get angry without return keyword
         }
