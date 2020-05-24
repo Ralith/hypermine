@@ -287,14 +287,14 @@ impl ChunkParams {
         let y = coords[1];
         let z = coords[2];
 
-        //straight lines
-        if x == 8 {
+        // straight lines.
+        if x == (2 * self.dimension / 3).floor()  {
             criteria_met += 1;
         }
-        if y == 8 {
+        if y == (2 * self.dimension / 3).floor()  {
             criteria_met += 1;
         }
-        if z == 8 {
+        if z == (2 * self.dimension / 3).floor()  {
             criteria_met += 1;
         }
 
@@ -310,7 +310,7 @@ impl ChunkParams {
         }
 
         if criteria_met >= 2 {
-            return true; //will get angry without return keyword.
+            return true; // will get angry without return keyword.
         }
         false
     }
