@@ -40,7 +40,6 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
-use term::terminfo::Error::MalformedTerminfo;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -265,9 +264,11 @@ impl ChunkParams {
         }
     }
 
-
-
-    fn generate_road_support(&self, center: na::Vector3<f64>, coords: na::Vector3<u8>) -> Option<Material> {
+    fn generate_road_support(
+        &self,
+        center: na::Vector3<f64>,
+        coords: na::Vector3<u8>,
+    ) -> Option<Material> {
         let plane = -Plane::from(Side::B);
         let horizontal_distance = plane.elevation(center, self.chunk);
 
@@ -313,7 +314,6 @@ impl ChunkParams {
         }
         false
     }
-
 
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self) -> VoxelData {
