@@ -288,13 +288,13 @@ impl ChunkParams {
         let z = coords[2];
 
         // straight lines.
-        if x == (2 * self.dimension / 3).floor()  {
+        if x == 2 * self.dimension / 3  {
             criteria_met += 1;
         }
-        if y == (2 * self.dimension / 3).floor()  {
+        if y == 2 * self.dimension / 3  {
             criteria_met += 1;
         }
-        if z == (2 * self.dimension / 3).floor()  {
+        if z == 2 * self.dimension / 3 {
             criteria_met += 1;
         }
 
