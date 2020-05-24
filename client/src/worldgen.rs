@@ -262,11 +262,12 @@ impl ChunkParams {
         &self,
         center: na::Vector3<f64>,
         coords: na::Vector3<u8>,
+        dimension: u8,
     ) -> Option<Material> {
         let plane = -Plane::from(Side::B);
         let horizontal_distance = plane.elevation(center, self.chunk);
 
-        if (horizontal_distance < 0.3) && (self.trussing_at(coords)) {
+        if (horizontal_distance < 0.3) && (self.trussing_at(coords, dimension)) {
                 Some(Material::WoodPlanks)
         } else {
             None
@@ -274,7 +275,7 @@ impl ChunkParams {
     }
 
     /// Make a truss-shaped template
-    fn trussing_at(&self, coords: na::Vector3<u8>) -> bool {
+    fn trussing_at(&self, coords: na::Vector3<u8>, dimension: u8) -> bool {
         //Generates planar diagonals, but corner is offset
         let mut criteria_met = 0_u32;
         let x = coords[0];
@@ -282,13 +283,13 @@ impl ChunkParams {
         let z = coords[2];
 
         //straight lines
-        if x == 8 {
+        if x == dimension - 4 {
             criteria_met += 1;
         }
-        if y == 8 {
+        if y == dimension - 4 {
             criteria_met += 1;
         }
-        if z == 8 {
+        if z == dimension - 4 {
             criteria_met += 1;
         }
 
