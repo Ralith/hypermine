@@ -273,9 +273,14 @@ impl ChunkParams {
         }
     }
 
-    //carve out a truss-shaped hole
+    ///carve out a truss-shaped hole
     fn generate_trussing(&self, center: na::Vector3<f64>) -> Option<Material> {
-        if (center[0]  == center[1]) && (center[1] == center[2]) {
+        //Uses floating points, but could do fine with integers
+        let mod_amount = 6_f64;
+        let x = (center[0]*12_f64).floor() % mod_amount;
+        let y = (center[1]*12_f64).floor() % mod_amount;
+        let z = (center[2]*12_f64).floor() % mod_amount;
+        if (x == y) && (y == z) {
             None
         } else {
             Some(Material::Void)
