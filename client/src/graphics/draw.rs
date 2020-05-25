@@ -52,7 +52,7 @@ pub struct Draw {
 
 /// Maximum number of simultaneous frames in flight
 const PIPELINE_DEPTH: u32 = 2;
-const TIMESTAMPS_PER_FRAME: u32 = 2;
+const TIMESTAMPS_PER_FRAME: u32 = 3;
 
 impl Draw {
     pub fn new(gfx: Arc<Base>, cfg: Arc<Config>) -> Self {
@@ -74,7 +74,7 @@ impl Draw {
                 .allocate_command_buffers(
                     &vk::CommandBufferAllocateInfo::builder()
                         .command_pool(cmd_pool)
-                        .command_buffer_count(PIPELINE_DEPTH),
+                        .command_buffer_count(2 * PIPELINE_DEPTH),
                 )
                 .unwrap();
 
@@ -126,9 +126,9 @@ impl Draw {
 
             // Construct the per-frame states
             let states = cmds
-                .into_iter()
+                .chunks(2)
                 .zip(common_ds)
-                .map(|(cmd, common_ds)| {
+                .map(|(cmds, common_ds)| {
                     let uniforms = Staged::new(
                         device,
                         &gfx.memory_properties,
@@ -148,7 +148,8 @@ impl Draw {
                         &[],
                     );
                     let x = State {
-                        cmd,
+                        cmd: cmds[0],
+                        post_cmd: cmds[1],
                         common_ds,
                         image_acquired: device.create_semaphore(&Default::default(), None).unwrap(),
                         fence: device
@@ -165,6 +166,7 @@ impl Draw {
                         voxels: None,
                     };
                     gfx.set_name(x.cmd, cstr!("frame"));
+                    gfx.set_name(x.post_cmd, cstr!("post-frame"));
                     gfx.set_name(x.image_acquired, cstr!("image acquired"));
                     gfx.set_name(x.fence, cstr!("render complete"));
                     gfx.set_name(x.uniforms.buffer(), cstr!("uniforms"));
@@ -306,8 +308,10 @@ impl Draw {
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 )
                 .unwrap();
-            let nanos = self.gfx.limits.timestamp_period * (queries[1] - queries[0]) as f32;
-            timing!("frame.gpu", nanos as u64);
+            let draw_nanos = self.gfx.limits.timestamp_period * (queries[1] - queries[0]) as f32;
+            let after_nanos = self.gfx.limits.timestamp_period * (queries[2] - queries[1]) as f32;
+            timing!("frame.gpu.draw", draw_nanos as u64);
+            timing!("frame.gpu.after_draw", after_nanos as u64);
         }
 
         device
@@ -317,6 +321,14 @@ impl Draw {
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
+        device
+            .begin_command_buffer(
+                state.post_cmd,
+                &vk::CommandBufferBeginInfo::builder()
+                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            )
+            .unwrap();
+
         device.cmd_reset_query_pool(cmd, self.timestamp_pool, first_query, TIMESTAMPS_PER_FRAME);
         let mut timestamp_index = first_query;
         device.cmd_write_timestamp(
@@ -341,7 +353,13 @@ impl Draw {
         );
 
         if let Some(ref mut voxels) = self.voxels {
-            voxels.prepare(device, state.voxels.as_mut().unwrap(), sim, cmd, frustum);
+            voxels.prepare(
+                device,
+                state.voxels.as_mut().unwrap(),
+                sim,
+                state.post_cmd,
+                frustum,
+            );
         }
 
         // Ensure reads of just-transferred memory wait until it's ready
@@ -454,7 +472,16 @@ impl Draw {
             self.timestamp_pool,
             timestamp_index,
         );
+        timestamp_index += 1;
         device.end_command_buffer(cmd).unwrap();
+
+        device.cmd_write_timestamp(
+            state.post_cmd,
+            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+            self.timestamp_pool,
+            timestamp_index,
+        );
+        device.end_command_buffer(state.post_cmd).unwrap();
 
         // Specify the uniform data before actually submitting the command to transfer it
         state.uniforms.write(
@@ -471,12 +498,17 @@ impl Draw {
         device
             .queue_submit(
                 self.gfx.queue,
-                &[vk::SubmitInfo::builder()
-                    .command_buffers(&[cmd])
-                    .wait_semaphores(&[state.image_acquired])
-                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                    .signal_semaphores(&[present])
-                    .build()],
+                &[
+                    vk::SubmitInfo::builder()
+                        .command_buffers(&[cmd])
+                        .wait_semaphores(&[state.image_acquired])
+                        .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+                        .signal_semaphores(&[present])
+                        .build(),
+                    vk::SubmitInfo::builder()
+                        .command_buffers(&[state.post_cmd])
+                        .build(),
+                ],
                 state.fence,
             )
             .unwrap();
@@ -532,8 +564,10 @@ struct State {
     image_acquired: vk::Semaphore,
     /// Fence signaled when this state is no longer in use
     fence: vk::Fence,
-    /// Command buffer we record he frame's rendering onto
+    /// Command buffer we record the frame's rendering onto
     cmd: vk::CommandBuffer,
+    /// Work performed after rendering, overlapping with the next frame's CPU work
+    post_cmd: vk::CommandBuffer,
     /// Descriptor set for graphics-pipeline-independent data
     common_ds: vk::DescriptorSet,
     /// The common uniform buffer
