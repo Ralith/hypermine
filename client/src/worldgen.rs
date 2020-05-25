@@ -58,7 +58,7 @@ impl NodeStateRoad {
 
 pub struct NodeState {
     kind: NodeStateKind,
-    surface: Plane,
+    surface: Plane<f64>,
     road_state: NodeStateRoad,
     spice: u64,
     enviro: EnviroFactors,
@@ -135,7 +135,7 @@ pub struct ChunkParams {
     chunk: Vertex,
     env: ChunkIncidentEnviroFactors,
     /// Reference plane for the terrain surface
-    surface: Plane,
+    surface: Plane<f64>,
     /// Whether this chunk contains a segment of the road
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
