@@ -315,17 +315,17 @@ impl ChunkParams {
         // empirically.
         const ELEVATION_MARGIN: f64 = 0.7;
         let center_elevation = self.surface.elevation(na::Vector3::repeat(0.5), self.chunk);
-        if (center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE) && !self.is_road {
-            // The whole chunk is underground
-            // TODO: More accurate VoxelData
-            return VoxelData::Solid(Material::Stone);
-        }
-
-        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE)
+        if (center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE)
             && !(self.is_road || self.is_road_support)
         {
             // The whole chunk is above ground and not part of the road
             return VoxelData::Solid(Material::Void);
+        }
+
+        if (center_elevation + ELEVATION_MARGIN < me_min / ELEVATION_SCALE) && !self.is_road {
+            // The whole chunk is underground
+            // TODO: More accurate VoxelData
+            return VoxelData::Solid(Material::Stone);
         }
 
         let mut voxels = VoxelData::Solid(Material::Void);
@@ -351,6 +351,8 @@ impl ChunkParams {
                 }
             }
         }
+
+        // TODO: Don't generate detailed data for solid chunks with no neighboring voids
 
         // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
         // and a block of leaves. The leaf block is on the opposite face of the
