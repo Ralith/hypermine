@@ -15,7 +15,7 @@ use winit::{
     window::{Window as WinitWindow, WindowBuilder},
 };
 
-use super::{projection, Base, Core, Draw};
+use super::{Base, Core, Draw, Frustum};
 use crate::{Config, Sim};
 
 /// OS window
@@ -260,9 +260,7 @@ impl Window {
             let aspect_ratio =
                 swapchain.state.extent.width as f32 / swapchain.state.extent.height as f32;
             let frame = &swapchain.state.frames[frame_id as usize];
-            let vfov = f32::consts::FRAC_PI_4 * 1.2;
-            let hfov = (aspect_ratio * vfov.tan()).atan();
-            let proj = projection(-hfov, hfov, -vfov, vfov, 0.01);
+            let frustum = Frustum::from_vfov(f32::consts::FRAC_PI_4 * 1.2, aspect_ratio);
             // Render the frame
             draw.draw(
                 &mut self.sim,
@@ -270,7 +268,7 @@ impl Window {
                 frame.depth_view,
                 swapchain.state.extent,
                 frame.present,
-                proj.into(),
+                &frustum,
             );
             // Submit the frame to be presented on the window
             match swapchain.queue_present(frame_id) {
