@@ -1,3 +1,5 @@
+use common::Plane;
+
 #[derive(Debug, Copy, Clone)]
 pub struct Frustum {
     pub left: f32,
@@ -43,5 +45,84 @@ impl Frustum {
                 0.0, 2.0 * idy, sy * idy, 0.0,
                 0.0,       0.0,      za,  zb,
                 0.0,       0.0,     -1.0, 0.0))
+    }
+
+    pub fn planes(&self) -> FrustumPlanes {
+        FrustumPlanes {
+            left: Plane::from(
+                na::UnitQuaternion::from_axis_angle(&na::Vector3::y_axis(), self.left)
+                    * -na::Vector3::x_axis(),
+            ),
+            right: Plane::from(
+                na::UnitQuaternion::from_axis_angle(&na::Vector3::y_axis(), self.right)
+                    * na::Vector3::x_axis(),
+            ),
+            down: Plane::from(
+                na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), self.down)
+                    * na::Vector3::y_axis(),
+            ),
+            up: Plane::from(
+                na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), self.up)
+                    * -na::Vector3::y_axis(),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct FrustumPlanes {
+    left: Plane<f32>,
+    right: Plane<f32>,
+    down: Plane<f32>,
+    up: Plane<f32>,
+}
+
+impl FrustumPlanes {
+    pub fn contain(&self, point: &na::Vector4<f32>, radius: f32) -> bool {
+        for &plane in &[&self.left, &self.right, &self.down, &self.up] {
+            if plane.distance_to(point) < -radius {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common::math::{origin, translate_along};
+    use std::f32;
+
+    #[test]
+    fn planes_sanity() {
+        // 90 degree square
+        let planes = Frustum::from_vfov(f32::consts::FRAC_PI_4, 1.0).planes();
+        assert!(planes.contain(&origin(), 0.1));
+        assert!(planes.contain(
+            &(translate_along(&na::Vector3::z_axis(), -1.0) * origin()),
+            0.0
+        ));
+        assert!(!planes.contain(
+            &(translate_along(&na::Vector3::z_axis(), 1.0) * origin()),
+            0.0
+        ));
+
+        assert!(!planes.contain(
+            &(translate_along(&na::Vector3::x_axis(), 1.0) * origin()),
+            0.0
+        ));
+        assert!(!planes.contain(
+            &(translate_along(&na::Vector3::y_axis(), 1.0) * origin()),
+            0.0
+        ));
+        assert!(!planes.contain(
+            &(translate_along(&na::Vector3::x_axis(), -1.0) * origin()),
+            0.0
+        ));
+        assert!(!planes.contain(
+            &(translate_along(&na::Vector3::y_axis(), -1.0) * origin()),
+            0.0
+        ));
     }
 }

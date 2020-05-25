@@ -145,6 +145,8 @@ impl Vertex {
 
 pub const VERTEX_COUNT: usize = 20;
 pub const SIDE_COUNT: usize = 12;
+#[allow(clippy::unreadable_literal)]
+pub const BOUNDING_SPHERE_RADIUS: f64 = 1.2264568712514068;
 
 lazy_static! {
     /// Whether two sides share an edge
@@ -251,6 +253,7 @@ lazy_static! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::*;
 
     #[test]
     fn vertex_sides() {
@@ -286,5 +289,21 @@ mod tests {
             assert!(!side.faces::<f32>(&math::origin()));
             assert!(side.faces(&(side.reflection() * math::origin())));
         }
+    }
+
+    #[test]
+    fn radius() {
+        let corner = Vertex::A.chunk_to_node() * na::Vector4::repeat(1.0);
+        assert_abs_diff_eq!(
+            BOUNDING_SPHERE_RADIUS,
+            math::distance(&corner, &math::origin()),
+            epsilon = 1e-10
+        );
+        let phi = (1.0 + 5.0f64.sqrt()) / 2.0; // Golden ratio
+        assert_abs_diff_eq!(
+            BOUNDING_SPHERE_RADIUS,
+            (1.5 * phi).sqrt().asinh(),
+            epsilon = 1e-10
+        );
     }
 }

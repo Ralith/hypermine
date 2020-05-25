@@ -341,7 +341,7 @@ impl Draw {
         );
 
         if let Some(ref mut voxels) = self.voxels {
-            voxels.prepare(device, state.voxels.as_mut().unwrap(), sim, cmd);
+            voxels.prepare(device, state.voxels.as_mut().unwrap(), sim, cmd, frustum);
         }
 
         // Ensure reads of just-transferred memory wait until it's ready
