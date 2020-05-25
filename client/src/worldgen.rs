@@ -309,10 +309,7 @@ impl ChunkParams {
             criteria_met += 1;
         }
 
-        if criteria_met >= 2 {
-            return true; // will get angry without return keyword.
-        }
-        false
+        criteria_met >= 2
     }
 
     /// Generate voxels making up the chunk
