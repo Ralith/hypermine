@@ -286,11 +286,12 @@ impl ChunkParams {
         let x = coords[0];
         let y = coords[1];
         let z = coords[2];
-
+        let offset = 2 * self.dimension / 3;
+        
         // straight lines.
-        criteria_met += u32::from(x == 2 * self.dimension / 3);
-        criteria_met += u32::from(y == 2 * self.dimension / 3);
-        criteria_met += u32::from(z == 2 * self.dimension / 3);
+        criteria_met += u32::from(x == offset);
+        criteria_met += u32::from(y == offset);
+        criteria_met += u32::from(z == offset);
 
         // main diagonal
         criteria_met += u32::from(x == y);
