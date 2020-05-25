@@ -264,15 +264,41 @@ impl ChunkParams {
         }
     }
 
-    fn generate_road_support(&self, center: na::Vector3<f64>) -> Option<Material> {
+    fn generate_road_support(
+        &self,
+        center: na::Vector3<f64>,
+        coords: na::Vector3<u8>,
+    ) -> Option<Material> {
         let plane = -Plane::from(Side::B);
         let horizontal_distance = plane.elevation(center, self.chunk);
 
-        if horizontal_distance < 0.3 {
+        if horizontal_distance < 0.3 && self.trussing_at(coords) {
             Some(Material::WoodPlanks)
         } else {
             None
         }
+    }
+
+    /// Make a truss-shaped template
+    fn trussing_at(&self, coords: na::Vector3<u8>) -> bool {
+        // Generates planar diagonals, but corner is offset
+        let mut criteria_met = 0_u32;
+        let x = coords[0];
+        let y = coords[1];
+        let z = coords[2];
+        let offset = 2 * self.dimension / 3;
+
+        // straight lines.
+        criteria_met += u32::from(x == offset);
+        criteria_met += u32::from(y == offset);
+        criteria_met += u32::from(z == offset);
+
+        // main diagonal
+        criteria_met += u32::from(x == y);
+        criteria_met += u32::from(y == z);
+        criteria_met += u32::from(x == z);
+
+        criteria_met >= 2
     }
 
     /// Generate voxels making up the chunk
@@ -314,7 +340,7 @@ impl ChunkParams {
                     let mat = if self.is_road {
                         self.generate_road(center)
                     } else if self.is_road_support {
-                        self.generate_road_support(center)
+                        self.generate_road_support(center, coords)
                     } else {
                         None
                     };
