@@ -7,11 +7,11 @@ use crate::{
 
 /// A hyperbolic plane
 #[derive(Debug, Copy, Clone)]
-pub struct Plane {
-    normal: na::Vector4<f64>,
+pub struct Plane<N: na::RealField> {
+    normal: na::Vector4<N>,
 }
 
-impl From<Side> for Plane {
+impl From<Side> for Plane<f64> {
     /// A surface overlapping with a particular dodecahedron side
     fn from(side: Side) -> Self {
         let n = side.reflection().column(3) - origin();
@@ -21,16 +21,16 @@ impl From<Side> for Plane {
     }
 }
 
-impl From<na::Unit<na::Vector3<f64>>> for Plane {
+impl<N: na::RealField> From<na::Unit<na::Vector3<N>>> for Plane<N> {
     /// A plane passing through the origin
-    fn from(x: na::Unit<na::Vector3<f64>>) -> Self {
+    fn from(x: na::Unit<na::Vector3<N>>) -> Self {
         Self {
-            normal: x.into_inner().push(0.0),
+            normal: x.into_inner().push(na::zero()),
         }
     }
 }
 
-impl Neg for Plane {
+impl<N: na::RealField> Neg for Plane<N> {
     type Output = Self;
     fn neg(self) -> Self {
         Self {
@@ -39,36 +39,38 @@ impl Neg for Plane {
     }
 }
 
-impl Mul<Plane> for Side {
-    type Output = Plane;
+impl Mul<Plane<f64>> for Side {
+    type Output = Plane<f64>;
     /// Reflect a plane across the side
-    fn mul(self, rhs: Plane) -> Plane {
+    fn mul(self, rhs: Plane<f64>) -> Plane<f64> {
         self.reflection() * rhs
     }
 }
 
-impl<'a> Mul<Plane> for &'a na::Matrix4<f64> {
-    type Output = Plane;
-    fn mul(self, rhs: Plane) -> Plane {
+impl<'a, N: na::RealField> Mul<Plane<N>> for &'a na::Matrix4<N> {
+    type Output = Plane<N>;
+    fn mul(self, rhs: Plane<N>) -> Plane<N> {
         Plane {
             normal: lorentz_normalize(&(self * rhs.normal)),
         }
     }
 }
 
-impl Plane {
+impl<N: na::RealField> Plane<N> {
     /// Hyperbolic normal vector identifying the plane
-    pub fn normal(&self) -> &na::Vector4<f64> {
+    pub fn normal(&self) -> &na::Vector4<N> {
         &self.normal
     }
 
     /// Shortest distance between the plane and a point
-    pub fn distance_to(&self, point: &na::Vector4<f64>) -> f64 {
+    pub fn distance_to(&self, point: &na::Vector4<N>) -> N {
         let mip_value = mip(&self.normal, point);
         // Workaround for bug fixed in rust PR #72486
-        mip_value.abs().asinh().copysign(mip_value)
+        mip_value.abs().asinh() * mip_value.signum()
     }
+}
 
+impl Plane<f64> {
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
         let pos = lorentz_normalize(&(chunk.chunk_to_node() * coord.push(1.0)));
