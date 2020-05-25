@@ -5,7 +5,7 @@ use ash::{version::DeviceV1_0, vk};
 use lahar::Staged;
 use metrics::timing;
 
-use super::{fog, voxels, Base, Fog, GltfScene, Meshes, Voxels};
+use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{sim, Asset, Config, Loader, Sim};
 use common::proto::{Character, Position};
 
@@ -257,11 +257,12 @@ impl Draw {
         depth_view: vk::ImageView,
         extent: vk::Extent2D,
         present: vk::Semaphore,
-        projection: na::Matrix4<f32>,
+        frustum: &Frustum,
     ) {
         let draw_started = Instant::now();
         let view = sim.view();
-        let view_projection = projection * view.local.try_inverse().unwrap();
+        let projection = frustum.projection(0.01);
+        let view_projection = projection.matrix() * view.local.try_inverse().unwrap();
         self.loader.drive();
 
         let device = &*self.gfx.device;
@@ -460,7 +461,7 @@ impl Draw {
             device,
             Uniforms {
                 view_projection,
-                inverse_projection: projection.try_inverse().unwrap(),
+                inverse_projection: *projection.inverse().matrix(),
                 fog_density: fog::density(self.cfg.local_simulation.view_distance, 1e-3, 5.0),
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             },
