@@ -11,12 +11,12 @@ use metrics::timing;
 use tracing::warn;
 
 use crate::{
-    graphics::Base,
+    graphics::{Base, Frustum},
     loader::{Cleanup, LoadCtx, LoadFuture, Loadable, WorkQueue},
     sim::VoxelData,
     worldgen, Config, Loader, Sim,
 };
-use common::{dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab};
+use common::{dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
@@ -79,6 +79,7 @@ impl Voxels {
         frame: &mut Frame,
         sim: &mut Sim,
         cmd: vk::CommandBuffer,
+        frustum: &Frustum,
     ) {
         // Clean up after previous frame
         for i in frame.extracted.drain(..) {
@@ -119,7 +120,17 @@ impl Voxels {
                 .unwrap_or(std::cmp::Ordering::Less)
         });
         let node_scan_started = Instant::now();
+        let frustum_planes = frustum.planes();
+        let local_to_view = view.local.try_inverse().unwrap();
         for &(node, ref node_transform) in &nodes {
+            let node_to_view = local_to_view * node_transform;
+            let origin = node_to_view * math::origin();
+            if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS as f32) {
+                // Don't bother generating or drawing chunks from nodes that are wholly outside the
+                // frustum.
+                continue;
+            }
+
             use Chunk::*;
             for chunk in Vertex::iter() {
                 // Fetch existing chunk, or extract surface of new chunk
