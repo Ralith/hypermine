@@ -288,26 +288,14 @@ impl ChunkParams {
         let z = coords[2];
 
         // straight lines.
-        if x == 2 * self.dimension / 3 {
-            criteria_met += 1;
-        }
-        if y == 2 * self.dimension / 3 {
-            criteria_met += 1;
-        }
-        if z == 2 * self.dimension / 3 {
-            criteria_met += 1;
-        }
-
+        criteria_met += u32::from(x == 2 * self.dimension / 3);
+        criteria_met += u32::from(y == 2 * self.dimension / 3);
+        criteria_met += u32::from(z == 2 * self.dimension / 3);
+        
         //main diagonal
-        if x == y {
-            criteria_met += 1;
-        }
-        if y == z {
-            criteria_met += 1;
-        }
-        if x == z {
-            criteria_met += 1;
-        }
+        criteria_met += u32::from(x == y);
+        criteria_met += u32::from(y == z);
+        criteria_met += u32::from(x == z);
 
         criteria_met >= 2
     }
