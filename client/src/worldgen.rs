@@ -287,7 +287,7 @@ impl ChunkParams {
         let y = coords[1];
         let z = coords[2];
         let offset = 2 * self.dimension / 3;
-        
+
         // straight lines.
         criteria_met += u32::from(x == offset);
         criteria_met += u32::from(y == offset);
