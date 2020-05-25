@@ -272,7 +272,7 @@ impl ChunkParams {
         let plane = -Plane::from(Side::B);
         let horizontal_distance = plane.elevation(center, self.chunk);
 
-        if (horizontal_distance < 0.3) && self.trussing_at(coords) {
+        if horizontal_distance < 0.3 && self.trussing_at(coords) {
             Some(Material::WoodPlanks)
         } else {
             None
