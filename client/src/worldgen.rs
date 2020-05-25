@@ -4,8 +4,8 @@ use crate::sim::{DualGraph, VoxelData};
 use common::{
     dodeca::{Side, Vertex},
     graph::NodeId,
-    math::{lorentz_normalize, mip, origin},
     world::Material,
+    Plane,
 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -118,7 +118,7 @@ impl NodeState {
             surface: match child_kind {
                 Land => Plane::from(Side::A),
                 Sky => -Plane::from(Side::A),
-                _ => self.surface.reflect(side),
+                _ => side * self.surface,
             },
             road_state: child_road,
             spice,
@@ -232,7 +232,7 @@ impl ChunkParams {
             max_e = elev;
         }
 
-        let voxel_elevation = self.surface.elevation(center, self.chunk);
+        let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
         if voxel_elevation >= max_e / ELEVATION_SCALE {
             voxel_mat = Material::Void;
         }
@@ -243,8 +243,8 @@ impl ChunkParams {
     fn generate_road(&self, center: na::Vector3<f64>) -> Option<Material> {
         let plane = -Plane::from(Side::B);
 
-        let horizontal_distance = plane.elevation(center, self.chunk);
-        let elevation = self.surface.elevation(center, self.chunk);
+        let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
+        let elevation = self.surface.distance_to_chunk(self.chunk, &center);
         if horizontal_distance > 0.3 {
             return None;
         }
@@ -270,7 +270,7 @@ impl ChunkParams {
         coords: na::Vector3<u8>,
     ) -> Option<Material> {
         let plane = -Plane::from(Side::B);
-        let horizontal_distance = plane.elevation(center, self.chunk);
+        let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
 
         if horizontal_distance < 0.3 && self.trussing_at(coords) {
             Some(Material::WoodPlanks)
@@ -314,7 +314,9 @@ impl ChunkParams {
         // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
         // empirically.
         const ELEVATION_MARGIN: f64 = 0.7;
-        let center_elevation = self.surface.elevation(na::Vector3::repeat(0.5), self.chunk);
+        let center_elevation = self
+            .surface
+            .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
         if (center_elevation - ELEVATION_MARGIN > me_max / ELEVATION_SCALE)
             && !(self.is_road || self.is_road_support)
         {
@@ -516,52 +518,6 @@ fn chunk_incident_enviro_factors(
     })
 }
 
-/// Keeps track of the canonical surface wrt. the NodeState this is stored in
-#[derive(Debug, Copy, Clone)]
-struct Plane {
-    normal: na::Vector4<f64>,
-}
-
-impl From<Side> for Plane {
-    /// A surface overlapping with a particular dodecahedron side
-    fn from(side: Side) -> Self {
-        let n = side.reflection().column(3).map(|x| x as f64) - origin();
-        Self {
-            normal: lorentz_normalize(&n),
-        }
-    }
-}
-
-impl std::ops::Neg for Plane {
-    type Output = Self;
-    fn neg(self) -> Self {
-        Self {
-            normal: -self.normal,
-        }
-    }
-}
-
-impl Plane {
-    /// Returns a new Plane relative to a node on a certain side of this one
-    fn reflect(&self, side: Side) -> Self {
-        Self {
-            normal: lorentz_normalize(&(side.reflection() * self.normal)),
-        }
-    }
-
-    /// Distance from a point in a chunk to the surface
-    fn elevation(&self, chunk_coord: na::Vector3<f64>, chunk: Vertex) -> f64 {
-        let pos = lorentz_normalize(&(chunk.chunk_to_node() * chunk_coord.push(1.0)));
-        let mip_value = mip(&self.normal, &pos);
-        if mip_value < 0.0 {
-            // Workaround for a bug in .asinh() for large negative values
-            -mip_value.abs().asinh()
-        } else {
-            mip_value.asinh()
-        }
-    }
-}
-
 fn trilerp<N: na::RealField>(
     &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
     t: na::Vector3<N>,
@@ -623,16 +579,6 @@ mod test {
     use common::Chunks;
 
     const CHUNK_SIZE: u8 = 12;
-
-    #[test]
-    fn check_surface_flipped() {
-        let root = Plane::from(Side::A);
-        assert_abs_diff_eq!(
-            root.elevation(na::Vector3::x() * 2.0, Vertex::A),
-            root.elevation(na::Vector3::x() * 2.0, Vertex::J) * -1.0,
-            epsilon = 1e-5
-        );
-    }
 
     #[test]
     fn chunk_indexing_origin() {
@@ -827,73 +773,6 @@ mod test {
             trilerp(
                 &[1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0],
                 na::Vector3::new(0.5, 0.5, 0.5),
-            ),
-            epsilon = 1e-8,
-        );
-    }
-
-    #[test]
-    fn check_surface_on_plane() {
-        assert_abs_diff_eq!(
-            Plane::from(Side::A).elevation(
-                na::Vector3::new(1.0, 0.3, 0.9), // The first 1.0 is important, the plane is the midplane of the cube in Side::A direction
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-            ),
-            0.0,
-            epsilon = 1e-8,
-        );
-    }
-
-    #[test]
-    fn check_elevation_consistency() {
-        // A cube corner should have the same elevation seen from different cubes
-        assert_abs_diff_eq!(
-            Plane::from(Side::A).elevation(
-                na::Vector3::new(0.0, 0.0, 0.0),
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-            ),
-            Plane::from(Side::A).elevation(
-                na::Vector3::new(0.0, 0.0, 0.0),
-                Vertex::from_sides(Side::F, Side::H, Side::J).unwrap()
-            ),
-            epsilon = 1e-8,
-        );
-
-        // The same corner should have the same elevation when represented from the same cube at different corners
-        assert_abs_diff_eq!(
-            Plane::from(Side::A).elevation(
-                na::Vector3::new(1.0, 0.0, 0.0),
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-            ),
-            Plane::from(Side::A).reflect(Side::A).elevation(
-                na::Vector3::new(1.0, 0.0, 0.0),
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-            ),
-            epsilon = 1e-8,
-        );
-
-        // Corners of midplane cubes separated by the midplane should have the same elevation with a different sign
-        assert_abs_diff_eq!(
-            Plane::from(Side::A).elevation(
-                na::Vector3::new(0.0, 0.0, 0.0),
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-            ),
-            -Plane::from(Side::A).elevation(
-                na::Vector3::new(2.0, 0.0, 0.0),
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-            ),
-            epsilon = 1e-8,
-        );
-
-        // Corners of midplane cubes not separated by the midplane should have the same elevation
-        assert_abs_diff_eq!(
-            Plane::from(Side::A).elevation(
-                na::Vector3::new(0.0, 0.0, 0.0),
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
-            ),
-            Plane::from(Side::A).elevation(
-                na::Vector3::new(0.0, 0.0, 2.0),
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap()
             ),
             epsilon = 1e-8,
         );

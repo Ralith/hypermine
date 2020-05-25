@@ -14,6 +14,7 @@ pub mod graph;
 mod graph_entities;
 pub mod lru_slab;
 pub mod math;
+mod plane;
 pub mod proto;
 mod sim_config;
 pub mod world;
@@ -21,6 +22,7 @@ pub mod world;
 pub use chunks::Chunks;
 pub use graph_entities::GraphEntities;
 pub use lru_slab::LruSlab;
+pub use plane::Plane;
 pub use sim_config::{SimConfig, SimConfigRaw};
 
 // Stable IDs made of 8 random bytes for easy persistent references
