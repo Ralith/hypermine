@@ -281,7 +281,7 @@ impl ChunkParams {
 
     /// Make a truss-shaped template
     fn trussing_at(&self, coords: na::Vector3<u8>) -> bool {
-        //Generates planar diagonals, but corner is offset
+        // Generates planar diagonals, but corner is offset
         let mut criteria_met = 0_u32;
         let x = coords[0];
         let y = coords[1];
@@ -291,8 +291,8 @@ impl ChunkParams {
         criteria_met += u32::from(x == 2 * self.dimension / 3);
         criteria_met += u32::from(y == 2 * self.dimension / 3);
         criteria_met += u32::from(z == 2 * self.dimension / 3);
-        
-        //main diagonal
+
+        // main diagonal
         criteria_met += u32::from(x == y);
         criteria_met += u32::from(y == z);
         criteria_met += u32::from(x == z);
