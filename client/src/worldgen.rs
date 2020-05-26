@@ -71,12 +71,12 @@ impl NodeState {
             road_state: NodeStateRoad::ROOT,
             spice: 0,
             enviro: EnviroFactors {
-                max_elevation: -2,
+                max_elevation: 0,
                 temperature: 0,
                 rainfall: 0,
                 slopeiness: 3,
                 blockiness: 0,
-                flatness: 20,
+                flatness: 25,
             },
         }
     }
@@ -446,7 +446,7 @@ impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
-        let flatness = (parent.flatness + rng.sample(&plus_or_minus_one)).floor(1).ceil(40);
+        let flatness = (parent.flatness + rng.sample(&plus_or_minus_one)).max(1).min(40);
         let slopeiness = parent.slopeiness + rng.sample(&plus_or_minus_one);
         Self {
             slopeiness,
