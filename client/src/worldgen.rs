@@ -171,6 +171,7 @@ impl ChunkParams {
         let rain = trilerp(&self.env.rainfalls, cube_coords);
         let temp = trilerp(&self.env.temperatures, cube_coords);
         let slope = trilerp(&self.env.slopeinesses, cube_coords);
+        let flat = trilerp(&self.env.flatness, cube_coords);
 
         // block is a real number, threshold is in (0, 0.2) and biased towards 0
         // This causes the level of terrain bumpiness to vary over space.
@@ -213,22 +214,26 @@ impl ChunkParams {
 
         // Additional adjustments alter both block material and elevation
         // for a bit of extra variety.
-        let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
-        // peaks should roughly tend to be snow-covered
-        if slope_mod <= 1_f64 {
-            if temp < 0.0 {
-                voxel_mat = Material::Snow;
-                max_e = elev + 0.25;
+        if flat <= 12.0 {
+            let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+            // peaks should roughly tend to be snow-covered
+            if slope_mod <= 1_f64 {
+                if temp < 0.0 {
+                    voxel_mat = Material::Snow;
+                    max_e = elev + 0.25;
+                } else {
+                    max_e = elev;
+                }
+            } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
+                voxel_mat = match voxel_mat {
+                    Material::Flowergrass => Material::Bigflowergrass,
+                    Material::Greystone => Material::Blackstone,
+                    _ => voxel_mat,
+                };
+                max_e = elev - 0.25;
             } else {
                 max_e = elev;
             }
-        } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-            voxel_mat = match voxel_mat {
-                Material::Flowergrass => Material::Bigflowergrass,
-                Material::Greystone => Material::Blackstone,
-                _ => voxel_mat,
-            };
-            max_e = elev - 0.25;
         } else {
             max_e = elev;
         }
