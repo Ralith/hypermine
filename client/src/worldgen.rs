@@ -446,16 +446,27 @@ impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
+        let flatness = (parent.flatness + rng.sample(&plus_or_minus_one)).floor(1).ceil(40);
         let slopeiness = parent.slopeiness + rng.sample(&plus_or_minus_one);
         Self {
             slopeiness,
-            max_elevation: parent.max_elevation
-                + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
-                + rng.sample(&plus_or_minus_one),
+            flatness,
+            max_elevation: match flatness{
+                0..=10 => parent.max_elevation
+                    + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
+                    + rng.sample(&plus_or_minus_one),
+                11..=25 => parent.max_elevation + rng.sample(&plus_or_minus_one),
+                26..=30 => parent.max_elevation + rng.sample(&plus_or_minus_one)
+                    + ((parent.max_elevation < 0) as i64) - ((parent.max_elevation > 0) as i64),
+                31..=35 => parent.max_elevation
+                + (rng.sample(&plus_or_minus_one) + rng.sample(&plus_or_minus_one))/2, //not sure about the rounding on this one
+                _ => parent.max_elevation,
+
+
+            } ,
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
             blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
-            flatness: 1; //placehoder
         }
     }
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
