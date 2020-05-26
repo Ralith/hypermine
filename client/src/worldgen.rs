@@ -446,24 +446,32 @@ impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
-        let flatness = (parent.flatness + rng.sample(&plus_or_minus_one)).max(1).min(40);
+        let flatness = (parent.flatness + rng.sample(&plus_or_minus_one))
+            .max(1)
+            .min(40);
         let slopeiness = parent.slopeiness + rng.sample(&plus_or_minus_one);
         Self {
             slopeiness,
             flatness,
-            max_elevation: match flatness{
-                0..=10 => parent.max_elevation
-                    + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
-                    + rng.sample(&plus_or_minus_one),
+            max_elevation: match flatness {
+                0..=10 => {
+                    parent.max_elevation
+                        + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
+                        + rng.sample(&plus_or_minus_one)
+                }
                 11..=25 => parent.max_elevation + rng.sample(&plus_or_minus_one),
-                26..=30 => parent.max_elevation + rng.sample(&plus_or_minus_one)
-                    + ((parent.max_elevation < 0) as i64) - ((parent.max_elevation > 0) as i64),
-                31..=35 => parent.max_elevation
-                + (rng.sample(&plus_or_minus_one) + rng.sample(&plus_or_minus_one))/2, //not sure about the rounding on this one
+                26..=30 => {
+                    parent.max_elevation
+                        + rng.sample(&plus_or_minus_one)
+                        + ((parent.max_elevation < 0) as i64)
+                        - ((parent.max_elevation > 0) as i64)
+                }
+                31..=35 => {
+                    parent.max_elevation
+                        + (rng.sample(&plus_or_minus_one) + rng.sample(&plus_or_minus_one)) / 2
+                } //not sure about the rounding on this one
                 _ => parent.max_elevation,
-
-
-            } ,
+            },
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
             blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
@@ -518,7 +526,7 @@ fn chunk_incident_enviro_factors(
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
     let (e1, t1, r1, h1, b1, f1) = i.next()?.into();
-    let (e2, t2, r2, h2, b2, f2, ) = i.next()?.into();
+    let (e2, t2, r2, h2, b2, f2) = i.next()?.into();
     let (e3, t3, r3, h3, b3, f3) = i.next()?.into();
     let (e4, t4, r4, h4, b4, f4) = i.next()?.into();
     let (e5, t5, r5, h5, b5, f5) = i.next()?.into();
