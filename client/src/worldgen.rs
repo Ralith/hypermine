@@ -76,7 +76,7 @@ impl NodeState {
                 rainfall: 0,
                 slopeiness: 3,
                 blockiness: 0,
-                flatness: 25,
+                flatness: 35,
             },
         }
     }
@@ -458,14 +458,13 @@ impl EnviroFactors {
         Self {
             slopeiness,
             flatness,
-            max_elevation:
-                    parent.max_elevation +
-                        ((
-                        ((3 - parent.slopeiness.rem_euclid(7) ) as f64) *(1.0 + ((parent.flatness as f64)/10.0).tanh() )
-                            + ((3 - slopeiness.rem_euclid(7)) as f64 ) * (1.0 + ( (flatness as f64)/10.0).tanh() )
-
-                    ) as i64)
-                        + rng.sample(&plus_or_minus_one),
+            max_elevation: parent.max_elevation
+                + ((((3 - parent.slopeiness.rem_euclid(7)) as f64)
+                    * (1.0 + (((parent.flatness as f64) - 20.0) / 10.0).tanh())
+                    / 2.0
+                    + ((3 - slopeiness.rem_euclid(7) + rng.sample(&plus_or_minus_one)) as f64)
+                        * (1.0 + (((flatness as f64) - 20.0) / 10.0).tanh())
+                        / 2.0) as i64),
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
             blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
