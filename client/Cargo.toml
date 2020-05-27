@@ -40,6 +40,7 @@ rand_pcg = "0.2.1"
 metrics = { version = "0.12.1", features = ["std"] }
 metrics-core = "0.5.2"
 hdrhistogram = { version = "7", default-features = false }
+rand_distr = "0.2.2"
 
 [features]
 default = ["use-repo-assets"]

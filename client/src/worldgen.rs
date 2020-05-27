@@ -416,10 +416,13 @@ struct EnviroFactors {
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
+        use rand_distr::Normal;
+
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
         Self {
-            max_elevation: parent.max_elevation + rng.gen_range(-10, 11),
+            max_elevation: parent.max_elevation
+                + rng.sample(&Normal::new(0.0, 5.0).unwrap()) as i64,
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
             blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
