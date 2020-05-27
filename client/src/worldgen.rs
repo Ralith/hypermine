@@ -458,25 +458,14 @@ impl EnviroFactors {
         Self {
             slopeiness,
             flatness,
-            max_elevation: match flatness {
-                0..=10 => {
-                    parent.max_elevation
-                        + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
-                        + rng.sample(&plus_or_minus_one)
-                }
-                11..=25 => parent.max_elevation + rng.sample(&plus_or_minus_one),
-                26..=30 => {
-                    parent.max_elevation
-                        + rng.sample(&plus_or_minus_one)
-                        + ((parent.max_elevation < 0) as i64)
-                        - ((parent.max_elevation > 0) as i64)
-                }
-                31..=35 => {
-                    parent.max_elevation
-                        + (rng.sample(&plus_or_minus_one) + rng.sample(&plus_or_minus_one)) / 2
-                } //not sure about the rounding on this one
-                _ => parent.max_elevation,
-            },
+            max_elevation:
+                    parent.max_elevation +
+                        ((
+                        ((3 - parent.slopeiness.rem_euclid(7) ) as f64) *(1.0 + ((parent.flatness as f64)/10.0).tanh() )
+                            + ((3 - slopeiness.rem_euclid(7)) as f64 ) * (1.0 + ( (flatness as f64)/10.0).tanh() )
+
+                    ) as i64)
+                        + rng.sample(&plus_or_minus_one),
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
             blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
