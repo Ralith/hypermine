@@ -452,7 +452,7 @@ impl EnviroFactors {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
         let flatness = (parent.flatness + rng.sample(&plus_or_minus_one))
-            .max(1)
+            .max(0)
             .min(40);
         let slopeiness = parent.slopeiness + rng.sample(&plus_or_minus_one);
         Self {
