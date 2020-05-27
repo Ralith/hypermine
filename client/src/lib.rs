@@ -1,3 +1,5 @@
+#![allow(clippy::new_without_default)]
+
 macro_rules! cstr {
     ($x:literal) => {{
         #[allow(unused_unsafe)]
