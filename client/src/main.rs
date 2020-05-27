@@ -6,6 +6,7 @@ use std::{
 use client::{graphics, metrics, net, Config, Sim};
 
 use ash::extensions::khr;
+use tracing::error_span;
 
 fn main() {
     // Set up logging
@@ -27,6 +28,8 @@ fn main() {
         let sim_cfg = config.local_simulation.clone();
 
         std::thread::spawn(move || {
+            let span = error_span!("server");
+            let _guard = span.enter();
             if let Err(e) = server::run(
                 server::NetParams {
                     certificate_chain: quinn::CertificateChain::from_certs(
