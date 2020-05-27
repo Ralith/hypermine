@@ -76,6 +76,7 @@ impl NodeState {
                 rainfall: 0,
                 slopeiness: 3,
                 blockiness: 0,
+                flatness: 25,
             },
         }
     }
@@ -170,6 +171,7 @@ impl ChunkParams {
         let rain = trilerp(&self.env.rainfalls, cube_coords);
         let temp = trilerp(&self.env.temperatures, cube_coords);
         let slope = trilerp(&self.env.slopeinesses, cube_coords);
+        let flat = trilerp(&self.env.flatness, cube_coords);
 
         // block is a real number, threshold is in (0, 0.2) and biased towards 0
         // This causes the level of terrain bumpiness to vary over space.
@@ -212,22 +214,26 @@ impl ChunkParams {
 
         // Additional adjustments alter both block material and elevation
         // for a bit of extra variety.
-        let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
-        // peaks should roughly tend to be snow-covered
-        if slope_mod <= 1_f64 {
-            if temp < 0.0 {
-                voxel_mat = Material::Snow;
-                max_e = elev + 0.25;
+        if flat <= 30.0 {
+            let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+            // peaks should roughly tend to be snow-covered
+            if slope_mod <= 1_f64 {
+                if temp < 0.0 {
+                    voxel_mat = Material::Snow;
+                    max_e = elev + 0.25;
+                } else {
+                    max_e = elev;
+                }
+            } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
+                voxel_mat = match voxel_mat {
+                    Material::Flowergrass => Material::Bigflowergrass,
+                    Material::Greystone => Material::Blackstone,
+                    _ => voxel_mat,
+                };
+                max_e = elev - 0.25;
             } else {
                 max_e = elev;
             }
-        } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-            voxel_mat = match voxel_mat {
-                Material::Flowergrass => Material::Bigflowergrass,
-                Material::Greystone => Material::Blackstone,
-                _ => voxel_mat,
-            };
-            max_e = elev - 0.25;
         } else {
             max_e = elev;
         }
@@ -439,17 +445,26 @@ struct EnviroFactors {
     rainfall: i64,
     slopeiness: i64,
     blockiness: i64,
+    flatness: i64,
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
+        let flatness = (parent.flatness + rng.sample(&plus_or_minus_one))
+            .max(0)
+            .min(40);
         let slopeiness = parent.slopeiness + rng.sample(&plus_or_minus_one);
         Self {
             slopeiness,
+            flatness,
             max_elevation: parent.max_elevation
-                + ((3 - parent.slopeiness.rem_euclid(7)) + (3 - slopeiness.rem_euclid(7)))
-                + rng.sample(&plus_or_minus_one),
+                + ((((3 - parent.slopeiness.rem_euclid(7)) as f64)
+                    * (1.0 - (((parent.flatness as f64) - 20.0) / 10.0).tanh())
+                    + ((3 - slopeiness.rem_euclid(7)) as f64)
+                        * (1.0 - (((flatness as f64) - 20.0) / 10.0).tanh()))
+                    as i64)
+                    * rng.sample(&plus_or_minus_one),
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
             blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
@@ -462,17 +477,19 @@ impl EnviroFactors {
             rainfall: a.rainfall + (b.rainfall - ab.rainfall),
             slopeiness: a.slopeiness + (b.slopeiness - ab.slopeiness),
             blockiness: a.blockiness + (b.blockiness - ab.blockiness),
+            flatness: a.flatness + (b.flatness - ab.flatness),
         }
     }
 }
-impl Into<(f64, f64, f64, f64, f64)> for EnviroFactors {
-    fn into(self) -> (f64, f64, f64, f64, f64) {
+impl Into<(f64, f64, f64, f64, f64, f64)> for EnviroFactors {
+    fn into(self) -> (f64, f64, f64, f64, f64, f64) {
         (
             self.max_elevation as f64,
             self.temperature as f64,
             self.rainfall as f64,
             self.slopeiness as f64,
             self.blockiness as f64,
+            self.flatness as f64,
         )
     }
 }
@@ -482,6 +499,7 @@ struct ChunkIncidentEnviroFactors {
     rainfalls: [f64; 8],
     slopeinesses: [f64; 8],
     blockinesses: [f64; 8],
+    flatness: [f64; 8],
 }
 
 /// Returns the max_elevation values for the nodes that are incident to this chunk,
@@ -500,14 +518,14 @@ fn chunk_incident_enviro_factors(
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
-    let (e1, t1, r1, h1, b1) = i.next()?.into();
-    let (e2, t2, r2, h2, b2) = i.next()?.into();
-    let (e3, t3, r3, h3, b3) = i.next()?.into();
-    let (e4, t4, r4, h4, b4) = i.next()?.into();
-    let (e5, t5, r5, h5, b5) = i.next()?.into();
-    let (e6, t6, r6, h6, b6) = i.next()?.into();
-    let (e7, t7, r7, h7, b7) = i.next()?.into();
-    let (e8, t8, r8, h8, b8) = i.next()?.into();
+    let (e1, t1, r1, h1, b1, f1) = i.next()?.into();
+    let (e2, t2, r2, h2, b2, f2) = i.next()?.into();
+    let (e3, t3, r3, h3, b3, f3) = i.next()?.into();
+    let (e4, t4, r4, h4, b4, f4) = i.next()?.into();
+    let (e5, t5, r5, h5, b5, f5) = i.next()?.into();
+    let (e6, t6, r6, h6, b6, f6) = i.next()?.into();
+    let (e7, t7, r7, h7, b7, f7) = i.next()?.into();
+    let (e8, t8, r8, h8, b8, f8) = i.next()?.into();
 
     Some(ChunkIncidentEnviroFactors {
         max_elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
@@ -515,6 +533,7 @@ fn chunk_incident_enviro_factors(
         rainfalls: [r1, r2, r3, r4, r5, r6, r7, r8],
         slopeinesses: [h1, h2, h3, h4, h5, h6, h7, h8],
         blockinesses: [b1, b2, b3, b4, b5, b6, b7, b8],
+        flatness: [f1, f2, f3, f4, f5, f6, f7, f8],
     })
 }
 
