@@ -214,7 +214,7 @@ impl ChunkParams {
 
         // Additional adjustments alter both block material and elevation
         // for a bit of extra variety.
-        if flat <= 12.0 {
+        if flat <= 30.0 {
             let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
             // peaks should roughly tend to be snow-covered
             if slope_mod <= 1_f64 {
