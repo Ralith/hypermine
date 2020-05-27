@@ -461,10 +461,9 @@ impl EnviroFactors {
             max_elevation: parent.max_elevation
                 + ((((3 - parent.slopeiness.rem_euclid(7)) as f64)
                     * (1.0 - (((parent.flatness as f64) - 20.0) / 10.0).tanh())
-                    / 2.0
                     + ((3 - slopeiness.rem_euclid(7)) as f64)
                         * (1.0 - (((flatness as f64) - 20.0) / 10.0).tanh())
-                        / 2.0) as i64) * rng.sample(&plus_or_minus_one) ,
+                        ) as i64) * rng.sample(&plus_or_minus_one) ,
             temperature: parent.temperature + rng.sample(&plus_or_minus_one),
             rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
             blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
