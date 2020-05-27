@@ -1,30 +1,9 @@
-macro_rules! cstr {
-    ($x:literal) => {{
-        #[allow(unused_unsafe)]
-        unsafe {
-            std::ffi::CStr::from_bytes_with_nul_unchecked(concat!($x, "\0").as_bytes())
-        }
-    }};
-}
-
-mod config;
-mod graphics;
-mod loader;
-mod metrics;
-mod net;
-mod prediction;
-mod sim;
-mod worldgen;
-
 use std::{
     net::{SocketAddr, UdpSocket},
     sync::Arc,
 };
 
-use config::Config;
-use loader::{Asset, Loader};
-use net::Net;
-use sim::Sim;
+use client::{graphics, metrics, net, Config, Sim};
 
 use ash::extensions::khr;
 
