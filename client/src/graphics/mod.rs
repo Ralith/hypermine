@@ -26,3 +26,7 @@ pub use self::{
     voxels::{Chunk, Voxels},
     window::{EarlyWindow, Window},
 };
+
+unsafe fn as_bytes<T: Copy>(x: &T) -> &[u8] {
+    std::slice::from_raw_parts(x as *const T as *const u8, std::mem::size_of::<T>())
+}
