@@ -1,3 +1,8 @@
+use crate::graph::Graph;
+use crate::worldgen::NodeState;
+use crate::Chunks;
+use crate::world::Material;
+
 pub type DualGraph = Graph<Node>;
 
 pub struct Node {
