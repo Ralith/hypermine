@@ -16,7 +16,7 @@ use crate::{
     sim::VoxelData,
     worldgen, Config, Loader, Sim,
 };
-use common::{dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab};
+use common::{dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab, chunk::Chunk};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ExtractTask, ScratchBuffer, SurfaceExtraction};
