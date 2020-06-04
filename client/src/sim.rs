@@ -11,9 +11,10 @@ use common::{
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
     world::Material,
-    Chunks, EntityId, GraphEntities, Step,
+    Chunks, EntityId, GraphEntities, Step
 };
-
+use common::node::{DualGraph, Node};
+use common::worldgen::NodeState;
 
 
 /// Game state
