@@ -2,6 +2,7 @@ use std::{mem, sync::Arc};
 
 use ash::{version::DeviceV1_0, vk};
 use lahar::DedicatedMapping;
+use renderdoc::{RenderDoc, V110};
 
 use super::{surface_extraction, SurfaceExtraction};
 use crate::graphics::Base;
@@ -15,6 +16,7 @@ struct SurfaceExtractionTest {
     vertices: DedicatedMapping<[Vertex]>,
     cmd_pool: vk::CommandPool,
     cmd: vk::CommandBuffer,
+    rd: Option<RenderDoc<V110>>,
 }
 
 impl SurfaceExtractionTest {
@@ -64,12 +66,17 @@ impl SurfaceExtractionTest {
                 vertices,
                 cmd_pool,
                 cmd,
+                rd: RenderDoc::new().ok(),
             }
         }
     }
 
     fn run(&mut self) {
         let device = &*self.gfx.device;
+
+        if let Some(ref mut rd) = self.rd {
+            rd.start_frame_capture(std::ptr::null(), std::ptr::null());
+        }
 
         unsafe {
             device
@@ -102,6 +109,10 @@ impl SurfaceExtractionTest {
                 )
                 .unwrap();
             device.device_wait_idle().unwrap();
+        }
+
+        if let Some(ref mut rd) = self.rd {
+            rd.end_frame_capture(std::ptr::null(), std::ptr::null());
         }
     }
 }
