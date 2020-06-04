@@ -23,7 +23,7 @@ pub use self::{
     gltf_mesh::{GlbFile, GltfScene},
     meshes::{Mesh, Meshes},
     png_array::PngArray,
-    voxels::{Chunk, Voxels},
+    voxels::Voxels,
     window::{EarlyWindow, Window},
 };
 

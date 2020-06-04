@@ -4,7 +4,7 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
 
-use crate::{graphics::Chunk, net, prediction::PredictedMotion, Net};
+use crate::{net, prediction::PredictedMotion, Net};
 use common::{
     graph::{Graph, NodeId},
     math,
@@ -15,7 +15,7 @@ use common::{
 };
 use common::node::{DualGraph, Node};
 use common::worldgen::NodeState;
-
+use common::chunk::Chunk;
 
 /// Game state
 pub struct Sim {
