@@ -5,3 +5,4 @@ pub struct Node {
     /// We can only populate chunks which lie within a cube of populated nodes, so nodes on the edge
     /// of the graph always have some `None` chunks.
     pub chunks: Chunks<Chunk>,
+}

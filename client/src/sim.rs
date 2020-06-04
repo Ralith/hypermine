@@ -15,7 +15,6 @@ use common::{
 };
 
 
-}
 
 /// Game state
 pub struct Sim {
