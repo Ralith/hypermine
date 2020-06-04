@@ -44,8 +44,8 @@ bool find_face(out Face info) {
         { 0,  0, -1},
     };
     const ivec3 padding_coord = ivec3(gl_NumWorkGroups.y - 1);
-    info.voxel = ivec3(gl_GlobalInvocationID.x % gl_NumWorkGroups.y, gl_GlobalInvocationID.yz);
-    info.axis = gl_GlobalInvocationID.x / gl_NumWorkGroups.y;
+    info.voxel = ivec3(gl_GlobalInvocationID.x / 3, gl_GlobalInvocationID.yz);
+    info.axis = gl_GlobalInvocationID.x % 3;
     ivec3 neighbor = info.voxel + offsets[info.axis];
     // Don't generate faces between out-of-bounds voxels
     if (any(equal(info.voxel, padding_coord)) && any(equal(neighbor, padding_coord))) return false;
