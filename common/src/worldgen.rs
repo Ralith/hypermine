@@ -1,12 +1,12 @@
 use rand::{distributions::Uniform, Rng, SeedableRng};
 
-use crate::node;
 use crate::{
     dodeca::{Side, Vertex},
     graph::NodeId,
     world::Material,
     Plane,
 };
+use crate::node::{DualGraph, VoxelData};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
@@ -40,7 +40,6 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
-use crate::node::{DualGraph, VoxelData};
 
 impl NodeStateRoad {
     const ROOT: Self = West;
