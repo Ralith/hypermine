@@ -1,3 +1,6 @@
+use crate::node::VoxelData;
+use crate::lru_slab::SlotId;
+
 pub enum Chunk {
     Fresh,
     Generating,
