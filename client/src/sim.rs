@@ -4,7 +4,7 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
 
-use crate::{graphics::Chunk, net, prediction::PredictedMotion, worldgen::NodeState, Net};
+use crate::{graphics::Chunk, net, prediction::PredictedMotion, Net};
 use common::{
     graph::{Graph, NodeId},
     math,
