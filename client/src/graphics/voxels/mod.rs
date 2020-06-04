@@ -1,5 +1,5 @@
 mod surface;
-mod surface_extraction;
+pub mod surface_extraction;
 
 #[cfg(test)]
 mod tests;

@@ -298,7 +298,7 @@ impl Base {
         .unwrap();
     }
 
-    #[cfg(test)]
+    /// Convenience constructor for tests and benchmarks
     pub fn headless() -> Self {
         let core = Core::new(&[]);
         Self::new(Arc::new(core), None, &[], |_, _| true).unwrap()
