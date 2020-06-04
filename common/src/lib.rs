@@ -20,6 +20,7 @@ mod sim_config;
 pub mod world;
 pub mod worldgen;
 pub mod node;
+pub mod chunk;
 
 pub use chunks::Chunks;
 pub use graph_entities::GraphEntities;
