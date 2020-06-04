@@ -8,12 +8,11 @@ use crate::{net, prediction::PredictedMotion, Net};
 use common::{
     graph::{Graph, NodeId},
     math,
+    node::{DualGraph, Node},
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
-    Chunks, EntityId, GraphEntities, Step,
-    node::{DualGraph, Node},
     worldgen::NodeState,
-
+    Chunks, EntityId, GraphEntities, Step,
 };
 
 /// Game state
