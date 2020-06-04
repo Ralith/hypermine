@@ -1,3 +1,5 @@
+/*the name of this module is pretty arbitrary at the moment*/
+
 use crate::graph::Graph;
 use crate::worldgen::NodeState;
 use crate::Chunks;

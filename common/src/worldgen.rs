@@ -1,6 +1,6 @@
 use rand::{distributions::Uniform, Rng, SeedableRng};
 
-use crate::node::{DualGraph, VoxelData};
+use crate::node;
 use crate::{
     dodeca::{Side, Vertex},
     graph::NodeId,
@@ -40,6 +40,7 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
+use crate::node::DualGraph;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -593,9 +594,9 @@ fn hash(a: u64, b: u64) -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::sim::Node;
     use approx::*;
-    use common::Chunks;
+    use crate::{node, Chunks};
+    use crate::node::{Node, DualGraph};
 
     const CHUNK_SIZE: u8 = 12;
 
