@@ -5,17 +5,17 @@ use hecs::Entity;
 use tracing::{debug, error, trace};
 
 use crate::{net, prediction::PredictedMotion, Net};
+use common::chunk::Chunk;
+use common::node::{DualGraph, Node};
+use common::worldgen::NodeState;
 use common::{
     graph::{Graph, NodeId},
     math,
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
     world::Material,
-    Chunks, EntityId, GraphEntities, Step
+    Chunks, EntityId, GraphEntities, Step,
 };
-use common::node::{DualGraph, Node};
-use common::worldgen::NodeState;
-use common::chunk::Chunk;
 
 /// Game state
 pub struct Sim {
@@ -305,7 +305,6 @@ pub struct Parameters {
     pub movement_speed: f32,
     pub character_id: EntityId,
 }
-
 
 fn populate_fresh_nodes(graph: &mut DualGraph) {
     let fresh = graph.fresh().to_vec();

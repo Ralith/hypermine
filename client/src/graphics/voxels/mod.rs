@@ -15,8 +15,10 @@ use crate::{
     loader::{Cleanup, LoadCtx, LoadFuture, Loadable, WorkQueue},
     Config, Loader, Sim,
 };
-use common::{dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab, chunk::Chunk,
-            node::VoxelData, worldgen::ChunkParams};
+use common::{
+    chunk::Chunk, dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, node::VoxelData,
+    worldgen::ChunkParams, LruSlab,
+};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ExtractTask, ScratchBuffer, SurfaceExtraction};
@@ -325,4 +327,3 @@ impl Loadable for ChunkDesc {
         })
     }
 }
-

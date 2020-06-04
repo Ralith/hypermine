@@ -1,5 +1,5 @@
-use crate::node::VoxelData;
 use crate::lru_slab::SlotId;
+use crate::node::VoxelData;
 
 pub enum Chunk {
     Fresh,

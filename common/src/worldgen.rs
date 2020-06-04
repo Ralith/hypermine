@@ -1,12 +1,12 @@
 use rand::{distributions::Uniform, Rng, SeedableRng};
 
+use crate::node::{DualGraph, VoxelData};
 use crate::{
     dodeca::{Side, Vertex},
     graph::NodeId,
     world::Material,
     Plane,
 };
-use crate::node::{DualGraph, VoxelData};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
@@ -593,9 +593,9 @@ fn hash(a: u64, b: u64) -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use approx::*;
+    use crate::node::{DualGraph, Node};
     use crate::{node, Chunks};
-    use crate::node::{Node, DualGraph};
+    use approx::*;
     use core::panicking::panic;
 
     const CHUNK_SIZE: u8 = 12;
