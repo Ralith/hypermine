@@ -40,7 +40,7 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
-use crate::node::DualGraph;
+use crate::node::{DualGraph, VoxelData};
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -597,6 +597,7 @@ mod test {
     use approx::*;
     use crate::{node, Chunks};
     use crate::node::{Node, DualGraph};
+    use core::panicking::panic;
 
     const CHUNK_SIZE: u8 = 12;
 
