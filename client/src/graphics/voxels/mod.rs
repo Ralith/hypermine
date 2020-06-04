@@ -17,7 +17,7 @@ use crate::{
 };
 use common::{
     chunk::Chunk, dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, node::VoxelData,
-    worldgen::ChunkParams, LruSlab,
+    LruSlab,
 };
 
 use surface::Surface;

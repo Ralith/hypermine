@@ -10,9 +10,7 @@ use common::{
     math,
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
-    world::Material,
     Chunks, EntityId, GraphEntities, Step,
-    chunk::Chunk,
     node::{DualGraph, Node},
     worldgen::NodeState,
 
