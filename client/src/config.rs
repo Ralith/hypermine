@@ -50,7 +50,7 @@ impl Config {
         Config {
             name: name.unwrap_or_else(|| whoami::user().into()),
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
-            chunk_load_parallelism: chunk_load_parallelism.unwrap_or(16),
+            chunk_load_parallelism: chunk_load_parallelism.unwrap_or(256),
             server,
             local_simulation: SimConfig::from_raw(&local_simulation),
         }

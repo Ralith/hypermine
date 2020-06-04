@@ -103,6 +103,27 @@ impl SurfaceExtraction {
                 .unwrap();
             let emit_guard = defer(|| device.destroy_shader_module(emit, None));
 
+            let specialization_map_entries = [
+                vk::SpecializationMapEntry {
+                    constant_id: 0,
+                    offset: 0,
+                    size: 4,
+                },
+                vk::SpecializationMapEntry {
+                    constant_id: 1,
+                    offset: 4,
+                    size: 4,
+                },
+                vk::SpecializationMapEntry {
+                    constant_id: 2,
+                    offset: 8,
+                    size: 4,
+                },
+            ];
+            let specialization = vk::SpecializationInfo::builder()
+                .map_entries(&specialization_map_entries)
+                .data(as_bytes(&WORKGROUP_SIZE));
+
             let p_name = b"main\0".as_ptr() as *const i8;
             let mut pipelines = device
                 .create_compute_pipelines(
@@ -113,6 +134,7 @@ impl SurfaceExtraction {
                                 stage: vk::ShaderStageFlags::COMPUTE,
                                 module: count,
                                 p_name,
+                                p_specialization_info: &*specialization,
                                 ..Default::default()
                             },
                             layout: pipeline_layout,
@@ -123,6 +145,7 @@ impl SurfaceExtraction {
                                 stage: vk::ShaderStageFlags::COMPUTE,
                                 module: prefix_sum,
                                 p_name,
+                                p_specialization_info: &*specialization,
                                 ..Default::default()
                             },
                             layout: pipeline_layout,
@@ -133,6 +156,7 @@ impl SurfaceExtraction {
                                 stage: vk::ShaderStageFlags::COMPUTE,
                                 module: emit,
                                 p_name,
+                                p_specialization_info: &*specialization,
                                 ..Default::default()
                             },
                             layout: pipeline_layout,
@@ -207,7 +231,7 @@ impl ScratchBuffer {
         let voxels_size = concurrency as vk::DeviceSize * voxel_buffer_unit;
 
         let count_buffer_unit = round_up(
-            4 * dispatch_count(dimension),
+            4 * thread_count(dimension),
             gfx.limits.min_storage_buffer_offset_alignment,
         );
         let count_size = concurrency as vk::DeviceSize * count_buffer_unit;
@@ -359,8 +383,9 @@ impl ScratchBuffer {
         let voxels_range =
             voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
-        let dispatch_count = dispatch_count(self.dimension);
-        let counts_range = dispatch_count as vk::DeviceSize * 4;
+        let dispatch = dispatch_sizes(self.dimension);
+        let thread_count = thread_count(self.dimension);
+        let counts_range = thread_count as vk::DeviceSize * 4;
         self.voxels_staging.flush(device);
         device.cmd_bind_descriptor_sets(
             cmd,
@@ -468,16 +493,11 @@ impl ScratchBuffer {
                 &[],
             );
 
-            device.cmd_dispatch(
-                cmd,
-                (self.dimension + 1) * 3,
-                self.dimension + 1,
-                self.dimension + 1,
-            );
+            device.cmd_dispatch(cmd, dispatch.x, dispatch.y, dispatch.z);
         }
 
         // Determine memory location for each face
-        let passes = dispatch_count.next_power_of_two().trailing_zeros();
+        let passes = thread_count.next_power_of_two().trailing_zeros();
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.prefix_sum);
         for i in 0..passes {
             device.cmd_push_constants(
@@ -509,12 +529,7 @@ impl ScratchBuffer {
                     &[self.descriptor_sets[task.index as usize]],
                     &[],
                 );
-                device.cmd_dispatch(
-                    cmd,
-                    (self.dimension + 1) * 3,
-                    self.dimension + 1,
-                    self.dimension + 1,
-                );
+                device.cmd_dispatch(cmd, dispatch.x, dispatch.y, dispatch.z);
             }
         }
 
@@ -555,12 +570,7 @@ impl ScratchBuffer {
                 &[self.descriptor_sets[task.index as usize]],
                 &[],
             );
-            device.cmd_dispatch(
-                cmd,
-                (self.dimension + 1) * 3,
-                self.dimension + 1,
-                self.dimension + 1,
-            );
+            device.cmd_dispatch(cmd, dispatch.x, dispatch.y, dispatch.z);
         }
 
         device.cmd_pipeline_barrier(
@@ -598,10 +608,26 @@ pub struct ExtractTask {
     pub reverse_winding: bool,
 }
 
-/// Number of dispatches necessary to cover every possible face
-fn dispatch_count(dimension: u32) -> vk::DeviceSize {
-    // 3 faces per voxel * number of voxels, padded on each dimension for outside faces
-    3 * (dimension as vk::DeviceSize + 1).pow(3)
+fn dispatch_sizes(dimension: u32) -> na::Vector3<u32> {
+    fn divide_rounding_up(x: u32, y: u32) -> u32 {
+        debug_assert!(x > 0 && y > 0);
+        (x - 1) / y + 1
+    }
+
+    // We add 1 to each dimension because we only look at negative-facing faces of the target voxel
+    na::Vector3::new(
+        // Extending the X axis accounts for 3 possible faces per voxel
+        divide_rounding_up((dimension + 1) * 3, WORKGROUP_SIZE[0]),
+        divide_rounding_up(dimension + 1, WORKGROUP_SIZE[1]),
+        divide_rounding_up(dimension + 1, WORKGROUP_SIZE[2]),
+    )
+}
+
+/// Number of threads that will be spawned
+fn thread_count(dimension: u32) -> vk::DeviceSize {
+    let dim = dispatch_sizes(dimension);
+    (dim.x * WORKGROUP_SIZE[0] * dim.y * WORKGROUP_SIZE[1] * dim.z * WORKGROUP_SIZE[2])
+        as vk::DeviceSize
 }
 
 #[repr(C)]
@@ -705,6 +731,8 @@ impl DrawBuffer {
 const INDIRECT_SIZE: vk::DeviceSize = 16;
 
 const FACE_SIZE: vk::DeviceSize = 8;
+
+const WORKGROUP_SIZE: [u32; 3] = [4, 4, 4];
 
 fn round_up(value: vk::DeviceSize, alignment: vk::DeviceSize) -> vk::DeviceSize {
     ((value + alignment - 1) / alignment) * alignment
