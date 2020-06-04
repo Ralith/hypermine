@@ -37,12 +37,6 @@ uint vertex_occlusion(bool a, bool b, bool c) {
 
 // Compute the occlusion state for each vertex on a surface
 uvec4 surface_occlusion(ivec3 voxel, uint axis, bool inward) {
-    // Offset from voxel to the void voxel for this surface
-    const ivec3 offsets[3] = {
-        {-1,  0,  0},
-        { 0, -1,  0},
-        { 0,  0, -1},
-    };
     // U/V axes on this surface
     const ivec3 uvs[3][2] = {
         {{0, 1, 0}, {0, 0, 1}},
@@ -51,7 +45,7 @@ uvec4 surface_occlusion(ivec3 voxel, uint axis, bool inward) {
     };
 
     if (!inward) {
-        voxel += offsets[axis];
+        voxel += neighbor_offset(axis);
     }
 
     ivec3 u = uvs[axis][0];
