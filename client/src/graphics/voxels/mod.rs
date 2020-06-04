@@ -148,7 +148,7 @@ impl Voxels {
                     Generating => continue,
                     Fresh => {
                         // Generate voxel data
-                        if let Some(params) = worldgen::ChunkParams::new(
+                        if let Some(params) = common::worldgen::ChunkParams::new(
                             self.surfaces.dimension() as u8,
                             &sim.graph,
                             node,
@@ -300,7 +300,7 @@ struct SurfaceState {
 
 struct ChunkDesc {
     node: NodeId,
-    params: worldgen::ChunkParams,
+    params: common::worldgen::ChunkParams,
 }
 
 struct LoadedChunk {
