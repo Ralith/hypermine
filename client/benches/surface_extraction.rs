@@ -4,7 +4,7 @@ use ash::{version::DeviceV1_0, vk};
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
 use client::graphics::{
-    voxels::surface_extraction::{self, SurfaceExtraction},
+    voxels::surface_extraction::{self, ExtractTask, SurfaceExtraction},
     Base,
 };
 //use common::world::Material;
@@ -36,18 +36,23 @@ fn extract(bench: &mut Bencher) {
             .begin_command_buffer(cmd, &vk::CommandBufferBeginInfo::default())
             .unwrap();
 
-        for i in 0..BATCH_SIZE {
-            scratch.extract(
-                device,
-                &extract,
-                i,
-                false,
-                DIMENSION,
-                cmd,
-                (draw.indirect_buffer(), draw.indirect_offset(i)),
-                (draw.face_buffer(), draw.face_offset(i)),
-            );
-        }
+        let batch = (0..BATCH_SIZE)
+            .map(|i| ExtractTask {
+                index: i,
+                draw_id: i,
+                indirect_offset: draw.indirect_offset(i),
+                face_offset: draw.face_offset(i),
+                reverse_winding: false,
+            })
+            .collect::<Vec<_>>();
+        scratch.extract(
+            device,
+            &extract,
+            draw.indirect_buffer(),
+            draw.face_buffer(),
+            cmd,
+            &batch,
+        );
         device.end_command_buffer(cmd).unwrap();
 
         bench.iter(|| {

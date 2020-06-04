@@ -3,16 +3,16 @@
 #include "common.h"
 #include "surface.h"
 
-layout(set = 0, binding = 1) readonly restrict buffer FaceCounts {
+layout(set = 1, binding = 1) readonly restrict buffer FaceCounts {
     uint face_counts[];
 };
-layout(set = 0, binding = 2) writeonly restrict buffer Indirect {
+layout(set = 1, binding = 2) writeonly restrict buffer Indirect {
     uint vertex_count;
     uint instance_count;
     uint first_vertex;
     uint first_instance;
 };
-layout(set = 0, binding = 3) writeonly restrict buffer Surfaces {
+layout(set = 1, binding = 3) writeonly restrict buffer Surfaces {
     Surface surfaces[];
 };
 layout(push_constant) uniform Uniforms {
@@ -73,7 +73,7 @@ uvec4 surface_occlusion(ivec3 voxel, uint axis, bool inward) {
 
 void main() {
     uint count = face_counts[invocation_index()];
-    if (gl_GlobalInvocationID == gl_NumWorkGroups - uvec3(1)) {
+    if (gl_GlobalInvocationID == uvec3(dimension * 3, dimension, dimension)) {
         vertex_count = count * 6; // two triangles per face
         instance_count = 1;
         first_vertex = offset * 6;

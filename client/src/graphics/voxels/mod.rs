@@ -19,7 +19,7 @@ use crate::{
 use common::{dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab};
 
 use surface::Surface;
-use surface_extraction::{DrawBuffer, ScratchBuffer, SurfaceExtraction};
+use surface_extraction::{DrawBuffer, ExtractTask, ScratchBuffer, SurfaceExtraction};
 
 pub struct Voxels {
     config: Arc<Config>,
@@ -122,6 +122,7 @@ impl Voxels {
         let node_scan_started = Instant::now();
         let frustum_planes = frustum.planes();
         let local_to_view = view.local.try_inverse().unwrap();
+        let mut extractions = Vec::new();
         for &(node, ref node_transform) in &nodes {
             let node_to_view = local_to_view * node_transform;
             let origin = node_to_view * math::origin();
@@ -202,22 +203,13 @@ impl Voxels {
                                 }
                             }
                             let node_is_odd = sim.graph.length(node) & 1 != 0;
-                            self.extraction_scratch.extract(
-                                device,
-                                &self.surface_extraction,
-                                scratch_slot,
-                                chunk.parity() ^ node_is_odd,
-                                slot.0,
-                                cmd,
-                                (
-                                    self.surfaces.indirect_buffer(),
-                                    self.surfaces.indirect_offset(slot.0),
-                                ),
-                                (
-                                    self.surfaces.face_buffer(),
-                                    self.surfaces.face_offset(slot.0),
-                                ),
-                            );
+                            extractions.push(ExtractTask {
+                                index: scratch_slot,
+                                indirect_offset: self.surfaces.indirect_offset(slot.0),
+                                face_offset: self.surfaces.face_offset(slot.0),
+                                draw_id: slot.0,
+                                reverse_winding: chunk.parity() ^ node_is_odd,
+                            });
                             slot
                         }
                         (None, &VoxelData::Solid(_)) => continue,
@@ -229,6 +221,14 @@ impl Voxels {
                     node_transform * chunk.chunk_to_node().map(|x| x as f32);
             }
         }
+        self.extraction_scratch.extract(
+            device,
+            &self.surface_extraction,
+            self.surfaces.indirect_buffer(),
+            self.surfaces.face_buffer(),
+            cmd,
+            &extractions,
+        );
         timing!("frame.cpu.voxels.node_scan", node_scan_started.elapsed());
     }
 

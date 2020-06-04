@@ -4,7 +4,7 @@ use ash::{version::DeviceV1_0, vk, Device};
 use lahar::{DedicatedBuffer, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
-use super::Base;
+use crate::graphics::{as_bytes, Base};
 use common::{defer, world::Material};
 
 const COUNT: &[u32] = include_glsl!("shaders/surface-extraction/count.comp");
@@ -13,6 +13,7 @@ const EMIT: &[u32] = include_glsl!("shaders/surface-extraction/emit.comp");
 
 /// GPU-accelerated surface extraction from voxel chunks
 pub struct SurfaceExtraction {
+    params_layout: vk::DescriptorSetLayout,
     ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
     count: vk::Pipeline,
@@ -24,6 +25,20 @@ impl SurfaceExtraction {
     pub fn new(gfx: &Base) -> Self {
         let device = &*gfx.device;
         unsafe {
+            let params_layout = device
+                .create_descriptor_set_layout(
+                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                        vk::DescriptorSetLayoutBinding {
+                            binding: 0,
+                            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                            descriptor_count: 1,
+                            stage_flags: vk::ShaderStageFlags::COMPUTE,
+                            p_immutable_samplers: ptr::null(),
+                        },
+                    ]),
+                    None,
+                )
+                .unwrap();
             let ds_layout = device
                 .create_descriptor_set_layout(
                     &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
@@ -62,7 +77,7 @@ impl SurfaceExtraction {
             let pipeline_layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&[ds_layout])
+                        .set_layouts(&[params_layout, ds_layout])
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
                             offset: 0,
@@ -142,6 +157,7 @@ impl SurfaceExtraction {
             gfx.set_name(prefix_sum, cstr!("emit"));
 
             Self {
+                params_layout,
                 ds_layout,
                 pipeline_layout,
                 count,
@@ -152,6 +168,7 @@ impl SurfaceExtraction {
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {
+        device.destroy_descriptor_set_layout(self.params_layout, None);
         device.destroy_descriptor_set_layout(self.ds_layout, None);
         device.destroy_pipeline_layout(self.pipeline_layout, None);
         device.destroy_pipeline(self.count, None);
@@ -163,6 +180,7 @@ impl SurfaceExtraction {
 /// Scratch space for actually performing the extraction
 pub struct ScratchBuffer {
     dimension: u32,
+    params: DedicatedBuffer,
     /// Size of a single entry in the voxel buffer
     voxel_buffer_unit: vk::DeviceSize,
     /// Size of a single entry in the count buffer
@@ -171,6 +189,7 @@ pub struct ScratchBuffer {
     voxels: DedicatedBuffer,
     counts: DedicatedBuffer,
     descriptor_pool: vk::DescriptorPool,
+    params_ds: vk::DescriptorSet,
     descriptor_sets: Vec<vk::DescriptorSet>,
     free_slots: Vec<u32>,
     concurrency: u32,
@@ -193,6 +212,19 @@ impl ScratchBuffer {
         );
         let count_size = concurrency as vk::DeviceSize * count_buffer_unit;
         unsafe {
+            let params = DedicatedBuffer::new(
+                device,
+                &gfx.memory_properties,
+                &vk::BufferCreateInfo::builder()
+                    .size(mem::size_of::<Params>() as vk::DeviceSize)
+                    .usage(
+                        vk::BufferUsageFlags::UNIFORM_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                    )
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            );
+            gfx.set_name(params.handle, cstr!("surface extraction params"));
+
             let voxels_staging = DedicatedMapping::zeroed_array(
                 device,
                 &gfx.memory_properties,
@@ -228,30 +260,56 @@ impl ScratchBuffer {
             let descriptor_pool = device
                 .create_descriptor_pool(
                     &vk::DescriptorPoolCreateInfo::builder()
-                        .max_sets(concurrency)
-                        .pool_sizes(&[vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::STORAGE_BUFFER,
-                            descriptor_count: 4 * concurrency,
-                        }]),
+                        .max_sets(concurrency + 1)
+                        .pool_sizes(&[
+                            vk::DescriptorPoolSize {
+                                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                                descriptor_count: 1,
+                            },
+                            vk::DescriptorPoolSize {
+                                ty: vk::DescriptorType::STORAGE_BUFFER,
+                                descriptor_count: 4 * concurrency,
+                            },
+                        ]),
                     None,
                 )
                 .unwrap();
-            let descriptor_sets = device
+            let mut layouts = Vec::with_capacity(concurrency as usize + 1);
+            layouts.resize(concurrency as usize, ctx.ds_layout);
+            layouts.push(ctx.params_layout);
+            let mut descriptor_sets = device
                 .allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::builder()
                         .descriptor_pool(descriptor_pool)
-                        .set_layouts(&vec![ctx.ds_layout; concurrency as usize]),
+                        .set_layouts(&layouts),
                 )
                 .unwrap();
 
+            let params_ds = descriptor_sets.pop().unwrap();
+            device.update_descriptor_sets(
+                &[vk::WriteDescriptorSet::builder()
+                    .dst_set(params_ds)
+                    .dst_binding(0)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(&[vk::DescriptorBufferInfo {
+                        buffer: params.handle,
+                        offset: 0,
+                        range: vk::WHOLE_SIZE,
+                    }])
+                    .build()],
+                &[],
+            );
+
             Self {
                 dimension,
+                params,
                 voxel_buffer_unit,
                 count_buffer_unit,
                 voxels_staging,
                 voxels,
                 counts,
                 descriptor_pool,
+                params_ds,
                 descriptor_sets,
                 free_slots: (0..concurrency).collect(),
                 concurrency,
@@ -278,159 +336,224 @@ impl ScratchBuffer {
         &mut self.voxels_staging[start..start + length]
     }
 
-    #[allow(clippy::too_many_arguments)] // Refactoring ideas welcome
     pub unsafe fn extract(
         &mut self,
         device: &Device,
         ctx: &SurfaceExtraction,
-        index: u32,
-        reverse_winding: bool,
-        draw_id: u32,
+        indirect_buffer: vk::Buffer,
+        face_buffer: vk::Buffer,
         cmd: vk::CommandBuffer,
-        indirect: (vk::Buffer, vk::DeviceSize),
-        face: (vk::Buffer, vk::DeviceSize),
+        tasks: &[ExtractTask],
     ) {
-        assert!(
-            index < self.concurrency,
-            "index {} out of bounds for concurrency {}",
-            index,
-            self.concurrency
+        // Prepare shared state
+        device.cmd_update_buffer(
+            cmd,
+            self.params.handle,
+            0,
+            as_bytes(&Params {
+                dimension: self.dimension,
+            }),
         );
-        let index = index as usize;
 
         let voxel_count = (self.dimension + 2).pow(3) as usize;
-        let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
-        let dispatch_count = dispatch_count(self.dimension);
-        self.voxels_staging.flush(device);
-
-        let counts_offset = self.count_buffer_unit * index as vk::DeviceSize;
-        let counts_range = dispatch_count as vk::DeviceSize * 4;
-
-        let voxels_offset = self.voxel_buffer_unit * index as vk::DeviceSize;
         let voxels_range =
             voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
-
-        device.update_descriptor_sets(
-            &[
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(self.descriptor_sets[index])
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: self.voxels.handle,
-                        offset: voxels_offset,
-                        range: voxels_range,
-                    }])
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(self.descriptor_sets[index])
-                    .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: self.counts.handle,
-                        offset: counts_offset,
-                        range: counts_range,
-                    }])
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(self.descriptor_sets[index])
-                    .dst_binding(2)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: indirect.0,
-                        offset: indirect.1,
-                        range: INDIRECT_SIZE,
-                    }])
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(self.descriptor_sets[index])
-                    .dst_binding(3)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&[vk::DescriptorBufferInfo {
-                        buffer: face.0,
-                        offset: face.1,
-                        range: max_faces as vk::DeviceSize * FACE_SIZE,
-                    }])
-                    .build(),
-            ],
+        let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
+        let dispatch_count = dispatch_count(self.dimension);
+        let counts_range = dispatch_count as vk::DeviceSize * 4;
+        self.voxels_staging.flush(device);
+        device.cmd_bind_descriptor_sets(
+            cmd,
+            vk::PipelineBindPoint::COMPUTE,
+            ctx.pipeline_layout,
+            0,
+            &[self.params_ds],
             &[],
         );
 
-        device.cmd_copy_buffer(
-            cmd,
-            self.voxels_staging.buffer(),
-            self.voxels.handle,
-            &[vk::BufferCopy {
-                src_offset: voxels_offset,
-                dst_offset: voxels_offset,
-                size: voxels_range,
-            }],
-        );
+        // Prepare each task
+        for task in tasks {
+            assert!(
+                task.index < self.concurrency,
+                "index {} out of bounds for concurrency {}",
+                task.index,
+                self.concurrency
+            );
+            let index = task.index as usize;
+
+            let counts_offset = self.count_buffer_unit * index as vk::DeviceSize;
+            let voxels_offset = self.voxel_buffer_unit * index as vk::DeviceSize;
+
+            device.update_descriptor_sets(
+                &[
+                    vk::WriteDescriptorSet::builder()
+                        .dst_set(self.descriptor_sets[index])
+                        .dst_binding(0)
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(&[vk::DescriptorBufferInfo {
+                            buffer: self.voxels.handle,
+                            offset: voxels_offset,
+                            range: voxels_range,
+                        }])
+                        .build(),
+                    vk::WriteDescriptorSet::builder()
+                        .dst_set(self.descriptor_sets[index])
+                        .dst_binding(1)
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(&[vk::DescriptorBufferInfo {
+                            buffer: self.counts.handle,
+                            offset: counts_offset,
+                            range: counts_range,
+                        }])
+                        .build(),
+                    vk::WriteDescriptorSet::builder()
+                        .dst_set(self.descriptor_sets[index])
+                        .dst_binding(2)
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(&[vk::DescriptorBufferInfo {
+                            buffer: indirect_buffer,
+                            offset: task.indirect_offset,
+                            range: INDIRECT_SIZE,
+                        }])
+                        .build(),
+                    vk::WriteDescriptorSet::builder()
+                        .dst_set(self.descriptor_sets[index])
+                        .dst_binding(3)
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(&[vk::DescriptorBufferInfo {
+                            buffer: face_buffer,
+                            offset: task.face_offset,
+                            range: max_faces as vk::DeviceSize * FACE_SIZE,
+                        }])
+                        .build(),
+                ],
+                &[],
+            );
+
+            device.cmd_copy_buffer(
+                cmd,
+                self.voxels_staging.buffer(),
+                self.voxels.handle,
+                &[vk::BufferCopy {
+                    src_offset: voxels_offset,
+                    dst_offset: voxels_offset,
+                    size: voxels_range,
+                }],
+            );
+        }
 
         device.cmd_pipeline_barrier(
             cmd,
             vk::PipelineStageFlags::TRANSFER,
             vk::PipelineStageFlags::COMPUTE_SHADER,
             Default::default(),
-            &[],
-            &[vk::BufferMemoryBarrier {
+            &[vk::MemoryBarrier {
                 src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
                 dst_access_mask: vk::AccessFlags::SHADER_READ,
-                src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                buffer: self.voxels.handle,
-                offset: voxels_offset,
-                size: voxels_range,
                 ..Default::default()
             }],
             &[],
-        );
-
-        device.cmd_bind_descriptor_sets(
-            cmd,
-            vk::PipelineBindPoint::COMPUTE,
-            ctx.pipeline_layout,
-            0,
-            &[self.descriptor_sets[index]],
             &[],
         );
 
+        // Determine which faces should exist
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.count);
-        device.cmd_dispatch(
-            cmd,
-            (self.dimension + 1) * 3,
-            self.dimension + 1,
-            self.dimension + 1,
-        );
-
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.prefix_sum);
-        let passes = dispatch_count.next_power_of_two().trailing_zeros();
-        for i in 0..passes {
-            device.cmd_pipeline_barrier(
+        for task in tasks {
+            device.cmd_bind_descriptor_sets(
                 cmd,
-                vk::PipelineStageFlags::COMPUTE_SHADER,
-                vk::PipelineStageFlags::COMPUTE_SHADER,
-                Default::default(),
-                &[],
-                &[vk::BufferMemoryBarrier {
-                    src_access_mask: vk::AccessFlags::SHADER_WRITE,
-                    dst_access_mask: vk::AccessFlags::SHADER_READ,
-                    src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    buffer: self.counts.handle,
-                    offset: counts_offset,
-                    size: counts_range,
-                    ..Default::default()
-                }],
+                vk::PipelineBindPoint::COMPUTE,
+                ctx.pipeline_layout,
+                1,
+                &[self.descriptor_sets[task.index as usize]],
                 &[],
             );
 
+            device.cmd_dispatch(
+                cmd,
+                (self.dimension + 1) * 3,
+                self.dimension + 1,
+                self.dimension + 1,
+            );
+        }
+
+        // Determine memory location for each face
+        let passes = dispatch_count.next_power_of_two().trailing_zeros();
+        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.prefix_sum);
+        for i in 0..passes {
             device.cmd_push_constants(
                 cmd,
                 ctx.pipeline_layout,
                 vk::ShaderStageFlags::COMPUTE,
                 0,
                 &i.to_ne_bytes(),
+            );
+            device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                Default::default(),
+                &[vk::MemoryBarrier {
+                    src_access_mask: vk::AccessFlags::SHADER_WRITE,
+                    dst_access_mask: vk::AccessFlags::SHADER_READ,
+                    ..Default::default()
+                }],
+                &[],
+                &[],
+            );
+            for task in tasks {
+                device.cmd_bind_descriptor_sets(
+                    cmd,
+                    vk::PipelineBindPoint::COMPUTE,
+                    ctx.pipeline_layout,
+                    1,
+                    &[self.descriptor_sets[task.index as usize]],
+                    &[],
+                );
+                device.cmd_dispatch(
+                    cmd,
+                    (self.dimension + 1) * 3,
+                    self.dimension + 1,
+                    self.dimension + 1,
+                );
+            }
+        }
+
+        device.cmd_pipeline_barrier(
+            cmd,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            Default::default(),
+            &[vk::MemoryBarrier {
+                src_access_mask: vk::AccessFlags::SHADER_WRITE,
+                dst_access_mask: vk::AccessFlags::SHADER_READ,
+                ..Default::default()
+            }],
+            &[],
+            &[],
+        );
+
+        // Write faces to memory
+        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.emit);
+        for task in tasks {
+            let mut push_constants = [0; 12];
+            push_constants[0..4]
+                .copy_from_slice(&((task.face_offset / FACE_SIZE) as u32).to_ne_bytes());
+            push_constants[4..8].copy_from_slice(&task.draw_id.to_ne_bytes());
+            push_constants[9] = u8::from(task.reverse_winding);
+            device.cmd_push_constants(
+                cmd,
+                ctx.pipeline_layout,
+                vk::ShaderStageFlags::COMPUTE,
+                0,
+                &push_constants,
+            );
+            device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                ctx.pipeline_layout,
+                1,
+                &[self.descriptor_sets[task.index as usize]],
+                &[],
             );
             device.cmd_dispatch(
                 cmd,
@@ -443,85 +566,48 @@ impl ScratchBuffer {
         device.cmd_pipeline_barrier(
             cmd,
             vk::PipelineStageFlags::COMPUTE_SHADER,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::DRAW_INDIRECT,
             Default::default(),
-            &[],
-            &[vk::BufferMemoryBarrier {
+            &[vk::MemoryBarrier {
                 src_access_mask: vk::AccessFlags::SHADER_WRITE,
-                dst_access_mask: vk::AccessFlags::SHADER_READ,
-                src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                buffer: self.counts.handle,
-                offset: counts_offset,
-                size: counts_range,
+                dst_access_mask: vk::AccessFlags::SHADER_READ
+                    | vk::AccessFlags::INDIRECT_COMMAND_READ,
                 ..Default::default()
             }],
             &[],
-        );
-
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.emit);
-        let mut push_constants = [0; 12];
-        push_constants[0..4].copy_from_slice(&((face.1 / FACE_SIZE) as u32).to_ne_bytes());
-        push_constants[4..8].copy_from_slice(&draw_id.to_ne_bytes());
-        push_constants[9] = u8::from(reverse_winding);
-        device.cmd_push_constants(
-            cmd,
-            ctx.pipeline_layout,
-            vk::ShaderStageFlags::COMPUTE,
-            0,
-            &push_constants,
-        );
-        device.cmd_dispatch(
-            cmd,
-            (self.dimension + 1) * 3,
-            self.dimension + 1,
-            self.dimension + 1,
-        );
-
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::DRAW_INDIRECT,
-            Default::default(),
-            &[],
-            &[
-                vk::BufferMemoryBarrier {
-                    src_access_mask: vk::AccessFlags::SHADER_WRITE,
-                    dst_access_mask: vk::AccessFlags::SHADER_READ,
-                    src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    buffer: face.0,
-                    offset: face.1,
-                    size: max_faces as vk::DeviceSize * FACE_SIZE,
-                    ..Default::default()
-                },
-                vk::BufferMemoryBarrier {
-                    src_access_mask: vk::AccessFlags::SHADER_WRITE,
-                    dst_access_mask: vk::AccessFlags::INDIRECT_COMMAND_READ,
-                    src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                    buffer: indirect.0,
-                    offset: indirect.1,
-                    size: INDIRECT_SIZE,
-                    ..Default::default()
-                },
-            ],
             &[],
         );
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {
         device.destroy_descriptor_pool(self.descriptor_pool, None);
+        self.params.destroy(device);
         self.voxels_staging.destroy(device);
         self.voxels.destroy(device);
         self.counts.destroy(device);
     }
 }
 
+/// Specifies a single chunk's worth of surface extraction work
+#[derive(Debug, Copy, Clone)]
+pub struct ExtractTask {
+    pub indirect_offset: vk::DeviceSize,
+    pub face_offset: vk::DeviceSize,
+    pub index: u32,
+    pub draw_id: u32,
+    pub reverse_winding: bool,
+}
+
 /// Number of dispatches necessary to cover every possible face
 fn dispatch_count(dimension: u32) -> vk::DeviceSize {
     // 3 faces per voxel * number of voxels, padded on each dimension for outside faces
     3 * (dimension as vk::DeviceSize + 1).pow(3)
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct Params {
+    dimension: u32,
 }
 
 /// Manages storage for ready-to-render voxels

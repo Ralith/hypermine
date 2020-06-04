@@ -90,12 +90,16 @@ impl SurfaceExtractionTest {
             self.scratch.extract(
                 device,
                 &self.extract,
-                0,
-                false,
-                DIMENSION as u32,
+                self.indirect.buffer(),
+                self.vertices.buffer(),
                 self.cmd,
-                (self.indirect.buffer(), 0),
-                (self.vertices.buffer(), 0),
+                &[surface_extraction::ExtractTask {
+                    indirect_offset: 0,
+                    face_offset: 0,
+                    index: 0,
+                    draw_id: 0,
+                    reverse_winding: false,
+                }],
             );
             device.end_command_buffer(self.cmd).unwrap();
 
@@ -183,7 +187,6 @@ fn surface_extraction() {
         "solid chunks have no surfaces"
     );
 
-    // TODO: Half-empty
     let storage = test.scratch.storage(0);
     for x in &mut storage[..] {
         *x = Material::Void;

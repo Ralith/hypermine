@@ -7,7 +7,11 @@ uint invocation_index() {
         + gl_GlobalInvocationID.x;
 }
 
-layout(set = 0, binding = 0) readonly restrict buffer Voxels {
+layout(set = 0, binding = 0) restrict uniform Parameters {
+    int dimension;
+};
+
+layout(set = 1, binding = 0) readonly restrict buffer Voxels {
     uint voxel_pair[];
 };
 
@@ -44,12 +48,11 @@ ivec3 neighbor_offset(uint axis) {
 bool find_face(out Face info) {
     // We only look at negative-facing faces of the current voxel, and iterate one past the end on
     // each dimension to enclose it fully.
-    const ivec3 padding_coord = ivec3(gl_NumWorkGroups.y - 1);
     info.voxel = ivec3(gl_GlobalInvocationID.x / 3, gl_GlobalInvocationID.yz);
     info.axis = gl_GlobalInvocationID.x % 3;
     ivec3 neighbor = info.voxel + neighbor_offset(info.axis);
     // Don't generate faces between out-of-bounds voxels
-    if (any(equal(info.voxel, padding_coord)) && any(equal(neighbor, padding_coord))) return false;
+    if (any(equal(info.voxel, ivec3(dimension))) && any(equal(neighbor, ivec3(dimension)))) return false;
     uint neighbor_mat = get_voxel(neighbor);
     uint self_mat = get_voxel(info.voxel);
     // Flip face around if the neighbor is the solid one
