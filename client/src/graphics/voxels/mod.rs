@@ -13,10 +13,10 @@ use tracing::warn;
 use crate::{
     graphics::{Base, Frustum},
     loader::{Cleanup, LoadCtx, LoadFuture, Loadable, WorkQueue},
-    sim::VoxelData,
-    worldgen, Config, Loader, Sim,
+    Config, Loader, Sim,
 };
-use common::{dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab, chunk::Chunk};
+use common::{dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, LruSlab, chunk::Chunk,
+            node::VoxelData, worldgen::ChunkParams};
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ExtractTask, ScratchBuffer, SurfaceExtraction};
