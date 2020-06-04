@@ -19,6 +19,7 @@ pub mod proto;
 mod sim_config;
 pub mod world;
 pub mod worldgen;
+pub mod node;
 
 pub use chunks::Chunks;
 pub use graph_entities::GraphEntities;
