@@ -1,9 +1,11 @@
 #ifndef SURFACE_EXTRACTION_COMMON_H_
 #define SURFACE_EXTRACTION_COMMON_H_
 
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
 uint invocation_index() {
-    return gl_GlobalInvocationID.z * gl_NumWorkGroups.x * gl_NumWorkGroups.y
-        + gl_GlobalInvocationID.y * gl_NumWorkGroups.x
+    return gl_GlobalInvocationID.z * gl_NumWorkGroups.x * gl_NumWorkGroups.y * gl_WorkGroupSize.x * gl_WorkGroupSize.y
+        + gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x
         + gl_GlobalInvocationID.x;
 }
 
@@ -21,8 +23,7 @@ uint get_voxel(ivec3 coords) {
     // for the margin on the negative-facing sides of the chunk.
 
     // There's a margin of 1 on each side of each dimension, only half of which is dispatched over
-    uint dim = gl_NumWorkGroups.y + 1;
-    uint linear = (coords.x + 1) + (coords.y + 1) * dim + (coords.z + 1) * dim * dim;
+    uint linear = (coords.x + 1) + (coords.y + 1) * (dimension + 2) + (coords.z + 1) * (dimension + 2) * (dimension + 2);
     uint pair = voxel_pair[linear / 2];
     return (linear % 2) == 0 ? pair & 0xFFFF : pair >> 16;
 }
@@ -52,7 +53,7 @@ bool find_face(out Face info) {
     info.axis = gl_GlobalInvocationID.x % 3;
     ivec3 neighbor = info.voxel + neighbor_offset(info.axis);
     // Don't generate faces between out-of-bounds voxels
-    if (any(equal(info.voxel, ivec3(dimension))) && any(equal(neighbor, ivec3(dimension)))) return false;
+    if (any(greaterThanEqual(info.voxel, ivec3(dimension))) && any(greaterThanEqual(neighbor, ivec3(dimension)))) return false;
     uint neighbor_mat = get_voxel(neighbor);
     uint self_mat = get_voxel(info.voxel);
     // Flip face around if the neighbor is the solid one
