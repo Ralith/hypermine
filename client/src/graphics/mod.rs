@@ -8,7 +8,7 @@ mod frustum;
 mod gltf_mesh;
 mod meshes;
 mod png_array;
-mod voxels;
+pub mod voxels;
 mod window;
 
 #[cfg(test)]
