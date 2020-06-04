@@ -16,7 +16,6 @@ pub mod metrics;
 pub mod net;
 mod prediction;
 pub mod sim;
-pub mod worldgen;
 
 pub use config::Config;
 pub use sim::Sim;
