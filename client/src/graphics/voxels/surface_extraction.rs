@@ -344,6 +344,21 @@ impl ScratchBuffer {
             &[],
         );
 
+        // Prevent overlap with the last batch of work
+        device.cmd_pipeline_barrier(
+            cmd,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::PipelineStageFlags::TRANSFER,
+            Default::default(),
+            &[vk::MemoryBarrier {
+                src_access_mask: vk::AccessFlags::SHADER_READ,
+                dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                ..Default::default()
+            }],
+            &[],
+            &[],
+        );
+
         // Prepare each task
         for task in tasks {
             assert!(
