@@ -7,8 +7,6 @@ use vk_shader_macros::include_glsl;
 use crate::graphics::{as_bytes, Base};
 use common::{defer, world::Material};
 
-const COUNT: &[u32] = include_glsl!("shaders/surface-extraction/count.comp");
-const PREFIX_SUM: &[u32] = include_glsl!("shaders/surface-extraction/prefix-sum.comp");
 const EMIT: &[u32] = include_glsl!("shaders/surface-extraction/emit.comp");
 
 /// GPU-accelerated surface extraction from voxel chunks
@@ -16,8 +14,6 @@ pub struct SurfaceExtraction {
     params_layout: vk::DescriptorSetLayout,
     ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
-    count: vk::Pipeline,
-    prefix_sum: vk::Pipeline,
     emit: vk::Pipeline,
 }
 
@@ -87,17 +83,6 @@ impl SurfaceExtraction {
                 )
                 .unwrap();
 
-            let count = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&COUNT), None)
-                .unwrap();
-            let count_guard = defer(|| device.destroy_shader_module(count, None));
-            let prefix_sum = device
-                .create_shader_module(
-                    &vk::ShaderModuleCreateInfo::builder().code(&PREFIX_SUM),
-                    None,
-                )
-                .unwrap();
-            let prefix_sum_guard = defer(|| device.destroy_shader_module(prefix_sum, None));
             let emit = device
                 .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&EMIT), None)
                 .unwrap();
@@ -128,64 +113,32 @@ impl SurfaceExtraction {
             let mut pipelines = device
                 .create_compute_pipelines(
                     gfx.pipeline_cache,
-                    &[
-                        vk::ComputePipelineCreateInfo {
-                            stage: vk::PipelineShaderStageCreateInfo {
-                                stage: vk::ShaderStageFlags::COMPUTE,
-                                module: count,
-                                p_name,
-                                p_specialization_info: &*specialization,
-                                ..Default::default()
-                            },
-                            layout: pipeline_layout,
+                    &[vk::ComputePipelineCreateInfo {
+                        stage: vk::PipelineShaderStageCreateInfo {
+                            stage: vk::ShaderStageFlags::COMPUTE,
+                            module: emit,
+                            p_name,
+                            p_specialization_info: &*specialization,
                             ..Default::default()
                         },
-                        vk::ComputePipelineCreateInfo {
-                            stage: vk::PipelineShaderStageCreateInfo {
-                                stage: vk::ShaderStageFlags::COMPUTE,
-                                module: prefix_sum,
-                                p_name,
-                                p_specialization_info: &*specialization,
-                                ..Default::default()
-                            },
-                            layout: pipeline_layout,
-                            ..Default::default()
-                        },
-                        vk::ComputePipelineCreateInfo {
-                            stage: vk::PipelineShaderStageCreateInfo {
-                                stage: vk::ShaderStageFlags::COMPUTE,
-                                module: emit,
-                                p_name,
-                                p_specialization_info: &*specialization,
-                                ..Default::default()
-                            },
-                            layout: pipeline_layout,
-                            ..Default::default()
-                        },
-                    ],
+                        layout: pipeline_layout,
+                        ..Default::default()
+                    }],
                     None,
                 )
                 .unwrap()
                 .into_iter();
 
             // Free shader modules now that the actual pipelines are built
-            count_guard.invoke();
-            prefix_sum_guard.invoke();
             emit_guard.invoke();
 
-            let count = pipelines.next().unwrap();
-            gfx.set_name(count, cstr!("count"));
-            let prefix_sum = pipelines.next().unwrap();
-            gfx.set_name(prefix_sum, cstr!("prefix_sum"));
             let emit = pipelines.next().unwrap();
-            gfx.set_name(prefix_sum, cstr!("emit"));
+            gfx.set_name(emit, cstr!("emit"));
 
             Self {
                 params_layout,
                 ds_layout,
                 pipeline_layout,
-                count,
-                prefix_sum,
                 emit,
             }
         }
@@ -195,8 +148,6 @@ impl SurfaceExtraction {
         device.destroy_descriptor_set_layout(self.params_layout, None);
         device.destroy_descriptor_set_layout(self.ds_layout, None);
         device.destroy_pipeline_layout(self.pipeline_layout, None);
-        device.destroy_pipeline(self.count, None);
-        device.destroy_pipeline(self.prefix_sum, None);
         device.destroy_pipeline(self.emit, None);
     }
 }
@@ -207,11 +158,11 @@ pub struct ScratchBuffer {
     params: DedicatedBuffer,
     /// Size of a single entry in the voxel buffer
     voxel_buffer_unit: vk::DeviceSize,
-    /// Size of a single entry in the count buffer
-    count_buffer_unit: vk::DeviceSize,
+    /// Size of a single entry in the state buffer
+    state_buffer_unit: vk::DeviceSize,
     voxels_staging: DedicatedMapping<[Material]>,
     voxels: DedicatedBuffer,
-    counts: DedicatedBuffer,
+    state: DedicatedBuffer,
     descriptor_pool: vk::DescriptorPool,
     params_ds: vk::DescriptorSet,
     descriptor_sets: Vec<vk::DescriptorSet>,
@@ -230,11 +181,7 @@ impl ScratchBuffer {
         );
         let voxels_size = concurrency as vk::DeviceSize * voxel_buffer_unit;
 
-        let count_buffer_unit = round_up(
-            4 * thread_count(dimension),
-            gfx.limits.min_storage_buffer_offset_alignment,
-        );
-        let count_size = concurrency as vk::DeviceSize * count_buffer_unit;
+        let state_buffer_unit = round_up(4, gfx.limits.min_storage_buffer_offset_alignment);
         unsafe {
             let params = DedicatedBuffer::new(
                 device,
@@ -270,16 +217,18 @@ impl ScratchBuffer {
             );
             gfx.set_name(voxels.handle, cstr!("voxels"));
 
-            let counts = DedicatedBuffer::new(
+            let state = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
                 &vk::BufferCreateInfo::builder()
-                    .size(count_size)
-                    .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
+                    .size(state_buffer_unit * vk::DeviceSize::from(concurrency))
+                    .usage(
+                        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                    )
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
             );
-            gfx.set_name(counts.handle, cstr!("counts"));
+            gfx.set_name(state.handle, cstr!("surface extraction state"));
 
             let descriptor_pool = device
                 .create_descriptor_pool(
@@ -328,10 +277,10 @@ impl ScratchBuffer {
                 dimension,
                 params,
                 voxel_buffer_unit,
-                count_buffer_unit,
+                state_buffer_unit,
                 voxels_staging,
                 voxels,
-                counts,
+                state,
                 descriptor_pool,
                 params_ds,
                 descriptor_sets,
@@ -378,14 +327,13 @@ impl ScratchBuffer {
                 dimension: self.dimension,
             }),
         );
+        device.cmd_fill_buffer(cmd, self.state.handle, 0, vk::WHOLE_SIZE, 0);
 
         let voxel_count = (self.dimension + 2).pow(3) as usize;
         let voxels_range =
             voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
         let dispatch = dispatch_sizes(self.dimension);
-        let thread_count = thread_count(self.dimension);
-        let counts_range = thread_count as vk::DeviceSize * 4;
         self.voxels_staging.flush(device);
         device.cmd_bind_descriptor_sets(
             cmd,
@@ -406,7 +354,6 @@ impl ScratchBuffer {
             );
             let index = task.index as usize;
 
-            let counts_offset = self.count_buffer_unit * index as vk::DeviceSize;
             let voxels_offset = self.voxel_buffer_unit * index as vk::DeviceSize;
 
             device.update_descriptor_sets(
@@ -426,9 +373,9 @@ impl ScratchBuffer {
                         .dst_binding(1)
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                         .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: self.counts.handle,
-                            offset: counts_offset,
-                            range: counts_range,
+                            buffer: self.state.handle,
+                            offset: self.state_buffer_unit * vk::DeviceSize::from(task.index),
+                            range: 4,
                         }])
                         .build(),
                     vk::WriteDescriptorSet::builder()
@@ -465,6 +412,7 @@ impl ScratchBuffer {
                     size: voxels_range,
                 }],
             );
+            device.cmd_fill_buffer(cmd, indirect_buffer, task.indirect_offset, INDIRECT_SIZE, 0);
         }
 
         device.cmd_pipeline_barrier(
@@ -474,72 +422,6 @@ impl ScratchBuffer {
             Default::default(),
             &[vk::MemoryBarrier {
                 src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-                dst_access_mask: vk::AccessFlags::SHADER_READ,
-                ..Default::default()
-            }],
-            &[],
-            &[],
-        );
-
-        // Determine which faces should exist
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.count);
-        for task in tasks {
-            device.cmd_bind_descriptor_sets(
-                cmd,
-                vk::PipelineBindPoint::COMPUTE,
-                ctx.pipeline_layout,
-                1,
-                &[self.descriptor_sets[task.index as usize]],
-                &[],
-            );
-
-            device.cmd_dispatch(cmd, dispatch.x, dispatch.y, dispatch.z);
-        }
-
-        // Determine memory location for each face
-        let passes = thread_count.next_power_of_two().trailing_zeros();
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.prefix_sum);
-        for i in 0..passes {
-            device.cmd_push_constants(
-                cmd,
-                ctx.pipeline_layout,
-                vk::ShaderStageFlags::COMPUTE,
-                0,
-                &i.to_ne_bytes(),
-            );
-            device.cmd_pipeline_barrier(
-                cmd,
-                vk::PipelineStageFlags::COMPUTE_SHADER,
-                vk::PipelineStageFlags::COMPUTE_SHADER,
-                Default::default(),
-                &[vk::MemoryBarrier {
-                    src_access_mask: vk::AccessFlags::SHADER_WRITE,
-                    dst_access_mask: vk::AccessFlags::SHADER_READ,
-                    ..Default::default()
-                }],
-                &[],
-                &[],
-            );
-            for task in tasks {
-                device.cmd_bind_descriptor_sets(
-                    cmd,
-                    vk::PipelineBindPoint::COMPUTE,
-                    ctx.pipeline_layout,
-                    1,
-                    &[self.descriptor_sets[task.index as usize]],
-                    &[],
-                );
-                device.cmd_dispatch(cmd, dispatch.x, dispatch.y, dispatch.z);
-            }
-        }
-
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            Default::default(),
-            &[vk::MemoryBarrier {
-                src_access_mask: vk::AccessFlags::SHADER_WRITE,
                 dst_access_mask: vk::AccessFlags::SHADER_READ,
                 ..Default::default()
             }],
@@ -594,7 +476,7 @@ impl ScratchBuffer {
         self.params.destroy(device);
         self.voxels_staging.destroy(device);
         self.voxels.destroy(device);
-        self.counts.destroy(device);
+        self.state.destroy(device);
     }
 }
 
@@ -621,13 +503,6 @@ fn dispatch_sizes(dimension: u32) -> na::Vector3<u32> {
         divide_rounding_up(dimension + 1, WORKGROUP_SIZE[1]),
         divide_rounding_up(dimension + 1, WORKGROUP_SIZE[2]),
     )
-}
-
-/// Number of threads that will be spawned
-fn thread_count(dimension: u32) -> vk::DeviceSize {
-    let dim = dispatch_sizes(dimension);
-    (dim.x * WORKGROUP_SIZE[0] * dim.y * WORKGROUP_SIZE[1] * dim.z * WORKGROUP_SIZE[2])
-        as vk::DeviceSize
 }
 
 #[repr(C)]
@@ -666,7 +541,8 @@ impl DrawBuffer {
                     .size(count as vk::DeviceSize * INDIRECT_SIZE)
                     .usage(
                         vk::BufferUsageFlags::STORAGE_BUFFER
-                            | vk::BufferUsageFlags::INDIRECT_BUFFER,
+                            | vk::BufferUsageFlags::INDIRECT_BUFFER
+                            | vk::BufferUsageFlags::TRANSFER_DST,
                     )
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
