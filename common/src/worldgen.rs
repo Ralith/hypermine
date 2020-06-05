@@ -595,6 +595,7 @@ mod test {
     use super::*;
     use crate::node::{DualGraph, Node};
     use approx::*;
+    use crate::Chunks;
 
     const CHUNK_SIZE: u8 = 12;
 
