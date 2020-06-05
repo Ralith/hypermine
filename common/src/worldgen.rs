@@ -594,8 +594,8 @@ fn hash(a: u64, b: u64) -> u64 {
 mod test {
     use super::*;
     use crate::node::{DualGraph, Node};
-    use approx::*;
     use crate::Chunks;
+    use approx::*;
 
     const CHUNK_SIZE: u8 = 12;
 

@@ -4,6 +4,7 @@ use crate::graph::Graph;
 use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::Chunks;
+use crate::lru_slab::SlotId;
 
 pub type DualGraph = Graph<Node>;
 
@@ -40,8 +41,6 @@ impl VoxelData {
 }
 
 
-use crate::lru_slab::SlotId;
-
 pub enum Chunk {
     Fresh,
     Generating,
@@ -56,4 +55,3 @@ impl Default for Chunk {
         Chunk::Fresh
     }
 }
-

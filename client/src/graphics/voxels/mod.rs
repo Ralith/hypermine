@@ -16,7 +16,12 @@ use crate::{
     Config, Loader, Sim,
 };
 use common::{
-    dodeca, dodeca::Vertex, graph::NodeId, lru_slab::SlotId, math, node::{VoxelData, Chunk},
+    dodeca,
+    dodeca::Vertex,
+    graph::NodeId,
+    lru_slab::SlotId,
+    math,
+    node::{Chunk, VoxelData},
     LruSlab,
 };
 
