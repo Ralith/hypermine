@@ -15,6 +15,23 @@ pub struct Node {
     pub chunks: Chunks<Chunk>,
 }
 
+
+pub enum Chunk {
+    Fresh,
+    Generating,
+    Populated {
+        voxels: VoxelData,
+        surface: Option<SlotId>,
+    },
+}
+
+impl Default for Chunk {
+    fn default() -> Self {
+        Chunk::Fresh
+    }
+}
+
+
 #[derive(PartialEq)]
 pub enum VoxelData {
     Solid(Material),
@@ -37,21 +54,5 @@ impl VoxelData {
             VoxelData::Dense(ref d) => d[index],
             VoxelData::Solid(mat) => mat,
         }
-    }
-}
-
-
-pub enum Chunk {
-    Fresh,
-    Generating,
-    Populated {
-        voxels: VoxelData,
-        surface: Option<SlotId>,
-    },
-}
-
-impl Default for Chunk {
-    fn default() -> Self {
-        Chunk::Fresh
     }
 }
