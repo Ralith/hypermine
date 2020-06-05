@@ -1,7 +1,7 @@
 use rand::{distributions::Uniform, Rng, SeedableRng};
 
-use crate::sim::{DualGraph, VoxelData};
-use common::{
+use crate::node::{DualGraph, VoxelData};
+use crate::{
     dodeca::{Side, Vertex},
     graph::NodeId,
     world::Material,
@@ -593,9 +593,9 @@ fn hash(a: u64, b: u64) -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::sim::Node;
+    use crate::node::{DualGraph, Node};
+    use crate::Chunks;
     use approx::*;
-    use common::Chunks;
 
     const CHUNK_SIZE: u8 = 12;
 

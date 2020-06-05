@@ -35,8 +35,6 @@ hecs = "0.2.9"
 rcgen = { version = "0.8.2", default-features = false }
 memoffset = "0.5"
 gltf = { version = "0.15.2", default-features = false, features = ["utils"] }
-rand = "0.7.3"
-rand_pcg = "0.2.1"
 metrics = { version = "0.12.1", features = ["std"] }
 metrics-core = "0.5.2"
 hdrhistogram = { version = "7", default-features = false }

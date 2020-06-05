@@ -4,24 +4,16 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
 
-use crate::{graphics::Chunk, net, prediction::PredictedMotion, worldgen::NodeState, Net};
+use crate::{net, prediction::PredictedMotion, Net};
 use common::{
     graph::{Graph, NodeId},
     math,
+    node::{DualGraph, Node},
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
-    world::Material,
+    worldgen::NodeState,
     Chunks, EntityId, GraphEntities, Step,
 };
-
-pub type DualGraph = Graph<Node>;
-
-pub struct Node {
-    pub state: NodeState,
-    /// We can only populate chunks which lie within a cube of populated nodes, so nodes on the edge
-    /// of the graph always have some `None` chunks.
-    pub chunks: Chunks<Chunk>,
-}
 
 /// Game state
 pub struct Sim {
@@ -310,30 +302,6 @@ pub struct Parameters {
     /// Absolute units
     pub movement_speed: f32,
     pub character_id: EntityId,
-}
-
-#[derive(PartialEq)]
-pub enum VoxelData {
-    Solid(Material),
-    Dense(Box<[Material]>),
-}
-impl VoxelData {
-    pub fn data_mut(&mut self, dimension: u8) -> &mut [Material] {
-        match *self {
-            VoxelData::Dense(ref mut d) => d,
-            VoxelData::Solid(mat) => {
-                *self = VoxelData::Dense(vec![mat; (usize::from(dimension) + 2).pow(3)].into());
-                self.data_mut(dimension)
-            }
-        }
-    }
-
-    pub fn get(&self, index: usize) -> Material {
-        match *self {
-            VoxelData::Dense(ref d) => d[index],
-            VoxelData::Solid(mat) => mat,
-        }
-    }
 }
 
 fn populate_fresh_nodes(graph: &mut DualGraph) {

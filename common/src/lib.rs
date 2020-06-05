@@ -6,6 +6,7 @@ use rand::{
 #[macro_use]
 mod id;
 
+pub mod chunk;
 mod chunks;
 pub mod codec;
 pub mod cursor;
@@ -14,10 +15,12 @@ pub mod graph;
 mod graph_entities;
 pub mod lru_slab;
 pub mod math;
+pub mod node;
 mod plane;
 pub mod proto;
 mod sim_config;
 pub mod world;
+pub mod worldgen;
 
 pub use chunks::Chunks;
 pub use graph_entities::GraphEntities;
