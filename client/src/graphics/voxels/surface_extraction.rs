@@ -7,7 +7,7 @@ use vk_shader_macros::include_glsl;
 use crate::graphics::{as_bytes, Base};
 use common::{defer, world::Material};
 
-const EMIT: &[u32] = include_glsl!("shaders/surface-extraction/emit.comp");
+const EMIT: &[u32] = include_glsl!("shaders/surface-extraction/emit.comp", target: vulkan1_1);
 
 /// GPU-accelerated surface extraction from voxel chunks
 pub struct SurfaceExtraction {

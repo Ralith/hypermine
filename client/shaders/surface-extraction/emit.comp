@@ -1,5 +1,8 @@
 #version 450
 
+#extension GL_KHR_shader_subgroup_ballot: enable
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+
 #include "common.h"
 #include "surface.h"
 
@@ -72,19 +75,34 @@ uvec4 surface_occlusion(ivec3 voxel, uint axis, bool inward) {
 }
 
 void main() {
+    // Determine whether this thread generates a face
     Face info;
     bool has_face = find_face(info);
 
-    uint count = atomicAdd(surface_count, uint(has_face));
-    atomicMax(vertex_count, (count + uint(has_face)) * 6); // two triangles per face
+    // Number of faces in the subgroup
+    uint subgroup_faces = subgroupAdd(uint(has_face));
+
+    // Compute the starting storage offset for this subgroup
+    uint subgroup_offset;
+    if (subgroupElect()) {
+        subgroup_offset = atomicAdd(surface_count, subgroup_faces);
+        // Increment the vertex count while we're at it, accounting for two triangles per face.
+        atomicAdd(vertex_count, subgroup_faces * 6);
+    }
+    subgroup_offset = subgroupBroadcastFirst(subgroup_offset);
+
+    // Write the remaining indirect draw arguments for the complete dispatch
     if (gl_GlobalInvocationID == uvec3(dimension * 3, dimension, dimension)) {
         instance_count = 1;
         first_vertex = offset * 6;
         first_instance = draw_id;
     }
+
     if (!has_face) return;
 
-    surfaces[count] = surface(
+    // Write the thread's face
+    uint thread_offset = subgroupExclusiveAdd(uint(has_face));
+    surfaces[subgroup_offset + thread_offset] = surface(
         info.voxel,
         info.axis,
         info.inward ^^ reverse_winding,
