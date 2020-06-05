@@ -7,14 +7,14 @@ use vk_shader_macros::include_glsl;
 use crate::graphics::{as_bytes, Base};
 use common::{defer, world::Material};
 
-const EMIT: &[u32] = include_glsl!("shaders/surface-extraction/emit.comp", target: vulkan1_1);
+const EXTRACT: &[u32] = include_glsl!("shaders/surface-extraction/extract.comp", target: vulkan1_1);
 
 /// GPU-accelerated surface extraction from voxel chunks
 pub struct SurfaceExtraction {
     params_layout: vk::DescriptorSetLayout,
     ds_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
-    emit: vk::Pipeline,
+    extract: vk::Pipeline,
 }
 
 impl SurfaceExtraction {
@@ -83,10 +83,10 @@ impl SurfaceExtraction {
                 )
                 .unwrap();
 
-            let emit = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&EMIT), None)
+            let extract = device
+                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&EXTRACT), None)
                 .unwrap();
-            let emit_guard = defer(|| device.destroy_shader_module(emit, None));
+            let extract_guard = defer(|| device.destroy_shader_module(extract, None));
 
             let specialization_map_entries = [
                 vk::SpecializationMapEntry {
@@ -116,7 +116,7 @@ impl SurfaceExtraction {
                     &[vk::ComputePipelineCreateInfo {
                         stage: vk::PipelineShaderStageCreateInfo {
                             stage: vk::ShaderStageFlags::COMPUTE,
-                            module: emit,
+                            module: extract,
                             p_name,
                             p_specialization_info: &*specialization,
                             ..Default::default()
@@ -130,16 +130,16 @@ impl SurfaceExtraction {
                 .into_iter();
 
             // Free shader modules now that the actual pipelines are built
-            emit_guard.invoke();
+            extract_guard.invoke();
 
-            let emit = pipelines.next().unwrap();
-            gfx.set_name(emit, cstr!("emit"));
+            let extract = pipelines.next().unwrap();
+            gfx.set_name(extract, cstr!("extract"));
 
             Self {
                 params_layout,
                 ds_layout,
                 pipeline_layout,
-                emit,
+                extract,
             }
         }
     }
@@ -148,7 +148,7 @@ impl SurfaceExtraction {
         device.destroy_descriptor_set_layout(self.params_layout, None);
         device.destroy_descriptor_set_layout(self.ds_layout, None);
         device.destroy_pipeline_layout(self.pipeline_layout, None);
-        device.destroy_pipeline(self.emit, None);
+        device.destroy_pipeline(self.extract, None);
     }
 }
 
@@ -430,7 +430,7 @@ impl ScratchBuffer {
         );
 
         // Write faces to memory
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.emit);
+        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.extract);
         for task in tasks {
             let mut push_constants = [0; 12];
             push_constants[0..4]
