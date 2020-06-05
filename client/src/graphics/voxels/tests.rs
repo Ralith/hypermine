@@ -206,45 +206,45 @@ fn surface_extraction() {
         6 * DIMENSION.pow(2) as u32,
         "half-solid chunks have n^2 surfaces"
     );
-    assert_eq!(
-        &test.vertices[..DIMENSION.pow(2)],
-        &[
-            Vertex {
-                x: 0,
-                y: 0,
-                z: 1,
-                axis: 5,
-                mat: Material::Stone,
-                _padding: 0,
-                occlusion: 0xFF,
-            },
-            Vertex {
-                x: 1,
-                y: 0,
-                z: 1,
-                axis: 5,
-                mat: Material::Stone,
-                _padding: 0,
-                occlusion: 0xFF,
-            },
-            Vertex {
-                x: 0,
-                y: 1,
-                z: 1,
-                axis: 5,
-                mat: Material::Stone,
-                _padding: 0,
-                occlusion: 0xFF,
-            },
-            Vertex {
-                x: 1,
-                y: 1,
-                z: 1,
-                axis: 5,
-                mat: Material::Stone,
-                _padding: 0,
-                occlusion: 0xFF,
-            },
-        ]
-    )
+    let vertices = &test.vertices[..DIMENSION.pow(2)];
+    for expected in &[
+        Vertex {
+            x: 0,
+            y: 0,
+            z: 1,
+            axis: 5,
+            mat: Material::Stone,
+            _padding: 0,
+            occlusion: 0xFF,
+        },
+        Vertex {
+            x: 1,
+            y: 0,
+            z: 1,
+            axis: 5,
+            mat: Material::Stone,
+            _padding: 0,
+            occlusion: 0xFF,
+        },
+        Vertex {
+            x: 0,
+            y: 1,
+            z: 1,
+            axis: 5,
+            mat: Material::Stone,
+            _padding: 0,
+            occlusion: 0xFF,
+        },
+        Vertex {
+            x: 1,
+            y: 1,
+            z: 1,
+            axis: 5,
+            mat: Material::Stone,
+            _padding: 0,
+            occlusion: 0xFF,
+        },
+    ] {
+        assert!(vertices.contains(expected));
+    }
 }
