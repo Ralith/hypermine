@@ -31,7 +31,9 @@ impl SurfaceExtractionTest {
             let indirect = DedicatedMapping::<VkDrawIndirectCommand>::zeroed(
                 device,
                 &gfx.memory_properties,
-                vk::BufferUsageFlags::STORAGE_BUFFER,
+                vk::BufferUsageFlags::STORAGE_BUFFER
+                    | vk::BufferUsageFlags::INDIRECT_BUFFER
+                    | vk::BufferUsageFlags::TRANSFER_DST,
             );
 
             let surfaces = DedicatedMapping::<[Surface]>::zeroed_array(
