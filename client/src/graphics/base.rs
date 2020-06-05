@@ -4,10 +4,10 @@ use std::ffi::CStr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io, ptr};
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use ash::{
-    version::{DeviceV1_0, InstanceV1_0},
+    version::{DeviceV1_0, InstanceV1_0, InstanceV1_1},
     vk, Device,
 };
 
@@ -38,6 +38,9 @@ pub struct Base {
     pub timestamp_bits: u32,
     pipeline_cache_path: Option<PathBuf>,
 }
+
+unsafe impl Send for Base {}
+unsafe impl Sync for Base {}
 
 impl Drop for Base {
     fn drop(&mut self) {
@@ -99,9 +102,15 @@ impl Base {
                         })
                         .next()
                 })?;
-            let physical_properties = instance.get_physical_device_properties(physical);
+            let mut subgroup_properties = vk::PhysicalDeviceSubgroupProperties::default();
+            let mut physical_properties = vk::PhysicalDeviceProperties2 {
+                p_next: &mut subgroup_properties as *mut _ as *mut _,
+                ..Default::default()
+            };
+            instance.get_physical_device_properties2(physical, &mut physical_properties);
             let name = std::str::from_utf8(
-                &*(&physical_properties.device_name[..physical_properties
+                &*(&physical_properties.properties.device_name[..physical_properties
+                    .properties
                     .device_name
                     .iter()
                     .position(|&x| x == 0)
@@ -109,6 +118,17 @@ impl Base {
             )
             .unwrap();
             info!(name, "selected device");
+
+            if !subgroup_properties
+                .supported_operations
+                .contains(vk::SubgroupFeatureFlags::BALLOT & vk::SubgroupFeatureFlags::ARITHMETIC)
+            {
+                error!(
+                    "required subgroup operations are unsupported (supported: {:?})",
+                    subgroup_properties.supported_operations
+                );
+                return None;
+            }
 
             // Create the logical device and common resources descended from it
             let device_exts = device_exts.iter().map(|x| x.as_ptr()).collect::<Vec<_>>();
@@ -256,7 +276,7 @@ impl Base {
                 linear_sampler,
                 common_layout,
                 pipeline_cache_path,
-                limits: physical_properties.limits,
+                limits: physical_properties.properties.limits,
                 timestamp_bits: queue_family_properties.timestamp_valid_bits,
             })
         }
