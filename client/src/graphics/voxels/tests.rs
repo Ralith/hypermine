@@ -13,7 +13,7 @@ struct SurfaceExtractionTest {
     extract: SurfaceExtraction,
     scratch: surface_extraction::ScratchBuffer,
     indirect: DedicatedMapping<VkDrawIndirectCommand>,
-    vertices: DedicatedMapping<[Vertex]>,
+    surfaces: DedicatedMapping<[Surface]>,
     cmd_pool: vk::CommandPool,
     cmd: vk::CommandBuffer,
     rd: Option<RenderDoc<V110>>,
@@ -34,7 +34,7 @@ impl SurfaceExtractionTest {
                 vk::BufferUsageFlags::STORAGE_BUFFER,
             );
 
-            let vertices = DedicatedMapping::<[Vertex]>::zeroed_array(
+            let surfaces = DedicatedMapping::<[Surface]>::zeroed_array(
                 device,
                 &gfx.memory_properties,
                 vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -63,7 +63,7 @@ impl SurfaceExtractionTest {
                 extract,
                 scratch,
                 indirect,
-                vertices,
+                surfaces,
                 cmd_pool,
                 cmd,
                 rd: RenderDoc::new().ok(),
@@ -91,7 +91,7 @@ impl SurfaceExtractionTest {
                 device,
                 &self.extract,
                 self.indirect.buffer(),
-                self.vertices.buffer(),
+                self.surfaces.buffer(),
                 self.cmd,
                 &[surface_extraction::ExtractTask {
                     indirect_offset: 0,
@@ -128,7 +128,7 @@ impl Drop for SurfaceExtractionTest {
             self.extract.destroy(device);
             self.scratch.destroy(device);
             self.indirect.destroy(device);
-            self.vertices.destroy(device);
+            self.surfaces.destroy(device);
             device.destroy_command_pool(self.cmd_pool, None);
         }
     }
@@ -147,7 +147,7 @@ struct VkDrawIndirectCommand {
 
 #[repr(C)]
 #[derive(Debug, Eq, PartialEq)]
-struct Vertex {
+struct Surface {
     x: u8,
     y: u8,
     z: u8,
@@ -160,7 +160,7 @@ struct Vertex {
 #[test]
 #[ignore]
 fn surface_extraction() {
-    assert_eq!(mem::size_of::<Vertex>(), 8);
+    assert_eq!(mem::size_of::<Surface>(), 8);
 
     let _guard = common::tracing_guard();
     let mut test = SurfaceExtractionTest::new();
@@ -206,9 +206,9 @@ fn surface_extraction() {
         6 * DIMENSION.pow(2) as u32,
         "half-solid chunks have n^2 surfaces"
     );
-    let vertices = &test.vertices[..DIMENSION.pow(2)];
+    let surfaces = &test.surfaces[..DIMENSION.pow(2)];
     for expected in &[
-        Vertex {
+        Surface {
             x: 0,
             y: 0,
             z: 1,
@@ -217,7 +217,7 @@ fn surface_extraction() {
             _padding: 0,
             occlusion: 0xFF,
         },
-        Vertex {
+        Surface {
             x: 1,
             y: 0,
             z: 1,
@@ -226,7 +226,7 @@ fn surface_extraction() {
             _padding: 0,
             occlusion: 0xFF,
         },
-        Vertex {
+        Surface {
             x: 0,
             y: 1,
             z: 1,
@@ -235,7 +235,7 @@ fn surface_extraction() {
             _padding: 0,
             occlusion: 0xFF,
         },
-        Vertex {
+        Surface {
             x: 1,
             y: 1,
             z: 1,
@@ -245,6 +245,6 @@ fn surface_extraction() {
             occlusion: 0xFF,
         },
     ] {
-        assert!(vertices.contains(expected));
+        assert!(surfaces.contains(expected));
     }
 }
