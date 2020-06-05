@@ -16,7 +16,7 @@ layout(set = 1, binding = 0) readonly restrict buffer Voxels {
 };
 
 layout(set = 1, binding = 1) restrict buffer State {
-    uint surface_count;
+    uint face_count;
 };
 
 layout(set = 1, binding = 2) writeonly restrict buffer Indirect {
@@ -142,7 +142,7 @@ void main() {
     // Compute the starting storage offset for this subgroup
     uint subgroup_offset;
     if (subgroupElect()) {
-        subgroup_offset = atomicAdd(surface_count, subgroup_faces);
+        subgroup_offset = atomicAdd(face_count, subgroup_faces);
         // Increment the vertex count while we're at it, accounting for two triangles per face.
         atomicAdd(vertex_count, subgroup_faces * 6);
     }
