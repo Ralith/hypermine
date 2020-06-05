@@ -1,10 +1,10 @@
 /*the name of this module is pretty arbitrary at the moment*/
 
 use crate::graph::Graph;
+use crate::lru_slab::SlotId;
 use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::Chunks;
-use crate::lru_slab::SlotId;
 
 pub type DualGraph = Graph<Node>;
 
@@ -14,7 +14,6 @@ pub struct Node {
     /// of the graph always have some `None` chunks.
     pub chunks: Chunks<Chunk>,
 }
-
 
 pub enum Chunk {
     Fresh,
@@ -30,7 +29,6 @@ impl Default for Chunk {
         Chunk::Fresh
     }
 }
-
 
 #[derive(PartialEq)]
 pub enum VoxelData {
