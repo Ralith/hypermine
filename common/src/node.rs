@@ -1,6 +1,5 @@
 /*the name of this module is pretty arbitrary at the moment*/
 
-use crate::chunk::Chunk;
 use crate::graph::Graph;
 use crate::world::Material;
 use crate::worldgen::NodeState;
