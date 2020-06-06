@@ -141,6 +141,7 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    node_spice: u64,
 }
 
 impl ChunkParams {
@@ -158,6 +159,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            node_spice: state.spice,
         })
     }
 
@@ -337,6 +339,10 @@ impl ChunkParams {
         }
 
         let mut voxels = VoxelData::Solid(Material::Void);
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
+
+        // margins are added to keep voxels outside the chunk from being read/written
+        let random_position = Uniform::new_inclusive(2, self.dimension - 2);
 
         for z in 0..self.dimension {
             for y in 0..self.dimension {
@@ -365,26 +371,29 @@ impl ChunkParams {
         // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
         // and a block of leaves. The leaf block is on the opposite face of the
         // wood block as the ground block.
-        if self.dimension > 2 {
-            let loc = na::Vector3::repeat(self.dimension / 2);
-            let voxel_of_interest_index = index(self.dimension, loc);
-            let neighbor_data = voxel_neighbors(self.dimension, loc, &mut voxels);
+        if self.dimension > 4 {
+            for _ in 0..(self.dimension.pow(3) / 5) {
+                let loc = na::Vector3::from_distribution(&random_position, &mut rng);
+                let voxel_of_interest_index = index(self.dimension, loc);
+                let neighbor_data = voxel_neighbors(self.dimension, loc, &mut voxels);
 
-            let num_void_neighbors = neighbor_data
-                .iter()
-                .filter(|n| n.material == Material::Void)
-                .count();
+                let num_void_neighbors = neighbor_data
+                    .iter()
+                    .filter(|n| n.material == Material::Void)
+                    .count();
 
-            // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
-            if num_void_neighbors == 5 {
-                for i in neighbor_data.iter() {
-                    if (i.material == Material::Dirt)
-                        || (i.material == Material::Grass)
-                        || (i.material == Material::Flowergrass)
-                    {
-                        voxels.data_mut(self.dimension)[voxel_of_interest_index] = Material::Wood;
-                        let leaf_location = index(self.dimension, i.coords_opposing);
-                        voxels.data_mut(self.dimension)[leaf_location] = Material::Leaves;
+                // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
+                if num_void_neighbors == 5 {
+                    for i in neighbor_data.iter() {
+                        if (i.material == Material::Dirt)
+                            || (i.material == Material::Grass)
+                            || (i.material == Material::Flowergrass)
+                        {
+                            voxels.data_mut(self.dimension)[voxel_of_interest_index] =
+                                Material::Wood;
+                            let leaf_location = index(self.dimension, i.coords_opposing);
+                            voxels.data_mut(self.dimension)[leaf_location] = Material::Leaves;
+                        }
                     }
                 }
             }
