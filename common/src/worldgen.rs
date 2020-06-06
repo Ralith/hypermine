@@ -340,7 +340,8 @@ impl ChunkParams {
 
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
-        //modified to avoid voxel overflows
+
+        // margins are added to keep voxels outside the chunk from being read/written
         let random_position = Uniform::new_inclusive(2, self.dimension - 2);
 
         for z in 0..self.dimension {
