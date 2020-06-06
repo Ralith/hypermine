@@ -371,7 +371,7 @@ impl ChunkParams {
         // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
         // and a block of leaves. The leaf block is on the opposite face of the
         // wood block as the ground block.
-        if self.dimension > 4 {
+        if self.dimension > 4 && matches!(voxels, VoxelData::Dense(_)) {
             for _ in 0..(self.dimension.pow(3) / 5) {
                 let loc = na::Vector3::from_distribution(&random_position, &mut rng);
                 let voxel_of_interest_index = index(self.dimension, loc);
