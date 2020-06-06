@@ -4,7 +4,7 @@ use ash::{version::DeviceV1_0, vk, Device};
 use lahar::{DedicatedBuffer, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
-use crate::graphics::{as_bytes, Base};
+use crate::graphics::{as_bytes, Base, VkDrawIndirectCommand};
 use common::{defer, world::Material};
 
 const EXTRACT: &[u32] = include_glsl!("shaders/surface-extraction/extract.comp", target: vulkan1_1);
@@ -77,7 +77,7 @@ impl SurfaceExtraction {
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
                             offset: 0,
-                            size: 12,
+                            size: 4,
                         }]),
                     None,
                 )
@@ -427,7 +427,17 @@ impl ScratchBuffer {
                     size: voxels_range,
                 }],
             );
-            device.cmd_fill_buffer(cmd, indirect_buffer, task.indirect_offset, INDIRECT_SIZE, 0);
+            device.cmd_update_buffer(
+                cmd,
+                indirect_buffer,
+                task.indirect_offset,
+                as_bytes(&VkDrawIndirectCommand {
+                    vertex_count: 0,
+                    instance_count: 1,
+                    first_vertex: (task.face_offset / FACE_SIZE) as u32 * 6,
+                    first_instance: task.draw_id,
+                }),
+            )
         }
 
         device.cmd_pipeline_barrier(
@@ -447,17 +457,12 @@ impl ScratchBuffer {
         // Write faces to memory
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.extract);
         for task in tasks {
-            let mut push_constants = [0; 12];
-            push_constants[0..4]
-                .copy_from_slice(&((task.face_offset / FACE_SIZE) as u32).to_ne_bytes());
-            push_constants[4..8].copy_from_slice(&task.draw_id.to_ne_bytes());
-            push_constants[9] = u8::from(task.reverse_winding);
             device.cmd_push_constants(
                 cmd,
                 ctx.pipeline_layout,
                 vk::ShaderStageFlags::COMPUTE,
                 0,
-                &push_constants,
+                &u32::from(task.reverse_winding).to_ne_bytes(),
             );
             device.cmd_bind_descriptor_sets(
                 cmd,

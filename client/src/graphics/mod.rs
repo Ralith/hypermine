@@ -30,3 +30,12 @@ pub use self::{
 unsafe fn as_bytes<T: Copy>(x: &T) -> &[u8] {
     std::slice::from_raw_parts(x as *const T as *const u8, std::mem::size_of::<T>())
 }
+
+#[repr(C)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub struct VkDrawIndirectCommand {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub first_vertex: u32,
+    pub first_instance: u32,
+}

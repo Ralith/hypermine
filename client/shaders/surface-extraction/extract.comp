@@ -31,8 +31,6 @@ layout(set = 1, binding = 3) writeonly restrict buffer Surfaces {
 };
 
 layout(push_constant) uniform Uniforms {
-    uint offset;
-    uint draw_id;
     bool reverse_winding;
 };
 
@@ -147,13 +145,6 @@ void main() {
         atomicAdd(vertex_count, subgroup_faces * 6);
     }
     subgroup_offset = subgroupBroadcastFirst(subgroup_offset);
-
-    // Write the remaining indirect draw arguments for the complete dispatch
-    if (gl_GlobalInvocationID == uvec3(dimension * 3, dimension, dimension)) {
-        instance_count = 1;
-        first_vertex = offset * 6;
-        first_instance = draw_id;
-    }
 
     if (!has_face) return;
 
