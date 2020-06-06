@@ -371,7 +371,7 @@ impl ChunkParams {
         // and a block of leaves. The leaf block is on the opposite face of the
         // wood block as the ground block.
         if self.dimension > 4 {
-            for _j in 0..5{
+            for _j in 0..20{
                 let loc = na::Vector3::from_distribution(&random_position, &mut rng);
                 let voxel_of_interest_index = index(self.dimension, loc);
                 let neighbor_data = voxel_neighbors(self.dimension, loc, &mut voxels);
