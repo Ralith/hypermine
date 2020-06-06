@@ -339,8 +339,8 @@ impl ChunkParams {
         }
 
         let mut voxels = VoxelData::Solid(Material::Void);
-        let mut rng = hash(node_spice, chunk as u64);
-        let random_position = Uniform::new_inclusive(0, dimension - 1);
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
+        let random_position = Uniform::new_inclusive(0, self.dimension);
 
         for z in 0..self.dimension {
             for y in 0..self.dimension {
@@ -370,7 +370,7 @@ impl ChunkParams {
         // and a block of leaves. The leaf block is on the opposite face of the
         // wood block as the ground block.
         if self.dimension > 2 {
-            let loc = na::Vector3::from_distribution(rng, &random_position);
+            let loc = na::Vector3::from_distribution(&random_position, &mut rng);
             let voxel_of_interest_index = index(self.dimension, loc);
             let neighbor_data = voxel_neighbors(self.dimension, loc, &mut voxels);
 
