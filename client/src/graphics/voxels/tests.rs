@@ -5,7 +5,7 @@ use lahar::DedicatedMapping;
 use renderdoc::{RenderDoc, V110};
 
 use super::{surface_extraction, SurfaceExtraction};
-use crate::graphics::Base;
+use crate::graphics::{Base, VkDrawIndirectCommand};
 use common::world::Material;
 
 struct SurfaceExtractionTest {
@@ -135,15 +135,6 @@ impl Drop for SurfaceExtractionTest {
 }
 
 const DIMENSION: usize = 2;
-
-#[repr(C)]
-#[derive(Debug, Eq, PartialEq)]
-struct VkDrawIndirectCommand {
-    vertex_count: u32,
-    instance_count: u32,
-    first_vertex: u32,
-    first_instance: u32,
-}
 
 #[repr(C)]
 #[derive(Debug, Eq, PartialEq)]
