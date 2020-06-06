@@ -141,6 +141,7 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    node_spice: u64,
 }
 
 impl ChunkParams {
@@ -158,6 +159,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            node_spice: state.spice,
         })
     }
 
