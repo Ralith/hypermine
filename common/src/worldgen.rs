@@ -339,7 +339,7 @@ impl ChunkParams {
         }
 
         let mut voxels = VoxelData::Solid(Material::Void);
-        let mut rng = hash(state, chunk as u64);
+        let mut rng = hash(node_spice, chunk as u64);
         let random_position = Uniform::new_inclusive(0, dimension - 1);
 
         for z in 0..self.dimension {
