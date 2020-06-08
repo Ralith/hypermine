@@ -190,7 +190,14 @@ impl ChunkParams {
 
         // Nine basic terrain types based on combinations of
         // low/medium/high temperature and humidity.
-        if temp < -2.0 {
+
+        if temp < -10.0 {
+
+        }
+        else if temp < 6.0 {
+            
+        }
+        else if temp < -2.0 {
             if rain < -2.0 {
                 voxel_mat = Material::Gravelstone;
             } else if rain < 2.0 {
@@ -206,13 +213,19 @@ impl ChunkParams {
             } else {
                 voxel_mat = Material::Grass;
             }
-        } else if rain < -2.0 {
-            voxel_mat = Material::Redsand;
-        } else if rain < 2.0 {
-            voxel_mat = Material::Sand;
+        } else if temp < 6.0 {
+            if rain < -2.0 {
+                voxel_mat = Material::Redsand;
+            } else if rain < 2.0 {
+                voxel_mat = Material::Sand;
+            } else {
+                voxel_mat = Material::Flowergrass;
+            }
         } else {
-            voxel_mat = Material::Flowergrass;
+
+
         }
+
 
         // Additional adjustments alter both block material and elevation
         // for a bit of extra variety.
