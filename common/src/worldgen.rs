@@ -40,6 +40,7 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
+use term::terminfo::Error::MalformedTerminfo;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -192,10 +193,16 @@ impl ChunkParams {
         // low/medium/high temperature and humidity.
 
         if temp < -10.0 {
-
+            if rain < -2.0 {
+                voxel_mat = Material::Greystone;
+            } else if rain < 6.0 {
+                voxel_mat = Material::Snow;
+            } else {
+                voxel_mat = Material::Ice;
+            }
         }
         else if temp < 6.0 {
-            
+
         }
         else if temp < -2.0 {
             if rain < -2.0 {
