@@ -243,7 +243,7 @@ impl ChunkParams {
             voxel_mat = Material::Blackstone;
         } else {
             voxel_mat = Material::Lava
-        };
+        }
 
         // Additional adjustments alter both block material and elevation
         // for a bit of extra variety.
