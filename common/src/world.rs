@@ -25,10 +25,11 @@ pub enum Material {
     Ice = 21,
     Lava = 22,
     GreySand = 23,
+    Mud = 24,
 }
 
 impl Material {
-    pub const COUNT: usize = 24;
+    pub const COUNT: usize = 25;
 }
 
 impl Default for Material {
