@@ -73,7 +73,7 @@ impl NodeState {
             enviro: EnviroFactors {
                 max_elevation: -2,
                 temperature: 0,
-                rainfall: 0,
+                rainfall: 4,
                 slopeiness: 3,
                 blockiness: 0,
                 flatness: 25,
