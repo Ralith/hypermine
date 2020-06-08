@@ -24,7 +24,7 @@ pub enum Material {
     WhiteBrick = 20,
     Ice = 21,
     Lava = 22,
-    GreySand = 23
+    GreySand = 23,
 }
 
 impl Material {
