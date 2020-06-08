@@ -192,7 +192,7 @@ impl ChunkParams {
         // Nine basic terrain types based on combinations of
         // low/medium/high temperature and humidity.
 
-        if temp < -10.0 {
+        if temp < -6.0 {
             if rain < -2.0 {
                 voxel_mat = Material::Greystone;
             } else if rain < 6.0 {
@@ -201,26 +201,42 @@ impl ChunkParams {
                 voxel_mat = Material::Ice;
             }
         }
-        else if temp < 6.0 {
-
-        }
         else if temp < -2.0 {
+            if rain < -0.5 {
+                voxel_mat = Material::Greystone;
+            } else if rain < 3.0 {
+                voxel_mat = Material::Redstone;
+            } else if rain < 5.0 {
+                voxel_mat = Material::Snow;
+            } else {
+                voxel_mat = Material::Ice;
+            }
+        }
+        else if temp < 2.0 {
             if rain < -2.0 {
+                voxel_mat = Material::Stone;
+            } else if rain < 0.0 {
                 voxel_mat = Material::Gravelstone;
             } else if rain < 2.0 {
-                voxel_mat = Material::Stone;
-            } else {
-                voxel_mat = Material::Greystone;
-            }
-        } else if temp < 2.0 {
-            if rain < -2.0 {
                 voxel_mat = Material::Graveldirt;
-            } else if rain < 2.0 {
+            } else if rain < 3.0 {
                 voxel_mat = Material::Dirt;
+            } else if rain < 4.0 {
+                voxel_mat = Material::Grass;
+            } else if rain < 0.0 {
+                voxel_mat = Material::Flowergrass;
+            } else {
+                voxel_mat = Material::Bigflowergrass;
+            }
+        } else if temp < 6.0 {
+            if rain < -2.0 {
+                voxel_mat = Material::Blackstone;
+            } else if rain < -0.5 {
+                voxel_mat = Material::GreySand;
             } else {
                 voxel_mat = Material::Grass;
             }
-        } else if temp < 6.0 {
+        } else if temp < 10.0 {
             if rain < -2.0 {
                 voxel_mat = Material::Redsand;
             } else if rain < 2.0 {
