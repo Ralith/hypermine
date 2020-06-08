@@ -233,20 +233,21 @@ impl ChunkParams {
                 voxel_mat = Material::Blackstone;
             } else if rain < -0.5 {
                 voxel_mat = Material::GreySand;
-            } else {
-                voxel_mat = Material::Grass;
-            }
-        } else if temp < 10.0 {
-            if rain < -2.0 {
-                voxel_mat = Material::Redsand;
             } else if rain < 2.0 {
                 voxel_mat = Material::Sand;
-            } else {
-                voxel_mat = Material::Flowergrass;
+            } else if rain < 4.5 {
+                voxel_mat = Material::Redsand;
+            } else{
+                voxel_mat = Material::Valite;
             }
         } else {
-
-
+            if temp - rain < 4.0 {
+                voxel_mat = Material::Valite;
+            } else if temp - rain < 6.0 {
+                voxel_mat = Material::Sand
+            } else if temp - rain < 8.0 {
+                voxel_mat = Material::Blackstone;
+            } else voxel_mat = Material::Lava;
         }
 
 
