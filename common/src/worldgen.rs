@@ -1,4 +1,5 @@
-use rand::{distributions::Normal, distributions::Uniform, Rng, SeedableRng};
+use rand::{distributions::Uniform, Rng, SeedableRng};
+use rand_distr::Normal;
 
 use crate::node::{DualGraph, VoxelData};
 use crate::{
@@ -7,6 +8,7 @@ use crate::{
     world::Material,
     Plane,
 };
+
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
