@@ -75,7 +75,7 @@ impl NodeState {
             enviro: EnviroFactors {
                 max_elevation: -2,
                 temperature: 0,
-                rainfall: 0,
+                rainfall: 4,
                 slopeiness: 3,
                 blockiness: 0,
                 flatness: 25,
@@ -195,28 +195,59 @@ impl ChunkParams {
 
         // Nine basic terrain types based on combinations of
         // low/medium/high temperature and humidity.
-        if temp < -2.0 {
+
+        if temp < -6.0 {
             if rain < -2.0 {
-                voxel_mat = Material::Gravelstone;
-            } else if rain < 2.0 {
-                voxel_mat = Material::Stone;
-            } else {
                 voxel_mat = Material::Greystone;
+            } else if rain < 6.0 {
+                voxel_mat = Material::Snow;
+            } else {
+                voxel_mat = Material::Ice;
+            }
+        } else if temp < -2.0 {
+            if rain < -0.5 {
+                voxel_mat = Material::Greystone;
+            } else if rain < 3.0 {
+                voxel_mat = Material::Redstone;
+            } else if rain < 5.0 {
+                voxel_mat = Material::Snow;
+            } else {
+                voxel_mat = Material::Ice;
             }
         } else if temp < 2.0 {
             if rain < -2.0 {
-                voxel_mat = Material::Graveldirt;
+                voxel_mat = Material::Stone;
+            } else if rain < 0.0 {
+                voxel_mat = Material::Gravelstone;
             } else if rain < 2.0 {
+                voxel_mat = Material::Graveldirt;
+            } else if rain < 3.0 {
                 voxel_mat = Material::Dirt;
-            } else {
+            } else if rain < 4.0 {
                 voxel_mat = Material::Grass;
+            } else {
+                voxel_mat = Material::Flowergrass;
             }
-        } else if rain < -2.0 {
-            voxel_mat = Material::Redsand;
-        } else if rain < 2.0 {
-            voxel_mat = Material::Sand;
+        } else if temp < 6.0 {
+            if rain < -2.0 {
+                voxel_mat = Material::Blackstone;
+            } else if rain < -0.5 {
+                voxel_mat = Material::GreySand;
+            } else if rain < 2.0 {
+                voxel_mat = Material::Sand;
+            } else if rain < 4.5 {
+                voxel_mat = Material::Redsand;
+            } else {
+                voxel_mat = Material::Mud;
+            }
+        } else if temp - rain < 4.0 {
+            voxel_mat = Material::Valite;
+        } else if temp - rain < 8.0 {
+            voxel_mat = Material::Sand
+        } else if temp - rain < 10.0 {
+            voxel_mat = Material::Blackstone;
         } else {
-            voxel_mat = Material::Flowergrass;
+            voxel_mat = Material::Lava
         }
 
         // Additional adjustments alter both block material and elevation
