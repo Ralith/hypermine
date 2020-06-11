@@ -40,6 +40,7 @@ enum NodeStateRoad {
     DeepWest,
 }
 use NodeStateRoad::*;
+use rand_pcg::Mcg128Xsl64;
 
 impl NodeStateRoad {
     const ROOT: Self = West;
@@ -167,7 +168,7 @@ impl ChunkParams {
         self.chunk
     }
 
-    fn generate_terrain(&self, center: na::Vector3<f64>) -> Material {
+    fn generate_terrain(&self, center: na::Vector3<f64>, rng: &Mcg128Xsl64 ) -> Material {
         let cube_coords = center * 0.5;
 
         let rain = trilerp(&self.env.rainfalls, cube_coords);
@@ -379,7 +380,7 @@ impl ChunkParams {
             for y in 0..self.dimension {
                 for x in 0..self.dimension {
                     let coords = na::Vector3::new(x, y, z);
-                    let center = voxel_center(self.dimension, coords);
+                    let center = voxel_center(self.dimension, coords, &rng);
 
                     // road generation
                     let mat = if self.is_road {
