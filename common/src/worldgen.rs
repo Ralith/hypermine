@@ -1,4 +1,4 @@
-use rand::{distributions::Uniform, Rng, SeedableRng};
+use rand::{distributions::Normal, distributions::Uniform, Rng, SeedableRng};
 
 use crate::node::{DualGraph, VoxelData};
 use crate::{
@@ -39,7 +39,7 @@ enum NodeStateRoad {
     West,
     DeepWest,
 }
-use rand_pcg::Mcg128Xsl64;
+use rand_pcg::Pcg64Mcg;
 use NodeStateRoad::*;
 
 impl NodeStateRoad {
@@ -168,8 +168,7 @@ impl ChunkParams {
         self.chunk
     }
 
-    fn generate_terrain(&self, center: na::Vector3<f64>, rng: &Mcg128Xsl64) -> Material {
-        use na::rand_distr::Normal;
+    fn generate_terrain(&self, center: na::Vector3<f64>, rng: &mut Pcg64Mcg) -> Material {
         let random_amount = Normal::new(0.0, 0.25);
 
         let cube_coords = center * 0.5;
@@ -362,7 +361,7 @@ impl ChunkParams {
                     } else {
                         None
                     };
-                    let mat = mat.unwrap_or_else(|| self.generate_terrain(center, &rng));
+                    let mat = mat.unwrap_or_else(|| self.generate_terrain(center, &mut rng));
                     if mat != Material::Void {
                         voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
                     }
