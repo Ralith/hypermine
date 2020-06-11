@@ -9,7 +9,6 @@ use crate::{
     Plane,
 };
 
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
     Sky,
@@ -175,8 +174,9 @@ impl ChunkParams {
 
         let cube_coords = center * 0.5;
 
-        let rain = trilerp(&self.env.rainfalls, cube_coords);
-        let temp = trilerp(&self.env.temperatures, cube_coords);
+        let rain = trilerp(&self.env.rainfalls, cube_coords) + rng.sample(&random_amount.unwrap());
+        let temp =
+            trilerp(&self.env.temperatures, cube_coords) + rng.sample(&random_amount.unwrap());
         let slope = trilerp(&self.env.slopeinesses, cube_coords);
         let flat = trilerp(&self.env.flatness, cube_coords);
 
