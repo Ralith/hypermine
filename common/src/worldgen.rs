@@ -264,7 +264,7 @@ impl ChunkParams {
                 }
             } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
                 voxel_mat = match voxel_mat {
-                    Material::Flowergrass => Material::Bigflowergrass,
+                    //Material::Flowergrass => Material::Bigflowergrass,
                     Material::Greystone => Material::Blackstone,
                     _ => voxel_mat,
                 };
