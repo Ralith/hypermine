@@ -263,14 +263,8 @@ impl ChunkParams {
                 } else {
                     max_e = elev;
                 }
-            } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-                voxel_mat = match voxel_mat {
-                    //Material::Flowergrass => Material::Bigflowergrass,
-                    Material::Greystone => Material::Blackstone,
-                    _ => voxel_mat,
-                };
-                max_e = elev - 0.25;
             } else {
+                //will add other slope mod range cases soon
                 max_e = elev;
             }
         } else {
