@@ -130,6 +130,64 @@ impl NodeState {
     }
 }
 
+fn choose_base_material(rain: f64, temp: f64) -> Material {
+    // Nine basic terrain types based on combinations of
+    // low/medium/high temperature and humidity.
+    if temp < -6.0 {
+        if rain < -2.0 {
+            Material::Greystone
+        } else if rain < 6.0 {
+            Material::Snow
+        } else {
+            Material::Ice
+        }
+    } else if temp < -2.0 {
+        if rain < -0.5 {
+            Material::Greystone
+        } else if rain < 3.0 {
+            Material::Redstone
+        } else if rain < 5.0 {
+            Material::Snow
+        } else {
+            Material::Ice
+        }
+    } else if temp < 2.0 {
+        if rain < -2.0 {
+            Material::Stone
+        } else if rain < 0.0 {
+            Material::Gravelstone
+        } else if rain < 2.0 {
+            Material::Graveldirt
+        } else if rain < 3.0 {
+            Material::Dirt
+        } else if rain < 4.0 {
+            Material::Grass
+        } else {
+            Material::Flowergrass
+        }
+    } else if temp < 6.0 {
+        if rain < -2.0 {
+            Material::Blackstone
+        } else if rain < -0.5 {
+            Material::GreySand
+        } else if rain < 2.0 {
+            Material::Sand
+        } else if rain < 4.5 {
+            Material::Redsand
+        } else {
+            Material::Mud
+        }
+    } else if temp - rain < 4.0 {
+        Material::Mud
+    } else if temp - rain < 8.0 {
+        Material::Sand
+    } else if temp - rain < 10.0 {
+        Material::Blackstone
+    } else {
+        Material::Lava
+    }
+}
+
 /// Data needed to generate a chunk
 pub struct ChunkParams {
     /// Number of voxels along an edge
@@ -169,64 +227,6 @@ impl ChunkParams {
         self.chunk
     }
 
-    fn choose_base_material(rain: f64, temp: f64) -> Material {
-        // Nine basic terrain types based on combinations of
-        // low/medium/high temperature and humidity.
-        if temp < -6.0 {
-            if rain < -2.0 {
-                Material::Greystone
-            } else if rain < 6.0 {
-                Material::Snow
-            } else {
-                Material::Ice
-            }
-        } else if temp < -2.0 {
-            if rain < -0.5 {
-                Material::Greystone
-            } else if rain < 3.0 {
-                Material::Redstone
-            } else if rain < 5.0 {
-                Material::Snow
-            } else {
-                Material::Ice
-            }
-        } else if temp < 2.0 {
-            if rain < -2.0 {
-                Material::Stone
-            } else if rain < 0.0 {
-                Material::Gravelstone
-            } else if rain < 2.0 {
-                Material::Graveldirt
-            } else if rain < 3.0 {
-                Material::Dirt
-            } else if rain < 4.0 {
-                Material::Grass
-            } else {
-                Material::Flowergrass
-            }
-        } else if temp < 6.0 {
-            if rain < -2.0 {
-                Material::Blackstone
-            } else if rain < -0.5 {
-                Material::GreySand
-            } else if rain < 2.0 {
-                Material::Sand
-            } else if rain < 4.5 {
-                Material::Redsand
-            } else {
-                Material::Mud
-            }
-        } else if temp - rain < 4.0 {
-            Material::Mud
-        } else if temp - rain < 8.0 {
-            Material::Sand
-        } else if temp - rain < 10.0 {
-            Material::Blackstone
-        } else {
-            Material::Lava
-        }
-    }
-
     fn generate_terrain(&self, center: na::Vector3<f64>, rng: &mut Pcg64Mcg) -> Material {
         let random_amount = Normal::new(0.0, 0.25);
 
@@ -248,7 +248,7 @@ impl ChunkParams {
         let elev_rem = elev_raw / terracing_scale - elev_floor;
         let elev = terracing_scale * elev_floor + serp(0.0, terracing_scale, elev_rem, threshold);
 
-        let mut voxel_mat = ChunkParams::choose_base_material(rain, temp);
+        let mut voxel_mat = choose_base_material(rain, temp);
         let max_e;
 
         // Additional adjustments alter both block material and elevation
