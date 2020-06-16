@@ -404,8 +404,8 @@ impl ChunkParams {
         // wood block as the ground block.
         if self.dimension > 4 && matches!(voxels, VoxelData::Dense(_)) {
             let rain = self.env.rainfalls[0];
-            let tree_candidate_count =
-                ((self.dimension - 2).pow(3) as f64 * (rain / 100.0).max(0.0).min(0.5)) as usize;
+            let tree_candidate_count = (u32::from(self.dimension - 2).pow(3) as f64
+                * (rain / 100.0).max(0.0).min(0.5)) as usize;
             for _ in 0..tree_candidate_count {
                 let loc = na::Vector3::from_distribution(&random_position, &mut rng);
                 let voxel_of_interest_index = index(self.dimension, loc);
