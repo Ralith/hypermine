@@ -30,13 +30,16 @@ impl Config {
             chunk_load_parallelism,
             server,
         } = match fs::read(&path) {
-            Ok(data) => match toml::from_slice(&data) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("failed to parse config: {}", e);
-                    RawConfig::default()
+            Ok(data) => {
+                info!("found config at {}", path.display());
+                match toml::from_slice(&data) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        error!("failed to parse config: {}", e);
+                        RawConfig::default()
+                    }
                 }
-            },
+            }
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
                 info!("{} not found, using defaults", path.display());
                 RawConfig::default()
