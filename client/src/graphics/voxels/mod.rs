@@ -24,6 +24,7 @@ use common::{
     node::{Chunk, VoxelData},
     LruSlab,
 };
+use super::draw;
 
 use surface::Surface;
 use surface_extraction::{DrawBuffer, ExtractTask, ScratchBuffer, SurfaceExtraction};
@@ -114,9 +115,7 @@ impl Voxels {
             return;
         }
         let graph_traversal_started = Instant::now();
-        let mut nodes = sim
-            .graph
-            .nearby_nodes(&view, f64::from(self.config.local_simulation.view_distance));
+        let mut nodes = draw::nearby_nodes(&sim.graph, &view, f64::from(self.config.local_simulation.view_distance));
         timing!(
             "frame.cpu.voxels.graph_traversal",
             graph_traversal_started.elapsed()

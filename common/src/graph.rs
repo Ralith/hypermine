@@ -91,51 +91,51 @@ impl<N> Graph<N> {
         (0..len).map(move |i| results[i].unwrap())
     }
 
-    /// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
-    /// `start`
-    pub fn nearby_nodes(&self, start: &Position, distance: f64) -> Vec<(NodeId, na::Matrix4<f32>)> {
-        struct PendingNode {
-            id: NodeId,
-            transform: na::Matrix4<f64>,
-        }
+    // /// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
+    // /// `start`
+    // pub fn nearby_nodes(&self, start: &Position, distance: f64) -> Vec<(NodeId, na::Matrix4<f32>)> {
+    //     struct PendingNode {
+    //         id: NodeId,
+    //         transform: na::Matrix4<f64>,
+    //     }
 
-        let mut result = Vec::new();
-        let mut pending = Vec::<PendingNode>::new();
-        let mut visited = FxHashSet::<NodeId>::default();
-        let start_p = start.local.map(|x| x as f64) * math::origin();
+    //     let mut result = Vec::new();
+    //     let mut pending = Vec::<PendingNode>::new();
+    //     let mut visited = FxHashSet::<NodeId>::default();
+    //     let start_p = start.local.map(|x| x as f64) * math::origin();
 
-        pending.push(PendingNode {
-            id: start.node,
-            transform: na::Matrix4::identity(),
-        });
-        visited.insert(start.node);
+    //     pending.push(PendingNode {
+    //         id: start.node,
+    //         transform: na::Matrix4::identity(),
+    //     });
+    //     visited.insert(start.node);
 
-        while let Some(current) = pending.pop() {
-            let node = &self.nodes[current.id.idx()];
-            let current_p = current.transform * math::origin();
-            if math::distance(&start_p, &current_p) > distance {
-                continue;
-            }
-            result.push((current.id, na::convert(current.transform)));
+    //     while let Some(current) = pending.pop() {
+    //         let node = &self.nodes[current.id.idx()];
+    //         let current_p = current.transform * math::origin();
+    //         if math::distance(&start_p, &current_p) > distance {
+    //             continue;
+    //         }
+    //         result.push((current.id, na::convert(current.transform)));
 
-            for side in Side::iter() {
-                let neighbor = match node.neighbors[side as usize] {
-                    None => continue,
-                    Some(x) => x,
-                };
-                if visited.contains(&neighbor) {
-                    continue;
-                }
-                pending.push(PendingNode {
-                    id: neighbor,
-                    transform: current.transform * side.reflection(),
-                });
-                visited.insert(neighbor);
-            }
-        }
+    //         for side in Side::iter() {
+    //             let neighbor = match node.neighbors[side as usize] {
+    //                 None => continue,
+    //                 Some(x) => x,
+    //             };
+    //             if visited.contains(&neighbor) {
+    //                 continue;
+    //             }
+    //             pending.push(PendingNode {
+    //                 id: neighbor,
+    //                 transform: current.transform * side.reflection(),
+    //             });
+    //             visited.insert(neighbor);
+    //         }
+    //     }
 
-        result
-    }
+    //     result
+    // }
 
     // /// Ensure all nodes within `distance` of `start` exist
     // pub fn ensure_nearby(&mut self, start: &Position, distance: f64) {
@@ -321,7 +321,7 @@ impl NodeId {
         Self(NonZeroU32::new(u32::try_from(x + 1).expect("graph grew too large")).unwrap())
     }
 
-    fn idx(self) -> usize {
+    pub fn idx(self) -> usize {
         (self.0.get() - 1) as usize
     }
 }
@@ -339,7 +339,7 @@ impl fmt::Debug for NodeId {
 }
 
 #[derive(Debug, Clone)]
-struct Node<N> {
+pub struct Node<N> {
     value: Option<N>,
     parent_side: Option<Side>,
     /// Distance to origin via parents
@@ -375,7 +375,7 @@ impl<N> Iterator for TreeIter<'_, N> {
         self.remaining = rest;
         self.id = NodeId::from_idx(self.id.idx() + 1);
         let side = node.parent_side.unwrap();
-        Some((side, node.neighbors[side as usize].unwrap()))
+        Some(   (side, node.neighbors[side as usize].unwrap())   )
     }
 }
 
