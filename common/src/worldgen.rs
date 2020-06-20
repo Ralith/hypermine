@@ -169,6 +169,8 @@ impl ChunkParams {
         self.chunk
     }
 
+    /// Performs all terrain generation that can be done one voxel at a time and with
+    /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         let normal = Normal::new(0.0, 0.03);
 
@@ -233,6 +235,7 @@ impl ChunkParams {
         }
     }
 
+    /// Places a road along the guiding plane.
     fn generate_road(&self, voxels: &mut VoxelData) {
         let plane = -Plane::from(Side::B);
 
@@ -270,6 +273,7 @@ impl ChunkParams {
         }
     }
 
+    /// Fills the half-plane below the road with wooden supports.
     fn generate_road_support(&self, voxels: &mut VoxelData) {
         let plane = -Plane::from(Side::B);
 
@@ -353,9 +357,9 @@ impl ChunkParams {
         }
     }
 
-    // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
-    // and a block of leaves. The leaf block is on the opposite face of the
-    // wood block as the ground block.
+    /// Plants trees on dirt and grass. Trees consist of a block of wood
+    /// and a block of leaves. The leaf block is on the opposite face of the
+    /// wood block as the ground block.
     fn generate_trees(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         // margins are added to keep voxels outside the chunk from being read/written
         let random_position = Uniform::new(1, self.dimension - 1);
@@ -546,10 +550,10 @@ fn trilerp<N: na::RealField>(
     )
 }
 
-// serp interpolates between two values v0 and v1 over the interval [0, 1] by yielding
-// v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
-// such that the overall shape is an S-shaped piecewise function.
-// threshold should be between 0 and 0.5.
+/// serp interpolates between two values v0 and v1 over the interval [0, 1] by yielding
+/// v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
+/// such that the overall shape is an S-shaped piecewise function.
+/// threshold should be between 0 and 0.5.
 fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
     if t < threshold {
         v0
@@ -561,12 +565,12 @@ fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
     }
 }
 
+/// Intended to produce a number that is added to elev_raw.
+/// block is a real number, threshold is in (0, strength) via a logistic function
+/// scale controls wavelength and amplitude. It is not 1:1 to the number of blocks in a period.
+/// strength represents extremity of terracing effect. Sensible values are in (0, 0.5).
+/// The greater the value of limiter, the stronger the bias of threshold towards 0.
 fn terracing_diff(elev_raw: f64, block: f64, scale: f64, strength: f64, limiter: f64) -> f64 {
-    // Intended to produce a number that is added to elev_raw.
-    // block is a real number, threshold is in (0, strength) via a logistic function
-    // scale controls wavelength and amplitude. It is not 1:1 to the number of blocks in a period.
-    // strength represents extremity of terracing effect. Sensible values are in (0, 0.5).
-    // The greater the value of limiter, the stronger the bias of threshold towards 0.
     let threshold: f64 = strength / (1.0 + 2.0f64.powf(limiter - block));
     let elev_floor = (elev_raw / scale).floor();
     let elev_rem = elev_raw / scale - elev_floor;
