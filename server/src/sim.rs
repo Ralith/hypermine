@@ -5,8 +5,10 @@ use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use tracing::{error_span, info, trace};
+use fxhash::FxHashSet;
 
 use common::{
+    dodeca::Side,
     graph::{Graph, NodeId},
     math,
     proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
@@ -36,9 +38,8 @@ impl Sim {
             spawns: Vec::new(),
             despawns: Vec::new(),
         };
-        result
-            .graph
-            .ensure_nearby(&Position::origin(), f64::from(result.cfg.view_distance));
+
+        ensure_nearby(&mut result.graph, &Position::origin(), f64::from(result.cfg.view_distance));
         result
     }
 
@@ -113,8 +114,7 @@ impl Sim {
                 pos.node = next_node;
                 pos.local = transition_xf * pos.local;
             }
-            self.graph
-                .ensure_nearby(pos, f64::from(self.cfg.view_distance));
+            ensure_nearby(&mut self.graph, pos, f64::from(self.cfg.view_distance));
         }
 
         // Capture state changes for broadcast to clients
@@ -177,7 +177,7 @@ impl Sim {
     }
 }
 
-enum Empty {}
+pub enum Empty {}
 
 fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     let mut components = Vec::new();
@@ -191,6 +191,32 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
         }));
     }
     components
+}
+
+/// Ensure all nodes within `distance` of `start` exist
+pub fn ensure_nearby(graph: &mut Graph<Empty>, start: &Position, distance: f64) {
+    let mut pending = Vec::<(NodeId, na::Matrix4<f64>)>::new();
+    let mut visited = FxHashSet::<NodeId>::default();
+
+    pending.push((start.node, na::Matrix4::identity()));
+    visited.insert(start.node);
+    let start_p = start.local.map(|x| x as f64) * math::origin();
+
+    while let Some((node, current_transform)) = pending.pop() {
+        for side in Side::iter() {
+            let neighbor = graph.ensure_neighbor(node, side);
+            if visited.contains(&neighbor) {
+                continue;
+            }
+            visited.insert(neighbor);
+            let neighbor_transform = current_transform * side.reflection();
+            let neighbor_p = neighbor_transform * math::origin();
+            if math::distance(&start_p, &neighbor_p) > distance {
+                continue;
+            }
+            pending.push((neighbor, neighbor_transform));
+        }
+    }
 }
 
 struct Character {
