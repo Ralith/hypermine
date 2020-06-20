@@ -75,7 +75,7 @@ impl NodeState {
             road_state: NodeStateRoad::ROOT,
             spice: 0,
             enviro: EnviroFactors {
-                elevation: 0.0,
+                max_elevation: 0.0,
                 temperature: 0.0,
                 rainfall: 0.0,
                 blockiness: 0.0,
@@ -170,7 +170,7 @@ impl ChunkParams {
     }
 
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
-        let normal = Normal::new(0.0, 0.05);
+        let normal = Normal::new(0.0, 0.03);
 
         for z in 0..self.dimension {
             for y in 0..self.dimension {
@@ -183,22 +183,46 @@ impl ChunkParams {
                         trilerp(&self.env.rainfalls, cube_coords) + rng.sample(&normal.unwrap());
                     let temp =
                         trilerp(&self.env.temperatures, cube_coords) + rng.sample(&normal.unwrap());
-                    let elev_raw = trilerp(&self.env.elevations, cube_coords);
+
+                    // elev is calculated in multiple steps. The initial value elev_pre_terracing
+                    // is used to calculate elev_pre_noise which is used to calculate elev.
+                    let elev_pre_terracing = trilerp(&self.env.max_elevations, cube_coords);
                     let block = trilerp(&self.env.blockinesses, cube_coords);
                     let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
-
                     let strength = 0.4 / (1.0 + voxel_elevation.powi(2));
                     let terracing_small =
-                        elev_terracing_difference(elev_raw, block, 5.0, strength, 2);
+                        terracing_diff(elev_pre_terracing, block, 5.0, strength, 2.0);
                     let terracing_big =
-                        elev_terracing_difference(elev_raw, block, 15.0, strength, -1);
-                    let elev = elev_raw + 0.6 * terracing_small + 0.4 * terracing_big;
+                        terracing_diff(elev_pre_terracing, block, 15.0, strength, -1.0);
+                    // Small and big terracing effects must not sum to more than 1,
+                    // otherwise the terracing fails to be (nonstrictly) monotonic
+                    // and the terrain gets trenches ringing around its cliffs.
+                    let elev_pre_noise =
+                        elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big;
 
-                    let dist_from_threshold = voxel_elevation - elev / TERRAIN_SMOOTHNESS;
-                    let voxel_mat = if dist_from_threshold < -0.2 {
-                        VoronoiInfo::terraingen_voronoi(elev, rain, temp)
-                    } else if dist_from_threshold < 0.0 {
-                        VoronoiInfo::surface_adjuster(elev, rain, temp)
+                    // initial value dist_pre_noise is the difference between the voxel's distance
+                    // from the guiding plane and the voxel's calculated elev value. It represents
+                    // how far from the terrain surface a voxel is.
+                    let dist_pre_noise = elev_pre_noise / TERRAIN_SMOOTHNESS - voxel_elevation;
+
+                    // adding noise allows interfaces between strata to be rough
+                    let elev = elev_pre_noise + TERRAIN_SMOOTHNESS * rng.sample(&normal.unwrap());
+
+                    // Final value of dist is calculated in this roundabout way for greater control
+                    // over how noise in elev affects dist.
+                    let dist = if dist_pre_noise > 0.0 {
+                        // The .max(0.0) keeps the top of the ground smooth
+                        // while still allowing the surface/general terrain interface to be rough
+                        (elev / TERRAIN_SMOOTHNESS - voxel_elevation).max(0.0)
+                    } else {
+                        // Distance not updated for updated elevation if distance was originally
+                        // negative. This ensures that no voxels that would have otherwise
+                        // been void are changed to a material---so no floating dirt blocks.
+                        dist_pre_noise
+                    };
+
+                    let voxel_mat = if dist >= 0.0 {
+                        VoronoiInfo::terraingen_voronoi(elev, rain, temp, dist)
                     } else {
                         Material::Void
                     };
@@ -349,11 +373,12 @@ impl ChunkParams {
                 .filter(|n| n.material == Material::Void)
                 .count();
 
-            // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
+            // Only plant a tree if there is exactly one adjacent block of dirt or grass
             if num_void_neighbors == 5 {
                 for i in neighbor_data.iter() {
                     if (i.material == Material::Dirt)
                         || (i.material == Material::Grass)
+                        || (i.material == Material::MudGrass)
                         || (i.material == Material::LushGrass)
                         || (i.material == Material::TanGrass)
                         || (i.material == Material::CoarseGrass)
@@ -370,9 +395,9 @@ impl ChunkParams {
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self) -> VoxelData {
         // Determine whether this chunk might contain a boundary between solid and void
-        let mut me_min = self.env.elevations[0];
-        let mut me_max = self.env.elevations[0];
-        for &me in &self.env.elevations[1..] {
+        let mut me_min = self.env.max_elevations[0];
+        let mut me_max = self.env.max_elevations[0];
+        for &me in &self.env.max_elevations[1..] {
             me_min = me_min.min(me);
             me_max = me_max.max(me);
         }
@@ -426,7 +451,7 @@ struct NeighborData {
 
 #[derive(Copy, Clone)]
 struct EnviroFactors {
-    elevation: f64,
+    max_elevation: f64,
     temperature: f64,
     rainfall: f64,
     blockiness: f64,
@@ -435,10 +460,10 @@ impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0);
-        let elevation = parent.elevation + rng.sample(&Normal::new(0.0, 4.0).unwrap());
+        let max_elevation = parent.max_elevation + rng.sample(&Normal::new(0.0, 4.0).unwrap());
 
         Self {
-            elevation,
+            max_elevation,
             temperature: parent.temperature + rng.sample(&unif),
             rainfall: parent.rainfall + rng.sample(&unif),
             blockiness: parent.blockiness + rng.sample(&unif),
@@ -446,7 +471,7 @@ impl EnviroFactors {
     }
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
         Self {
-            elevation: a.elevation + (b.elevation - ab.elevation),
+            max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
             temperature: a.temperature + (b.temperature - ab.temperature),
             rainfall: a.rainfall + (b.rainfall - ab.rainfall),
             blockiness: a.blockiness + (b.blockiness - ab.blockiness),
@@ -456,7 +481,7 @@ impl EnviroFactors {
 impl Into<(f64, f64, f64, f64)> for EnviroFactors {
     fn into(self) -> (f64, f64, f64, f64) {
         (
-            self.elevation,
+            self.max_elevation,
             self.temperature,
             self.rainfall,
             self.blockiness,
@@ -464,7 +489,7 @@ impl Into<(f64, f64, f64, f64)> for EnviroFactors {
     }
 }
 struct ChunkIncidentEnviroFactors {
-    elevations: [f64; 8],
+    max_elevations: [f64; 8],
     temperatures: [f64; 8],
     rainfalls: [f64; 8],
     blockinesses: [f64; 8],
@@ -496,7 +521,7 @@ fn chunk_incident_enviro_factors(
     let (e8, t8, r8, b8) = i.next()?.into();
 
     Some(ChunkIncidentEnviroFactors {
-        elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
+        max_elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
         temperatures: [t1, t2, t3, t4, t5, t6, t7, t8],
         rainfalls: [r1, r2, r3, r4, r5, r6, r7, r8],
         blockinesses: [b1, b2, b3, b4, b5, b6, b7, b8],
@@ -536,18 +561,13 @@ fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
     }
 }
 
-fn elev_terracing_difference(
-    elev_raw: f64,
-    block: f64,
-    scale: f64,
-    strength: f64,
-    limiter: i32,
-) -> f64 {
-    // block is a real number, threshold is in (0, 0.2) and biased towards 0
-    // This causes the level of terrain bumpiness to vary over space.
-    // Do not think of terracing_scale as wavelength in number of blocks
-    let threshold: f64 =
-        2.0f64.powf(block) / (2.0f64.powi(limiter) + 2.0f64.powf(block)) * strength;
+fn terracing_diff(elev_raw: f64, block: f64, scale: f64, strength: f64, limiter: f64) -> f64 {
+    // Intended to produce a number that is added to elev_raw.
+    // block is a real number, threshold is in (0, strength) via a logistic function
+    // scale controls wavelength and amplitude. It is not 1:1 to the number of blocks in a period.
+    // strength represents extremity of terracing effect. Sensible values are in (0, 0.5).
+    // The greater the value of limiter, the stronger the bias of threshold towards 0.
+    let threshold: f64 = strength / (1.0 + 2.0f64.powf(limiter - block));
     let elev_floor = (elev_raw / scale).floor();
     let elev_rem = elev_raw / scale - elev_floor;
     scale * elev_floor + serp(0.0, scale, elev_rem, threshold) - elev_raw
@@ -647,7 +667,7 @@ mod test {
             *g.get_mut(new_node) = Some(Node {
                 state: {
                     let mut state = NodeState::root();
-                    state.enviro.elevation = i as f64 + 1.0;
+                    state.enviro.max_elevation = i as f64 + 1.0;
                     state
                 },
                 chunks: Chunks::default(),
@@ -655,13 +675,13 @@ mod test {
         }
 
         let enviros = chunk_incident_enviro_factors(&g, NodeId::ROOT, Vertex::A).unwrap();
-        for (i, max_elevation) in enviros.elevations.iter().cloned().enumerate() {
+        for (i, max_elevation) in enviros.max_elevations.iter().cloned().enumerate() {
             println!("{}, {}", i, max_elevation);
             assert_abs_diff_eq!(max_elevation, (i + 1) as f64, epsilon = 1e-8);
         }
 
         // see corresponding test for trilerp
-        let center_max_elevation = trilerp(&enviros.elevations, na::Vector3::repeat(0.5));
+        let center_max_elevation = trilerp(&enviros.max_elevations, na::Vector3::repeat(0.5));
         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
 
         let mut checked_center = false;
@@ -673,7 +693,7 @@ mod test {
                     if a == center {
                         checked_center = true;
                         let c = center.map(|x| x as f64) / CHUNK_SIZE as f64;
-                        let center_max_elevation = trilerp(&enviros.elevations, c);
+                        let center_max_elevation = trilerp(&enviros.max_elevations, c);
                         assert_abs_diff_eq!(center_max_elevation, 4.5, epsilon = 1e-8);
                         break 'top;
                     }
