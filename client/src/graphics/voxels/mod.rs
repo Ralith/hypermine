@@ -10,7 +10,7 @@ use ash::{vk, Device};
 use metrics::timing;
 use tracing::warn;
 
-use super::draw;
+use super::draw::nearby_nodes;
 use crate::{
     graphics::{Base, Frustum},
     loader::{Cleanup, LoadCtx, LoadFuture, Loadable, WorkQueue},
@@ -115,7 +115,7 @@ impl Voxels {
             return;
         }
         let graph_traversal_started = Instant::now();
-        let mut nodes = draw::nearby_nodes(
+        let mut nodes = nearby_nodes(
             &sim.graph,
             &view,
             f64::from(self.config.local_simulation.view_distance),

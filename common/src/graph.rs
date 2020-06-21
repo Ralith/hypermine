@@ -247,7 +247,7 @@ impl NodeId {
         Self(NonZeroU32::new(u32::try_from(x + 1).expect("graph grew too large")).unwrap())
     }
 
-    pub fn idx(self) -> usize {
+    fn idx(self) -> usize {
         (self.0.get() - 1) as usize
     }
 }
@@ -265,7 +265,7 @@ impl fmt::Debug for NodeId {
 }
 
 #[derive(Debug, Clone)]
-pub struct Node<N> {
+struct Node<N> {
     value: Option<N>,
     parent_side: Option<Side>,
     /// Distance to origin via parents
