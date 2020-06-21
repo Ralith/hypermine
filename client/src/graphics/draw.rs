@@ -2,17 +2,17 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ash::{version::DeviceV1_0, vk};
+use fxhash::FxHashSet;
 use lahar::Staged;
 use metrics::timing;
-use fxhash::FxHashSet;
 
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{sim, Asset, Config, Loader, Sim};
-use common::proto::{Character, Position};
-use common::math;
-use common::node::{Node};
-use common::graph::{NodeId, Graph};
 use common::dodeca::Side;
+use common::graph::{Graph, NodeId};
+use common::math;
+use common::node::Node;
+use common::proto::{Character, Position};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -436,8 +436,11 @@ impl Draw {
         }
 
         if let Some(params) = sim.params() {
-            for (node, transform) in nearby_nodes(&sim.graph, &view, f64::from(self.cfg.local_simulation.view_distance))
-            {
+            for (node, transform) in nearby_nodes(
+                &sim.graph,
+                &view,
+                f64::from(self.cfg.local_simulation.view_distance),
+            ) {
                 for &entity in sim.graph_entities.get(node) {
                     if sim.local_character == Some(entity) {
                         // Don't draw ourself
@@ -564,7 +567,11 @@ impl Drop for Draw {
 
 /// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
 /// `start`
-pub fn nearby_nodes(graph: &Graph<Node>, start: &Position, distance: f64) -> Vec<(NodeId, na::Matrix4<f32>)> {
+pub fn nearby_nodes(
+    graph: &Graph<Node>,
+    start: &Position,
+    distance: f64,
+) -> Vec<(NodeId, na::Matrix4<f32>)> {
     struct PendingNode {
         id: NodeId,
         transform: na::Matrix4<f64>,
@@ -602,7 +609,6 @@ pub fn nearby_nodes(graph: &Graph<Node>, start: &Position, distance: f64) -> Vec
             });
             visited.insert(neighbor);
         }
-
     }
 
     result
