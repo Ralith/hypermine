@@ -181,7 +181,7 @@ impl Sim {
     }
 }
 
-pub enum Empty {}
+enum Empty {}
 
 fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     let mut components = Vec::new();
@@ -198,7 +198,7 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
 }
 
 /// Ensure all nodes within `distance` of `start` exist
-pub fn ensure_nearby(graph: &mut Graph<Empty>, start: &Position, distance: f64) {
+pub fn ensure_nearby<N>(graph: &mut Graph<N>, start: &Position, distance: f64) {
     let mut pending = Vec::<(NodeId, na::Matrix4<f64>)>::new();
     let mut visited = FxHashSet::<NodeId>::default();
 
