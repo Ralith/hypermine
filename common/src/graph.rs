@@ -308,7 +308,7 @@ impl<N> Iterator for TreeIter<'_, N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{cursor, proto::Position, traversal::ensure_nearby};
+    use crate::{proto::Position, traversal::ensure_nearby};
     use approx::*;
 
     #[test]
@@ -388,45 +388,5 @@ mod tests {
             assert_eq!(c.0, d.0);
             assert_eq!(a.neighbor(c.1, c.0), b.neighbor(c.1, c.0));
         }
-    }
-
-    #[test]
-    fn cursor_identities() {
-        let mut graph = Graph::<()>::new();
-        ensure_nearby(&mut graph, &Position::origin(), 3.0);
-        let start = cursor::Cursor::from_vertex(NodeId::ROOT, Vertex::A);
-        let wiggle = |dir| {
-            let x = start.step(&graph, dir).unwrap();
-            assert!(x != start);
-            assert_eq!(x.step(&graph, -dir).unwrap(), start);
-        };
-        wiggle(cursor::Dir::Left);
-        wiggle(cursor::Dir::Right);
-        wiggle(cursor::Dir::Down);
-        wiggle(cursor::Dir::Up);
-        wiggle(cursor::Dir::Forward);
-        wiggle(cursor::Dir::Back);
-
-        let vcycle = |dir| {
-            let looped = start
-                .step(&graph, dir)
-                .expect("positive")
-                .step(&graph, cursor::Dir::Down)
-                .expect("down")
-                .step(&graph, -dir)
-                .expect("negative")
-                .step(&graph, cursor::Dir::Up)
-                .expect("up")
-                .step(&graph, dir)
-                .expect("positive");
-            assert_eq!(
-                looped.canonicalize(&graph).unwrap(),
-                (NodeId::ROOT, Vertex::A),
-            );
-        };
-        vcycle(cursor::Dir::Left);
-        vcycle(cursor::Dir::Right);
-        vcycle(cursor::Dir::Forward);
-        vcycle(cursor::Dir::Back);
     }
 }

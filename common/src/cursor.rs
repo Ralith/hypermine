@@ -128,6 +128,7 @@ lazy_static! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{proto::Position, traversal::ensure_nearby};
 
     #[test]
     fn neighbor_sanity() {
@@ -138,5 +139,45 @@ mod tests {
                 NEIGHBORS[a as usize][c as usize][b as usize]
             );
         }
+    }
+
+    #[test]
+    fn cursor_identities() {
+        let mut graph = Graph::<()>::new();
+        ensure_nearby(&mut graph, &Position::origin(), 3.0);
+        let start = Cursor::from_vertex(NodeId::ROOT, Vertex::A);
+        let wiggle = |dir| {
+            let x = start.step(&graph, dir).unwrap();
+            assert!(x != start);
+            assert_eq!(x.step(&graph, -dir).unwrap(), start);
+        };
+        wiggle(Dir::Left);
+        wiggle(Dir::Right);
+        wiggle(Dir::Down);
+        wiggle(Dir::Up);
+        wiggle(Dir::Forward);
+        wiggle(Dir::Back);
+
+        let vcycle = |dir| {
+            let looped = start
+                .step(&graph, dir)
+                .expect("positive")
+                .step(&graph, Dir::Down)
+                .expect("down")
+                .step(&graph, -dir)
+                .expect("negative")
+                .step(&graph, Dir::Up)
+                .expect("up")
+                .step(&graph, dir)
+                .expect("positive");
+            assert_eq!(
+                looped.canonicalize(&graph).unwrap(),
+                (NodeId::ROOT, Vertex::A),
+            );
+        };
+        vcycle(Dir::Left);
+        vcycle(Dir::Right);
+        vcycle(Dir::Forward);
+        vcycle(Dir::Back);
     }
 }
