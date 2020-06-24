@@ -6,7 +6,6 @@ use rand::{
 #[macro_use]
 mod id;
 
-pub mod chunk;
 mod chunks;
 pub mod codec;
 pub mod cursor;
