@@ -11,7 +11,6 @@ use crate::{sim, Asset, Config, Loader, Sim};
 use common::dodeca::Side;
 use common::graph::{Graph, NodeId};
 use common::math;
-use common::node::Node;
 use common::proto::{Character, Position};
 
 /// Manages rendering, independent of what is being rendered to
@@ -567,8 +566,8 @@ impl Drop for Draw {
 
 /// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
 /// `start`
-pub fn nearby_nodes(
-    graph: &Graph<Node>,
+pub fn nearby_nodes<N>(
+    graph: &Graph<N>,
     start: &Position,
     distance: f64,
 ) -> Vec<(NodeId, na::Matrix4<f32>)> {
