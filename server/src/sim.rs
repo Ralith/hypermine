@@ -1,18 +1,18 @@
 use std::{mem, sync::Arc};
 
 use fxhash::FxHashMap;
-use fxhash::FxHashSet;
 use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use tracing::{error_span, info, trace};
 
 use common::{
-    dodeca::Side,
     graph::{Graph, NodeId},
     math,
     proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
-    sanitize_motion_input, EntityId, SimConfig, Step,
+    sanitize_motion_input,
+    traversal::ensure_nearby,
+    EntityId, SimConfig, Step,
 };
 
 pub struct Sim {
@@ -197,96 +197,9 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     components
 }
 
-/// Ensure all nodes within `distance` of `start` exist
-pub fn ensure_nearby<N>(graph: &mut Graph<N>, start: &Position, distance: f64) {
-    let mut pending = Vec::<(NodeId, na::Matrix4<f64>)>::new();
-    let mut visited = FxHashSet::<NodeId>::default();
-
-    pending.push((start.node, na::Matrix4::identity()));
-    visited.insert(start.node);
-    let start_p = start.local.map(|x| x as f64) * math::origin();
-
-    while let Some((node, current_transform)) = pending.pop() {
-        for side in Side::iter() {
-            let neighbor = graph.ensure_neighbor(node, side);
-            if visited.contains(&neighbor) {
-                continue;
-            }
-            visited.insert(neighbor);
-            let neighbor_transform = current_transform * side.reflection();
-            let neighbor_p = neighbor_transform * math::origin();
-            if math::distance(&start_p, &neighbor_p) > distance {
-                continue;
-            }
-            pending.push((neighbor, neighbor_transform));
-        }
-    }
-}
-
 struct Character {
     name: String,
     orientation: na::UnitQuaternion<f32>,
     direction: na::Unit<na::Vector3<f32>>,
     speed: f32,
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    #[test]
-    fn rebuild_from_tree() {
-        let mut a = common::graph::Graph::<Empty>::default();
-        ensure_nearby(&mut a, &Position::origin(), 3.0);
-        let mut b = common::graph::Graph::<()>::default();
-        for (side, parent) in a.tree() {
-            b.insert_child(parent, side);
-        }
-        assert_eq!(a.len(), b.len());
-        for (c, d) in a.tree().zip(b.tree()) {
-            assert_eq!(c.0, d.0);
-            assert_eq!(a.neighbor(c.1, c.0), b.neighbor(c.1, c.0));
-        }
-    }
-
-    #[test]
-    fn cursor_identities() {
-        let mut graph = Graph::<Empty>::new();
-        ensure_nearby(&mut graph, &Position::origin(), 3.0);
-        let start = common::cursor::Cursor::from_vertex(NodeId::ROOT, common::dodeca::Vertex::A);
-        let wiggle = |dir| {
-            let x = start.step(&graph, dir).unwrap();
-            assert!(x != start);
-            assert_eq!(x.step(&graph, -dir).unwrap(), start);
-        };
-        wiggle(common::cursor::Dir::Left);
-        wiggle(common::cursor::Dir::Right);
-        wiggle(common::cursor::Dir::Down);
-        wiggle(common::cursor::Dir::Up);
-        wiggle(common::cursor::Dir::Forward);
-        wiggle(common::cursor::Dir::Back);
-
-        let vcycle = |dir| {
-            let looped = start
-                .step(&graph, dir)
-                .expect("positive")
-                .step(&graph, common::cursor::Dir::Down)
-                .expect("down")
-                .step(&graph, -dir)
-                .expect("negative")
-                .step(&graph, common::cursor::Dir::Up)
-                .expect("up")
-                .step(&graph, dir)
-                .expect("positive");
-            assert_eq!(
-                looped.canonicalize(&graph).unwrap(),
-                (NodeId::ROOT, common::dodeca::Vertex::A),
-            );
-        };
-        vcycle(common::cursor::Dir::Left);
-        vcycle(common::cursor::Dir::Right);
-        vcycle(common::cursor::Dir::Forward);
-        vcycle(common::cursor::Dir::Back);
-    }
 }
