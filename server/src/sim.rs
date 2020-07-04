@@ -10,7 +10,9 @@ use common::{
     graph::{Graph, NodeId},
     math,
     proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
-    sanitize_motion_input, EntityId, SimConfig, Step,
+    sanitize_motion_input,
+    traversal::ensure_nearby,
+    EntityId, SimConfig, Step,
 };
 
 pub struct Sim {
@@ -36,9 +38,12 @@ impl Sim {
             spawns: Vec::new(),
             despawns: Vec::new(),
         };
-        result
-            .graph
-            .ensure_nearby(&Position::origin(), f64::from(result.cfg.view_distance));
+
+        ensure_nearby(
+            &mut result.graph,
+            &Position::origin(),
+            f64::from(result.cfg.view_distance),
+        );
         result
     }
 
@@ -113,8 +118,7 @@ impl Sim {
                 pos.node = next_node;
                 pos.local = transition_xf * pos.local;
             }
-            self.graph
-                .ensure_nearby(pos, f64::from(self.cfg.view_distance));
+            ensure_nearby(&mut self.graph, pos, f64::from(self.cfg.view_distance));
         }
 
         // Capture state changes for broadcast to clients

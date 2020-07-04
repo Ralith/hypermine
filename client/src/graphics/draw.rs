@@ -2,11 +2,15 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ash::{version::DeviceV1_0, vk};
+use fxhash::FxHashSet;
 use lahar::Staged;
 use metrics::timing;
 
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{sim, Asset, Config, Loader, Sim};
+use common::dodeca::Side;
+use common::graph::{Graph, NodeId};
+use common::math;
 use common::proto::{Character, Position};
 
 /// Manages rendering, independent of what is being rendered to
@@ -431,10 +435,11 @@ impl Draw {
         }
 
         if let Some(params) = sim.params() {
-            for (node, transform) in sim
-                .graph
-                .nearby_nodes(&view, f64::from(self.cfg.local_simulation.view_distance))
-            {
+            for (node, transform) in nearby_nodes(
+                &sim.graph,
+                &view,
+                f64::from(self.cfg.local_simulation.view_distance),
+            ) {
                 for &entity in sim.graph_entities.get(node) {
                     if sim.local_character == Some(entity) {
                         // Don't draw ourself
@@ -557,6 +562,55 @@ impl Drop for Draw {
             }
         }
     }
+}
+
+/// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
+/// `start`
+pub fn nearby_nodes<N>(
+    graph: &Graph<N>,
+    start: &Position,
+    distance: f64,
+) -> Vec<(NodeId, na::Matrix4<f32>)> {
+    struct PendingNode {
+        id: NodeId,
+        transform: na::Matrix4<f64>,
+    }
+
+    let mut result = Vec::new();
+    let mut pending = Vec::<PendingNode>::new();
+    let mut visited = FxHashSet::<NodeId>::default();
+    let start_p = start.local.map(|x| x as f64) * math::origin();
+
+    pending.push(PendingNode {
+        id: start.node,
+        transform: na::Matrix4::identity(),
+    });
+    visited.insert(start.node);
+
+    while let Some(current) = pending.pop() {
+        let current_p = current.transform * math::origin();
+        if math::distance(&start_p, &current_p) > distance {
+            continue;
+        }
+        result.push((current.id, na::convert(current.transform)));
+
+        for side in Side::iter() {
+            let neighbor = match graph.neighbor(current.id, side) {
+                None => continue,
+                Some(x) => x,
+            };
+            if visited.contains(&neighbor) {
+                continue;
+            }
+            pending.push(PendingNode {
+                id: neighbor,
+                transform: current.transform * side.reflection(),
+            });
+            visited.insert(neighbor);
+        }
+    }
+
+    result
 }
 
 struct State {

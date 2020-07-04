@@ -4,13 +4,11 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::num::NonZeroU32;
 
-use fxhash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     dodeca::{Side, Vertex, SIDE_COUNT},
     math,
-    proto::Position,
 };
 
 /// Graph of the right dodecahedral tiling of H^3
@@ -89,78 +87,6 @@ impl<N> Graph<N> {
         }
 
         (0..len).map(move |i| results[i].unwrap())
-    }
-
-    /// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
-    /// `start`
-    pub fn nearby_nodes(&self, start: &Position, distance: f64) -> Vec<(NodeId, na::Matrix4<f32>)> {
-        struct PendingNode {
-            id: NodeId,
-            transform: na::Matrix4<f64>,
-        }
-
-        let mut result = Vec::new();
-        let mut pending = Vec::<PendingNode>::new();
-        let mut visited = FxHashSet::<NodeId>::default();
-        let start_p = start.local.map(|x| x as f64) * math::origin();
-
-        pending.push(PendingNode {
-            id: start.node,
-            transform: na::Matrix4::identity(),
-        });
-        visited.insert(start.node);
-
-        while let Some(current) = pending.pop() {
-            let node = &self.nodes[current.id.idx()];
-            let current_p = current.transform * math::origin();
-            if math::distance(&start_p, &current_p) > distance {
-                continue;
-            }
-            result.push((current.id, na::convert(current.transform)));
-
-            for side in Side::iter() {
-                let neighbor = match node.neighbors[side as usize] {
-                    None => continue,
-                    Some(x) => x,
-                };
-                if visited.contains(&neighbor) {
-                    continue;
-                }
-                pending.push(PendingNode {
-                    id: neighbor,
-                    transform: current.transform * side.reflection(),
-                });
-                visited.insert(neighbor);
-            }
-        }
-
-        result
-    }
-
-    /// Ensure all nodes within `distance` of `start` exist
-    pub fn ensure_nearby(&mut self, start: &Position, distance: f64) {
-        let mut pending = Vec::<(NodeId, na::Matrix4<f64>)>::new();
-        let mut visited = FxHashSet::<NodeId>::default();
-
-        pending.push((start.node, na::Matrix4::identity()));
-        visited.insert(start.node);
-        let start_p = start.local.map(|x| x as f64) * math::origin();
-
-        while let Some((node, current_transform)) = pending.pop() {
-            for side in Side::iter() {
-                let neighbor = self.ensure_neighbor(node, side);
-                if visited.contains(&neighbor) {
-                    continue;
-                }
-                visited.insert(neighbor);
-                let neighbor_transform = current_transform * side.reflection();
-                let neighbor_p = neighbor_transform * math::origin();
-                if math::distance(&start_p, &neighbor_p) > distance {
-                    continue;
-                }
-                pending.push((neighbor, neighbor_transform));
-            }
-        }
     }
 
     #[inline]
@@ -382,6 +308,7 @@ impl<N> Iterator for TreeIter<'_, N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{proto::Position, traversal::ensure_nearby};
     use approx::*;
 
     #[test]
@@ -451,17 +378,15 @@ mod tests {
     #[test]
     fn rebuild_from_tree() {
         let mut a = Graph::<()>::default();
-        a.ensure_nearby(&Position::origin(), 3.0);
+        ensure_nearby(&mut a, &Position::origin(), 3.0);
         let mut b = Graph::<()>::default();
         for (side, parent) in a.tree() {
             b.insert_child(parent, side);
         }
-        assert_eq!(a.nodes.len(), b.nodes.len());
-        for (a, b) in a.nodes.iter().zip(b.nodes.iter()) {
-            assert_eq!(a.parent_side, b.parent_side);
-            if let Some(side) = a.parent_side {
-                assert_eq!(a.neighbors[side as usize], b.neighbors[side as usize]);
-            }
+        assert_eq!(a.len(), b.len());
+        for (c, d) in a.tree().zip(b.tree()) {
+            assert_eq!(c.0, d.0);
+            assert_eq!(a.neighbor(c.1, c.0), b.neighbor(c.1, c.0));
         }
     }
 }

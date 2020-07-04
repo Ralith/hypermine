@@ -6,7 +6,6 @@ use rand::{
 #[macro_use]
 mod id;
 
-pub mod chunk;
 mod chunks;
 pub mod codec;
 pub mod cursor;
@@ -19,6 +18,7 @@ pub mod node;
 mod plane;
 pub mod proto;
 mod sim_config;
+pub mod traversal;
 pub mod world;
 pub mod worldgen;
 
