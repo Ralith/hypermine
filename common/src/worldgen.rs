@@ -247,13 +247,13 @@ impl ChunkParams {
                     let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
                     let elevation = self.surface.distance_to_chunk(self.chunk, &center);
 
-                    let mut mat: Material = Material::Void;
-                    if horizontal_distance > 0.3 {
-                        //mat = Material::Void;
+                    if horizontal_distance > 0.3 || elevation > 0.9 {
                         continue;
                     }
+
+                    let mut mat: Material = Material::Void;
+
                     if elevation < 0.075 {
-                        // Surface
                         if horizontal_distance < 0.15 {
                             // Inner
                             mat = Material::WhiteBrick;
@@ -261,13 +261,9 @@ impl ChunkParams {
                             // Outer
                             mat = Material::GreyBrick;
                         }
-                    } else if elevation < 0.9 {
-                        mat = Material::Void; // Tunnel
-                        voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
                     }
-                    if mat != Material::Void {
-                        voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
-                    }
+
+                    voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
                 }
             }
         }
@@ -284,7 +280,11 @@ impl ChunkParams {
                     let center = voxel_center(self.dimension, coords);
                     let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
 
-                    let mat = if horizontal_distance < 0.3 && self.trussing_at(coords) {
+                    if horizontal_distance > 0.3 {
+                        continue;
+                    }
+
+                    let mat = if self.trussing_at(coords) {
                         Material::WoodPlanks
                     } else {
                         Material::Void
