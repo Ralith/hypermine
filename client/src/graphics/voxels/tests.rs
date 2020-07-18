@@ -168,7 +168,7 @@ fn surface_extraction() {
     );
 
     for x in test.scratch.storage(0) {
-        *x = Material::Stone;
+        *x = Material::Dirt;
     }
 
     test.run();
@@ -185,7 +185,7 @@ fn surface_extraction() {
     for z in 0..((DIMENSION + 2) / 2) {
         for y in 0..(DIMENSION + 2) {
             for x in 0..(DIMENSION + 2) {
-                storage[x + y * (DIMENSION + 2) + z * (DIMENSION + 2).pow(2)] = Material::Stone;
+                storage[x + y * (DIMENSION + 2) + z * (DIMENSION + 2).pow(2)] = Material::Dirt;
             }
         }
     }
@@ -204,7 +204,7 @@ fn surface_extraction() {
             y: 0,
             z: 1,
             axis: 5,
-            mat: Material::Stone,
+            mat: Material::Dirt,
             _padding: 0,
             occlusion: 0xFF,
         },
@@ -213,7 +213,7 @@ fn surface_extraction() {
             y: 0,
             z: 1,
             axis: 5,
-            mat: Material::Stone,
+            mat: Material::Dirt,
             _padding: 0,
             occlusion: 0xFF,
         },
@@ -222,7 +222,7 @@ fn surface_extraction() {
             y: 1,
             z: 1,
             axis: 5,
-            mat: Material::Stone,
+            mat: Material::Dirt,
             _padding: 0,
             occlusion: 0xFF,
         },
@@ -231,7 +231,7 @@ fn surface_extraction() {
             y: 1,
             z: 1,
             axis: 5,
-            mat: Material::Stone,
+            mat: Material::Dirt,
             _padding: 0,
             occlusion: 0xFF,
         },
