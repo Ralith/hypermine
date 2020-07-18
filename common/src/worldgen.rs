@@ -223,13 +223,10 @@ impl ChunkParams {
                         dist_pre_noise
                     };
 
-                    let voxel_mat = if dist >= 0.0 {
-                        VoronoiInfo::terraingen_voronoi(elev, rain, temp, dist)
-                    } else {
-                        Material::Void
-                    };
-
-                    voxels.data_mut(self.dimension)[index(self.dimension, coords)] = voxel_mat;
+                    if dist >= 0.0 {
+                        let voxel_mat = VoronoiInfo::terraingen_voronoi(elev, rain, temp, dist);
+                        voxels.data_mut(self.dimension)[index(self.dimension, coords)] = voxel_mat;
+                    }
                 }
             }
         }
