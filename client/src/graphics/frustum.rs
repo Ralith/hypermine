@@ -41,10 +41,10 @@ impl Frustum {
         let zb = -(znear * zfar) / (znear - zfar);
         na::Projective3::from_matrix_unchecked(
             na::Matrix4::new(
-                2.0 * idx,       0.0, sx * idx, 0.0,
-                0.0, 2.0 * idy, sy * idy, 0.0,
-                0.0,       0.0,      za,  zb,
-                0.0,       0.0,     -1.0, 0.0))
+                2.0 * idx,       0.0,  sx * idx,       0.0,
+                      0.0, 2.0 * idy,  sy * idy,       0.0,
+                      0.0,       0.0,        za,        zb,
+                      0.0,       0.0,      -1.0,       0.0))
     }
 
     pub fn planes(&self) -> FrustumPlanes {

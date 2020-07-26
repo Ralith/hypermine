@@ -68,7 +68,7 @@ impl<N> Graph<N> {
 
     /// Returns all of the sides between the provided node and its shorter neighbors.
     ///
-    /// A node's length is a its distance from the root node.
+    /// A node's length is its distance from the root node.
     pub fn descenders(&self, node: NodeId) -> impl ExactSizeIterator<Item = (Side, NodeId)> {
         let node_length = self.length(node);
 
@@ -109,8 +109,8 @@ impl<N> Graph<N> {
         self.nodes[node.idx()].length
     }
 
-    /// Given a `transform` relative to a `reference` node, computes the node that it's closest to
-    /// and the transform that moves it there
+    /// Given a `transform` relative to a `reference` node, computes the node
+    /// that it's closest to and the transform that moves it there
     pub fn normalize_transform<T: na::RealField>(
         &self,
         mut reference: NodeId,
@@ -150,6 +150,8 @@ impl<N> Graph<N> {
         }
     }
 
+    /// Ensures that all neighbour nodes of a particular node exist in the graph,
+    /// as well as the nodes from the origin to each neighbour node.
     pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
         let v = &self.nodes[node.idx()];
         if let Some(x) = v.neighbors[side as usize] {
