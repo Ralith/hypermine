@@ -71,6 +71,8 @@ impl Dir {
         use Dir::*;
         [Left, Right, Down, Up, Forward, Back].iter().cloned()
     }
+
+    /// Returns the unit vector corresponding to the direction.
     pub fn vector(self) -> na::Vector3<isize> {
         use Dir::*;
         match self {
@@ -84,6 +86,7 @@ impl Dir {
     }
 }
 
+/// Returns a direction's opposite direction.
 impl std::ops::Neg for Dir {
     type Output = Self;
     fn neg(self) -> Self::Output {
@@ -159,6 +162,8 @@ mod tests {
         wiggle(Dir::Back);
 
         let vcycle = |dir| {
+            // Five steps because an edge in the dual honeycomb has
+            // five cubes around itself, not four as in Euclidean space.
             let looped = start
                 .step(&graph, dir)
                 .expect("positive")
