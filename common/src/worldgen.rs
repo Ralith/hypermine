@@ -60,12 +60,10 @@ impl NodeStateRoad {
     }
 }
 
-
-
-pub struct CliffState{
+pub struct CliffState {
     is_cliff: bool,
     generates_cliff: bool,
-    generate_cliff_side: Side,
+    generates_cliff_side: Side,
 }
 
 pub struct NodeState {
@@ -73,9 +71,11 @@ pub struct NodeState {
     surface: Plane<f64>,
     road_state: NodeStateRoad,
     spice: u64,
-    cliff_data: cliffState,
+    cliff_data: CliffState,
     enviro: EnviroFactors,
 }
+
+const A_ADJACENT: [Side; 5] = [Side::B, Side::C, Side::D, Side::E, Side::I];
 
 impl NodeState {
     pub fn root() -> Self {
@@ -84,10 +84,10 @@ impl NodeState {
             surface: Plane::from(Side::A),
             road_state: NodeStateRoad::ROOT,
             spice: 0,
-            cliff_data: CliffState{
-                is_cliff: bool,
-                generates_cliff: bool,
-                generate_cliff_side: Side::A, //dummy
+            cliff_data: CliffState {
+                is_cliff: false,
+                generates_cliff: false,
+                generates_cliff_side: Side::A, // dummy
             },
             enviro: EnviroFactors {
                 max_elevation: 0.0,
@@ -130,6 +130,22 @@ impl NodeState {
 
         let child_kind = self.kind.clone().child(side);
         let child_road = self.road_state.clone().child(side);
+
+        // Cliff stuff
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
+        let generates_cliff = rng.gen_ratio(1, 13);
+        let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
+        let is_cliff = {
+            if self.cliff_data.generates_cliff
+                && (self.cliff_data.generates_cliff_side == side)
+                && (self.kind == Land)
+            {
+                !self.cliff_data.is_cliff
+            } else {
+                self.cliff_data.is_cliff
+            }
+        };
+
         Self {
             kind: child_kind,
             surface: match child_kind {
@@ -138,6 +154,11 @@ impl NodeState {
                 _ => side * self.surface,
             },
             road_state: child_road,
+            cliff_data: CliffState {
+                is_cliff,
+                generates_cliff,
+                generates_cliff_side,
+            },
             spice,
             enviro,
         }
