@@ -178,6 +178,7 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    is_cliff: bool,
     node_spice: u64,
 }
 
@@ -196,6 +197,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            is_cliff: state.cliff_data.is_cliff,
             node_spice: state.spice,
         })
     }
@@ -235,7 +237,13 @@ impl ChunkParams {
                     // otherwise the terracing fails to be (nonstrictly) monotonic
                     // and the terrain gets trenches ringing around its cliffs.
                     let elev_pre_noise =
-                        elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big;
+                        elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big + {
+                            if self.is_cliff {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        };
 
                     // initial value dist_pre_noise is the difference between the voxel's distance
                     // from the guiding plane and the voxel's calculated elev value. It represents
