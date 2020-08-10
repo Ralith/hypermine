@@ -60,13 +60,23 @@ impl NodeStateRoad {
     }
 }
 
+
+
+pub struct CliffState{
+    is_cliff: bool,
+    generates_cliff: bool,
+    generate_cliff_side: Side,
+}
+
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane<f64>,
     road_state: NodeStateRoad,
     spice: u64,
+    cliff_data: cliffState,
     enviro: EnviroFactors,
 }
+
 impl NodeState {
     pub fn root() -> Self {
         Self {
@@ -74,6 +84,11 @@ impl NodeState {
             surface: Plane::from(Side::A),
             road_state: NodeStateRoad::ROOT,
             spice: 0,
+            cliff_data: CliffState{
+                is_cliff: bool,
+                generates_cliff: bool,
+                generate_cliff_side: Side::A, //dummy
+            },
             enviro: EnviroFactors {
                 max_elevation: 0.0,
                 temperature: 0.0,
@@ -115,7 +130,6 @@ impl NodeState {
 
         let child_kind = self.kind.clone().child(side);
         let child_road = self.road_state.clone().child(side);
-
         Self {
             kind: child_kind,
             surface: match child_kind {
