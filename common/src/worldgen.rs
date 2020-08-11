@@ -111,40 +111,57 @@ impl NodeState {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
-        let enviro = match (d.next(), d.next()) {
+
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
+        let generates_cliff = rng.gen_ratio(1, 3);
+        let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
+
+        let enviro;
+        let cliff_data;
+        match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = &graph.get(parent_node).as_ref().unwrap().state;
-                EnviroFactors::varied_from(parent_state.enviro, spice)
+                enviro = EnviroFactors::varied_from(parent_state.enviro, spice);
+                let is_cliff = {
+                    if parent_state.cliff_data.generates_cliff
+                        && (parent_state.cliff_data.generates_cliff_side == side)
+                        && (parent_state.kind == Land)
+                    {
+                        !parent_state.cliff_data.is_cliff
+                    } else {
+                        parent_state.cliff_data.is_cliff
+                    }
+                };
+                cliff_data = CliffState {
+                    is_cliff,
+                    generates_cliff,
+                    generates_cliff_side,
+                };
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
                     .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
                     .unwrap();
                 let ab_state = &graph.get(ab_node).as_ref().unwrap().state;
-                EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
+                enviro =
+                    EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro);
+
+                let is_cliff = a_state.cliff_data.is_cliff
+                    ^ b_state.cliff_data.is_cliff
+                    ^ ab_state.cliff_data.is_cliff;
+                cliff_data = CliffState {
+                    is_cliff,
+                    generates_cliff,
+                    generates_cliff_side,
+                };
             }
             _ => unreachable!(),
         };
 
         let child_kind = self.kind.clone().child(side);
         let child_road = self.road_state.clone().child(side);
-
-        // Cliff stuff
-        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
-        let generates_cliff = rng.gen_ratio(1, 13);
-        let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
-        let is_cliff = {
-            if self.cliff_data.generates_cliff
-                && (self.cliff_data.generates_cliff_side == side)
-                && (self.kind == Land)
-            {
-                !self.cliff_data.is_cliff
-            } else {
-                self.cliff_data.is_cliff
-            }
-        };
 
         Self {
             kind: child_kind,
@@ -154,11 +171,7 @@ impl NodeState {
                 _ => side * self.surface,
             },
             road_state: child_road,
-            cliff_data: CliffState {
-                is_cliff,
-                generates_cliff,
-                generates_cliff_side,
-            },
+            cliff_data,
             spice,
             enviro,
         }
@@ -239,7 +252,7 @@ impl ChunkParams {
                     let elev_pre_noise =
                         elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big + {
                             if self.is_cliff {
-                                1.0
+                                14.0
                             } else {
                                 0.0
                             }
@@ -448,7 +461,7 @@ impl ChunkParams {
         // Maximum difference between elevations at the center of a chunk and any other point in the chunk
         // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
         // empirically.
-        const ELEVATION_MARGIN: f64 = 0.7;
+        /*const ELEVATION_MARGIN: f64 = 0.7;
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
@@ -463,7 +476,7 @@ impl ChunkParams {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Dirt);
-        }
+        }*/
 
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
