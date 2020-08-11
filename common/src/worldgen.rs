@@ -113,7 +113,6 @@ impl NodeState {
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
 
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
-        let generates_cliff = rng.gen_ratio(1, 3);
         let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
 
         let enviro;
@@ -134,6 +133,12 @@ impl NodeState {
                         parent_state.cliff_data.is_cliff
                     }
                 };
+
+                let generates_cliff = match is_cliff {
+                    true => rng.gen_ratio(4, 5),
+                    false => rng.gen_ratio(1, 3),
+                };
+
                 cliff_data = CliffState {
                     is_cliff,
                     generates_cliff,
@@ -151,6 +156,7 @@ impl NodeState {
                 let is_cliff = a_state.cliff_data.is_cliff
                     ^ b_state.cliff_data.is_cliff
                     ^ ab_state.cliff_data.is_cliff;
+                let generates_cliff = rng.gen_ratio(1, 3);
                 cliff_data = CliffState {
                     is_cliff,
                     generates_cliff,
