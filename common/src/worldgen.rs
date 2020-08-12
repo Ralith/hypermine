@@ -184,6 +184,15 @@ impl NodeState {
     }
 }
 
+/// Returns the amount of elevation to add based on there being a cliff
+fn cliff_boost(is_cliff: bool) -> f64 {
+    if is_cliff {
+        14.0
+    } else {
+        0.0
+    }
+}
+
 /// Data needed to generate a chunk
 pub struct ChunkParams {
     /// Number of voxels along an edge
@@ -255,14 +264,10 @@ impl ChunkParams {
                     // Small and big terracing effects must not sum to more than 1,
                     // otherwise the terracing fails to be (nonstrictly) monotonic
                     // and the terrain gets trenches ringing around its cliffs.
-                    let elev_pre_noise =
-                        elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big + {
-                            if self.is_cliff {
-                                14.0
-                            } else {
-                                0.0
-                            }
-                        };
+                    let elev_pre_noise = elev_pre_terracing
+                        + 0.6 * terracing_small
+                        + 0.4 * terracing_big
+                        + cliff_boost(self.is_cliff);
 
                     // initial value dist_pre_noise is the difference between the voxel's distance
                     // from the guiding plane and the voxel's calculated elev value. It represents
@@ -467,22 +472,26 @@ impl ChunkParams {
         // Maximum difference between elevations at the center of a chunk and any other point in the chunk
         // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
         // empirically.
-        /*const ELEVATION_MARGIN: f64 = 0.7;
+        const ELEVATION_MARGIN: f64 = 0.7;
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
-        if (center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS)
+        if (center_elevation - ELEVATION_MARGIN
+            > (me_max + cliff_boost(self.is_cliff)) / TERRAIN_SMOOTHNESS)
             && !(self.is_road || self.is_road_support)
         {
             // The whole chunk is above ground and not part of the road
             return VoxelData::Solid(Material::Void);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS) && !self.is_road {
+        if (center_elevation + ELEVATION_MARGIN
+            < (me_min + cliff_boost(self.is_cliff)) / TERRAIN_SMOOTHNESS)
+            && !self.is_road
+        {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Dirt);
-        }*/
+        }
 
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
