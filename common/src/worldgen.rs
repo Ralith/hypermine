@@ -184,6 +184,7 @@ impl NodeState {
     }
 }
 
+
 struct VoxelCoords {
     counter: u32,
     dimension: u8,
@@ -216,6 +217,16 @@ impl Iterator for VoxelCoords {
 
         self.counter += 1;
         Some(result)
+    }
+}
+
+
+/// Returns the amount of elevation to add based on there being a cliff
+fn cliff_boost(is_cliff: bool) -> f64 {
+    if is_cliff {
+        14.0
+    } else {
+        0.0
     }
 }
 
@@ -278,14 +289,18 @@ impl ChunkParams {
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
-        if (center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS)
+        if (center_elevation - ELEVATION_MARGIN
+            > (me_max + cliff_boost(self.is_cliff)) / TERRAIN_SMOOTHNESS)
             && !(self.is_road || self.is_road_support)
         {
             // The whole chunk is above ground and not part of the road
             return VoxelData::Solid(Material::Void);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS) && !self.is_road {
+        if (center_elevation + ELEVATION_MARGIN
+            < (me_min + cliff_boost(self.is_cliff)) / TERRAIN_SMOOTHNESS)
+            && !self.is_road
+        {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Dirt);
