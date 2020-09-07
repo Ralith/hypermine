@@ -111,11 +111,11 @@ impl NodeState {
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
 
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
-        let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
+        //let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
 
         let enviro;
-        let is_plateau;
-        let mut inherited_cliff_sides = [None; 2];
+        let is_plateau: bool;
+        let mut inherited_cliff_sides;
         match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
@@ -124,17 +124,17 @@ impl NodeState {
                 enviro = EnviroFactors::varied_from(parent_state.enviro, spice);
 
                 is_plateau = {
+                    let mut inversion = false;
                     for x in &parent_state.cliff_data.adjacent_cliffs {
-                        if x.unwrap_or_else(Side::A) == parent_state {
-                            // A never equal
-                            !parent_state.cliff_data.is_plateau
+                        if parent_side == x.unwrap() {
+                            inversion = true;
                         }
                     }
-                    parent_state.cliff_data.is_plateau
+                    parent_state.cliff_data.is_plateau^inversion
                 };
 
-                // only adjacent sides will inheret the cliff
-                inherited_cliff_sides = self.get_cliff_inheritance(parent_state, parent_side);
+                // only adjacent sides will inherit the cliff
+                inherited_cliff_sides = NodeState::get_cliff_inheritance(parent_state, parent_side);
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
@@ -148,16 +148,16 @@ impl NodeState {
                     ^ b_state.cliff_data.is_plateau
                     ^ ab_state.cliff_data.is_plateau;
 
-                let inherited_cliffs_a = self.get_cliff_inheritance(a_state, a_side);
-                let inherited_cliffs_b = self.get_cliff_inheritance(b_state, b_side);
+                let inherited_cliffs_a = NodeState::get_cliff_inheritance(a_state, a_side);
+                let inherited_cliffs_b = NodeState::get_cliff_inheritance(b_state, b_side);
 
-                inherited_cliff_sides = self.cliff_union(inherited_cliffs_a, inherited_cliffs_b);
+                inherited_cliff_sides = NodeState::cliff_union(inherited_cliffs_a, inherited_cliffs_b);
             }
             _ => unreachable!(),
         };
 
         let adjacent_cliffs = inherited_cliff_sides; //temporary
-        let cliff_data {
+        let cliff_data = CliffState {
             is_plateau,
             adjacent_cliffs,
         };
@@ -179,13 +179,13 @@ impl NodeState {
         }
     }
 
-    fn get_cliff_inheritance(state: NodeState, side: Side) -> [Option<Side>; 2] {
+    fn get_cliff_inheritance(state: &NodeState, side: Side) -> [Option<Side>; 2] {
         let mut return_value = state.cliff_data.adjacent_cliffs;
-        for x in &return_value {
-            if x != None {
-                let S = x.unwrap_or_else(Side::A);
+        for x in return_value.iter_mut() {
+            if !x.is_none() {
+                let S = x.unwrap();
                 if (S != side) && (!S.adjacent_to(side)) {
-                    x = None
+                    *x = None;
                 }
             }
         }
@@ -194,11 +194,11 @@ impl NodeState {
 
     fn cliff_union(a: [Option<Side>; 2], b: [Option<Side>; 2]) -> [Option<Side>; 2] {
         let mut return_value = a;
-        for x in &b {
-            if x != None {
+        for x in b.iter() {
+            if !x.is_none() {
                 let mut cont = true;
                 //check for duplicates first
-                for y in &return_value {
+                for y in return_value.iter_mut() {
                     if y == x {
                         cont = false;
                         break;
@@ -206,9 +206,9 @@ impl NodeState {
                 }
                 //then check for empty spots
                 if cont {
-                    for y in &return_value {
-                        if y == None {
-                            y = x;
+                    for y in return_value.iter_mut() {
+                        if y.is_none() {
+                            *y = x.clone();
                             break;
                         }
                     }
@@ -260,7 +260,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            is_cliff: state.cliff_data.is_cliff,
+            is_cliff: state.cliff_data.is_plateau,
             node_spice: state.spice,
         })
     }
