@@ -111,11 +111,13 @@ impl NodeState {
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
 
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
-        //let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
+                                                                    //let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
 
         let enviro;
         let is_plateau: bool;
         let mut inherited_cliff_sides;
+        let mut candidate_new_sides: Vec<Side> = Vec::new();
+
         match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
@@ -126,15 +128,21 @@ impl NodeState {
                 is_plateau = {
                     let mut inversion = false;
                     for x in &parent_state.cliff_data.adjacent_cliffs {
-                        if parent_side == x.unwrap() {
+                        if x.is_some() && parent_side == x.unwrap() {
                             inversion = true;
                         }
                     }
-                    parent_state.cliff_data.is_plateau^inversion
+                    parent_state.cliff_data.is_plateau ^ inversion
                 };
 
                 // only adjacent sides will inherit the cliff
                 inherited_cliff_sides = NodeState::get_cliff_inheritance(parent_state, parent_side);
+
+                for s in &A_ADJACENT {
+                    if Self::valid_side(*s, inherited_cliff_sides, parent_side) {
+                        candidate_new_sides.push(*s);
+                    }
+                }
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
@@ -151,12 +159,20 @@ impl NodeState {
                 let inherited_cliffs_a = NodeState::get_cliff_inheritance(a_state, a_side);
                 let inherited_cliffs_b = NodeState::get_cliff_inheritance(b_state, b_side);
 
-                inherited_cliff_sides = NodeState::cliff_union(inherited_cliffs_a, inherited_cliffs_b);
+                inherited_cliff_sides =
+                    NodeState::cliff_union(inherited_cliffs_a, inherited_cliffs_b);
+
+                for s in &A_ADJACENT {
+                    if Self::valid_side2(*s, inherited_cliff_sides, a_side, b_side) {
+                        candidate_new_sides.push(*s);
+                    }
+                }
             }
             _ => unreachable!(),
         };
 
-        let adjacent_cliffs = inherited_cliff_sides; //temporary
+        let adjacent_cliffs = { inherited_cliff_sides };
+
         let cliff_data = CliffState {
             is_plateau,
             adjacent_cliffs,
@@ -216,6 +232,35 @@ impl NodeState {
             }
         }
         return_value
+    }
+
+    fn valid_side(test_value: Side, inherited_sides: [Option<Side>; 2], parent1: Side) -> bool {
+        for x in &inherited_sides {
+            if x.is_some() {
+                let v = x.unwrap();
+                if (v == test_value) || v.adjacent_to(test_value) {
+                    return false;
+                }
+            }
+        }
+        if (parent1 == test_value) || parent1.adjacent_to(test_value) {
+            return false;
+        }
+
+        return true;
+    }
+
+    fn valid_side2(
+        test_value: Side,
+        inherited_sides: [Option<Side>; 2],
+        parent1: Side,
+        parent2: Side,
+    ) -> bool {
+        if !Self::valid_side(test_value, inherited_sides, parent1) {
+            return false;
+        }
+
+        !((parent1 == test_value) || parent1.adjacent_to(test_value))
     }
 }
 
