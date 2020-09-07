@@ -171,7 +171,27 @@ impl NodeState {
             _ => unreachable!(),
         };
 
-        let adjacent_cliffs = { inherited_cliff_sides };
+        let adjacent_cliffs = match candidate_new_sides.len() {
+            0 => inherited_cliff_sides,
+            _ => {
+                if rng.gen_ratio(
+                    1,
+                    match is_plateau {
+                        true => 25, //In the actual game this would be the smaller value
+                        false => 6,
+                    },
+                ) {
+                    let index_to_add = rng.gen_range(0, candidate_new_sides.len());
+                    for y in inherited_cliff_sides.iter_mut() {
+                        if y.is_none() {
+                            *y = Some(candidate_new_sides[index_to_add]);
+                            break;
+                        }
+                    }
+                }
+                inherited_cliff_sides
+            }
+        };
 
         let cliff_data = CliffState {
             is_plateau,
@@ -199,8 +219,8 @@ impl NodeState {
         let mut return_value = state.cliff_data.adjacent_cliffs;
         for x in return_value.iter_mut() {
             if !x.is_none() {
-                let S = x.unwrap();
-                if (S != side) && (!S.adjacent_to(side)) {
+                let s = x.unwrap();
+                if (s != side) && (!s.adjacent_to(side)) {
                     *x = None;
                 }
             }
@@ -247,7 +267,7 @@ impl NodeState {
             return false;
         }
 
-        return true;
+        true
     }
 
     fn valid_side2(
@@ -260,14 +280,14 @@ impl NodeState {
             return false;
         }
 
-        !((parent1 == test_value) || parent1.adjacent_to(test_value))
+        !((parent2 == test_value) || parent2.adjacent_to(test_value))
     }
 }
 
 /// Returns the amount of elevation to add based on there being a cliff
 fn cliff_boost(is_cliff: bool) -> f64 {
     if is_cliff {
-        14.0
+        20.0
     } else {
         0.0
     }
@@ -286,7 +306,8 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
-    is_cliff: bool,
+    is_plateau: bool,
+    is_cliff_adjacent: bool,
     node_spice: u64,
 }
 
@@ -305,7 +326,8 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            is_cliff: state.cliff_data.is_plateau,
+            is_plateau: state.cliff_data.is_plateau,
+            is_cliff_adjacent: state.cliff_data.adjacent_cliffs != [None, None],
             node_spice: state.spice,
         })
     }
@@ -347,7 +369,7 @@ impl ChunkParams {
                     let elev_pre_noise = elev_pre_terracing
                         + 0.6 * terracing_small
                         + 0.4 * terracing_big
-                        + cliff_boost(self.is_cliff);
+                        + cliff_boost(self.is_plateau);
 
                     // initial value dist_pre_noise is the difference between the voxel's distance
                     // from the guiding plane and the voxel's calculated elev value. It represents
@@ -557,7 +579,7 @@ impl ChunkParams {
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
         if (center_elevation - ELEVATION_MARGIN
-            > (me_max + cliff_boost(self.is_cliff)) / TERRAIN_SMOOTHNESS)
+            > (me_max + cliff_boost(self.is_plateau)) / TERRAIN_SMOOTHNESS)
             && !(self.is_road || self.is_road_support)
         {
             // The whole chunk is above ground and not part of the road
@@ -565,7 +587,8 @@ impl ChunkParams {
         }
 
         if (center_elevation + ELEVATION_MARGIN
-            < (me_min + cliff_boost(self.is_cliff)) / TERRAIN_SMOOTHNESS)
+            < (me_min + cliff_boost(self.is_plateau) * (!self.is_cliff_adjacent as i32 as f64))
+                / TERRAIN_SMOOTHNESS)
             && !self.is_road
         {
             // The whole chunk is underground
