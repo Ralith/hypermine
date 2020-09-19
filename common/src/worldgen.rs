@@ -130,6 +130,61 @@ impl NodeState {
     }
 }
 
+type VoxelCoords = (u8, u8, u8);
+
+struct VoxelIterable {
+    coords: VoxelCoords,
+    dimension: u8,
+}
+
+impl VoxelIterable {
+    fn new(dimension: u8) -> Self {
+        VoxelIterable {
+            coords: (0, 0, 0),
+            dimension: dimension - 1,
+        }
+        .into_iter()
+    }
+}
+
+impl Iterator for VoxelIterable {
+    type Item = VoxelCoords;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (x, y, z) = self.coords;
+        let mut x_new = x;
+        let mut y_new = y;
+        let z_new;
+
+        let mut finished = false;
+
+        if z >= self.dimension {
+            z_new = 0;
+            if y >= self.dimension {
+                y_new = 0;
+                if x >= self.dimension {
+                    x_new = 0;
+                    finished = true;
+                } else {
+                    x_new = x + 1;
+                }
+            } else {
+                y_new = y + 1;
+            }
+        } else {
+            z_new = z + 1;
+        };
+
+        self.coords = (x_new, y_new, z_new);
+
+        if finished {
+            None
+        } else {
+            Some((x, y, z))
+        }
+    }
+}
+
 /// Data needed to generate a chunk
 pub struct ChunkParams {
     /// Number of voxels along an edge
@@ -174,60 +229,51 @@ impl ChunkParams {
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         let normal = Normal::new(0.0, 0.03);
 
-        for z in 0..self.dimension {
-            for y in 0..self.dimension {
-                for x in 0..self.dimension {
-                    let coords = na::Vector3::new(x, y, z);
-                    let center = voxel_center(self.dimension, coords);
-                    let cube_coords = center * 0.5;
+        for (x, y, z) in &mut VoxelIterable::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let center = voxel_center(self.dimension, coords);
+            let cube_coords = center * 0.5;
 
-                    let rain =
-                        trilerp(&self.env.rainfalls, cube_coords) + rng.sample(&normal.unwrap());
-                    let temp =
-                        trilerp(&self.env.temperatures, cube_coords) + rng.sample(&normal.unwrap());
+            let rain = trilerp(&self.env.rainfalls, cube_coords) + rng.sample(&normal.unwrap());
+            let temp = trilerp(&self.env.temperatures, cube_coords) + rng.sample(&normal.unwrap());
 
-                    // elev is calculated in multiple steps. The initial value elev_pre_terracing
-                    // is used to calculate elev_pre_noise which is used to calculate elev.
-                    let elev_pre_terracing = trilerp(&self.env.max_elevations, cube_coords);
-                    let block = trilerp(&self.env.blockinesses, cube_coords);
-                    let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
-                    let strength = 0.4 / (1.0 + voxel_elevation.powi(2));
-                    let terracing_small =
-                        terracing_diff(elev_pre_terracing, block, 5.0, strength, 2.0);
-                    let terracing_big =
-                        terracing_diff(elev_pre_terracing, block, 15.0, strength, -1.0);
-                    // Small and big terracing effects must not sum to more than 1,
-                    // otherwise the terracing fails to be (nonstrictly) monotonic
-                    // and the terrain gets trenches ringing around its cliffs.
-                    let elev_pre_noise =
-                        elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big;
+            // elev is calculated in multiple steps. The initial value elev_pre_terracing
+            // is used to calculate elev_pre_noise which is used to calculate elev.
+            let elev_pre_terracing = trilerp(&self.env.max_elevations, cube_coords);
+            let block = trilerp(&self.env.blockinesses, cube_coords);
+            let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
+            let strength = 0.4 / (1.0 + voxel_elevation.powi(2));
+            let terracing_small = terracing_diff(elev_pre_terracing, block, 5.0, strength, 2.0);
+            let terracing_big = terracing_diff(elev_pre_terracing, block, 15.0, strength, -1.0);
+            // Small and big terracing effects must not sum to more than 1,
+            // otherwise the terracing fails to be (nonstrictly) monotonic
+            // and the terrain gets trenches ringing around its cliffs.
+            let elev_pre_noise = elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big;
 
-                    // initial value dist_pre_noise is the difference between the voxel's distance
-                    // from the guiding plane and the voxel's calculated elev value. It represents
-                    // how far from the terrain surface a voxel is.
-                    let dist_pre_noise = elev_pre_noise / TERRAIN_SMOOTHNESS - voxel_elevation;
+            // initial value dist_pre_noise is the difference between the voxel's distance
+            // from the guiding plane and the voxel's calculated elev value. It represents
+            // how far from the terrain surface a voxel is.
+            let dist_pre_noise = elev_pre_noise / TERRAIN_SMOOTHNESS - voxel_elevation;
 
-                    // adding noise allows interfaces between strata to be rough
-                    let elev = elev_pre_noise + TERRAIN_SMOOTHNESS * rng.sample(&normal.unwrap());
+            // adding noise allows interfaces between strata to be rough
+            let elev = elev_pre_noise + TERRAIN_SMOOTHNESS * rng.sample(&normal.unwrap());
 
-                    // Final value of dist is calculated in this roundabout way for greater control
-                    // over how noise in elev affects dist.
-                    let dist = if dist_pre_noise > 0.0 {
-                        // The .max(0.0) keeps the top of the ground smooth
-                        // while still allowing the surface/general terrain interface to be rough
-                        (elev / TERRAIN_SMOOTHNESS - voxel_elevation).max(0.0)
-                    } else {
-                        // Distance not updated for updated elevation if distance was originally
-                        // negative. This ensures that no voxels that would have otherwise
-                        // been void are changed to a material---so no floating dirt blocks.
-                        dist_pre_noise
-                    };
+            // Final value of dist is calculated in this roundabout way for greater control
+            // over how noise in elev affects dist.
+            let dist = if dist_pre_noise > 0.0 {
+                // The .max(0.0) keeps the top of the ground smooth
+                // while still allowing the surface/general terrain interface to be rough
+                (elev / TERRAIN_SMOOTHNESS - voxel_elevation).max(0.0)
+            } else {
+                // Distance not updated for updated elevation if distance was originally
+                // negative. This ensures that no voxels that would have otherwise
+                // been void are changed to a material---so no floating dirt blocks.
+                dist_pre_noise
+            };
 
-                    if dist >= 0.0 {
-                        let voxel_mat = VoronoiInfo::terraingen_voronoi(elev, rain, temp, dist);
-                        voxels.data_mut(self.dimension)[index(self.dimension, coords)] = voxel_mat;
-                    }
-                }
+            if dist >= 0.0 {
+                let voxel_mat = VoronoiInfo::terraingen_voronoi(elev, rain, temp, dist);
+                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = voxel_mat;
             }
         }
     }
@@ -236,33 +282,29 @@ impl ChunkParams {
     fn generate_road(&self, voxels: &mut VoxelData) {
         let plane = -Plane::from(Side::B);
 
-        for z in 0..self.dimension {
-            for y in 0..self.dimension {
-                for x in 0..self.dimension {
-                    let coords = na::Vector3::new(x, y, z);
-                    let center = voxel_center(self.dimension, coords);
-                    let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
-                    let elevation = self.surface.distance_to_chunk(self.chunk, &center);
+        for (x, y, z) in &mut VoxelIterable::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let center = voxel_center(self.dimension, coords);
+            let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
+            let elevation = self.surface.distance_to_chunk(self.chunk, &center);
 
-                    if horizontal_distance > 0.3 || elevation > 0.9 {
-                        continue;
-                    }
+            if horizontal_distance > 0.3 || elevation > 0.9 {
+                continue;
+            }
 
-                    let mut mat: Material = Material::Void;
+            let mut mat: Material = Material::Void;
 
-                    if elevation < 0.075 {
-                        if horizontal_distance < 0.15 {
-                            // Inner
-                            mat = Material::WhiteBrick;
-                        } else {
-                            // Outer
-                            mat = Material::GreyBrick;
-                        }
-                    }
-
-                    voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
+            if elevation < 0.075 {
+                if horizontal_distance < 0.15 {
+                    // Inner
+                    mat = Material::WhiteBrick;
+                } else {
+                    // Outer
+                    mat = Material::GreyBrick;
                 }
             }
+
+            voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
         }
     }
 
@@ -270,27 +312,23 @@ impl ChunkParams {
     fn generate_road_support(&self, voxels: &mut VoxelData) {
         let plane = -Plane::from(Side::B);
 
-        for z in 0..self.dimension {
-            for y in 0..self.dimension {
-                for x in 0..self.dimension {
-                    let coords = na::Vector3::new(x, y, z);
-                    let center = voxel_center(self.dimension, coords);
-                    let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
+        for (x, y, z) in &mut VoxelIterable::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let center = voxel_center(self.dimension, coords);
+            let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
 
-                    if horizontal_distance > 0.3 {
-                        continue;
-                    }
+            if horizontal_distance > 0.3 {
+                continue;
+            }
 
-                    let mat = if self.trussing_at(coords) {
-                        Material::WoodPlanks
-                    } else {
-                        Material::Void
-                    };
+            let mat = if self.trussing_at(coords) {
+                Material::WoodPlanks
+            } else {
+                Material::Void
+            };
 
-                    if mat != Material::Void {
-                        voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
-                    }
-                }
+            if mat != Material::Void {
+                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = mat;
             }
         }
     }
@@ -799,5 +837,17 @@ mod test {
             ),
             epsilon = 1e-8,
         );
+    }
+
+    #[test]
+    fn check_voxel_iterable() {
+        let dimension = 3;
+        let mut counter: u8 = 0;
+
+        for (x, y, z) in &mut VoxelIterable::new(dimension) {
+            let index: u8 = z + y * dimension + x * dimension.pow(2);
+            assert!(counter == index);
+            counter += 1;
+        }
     }
 }

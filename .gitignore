@@ -5,3 +5,7 @@ Cargo.lock
 # IDEA workspace stuff
 /*.iml
 /.idea
+
+/.vscode/launch.json
+
+/tarpaulin-report.html
