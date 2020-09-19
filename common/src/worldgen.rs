@@ -130,57 +130,38 @@ impl NodeState {
     }
 }
 
-type VoxelCoords = (u8, u8, u8);
-
-struct VoxelIterable {
-    coords: VoxelCoords,
+struct VoxelCoords {
+    counter: u32,
     dimension: u8,
 }
 
-impl VoxelIterable {
+impl VoxelCoords {
     fn new(dimension: u8) -> Self {
-        VoxelIterable {
-            coords: (0, 0, 0),
-            dimension: dimension - 1,
+        VoxelCoords {
+            counter: 0,
+            dimension,
         }
     }
 }
 
-impl Iterator for VoxelIterable {
-    type Item = VoxelCoords;
+impl Iterator for VoxelCoords {
+    type Item = (u8, u8, u8);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (x, y, z) = self.coords;
-        let mut x_new = x;
-        let mut y_new = y;
-        let z_new;
+        let dim = u32::from(self.dimension);
 
-        let mut finished = false;
-
-        if z >= self.dimension {
-            z_new = 0;
-            if y >= self.dimension {
-                y_new = 0;
-                if x >= self.dimension {
-                    x_new = 0;
-                    finished = true;
-                } else {
-                    x_new = x + 1;
-                }
-            } else {
-                y_new = y + 1;
-            }
-        } else {
-            z_new = z + 1;
-        };
-
-        self.coords = (x_new, y_new, z_new);
-
-        if finished {
-            None
-        } else {
-            Some((x, y, z))
+        if self.counter == dim.pow(3) {
+            return None;
         }
+
+        let result = (
+            (self.counter / dim.pow(2)) as u8,
+            ((self.counter / dim) % dim) as u8,
+            (self.counter % dim) as u8,
+        );
+
+        self.counter += 1;
+        Some(result)
     }
 }
 
@@ -279,7 +260,7 @@ impl ChunkParams {
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         let normal = Normal::new(0.0, 0.03);
 
-        for (x, y, z) in &mut VoxelIterable::new(self.dimension) {
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
             let cube_coords = center * 0.5;
@@ -332,7 +313,7 @@ impl ChunkParams {
     fn generate_road(&self, voxels: &mut VoxelData) {
         let plane = -Plane::from(Side::B);
 
-        for (x, y, z) in &mut VoxelIterable::new(self.dimension) {
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
             let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
@@ -362,7 +343,7 @@ impl ChunkParams {
     fn generate_road_support(&self, voxels: &mut VoxelData) {
         let plane = -Plane::from(Side::B);
 
-        for (x, y, z) in &mut VoxelIterable::new(self.dimension) {
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
             let horizontal_distance = plane.distance_to_chunk(self.chunk, &center);
@@ -844,11 +825,11 @@ mod test {
 
     #[test]
     fn check_voxel_iterable() {
-        let dimension = 3;
+        let dimension = 12;
 
-        for (counter, (x, y, z)) in (&mut VoxelIterable::new(dimension)).enumerate() {
-            let index = z + y * dimension + x * dimension.pow(2);
-            assert!(counter == (index as usize));
+        for (counter, (x, y, z)) in (VoxelCoords::new(dimension as u8)).enumerate() {
+            let index = z as usize + y as usize * dimension + x as usize * dimension.pow(2);
+            assert!(counter == index);
         }
     }
 }
