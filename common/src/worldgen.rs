@@ -244,7 +244,7 @@ impl NodeState {
                 if cont {
                     for y in return_value.iter_mut() {
                         if y.is_none() {
-                            *y = x.clone();
+                            *y = Some(x.clone().unwrap());
                             break;
                         }
                     }
