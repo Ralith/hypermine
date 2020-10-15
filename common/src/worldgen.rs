@@ -284,7 +284,6 @@ impl NodeState {
     }
 }
 
-
 struct VoxelCoords {
     counter: u32,
     dimension: u8,
@@ -319,7 +318,6 @@ impl Iterator for VoxelCoords {
         Some(result)
     }
 }
-
 
 /// Returns the amount of elevation to add based on there being a cliff
 fn cliff_boost(is_cliff: bool) -> f64 {
@@ -401,7 +399,7 @@ impl ChunkParams {
 
         if (center_elevation + ELEVATION_MARGIN
             < (me_min + cliff_boost(self.is_plateau) * (!self.is_cliff_adjacent as i32 as f64))
-            / TERRAIN_SMOOTHNESS)
+                / TERRAIN_SMOOTHNESS)
             && !self.is_road
         {
             // The whole chunk is underground
@@ -481,7 +479,6 @@ impl ChunkParams {
             if dist >= 0.0 {
                 let voxel_mat = VoronoiInfo::terraingen_voronoi(elev, rain, temp, dist);
                 voxels.data_mut(self.dimension)[index(self.dimension, coords)] = voxel_mat;
-
             }
         }
     }
