@@ -60,13 +60,23 @@ impl NodeStateRoad {
     }
 }
 
+pub struct CliffState {
+    is_cliff: bool,
+    generates_cliff: bool,
+    generates_cliff_side: Side,
+}
+
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane<f64>,
     road_state: NodeStateRoad,
     spice: u64,
+    cliff_data: CliffState,
     enviro: EnviroFactors,
 }
+
+const A_ADJACENT: [Side; 5] = [Side::B, Side::C, Side::D, Side::E, Side::I];
+
 impl NodeState {
     pub fn root() -> Self {
         Self {
@@ -74,6 +84,11 @@ impl NodeState {
             surface: Plane::from(Side::A),
             road_state: NodeStateRoad::ROOT,
             spice: 0,
+            cliff_data: CliffState {
+                is_cliff: false,
+                generates_cliff: false,
+                generates_cliff_side: Side::A, // dummy
+            },
             enviro: EnviroFactors {
                 max_elevation: 0.0,
                 temperature: 0.0,
@@ -96,19 +111,57 @@ impl NodeState {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
-        let enviro = match (d.next(), d.next()) {
+
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
+        let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
+
+        let enviro;
+        let cliff_data;
+        match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = &graph.get(parent_node).as_ref().unwrap().state;
-                EnviroFactors::varied_from(parent_state.enviro, spice)
+                enviro = EnviroFactors::varied_from(parent_state.enviro, spice);
+                let is_cliff = {
+                    if parent_state.cliff_data.generates_cliff
+                        && (parent_state.cliff_data.generates_cliff_side == side)
+                        && (parent_state.kind == Land)
+                    {
+                        !parent_state.cliff_data.is_cliff
+                    } else {
+                        parent_state.cliff_data.is_cliff
+                    }
+                };
+
+                let generates_cliff = match is_cliff {
+                    true => rng.gen_ratio(4, 5),
+                    false => rng.gen_ratio(1, 3),
+                };
+
+                cliff_data = CliffState {
+                    is_cliff,
+                    generates_cliff,
+                    generates_cliff_side,
+                };
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
                     .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
                     .unwrap();
                 let ab_state = &graph.get(ab_node).as_ref().unwrap().state;
-                EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
+                enviro =
+                    EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro);
+
+                let is_cliff = a_state.cliff_data.is_cliff
+                    ^ b_state.cliff_data.is_cliff
+                    ^ ab_state.cliff_data.is_cliff;
+                let generates_cliff = rng.gen_ratio(1, 3);
+                cliff_data = CliffState {
+                    is_cliff,
+                    generates_cliff,
+                    generates_cliff_side,
+                };
             }
             _ => unreachable!(),
         };
@@ -124,6 +177,7 @@ impl NodeState {
                 _ => side * self.surface,
             },
             road_state: child_road,
+            cliff_data,
             spice,
             enviro,
         }
@@ -179,6 +233,7 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    is_cliff: bool,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
 }
@@ -198,6 +253,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            is_cliff: state.cliff_data.is_cliff,
             node_spice: state.spice,
         })
     }
@@ -259,7 +315,6 @@ impl ChunkParams {
     /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         let normal = Normal::new(0.0, 0.03);
-
         for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
@@ -279,7 +334,14 @@ impl ChunkParams {
             // Small and big terracing effects must not sum to more than 1,
             // otherwise the terracing fails to be (nonstrictly) monotonic
             // and the terrain gets trenches ringing around its cliffs.
-            let elev_pre_noise = elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big;
+            let elev_pre_noise =
+                elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big + {
+                    if self.is_cliff {
+                        14.0
+                    } else {
+                        0.0
+                    }
+                };
 
             // initial value dist_pre_noise is the difference between the voxel's distance
             // from the guiding plane and the voxel's calculated elev value. It represents
@@ -305,6 +367,7 @@ impl ChunkParams {
             if dist >= 0.0 {
                 let voxel_mat = VoronoiInfo::terraingen_voronoi(elev, rain, temp, dist);
                 voxels.data_mut(self.dimension)[index(self.dimension, coords)] = voxel_mat;
+
             }
         }
     }
@@ -424,7 +487,6 @@ impl ChunkParams {
             }
         }
     }
-
     /// Provides information on the type of material in a voxel's six neighbours
     fn voxel_neighbors(&self, coords: na::Vector3<u8>, voxels: &VoxelData) -> [NeighborData; 6] {
         [
