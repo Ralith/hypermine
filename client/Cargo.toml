@@ -31,7 +31,7 @@ quinn = "0.6.1"
 futures-util = "0.3.1"
 rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
 webpki = "0.21.0"
-hecs = "0.2.9"
+hecs = "0.3.0"
 rcgen = { version = "0.8.2", default-features = false }
 memoffset = "0.6"
 gltf = { version = "0.15.2", default-features = false, features = ["utils"] }
