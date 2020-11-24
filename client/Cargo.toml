@@ -22,7 +22,7 @@ na = { package = "nalgebra", version = "0.19" }
 tokio = { version = "0.2.13", features = ["rt-threaded", "sync", "macros"] }
 png = "0.16.3"
 anyhow = "1.0.26"
-whoami = "0.8.1"
+whoami = "1.0.0"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
 fxhash = "0.2.1"
