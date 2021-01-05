@@ -20,7 +20,7 @@ rcgen = { version = "0.8.2", default-features = false }
 hostname = "0.3.0"
 futures = "0.3.1"
 hecs = "0.3.0"
-rand = { version = "0.7.2", features = [ "small_rng" ] }
+rand = { version = "0.8.1", features = [ "small_rng" ] }
 fxhash = "0.2.1"
 na = { package = "nalgebra", version = "0.19" }
 slotmap = "0.4.0"

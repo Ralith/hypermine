@@ -19,7 +19,7 @@ fxhash = "0.2.1"
 tracing = "0.1.10"
 hecs = "0.3.0"
 tracing-subscriber = { version = "0.2.5", default-features = false, features = ["env-filter", "smallvec", "fmt", "ansi", "chrono", "parking_lot"] }
-rand = "0.7.3"
+rand = "0.8.1"
 rand_pcg = "0.2.1"
 rand_distr = "0.3.0"
 
