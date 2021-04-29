@@ -24,4 +24,4 @@ rand_pcg = "0.2.1"
 rand_distr = "0.3.0"
 
 [dev-dependencies]
-approx = "0.3.2"
+approx = "0.4.0"
