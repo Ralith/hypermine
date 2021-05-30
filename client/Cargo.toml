@@ -30,7 +30,7 @@ downcast-rs = "1.1.1"
 quinn = "0.6.1"
 futures-util = "0.3.1"
 rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
-webpki = "0.21.0"
+webpki = "0.22.0"
 hecs = "0.5.2"
 rcgen = { version = "0.8.2", default-features = false }
 memoffset = "0.6"
