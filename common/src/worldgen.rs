@@ -60,13 +60,22 @@ impl NodeStateRoad {
     }
 }
 
+pub struct CliffState {
+    is_plateau: bool,
+    adjacent_cliffs: [Option<Side>; 2],
+}
+
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane<f64>,
     road_state: NodeStateRoad,
     spice: u64,
+    cliff_data: CliffState,
     enviro: EnviroFactors,
 }
+
+const A_ADJACENT: [Side; 5] = [Side::B, Side::C, Side::D, Side::E, Side::I];
+
 impl NodeState {
     pub fn root() -> Self {
         Self {
@@ -74,6 +83,10 @@ impl NodeState {
             surface: Plane::from(Side::A),
             road_state: NodeStateRoad::ROOT,
             spice: 0,
+            cliff_data: CliffState {
+                is_plateau: false,
+                adjacent_cliffs: [None; 2],
+            },
             enviro: EnviroFactors {
                 max_elevation: 0.0,
                 temperature: 0.0,
@@ -96,21 +109,93 @@ impl NodeState {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
-        let enviro = match (d.next(), d.next()) {
+
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice + 1); // cheeky hash
+                                                                    //let generates_cliff_side = A_ADJACENT[rng.gen_range(0, 4)]; // hard-coded to include all elements in A_ADJACENT
+
+        let enviro;
+        let is_plateau: bool;
+        let mut inherited_cliff_sides;
+        let mut candidate_new_sides: Vec<Side> = Vec::new();
+
+        match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = &graph.get(parent_node).as_ref().unwrap().state;
-                EnviroFactors::varied_from(parent_state.enviro, spice)
+                enviro = EnviroFactors::varied_from(parent_state.enviro, spice);
+
+                is_plateau = {
+                    let mut inversion = false;
+                    for x in &parent_state.cliff_data.adjacent_cliffs {
+                        if x.is_some() && parent_side == x.unwrap() {
+                            inversion = true;
+                        }
+                    }
+                    parent_state.cliff_data.is_plateau ^ inversion
+                };
+
+                // only adjacent sides will inherit the cliff
+                inherited_cliff_sides = NodeState::get_cliff_inheritance(parent_state, parent_side);
+
+                for s in &A_ADJACENT {
+                    if Self::valid_side(*s, inherited_cliff_sides, parent_side) {
+                        candidate_new_sides.push(*s);
+                    }
+                }
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
                 let ab_node = graph
                     .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
                     .unwrap();
                 let ab_state = &graph.get(ab_node).as_ref().unwrap().state;
-                EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
+                enviro =
+                    EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro);
+
+                is_plateau = a_state.cliff_data.is_plateau
+                    ^ b_state.cliff_data.is_plateau
+                    ^ ab_state.cliff_data.is_plateau;
+
+                let inherited_cliffs_a = NodeState::get_cliff_inheritance(a_state, a_side);
+                let inherited_cliffs_b = NodeState::get_cliff_inheritance(b_state, b_side);
+
+                inherited_cliff_sides =
+                    NodeState::cliff_union(inherited_cliffs_a, inherited_cliffs_b);
+
+                for s in &A_ADJACENT {
+                    if Self::valid_side2(*s, inherited_cliff_sides, a_side, b_side) {
+                        candidate_new_sides.push(*s);
+                    }
+                }
             }
             _ => unreachable!(),
+        };
+
+        let adjacent_cliffs = match candidate_new_sides.len() {
+            0 => inherited_cliff_sides,
+            _ => {
+                if rng.gen_ratio(
+                    1,
+                    match is_plateau {
+                        true => 25, //In the actual game this would be the smaller value
+                        false => 6,
+                    },
+                ) {
+                    let index_to_add = rng.gen_range(0, candidate_new_sides.len());
+                    for y in inherited_cliff_sides.iter_mut() {
+                        if y.is_none() {
+                            *y = Some(candidate_new_sides[index_to_add]);
+                            break;
+                        }
+                    }
+                }
+                inherited_cliff_sides
+            }
+        };
+
+        let cliff_data = CliffState {
+            is_plateau,
+            adjacent_cliffs,
         };
 
         let child_kind = self.kind.clone().child(side);
@@ -124,9 +209,78 @@ impl NodeState {
                 _ => side * self.surface,
             },
             road_state: child_road,
+            cliff_data,
             spice,
             enviro,
         }
+    }
+
+    fn get_cliff_inheritance(state: &NodeState, side: Side) -> [Option<Side>; 2] {
+        let mut return_value = state.cliff_data.adjacent_cliffs;
+        for x in return_value.iter_mut() {
+            if !x.is_none() {
+                let s = x.unwrap();
+                if (s != side) && (!s.adjacent_to(side)) {
+                    *x = None;
+                }
+            }
+        }
+        return_value
+    }
+
+    fn cliff_union(a: [Option<Side>; 2], b: [Option<Side>; 2]) -> [Option<Side>; 2] {
+        let mut return_value = a;
+        for x in b.iter() {
+            if !x.is_none() {
+                let mut cont = true;
+                //check for duplicates first
+                for y in return_value.iter_mut() {
+                    if y == x {
+                        cont = false;
+                        break;
+                    }
+                }
+                //then check for empty spots
+                if cont {
+                    for y in return_value.iter_mut() {
+                        if y.is_none() {
+                            *y = Some(x.clone().unwrap());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return_value
+    }
+
+    fn valid_side(test_value: Side, inherited_sides: [Option<Side>; 2], parent1: Side) -> bool {
+        for x in &inherited_sides {
+            if x.is_some() {
+                let v = x.unwrap();
+                if (v == test_value) || v.adjacent_to(test_value) {
+                    return false;
+                }
+            }
+        }
+        if (parent1 == test_value) || parent1.adjacent_to(test_value) {
+            return false;
+        }
+
+        true
+    }
+
+    fn valid_side2(
+        test_value: Side,
+        inherited_sides: [Option<Side>; 2],
+        parent1: Side,
+        parent2: Side,
+    ) -> bool {
+        if !Self::valid_side(test_value, inherited_sides, parent1) {
+            return false;
+        }
+
+        !((parent2 == test_value) || parent2.adjacent_to(test_value))
     }
 }
 
@@ -165,6 +319,15 @@ impl Iterator for VoxelCoords {
     }
 }
 
+/// Returns the amount of elevation to add based on there being a cliff
+fn cliff_boost(is_cliff: bool) -> f64 {
+    if is_cliff {
+        20.0
+    } else {
+        0.0
+    }
+}
+
 /// Data needed to generate a chunk
 pub struct ChunkParams {
     /// Number of voxels along an edge
@@ -179,6 +342,8 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    is_plateau: bool,
+    is_cliff_adjacent: bool,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
 }
@@ -198,6 +363,8 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            is_plateau: state.cliff_data.is_plateau,
+            is_cliff_adjacent: state.cliff_data.adjacent_cliffs != [None, None],
             node_spice: state.spice,
         })
     }
@@ -222,14 +389,19 @@ impl ChunkParams {
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
-        if (center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS)
+        if (center_elevation - ELEVATION_MARGIN
+            > (me_max + cliff_boost(self.is_plateau)) / TERRAIN_SMOOTHNESS)
             && !(self.is_road || self.is_road_support)
         {
             // The whole chunk is above ground and not part of the road
             return VoxelData::Solid(Material::Void);
         }
 
-        if (center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS) && !self.is_road {
+        if (center_elevation + ELEVATION_MARGIN
+            < (me_min + cliff_boost(self.is_plateau) * (!self.is_cliff_adjacent as i32 as f64))
+                / TERRAIN_SMOOTHNESS)
+            && !self.is_road
+        {
             // The whole chunk is underground
             // TODO: More accurate VoxelData
             return VoxelData::Solid(Material::Dirt);
@@ -259,7 +431,6 @@ impl ChunkParams {
     /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         let normal = Normal::new(0.0, 0.03);
-
         for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
@@ -279,7 +450,10 @@ impl ChunkParams {
             // Small and big terracing effects must not sum to more than 1,
             // otherwise the terracing fails to be (nonstrictly) monotonic
             // and the terrain gets trenches ringing around its cliffs.
-            let elev_pre_noise = elev_pre_terracing + 0.6 * terracing_small + 0.4 * terracing_big;
+            let elev_pre_noise = elev_pre_terracing
+                + 0.6 * terracing_small
+                + 0.4 * terracing_big
+                + cliff_boost(self.is_plateau);
 
             // initial value dist_pre_noise is the difference between the voxel's distance
             // from the guiding plane and the voxel's calculated elev value. It represents
@@ -424,7 +598,6 @@ impl ChunkParams {
             }
         }
     }
-
     /// Provides information on the type of material in a voxel's six neighbours
     fn voxel_neighbors(&self, coords: na::Vector3<u8>, voxels: &VoxelData) -> [NeighborData; 6] {
         [
