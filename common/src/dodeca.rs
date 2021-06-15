@@ -43,6 +43,10 @@ impl Side {
         ADJACENT[self as usize][other as usize]
     }
 
+    pub fn vertices(self) -> [Vertex; 5] {
+        SIDE_VERTICES[self as usize]
+    }
+
     /// Reflection across this side
     #[inline]
     pub fn reflection(self) -> &'static na::Matrix4<f64> {
@@ -236,6 +240,26 @@ lazy_static! {
         }
         assert_eq!(vertex.next(), None);
         result
+    };
+
+    static ref SIDE_VERTICES: [[Vertex; 5]; SIDE_COUNT] = {
+        let mut result_list = vec![Vec::new(); SIDE_COUNT];
+
+        for a in Vertex::iter() {
+            let sides = a.canonical_sides();
+            result_list[sides[0] as usize].push(a);
+            result_list[sides[1] as usize].push(a);
+            result_list[sides[2] as usize].push(a);
+        }
+        let mut out: [[Vertex; 5]; SIDE_COUNT] = [[Vertex::A; 5]; SIDE_COUNT]; // dummy fill
+
+        for a in 0..5 {
+            for b in 0..SIDE_COUNT {
+                out[a][b] = result_list[a][b];
+            }
+
+        }
+        out
     };
 
     /// Whether the determinant of the cube-to-node transform is negative
