@@ -65,8 +65,8 @@ impl Server {
         let mut client_events = client_events.fuse();
         loop {
             select! {
-                _ = ticks.next() => { self.on_step() }
-                conn = incoming.select_next_some() => { self.on_connect(conn, client_events_send.clone()); }
+                _ = ticks.next() => self.on_step(),
+                conn = incoming.select_next_some() => {self.on_connect(conn, client_events_send.clone()); }
                 e = client_events.select_next_some() => { self.on_client_event(e.0, e.1); }
             }
         }
