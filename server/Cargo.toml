@@ -23,4 +23,4 @@ hecs = "0.5.2"
 rand = { version = "0.7.2", features = [ "small_rng" ] }
 fxhash = "0.2.1"
 na = { package = "nalgebra", version = "0.19" }
-slotmap = "0.4.0"
+slotmap = "1.0.4"
