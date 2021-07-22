@@ -242,20 +242,21 @@ lazy_static! {
         result
     };
 
+    /// The 5 vertices incedent on a side
     static ref SIDE_VERTICES: [[Vertex; 5]; SIDE_COUNT] = {
         let mut result_list = vec![Vec::new(); SIDE_COUNT];
 
-        for a in Vertex::iter() {
-            let sides = a.canonical_sides();
-            result_list[sides[0] as usize].push(a);
-            result_list[sides[1] as usize].push(a);
-            result_list[sides[2] as usize].push(a);
+        for v in Vertex::iter() {
+            let sides = v.canonical_sides();
+            result_list[sides[0] as usize].push(v);
+            result_list[sides[1] as usize].push(v);
+            result_list[sides[2] as usize].push(v);
         }
-        let mut out: [[Vertex; 5]; SIDE_COUNT] = [[Vertex::A; 5]; SIDE_COUNT]; // dummy fill
+        let mut out: [[Vertex; 5]; SIDE_COUNT] = [[Vertex::A; 5]; SIDE_COUNT];
 
         for a in 0..5 {
             for b in 0..SIDE_COUNT {
-                out[a][b] = result_list[a][b];
+                out[b][a] = result_list[b][a]; // flipped some things
             }
 
         }

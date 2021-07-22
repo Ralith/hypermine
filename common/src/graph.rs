@@ -199,6 +199,20 @@ impl<N> Graph<N> {
         id
     }
 
+    /// find the node opposite "node" along "sides".
+    // This can be improved to return None in less situations
+    pub fn opposing_node(&self, node: NodeId, sides: [Side; 3]) -> Option<NodeId> {
+        if let Some(n1) = self.neighbor(node, sides[0]) {
+            if let Some(n2) = self.neighbor(n1, sides[1]) {
+                self.neighbor(n2, sides[2])
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     /// Ensure all shorter neighbors of a not-yet-created child node exist and return them
     fn populate_shorter_neighbors_of_child(
         &mut self,
