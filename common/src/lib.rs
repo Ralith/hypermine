@@ -8,6 +8,7 @@ mod id;
 
 mod chunks;
 pub mod codec;
+pub mod collision;
 pub mod cursor;
 pub mod dodeca;
 pub mod graph;

@@ -43,6 +43,10 @@ impl Side {
         ADJACENT[self as usize][other as usize]
     }
 
+    pub fn vertices(self) -> [Vertex; 5] {
+        SIDE_VERTICES[self as usize]
+    }
+
     /// Reflection across this side
     #[inline]
     pub fn reflection(self) -> &'static na::Matrix4<f64> {
@@ -157,7 +161,7 @@ lazy_static! {
                 let cosh_distance = (REFLECTIONS[i] * REFLECTIONS[j])[(3, 3)];
                 // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
                 // < 2.0 indicates identical faces; < 5.0 indicates adjacent faces; > 5.0 indicates non-adjacent faces
-                result[i][j] = cosh_distance >= 2.0 && cosh_distance < 5.0;
+                result[i][j] = (2.0..5.0).contains(&cosh_distance);
             }
         }
         result
@@ -236,6 +240,27 @@ lazy_static! {
         }
         assert_eq!(vertex.next(), None);
         result
+    };
+
+    /// The 5 vertices incedent on a side
+    static ref SIDE_VERTICES: [[Vertex; 5]; SIDE_COUNT] = {
+        let mut result_list = vec![Vec::new(); SIDE_COUNT];
+
+        for v in Vertex::iter() {
+            let sides = v.canonical_sides();
+            result_list[sides[0] as usize].push(v);
+            result_list[sides[1] as usize].push(v);
+            result_list[sides[2] as usize].push(v);
+        }
+        let mut out: [[Vertex; 5]; SIDE_COUNT] = [[Vertex::A; 5]; SIDE_COUNT];
+
+        for a in 0..5 {
+            for b in 0..SIDE_COUNT {
+                out[b][a] = result_list[b][a]; // flipped some things
+            }
+
+        }
+        out
     };
 
     /// Whether the determinant of the cube-to-node transform is negative
