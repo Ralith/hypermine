@@ -13,7 +13,7 @@ serde = { version = "1.0.104", features = ["derive"] }
 na = { package = "nalgebra", version = "0.19", features = ["serde-serialize"] }
 bincode = "1.2.1"
 anyhow = "1.0.26"
-quinn = "0.6.1"
+quinn = "0.8.0"
 lazy_static = "1.4.0"
 fxhash = "0.2.1"
 tracing = "0.1.10"
