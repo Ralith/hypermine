@@ -1,8 +1,5 @@
-use crate::node::{DualGraph};
-use crate::{
-    dodeca::{Vertex},
-    graph::NodeId,
-};
+use crate::node::DualGraph;
+use crate::{dodeca::Vertex, graph::NodeId};
 
 #[allow(dead_code)]
 /*
@@ -30,12 +27,28 @@ pub struct BoundingBox {
     bounding_boxes: Vec<ChunkBoundingBox>,
 }
 
+// from a node coordinate in an arbitrary node, returns the which chunk the point would reside in
+pub fn chunk_from_location(location: na::Vector4<f64>) -> Option<Vertex> {
+    for v in Vertex::iter() {
+        let pos = (v.chunk_to_node().try_inverse().unwrap() * location).xyz();
+        if (pos.x >= 0_f64)
+            && (pos.x <= 1_f64)
+            && (pos.y >= 0_f64)
+            && (pos.y <= 1_f64)
+            && (pos.z >= 0_f64)
+            && (pos.z <= 1_f64)
+        {
+            return Some(v);
+        }
+    }
+    None
+}
+
 // Does not figure out which chunk it is in automatically
 // The pattern I use to unwrap the results of neighbor is kind of awkward.
 impl BoundingBox {
     pub fn create_aabb(
         start_node: NodeId,
-        start_chunk: Vertex,
         position: na::Vector4<f64>,
         radius: f64,
         graph: &DualGraph,
@@ -45,6 +58,9 @@ impl BoundingBox {
             radius <= 1.0,
             "Error: the radius of a bounding box may not exceed 1 absolute unit."
         );
+
+        let start_chunk =
+            chunk_from_location(position).expect("Error: cannot find chunk for given position.");
         let mut bounding_boxes = Vec::<ChunkBoundingBox>::new();
         let sides = start_chunk.canonical_sides();
 
@@ -130,6 +146,33 @@ impl BoundingBox {
             })
         })
     }
+
+    pub fn display_summary(&self) {
+        let number_of_chunk_bouding_boxes = {
+            let mut n = 0_i32;
+            for cbb in self.bounding_boxes.iter() {
+                n += 1;
+            }
+            n
+        };
+        println!(
+            "Bounding box spanning {} chunks:",
+            number_of_chunk_bouding_boxes
+        );
+        for cbb in self.bounding_boxes.iter() {
+            println!("\tA chunk");
+            //println!("\t\twith node id {}", cbb.node); // can't easily display node id
+            println!(
+                "\t\twith bounding box stretching from ({}, {}, {}) to ({}, {}, {})",
+                cbb.min_xyz[0],
+                cbb.min_xyz[1],
+                cbb.min_xyz[2],
+                cbb.max_xyz[0],
+                cbb.max_xyz[1],
+                cbb.max_xyz[2]
+            );
+        }
+    }
 }
 
 // translated_position should be the object position in the node coordinates of the chunk.
@@ -147,20 +190,28 @@ impl ChunkBoundingBox {
         let mut min_xyz = na::Vector3::<i32>::new(0_i32, 0_i32, 0_i32);
         let mut max_xyz = na::Vector3::<i32>::new(0_i32, 0_i32, 0_i32);
 
+        // It's important to note that euclidean_position is measured as chunk lengths, and radius is measured in absolute units.
+        // By coicidence, an absolute unit is aproximately a chunk's diameter, and only because of that there is no unit conversion here.
+
         // verify at least one box corner is within the chunk
         if euclidean_position
             .iter()
             .all(|n| n + radius > 0_f64 && n - radius < 1_f64)
         {
-            min_xyz.x = (euclidean_position.x.min(0_f64) * dimension as f64).floor() as i32;
-            max_xyz.x = (euclidean_position.x.max(1_f64) * dimension as f64).ceil() as i32;
+            min_xyz.x =
+                ((euclidean_position.x - radius).max(0_f64) * dimension as f64).floor() as i32;
+            max_xyz.x =
+                ((euclidean_position.x + radius).min(1_f64) * dimension as f64).ceil() as i32;
 
-            min_xyz.y = (euclidean_position.y.min(0_f64) * dimension as f64).floor() as i32;
-            max_xyz.y = (euclidean_position.y.max(1_f64) * dimension as f64).ceil() as i32;
+            min_xyz.y =
+                ((euclidean_position.y - radius).max(0_f64) * dimension as f64).floor() as i32;
+            max_xyz.y =
+                ((euclidean_position.y + radius).min(1_f64) * dimension as f64).ceil() as i32;
 
-            min_xyz.z = (euclidean_position.z.min(0_f64) * dimension as f64).floor() as i32;
-            max_xyz.z = (euclidean_position.z.max(1_f64) * dimension as f64).ceil() as i32;
-
+            min_xyz.z =
+                ((euclidean_position.z - radius).max(0_f64) * dimension as f64).floor() as i32;
+            max_xyz.z =
+                ((euclidean_position.z + radius).min(1_f64) * dimension as f64).ceil() as i32;
             Some(ChunkBoundingBox {
                 node,
                 chunk,
@@ -213,7 +264,6 @@ mod tests {
 
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
-            central_chunk,
             position,
             2.0 / CHUNK_SIZE_F,
             &graph,
@@ -234,7 +284,6 @@ mod tests {
 
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
-            central_chunk,
             position,
             1.0 / CHUNK_SIZE_F,
             &graph,
@@ -261,7 +310,6 @@ mod tests {
 
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
-            central_chunk,
             position,
             2.0 / CHUNK_SIZE_F,
             &graph,
@@ -280,20 +328,20 @@ mod tests {
         let central_chunk = Vertex::D; // arbitrary vertex
         let position = central_chunk.chunk_to_node()
             * na::Vector4::new(
-                1.0 - 0.4 / CHUNK_SIZE_F,
-                1.0 - 0.4 / CHUNK_SIZE_F,
-                0.4 / CHUNK_SIZE_F,
+                1.0 - 0.5 / CHUNK_SIZE_F,
+                0.25 / CHUNK_SIZE_F,
+                0.25 / CHUNK_SIZE_F,
                 1.0,
             );
 
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
-            central_chunk,
             position,
             2.0 / CHUNK_SIZE_F,
             &graph,
             CHUNK_SIZE,
         );
+        bb.display_summary();
 
         assert_eq!(bb.bounding_boxes.len(), 10);
     }
@@ -310,7 +358,6 @@ mod tests {
 
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
-            central_chunk,
             position,
             2.0 / CHUNK_SIZE_F,
             &graph,
@@ -325,7 +372,7 @@ mod tests {
     #[test]
     fn reasonable_voxel_count() {
         let margin_of_error = 3.0; // three times more voxels than what would be expected.
-        let radi_to_test = 6; // higher number means more test precision.
+        let radi_to_test = CHUNK_SIZE; // higher number means more test precision. Try to keep it a divisor of CHUNK_SIZE_F.
 
         let mut graph = Graph::new();
         ensure_nearby(&mut graph, &Position::origin(), 4.0);
@@ -334,9 +381,17 @@ mod tests {
 
         for x in 0..CHUNK_SIZE {
             for r in 1..radi_to_test {
-                let radius = (r / radi_to_test) as f64;
+                let radius = (r as f64) / (radi_to_test as f64);
                 let x_f64 = x as f64;
-                let expected_voxel_count = (radius * 2.0).powf(3.0);
+                // Getting the correct estimation for the number of voxels can be tricky
+                let expected_voxel_count = (radius * 2.0 * CHUNK_SIZE_F).powf(3.0); // value to display
+                let minimum_expected_voxel_count =
+                    (((radius * 2.0 * CHUNK_SIZE_F) - 1_f64).powf(3.0) / margin_of_error).floor()
+                        as i32;
+                let maximum_expected_voxel_count =
+                    (((radius * 2.0 * CHUNK_SIZE_F) + 1_f64).powf(3.0) * margin_of_error).ceil()
+                        as i32;
+
                 let position = central_chunk.chunk_to_node()
                     * na::Vector4::new(
                         x_f64 / CHUNK_SIZE_F,
@@ -345,22 +400,22 @@ mod tests {
                         1.0,
                     );
 
-                let bb = BoundingBox::create_aabb(
-                    NodeId::ROOT,
-                    central_chunk,
-                    position,
-                    radius,
-                    &graph,
-                    CHUNK_SIZE,
-                );
+                let bb =
+                    BoundingBox::create_aabb(NodeId::ROOT, position, radius, &graph, CHUNK_SIZE);
 
                 let mut actual_voxels = 0;
                 for address in bb.every_voxel_address() {
                     actual_voxels += 1;
                 }
 
-                assert!(actual_voxels <= (expected_voxel_count * margin_of_error).ceil() as i32);
-                assert!(actual_voxels >= (expected_voxel_count / margin_of_error).floor() as i32);
+                println!(
+                    "actual_voxels for reasonable_voxel_count: {} vs {}(min), {}(expected), {}(max)",
+                    actual_voxels, minimum_expected_voxel_count, expected_voxel_count, maximum_expected_voxel_count
+                );
+                bb.display_summary();
+                println!("x_f64 is {} radius is {}", x_f64, radius);
+                assert!(actual_voxels >= minimum_expected_voxel_count);
+                assert!(actual_voxels <= maximum_expected_voxel_count);
             }
         }
     }
@@ -384,16 +439,17 @@ mod tests {
 
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
-            central_chunk,
             position,
             3.0 / CHUNK_SIZE_F,
             &graph,
             CHUNK_SIZE,
         );
 
-        let expected_index = chunk_coords[0] * (CHUNK_SIZE as i32).pow(2)
+        bb.display_summary();
+
+        let expected_index = chunk_coords[0]
             + chunk_coords[1] * (CHUNK_SIZE as i32)
-            + chunk_coords[2];
+            + chunk_coords[2] * (CHUNK_SIZE as i32).pow(2);
 
         for address in bb.every_voxel_address() {
             if expected_index == address.index {
