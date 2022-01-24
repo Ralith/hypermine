@@ -39,8 +39,17 @@ pub struct SimConfig {
 }
 
 impl SimConfig {
+	
     pub fn from_raw(x: &SimConfigRaw) -> Self {
-        let chunk_size = x.chunk_size.unwrap_or(12);
+		
+		let mut curvature = String::new(); // ask for the curvature you want. Lower numbers mean higher curvature, but causes a lot of lag. 
+										   // Larger numbers are low curvature, but quickly eats up memory. 
+		 println!("Input curvature: 9-26");
+		io::stdin()
+        .read_line(&mut curvature)
+        .expect("Failed to read line");
+		let curvature: u8 = curvature.trim().parse().expect("input curvature");
+        let chunk_size = x.chunk_size.unwrap_or(curvature); // 12  // CURVATURE
         let voxel_size = x.voxel_size.unwrap_or(1.0);
         let meters_to_absolute = meters_to_absolute(chunk_size, voxel_size);
         SimConfig {
@@ -48,7 +57,7 @@ impl SimConfig {
             view_distance: x.view_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
             chunk_size,
-            movement_speed: x.movement_speed.unwrap_or(12.0) * meters_to_absolute,
+            movement_speed: x.movement_speed.unwrap_or(12.0) * meters_to_absolute, // 12
             meters_to_absolute,
         }
     }
