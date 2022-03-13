@@ -112,26 +112,27 @@ impl Window {
         let mut clockwise = false;
         let mut anticlockwise = false;
         let mut last_frame = Instant::now();
-        let mut focused = true;
+        let mut focused = false;
         self.event_loop
             .take()
             .unwrap()
             .run(move |event, _, control_flow| match event {
                 Event::MainEventsCleared => {
-                    let velocity = na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
+                    let this_frame = Instant::now();
+                    let dt = this_frame - last_frame;
+                    let move_direction: na::Vector3<f32> = na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
                         + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
                         + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
-                    self.sim.velocity(velocity);
+                    self.sim.velocity(if move_direction.norm_squared() > 1.0 { move_direction.normalize() } else { move_direction });
 
                     self.sim.rotate(&na::UnitQuaternion::from_axis_angle(
                         &-na::Vector3::z_axis(),
-                        (clockwise as u8 as f32 - anticlockwise as u8 as f32) * 5e-2,
+                        (clockwise as u8 as f32 - anticlockwise as u8 as f32) * 2.0 * dt.as_secs_f32(),
                     ));
 
                     let had_params = self.sim.params().is_some();
 
-                    let this_frame = Instant::now();
-                    self.sim.step(this_frame - last_frame);
+                    self.sim.step(dt);
                     last_frame = this_frame;
 
                     if !had_params {
@@ -175,6 +176,7 @@ impl Window {
                     } => {
                         let _ = self.window.set_cursor_grab(true);
                         self.window.set_cursor_visible(false);
+                        focused = true;
                     }
                     WindowEvent::KeyboardInput {
                         input:
@@ -212,11 +214,9 @@ impl Window {
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(false);
                             self.window.set_cursor_visible(true);
+                            focused = false;
                         }
                         _ => {}
-                    },
-                    WindowEvent::Focused(x) => {
-                        focused = x;
                     }
                     _ => {}
                 },
