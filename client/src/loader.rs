@@ -278,7 +278,7 @@ impl<T: 'static + Cleanup> AnyTable for Table<T> {
     }
 
     fn cleanup(self: Box<Self>, gfx: &Base) {
-        for x in self.data.into_iter().filter_map(|x| x) {
+        for x in self.data.into_iter().flatten() {
             unsafe {
                 x.cleanup(gfx);
             }

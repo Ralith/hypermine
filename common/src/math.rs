@@ -39,7 +39,7 @@ impl<N: RealField> HPoint<N> {
 /// Point reflection around `p`
 pub fn reflect<N: RealField>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()
-        - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(&p, &p)
+        - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(p, p)
 }
 
 /// Transform that translates `a` to `b`

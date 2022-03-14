@@ -65,7 +65,7 @@ impl Server {
         let mut client_events = client_events.fuse();
         loop {
             select! {
-                _ = ticks.next() => { self.on_step() }
+                _ = ticks.next() => self.on_step(),
                 conn = incoming.select_next_some() => { self.on_connect(conn, client_events_send.clone()); }
                 e = client_events.select_next_some() => { self.on_client_event(e.0, e.1); }
             }
@@ -219,7 +219,7 @@ async fn drive_recv(
 
     let mut cmds = streams
         .map(|stream| async {
-            Ok::<_, Error>(codec::recv_whole::<proto::Command>(MAX_CLIENT_MSG_SIZE, stream?).await?)
+            codec::recv_whole::<proto::Command>(MAX_CLIENT_MSG_SIZE, stream?).await
         })
         .buffer_unordered(16); // Allow a modest amount of out-of-order completion
     while let Some(msg) = cmds.try_next().await? {

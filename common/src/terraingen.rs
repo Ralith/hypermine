@@ -953,8 +953,6 @@ impl VoronoiInfo {
     // terrain that are defined by elev thresholds. Variations between strata
     // are intended to represent the effects of more or less skylight being exposed.
     pub fn terraingen_voronoi(elev: f64, rain: f64, temp: f64, dist: f64) -> Material {
-        let mut voxel_mat: Material;
-
         let voronoi_choices = if dist <= TERRAIN_SURFACE_THICKNESS {
             if elev < -30.0 {
                 SURFACE_DEEP
@@ -978,7 +976,7 @@ impl VoronoiInfo {
         let y: [f32; 2] = [rain as f32, temp as f32];
         let mut dist_squared = (voronoi_choices[0].location[0] - y[0]).powi(2)
             + (voronoi_choices[0].location[1] - y[1]).powi(2);
-        voxel_mat = voronoi_choices[0].material;
+        let mut voxel_mat = voronoi_choices[0].material;
         for vc in voronoi_choices.iter().skip(1) {
             let d_squared = (vc.location[0] - y[0]).powi(2) + (vc.location[1] - y[1]).powi(2);
             if d_squared <= dist_squared {
