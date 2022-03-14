@@ -84,7 +84,7 @@ impl SurfaceExtraction {
                 .unwrap();
 
             let extract = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&EXTRACT), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(EXTRACT), None)
                 .unwrap();
             let extract_guard = defer(|| device.destroy_shader_module(extract, None));
 

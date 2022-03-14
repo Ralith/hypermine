@@ -179,7 +179,7 @@ fn surface_extraction() {
     );
 
     let storage = test.scratch.storage(0);
-    for x in &mut storage[..] {
+    for x in &mut *storage {
         *x = Material::Void;
     }
     for z in 0..((DIMENSION + 2) / 2) {

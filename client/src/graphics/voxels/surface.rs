@@ -27,13 +27,13 @@ impl Surface {
         unsafe {
             // Construct the shader modules
             let vert = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&VERT), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(VERT), None)
                 .unwrap();
             // Note that these only need to live until the pipeline itself is constructed
             let v_guard = defer(|| device.destroy_shader_module(vert, None));
 
             let frag = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&FRAG), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(FRAG), None)
                 .unwrap();
             let f_guard = defer(|| device.destroy_shader_module(frag, None));
 
