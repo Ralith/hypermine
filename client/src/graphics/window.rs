@@ -112,7 +112,7 @@ impl Window {
         let mut clockwise = false;
         let mut anticlockwise = false;
         let mut last_frame = Instant::now();
-        let mut focused = false;
+        let mut mouse_captured = false;
         self.event_loop
             .take()
             .unwrap()
@@ -144,7 +144,7 @@ impl Window {
                     self.draw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
-                    DeviceEvent::MouseMotion { delta } if focused => {
+                    DeviceEvent::MouseMotion { delta } if mouse_captured => {
                         const SENSITIVITY: f32 = 2e-3;
                         let rot = na::UnitQuaternion::from_axis_angle(
                             &na::Vector3::y_axis(),
@@ -176,7 +176,7 @@ impl Window {
                     } => {
                         let _ = self.window.set_cursor_grab(true);
                         self.window.set_cursor_visible(false);
-                        focused = true;
+                        mouse_captured = true;
                     }
                     WindowEvent::KeyboardInput {
                         input:
@@ -214,9 +214,16 @@ impl Window {
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(false);
                             self.window.set_cursor_visible(true);
-                            focused = false;
+                            mouse_captured = false;
                         }
                         _ => {}
+                    }
+                    WindowEvent::Focused(focused) => {
+                        if !focused {
+                            let _ = self.window.set_cursor_grab(false);
+                            self.window.set_cursor_visible(true);
+                            mouse_captured = false;
+                        }
                     }
                     _ => {}
                 },
