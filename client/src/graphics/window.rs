@@ -120,14 +120,21 @@ impl Window {
                 Event::MainEventsCleared => {
                     let this_frame = Instant::now();
                     let dt = this_frame - last_frame;
-                    let move_direction: na::Vector3<f32> = na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
+                    let move_direction: na::Vector3<f32> = na::Vector3::x()
+                        * (right as u8 as f32 - left as u8 as f32)
                         + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
                         + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
-                    self.sim.velocity(if move_direction.norm_squared() > 1.0 { move_direction.normalize() } else { move_direction });
+                    self.sim.velocity(if move_direction.norm_squared() > 1.0 {
+                        move_direction.normalize()
+                    } else {
+                        move_direction
+                    });
 
                     self.sim.rotate(&na::UnitQuaternion::from_axis_angle(
                         &-na::Vector3::z_axis(),
-                        (clockwise as u8 as f32 - anticlockwise as u8 as f32) * 2.0 * dt.as_secs_f32(),
+                        (clockwise as u8 as f32 - anticlockwise as u8 as f32)
+                            * 2.0
+                            * dt.as_secs_f32(),
                     ));
 
                     let had_params = self.sim.params().is_some();
@@ -217,7 +224,7 @@ impl Window {
                             mouse_captured = false;
                         }
                         _ => {}
-                    }
+                    },
                     WindowEvent::Focused(focused) => {
                         if !focused {
                             let _ = self.window.set_cursor_grab(false);
