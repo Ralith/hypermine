@@ -32,7 +32,7 @@ pub struct Base {
     pub render_pass: vk::RenderPass,
     /// A reasonable general-purpose texture sampler
     pub linear_sampler: vk::Sampler,
-    /// Layout of common shader resourcs, such as the common uniform buffer
+    /// Layout of common shader resources, such as the common uniform buffer
     pub common_layout: vk::DescriptorSetLayout,
     pub limits: vk::PhysicalDeviceLimits,
     pub timestamp_bits: u32,
