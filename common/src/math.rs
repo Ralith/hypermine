@@ -114,8 +114,8 @@ fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matr
     let sign = m.determinant().signum();
     na::Matrix3::new(
         sign * (yv.y * zv.z - yv.z * zv.y), yv.x, zv.x,
-	sign * (yv.z * zv.x - yv.x * zv.z), yv.y, zv.y,
-	sign * (yv.x * zv.y - yv.y * zv.x), yv.z, zv.z,
+        sign * (yv.z * zv.x - yv.x * zv.z), yv.y, zv.y,
+        sign * (yv.x * zv.y - yv.y * zv.x), yv.z, zv.z,
     )
 }
 
