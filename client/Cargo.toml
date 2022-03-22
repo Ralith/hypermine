@@ -34,7 +34,7 @@ webpki = "0.21.0"
 hecs = "0.5.2"
 rcgen = { version = "0.8.2", default-features = false }
 memoffset = "0.6"
-gltf = { version = "0.15.2", default-features = false, features = ["utils"] }
+gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
 metrics = { version = "0.12.1", features = ["std"] }
 metrics-core = "0.5.2"
 hdrhistogram = { version = "7", default-features = false }
