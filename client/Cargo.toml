@@ -20,7 +20,7 @@ directories = "3.0.0"
 vk-shader-macros = "0.2.5"
 na = { package = "nalgebra", version = "0.19" }
 tokio = { version = "0.2.13", features = ["rt-threaded", "sync", "macros"] }
-png = "0.16.3"
+png = "0.17.5"
 anyhow = "1.0.26"
 whoami = "0.8.1"
 serde = { version = "1.0.104", features = ["derive", "rc"] }

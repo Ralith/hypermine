@@ -417,9 +417,22 @@ async fn load_material(
         }
     };
     let mut color_data = &color_data[..];
-    let (color_info, mut color_reader) = png::Decoder::new(&mut color_data)
+    let mut color_reader = png::Decoder::new(&mut color_data)
         .read_info()
         .with_context(|| "decoding PNG header")?;
+
+    let (ct, bits) = color_reader.output_color_type();
+    let color_info = {
+        let info = color_reader.info();
+        png::OutputInfo {
+            width: info.width,
+            height: info.height,
+            color_type: ct,
+            bit_depth: bits,
+            line_size: color_reader.output_line_size(info.width),
+        }
+    };
+
     let mut color_staging = ctx
         .staging
         .alloc(color_info.width as usize * color_info.height as usize * 4)
