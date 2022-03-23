@@ -51,7 +51,7 @@ impl Config {
         };
         // Massage into final form
         Config {
-            name: name.unwrap_or_else(|| whoami::user().into()),
+            name: name.unwrap_or_else(|| whoami::username().into()),
             data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
             chunk_load_parallelism: chunk_load_parallelism.unwrap_or(256),
             server,

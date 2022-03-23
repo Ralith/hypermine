@@ -14,15 +14,15 @@ server = { path = "../server" }
 tracing = "0.1.10"
 ash = "0.31"
 lahar = { git = "https://github.com/Ralith/lahar", rev = "fbc889a4538e2d3b6b519a6cb7a3538d7b3bfcdf" }
-winit = "0.23"
+winit = "0.26.1"
 ash-window = "0.5.0"
-directories = "3.0.0"
+directories = "4.0.1"
 vk-shader-macros = "0.2.5"
 na = { package = "nalgebra", version = "0.19" }
 tokio = { version = "0.2.13", features = ["rt-threaded", "sync", "macros"] }
-png = "0.16.3"
+png = "0.17.5"
 anyhow = "1.0.26"
-whoami = "0.8.1"
+whoami = "1.2.1"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
 fxhash = "0.2.1"
@@ -31,8 +31,8 @@ quinn = "0.6.1"
 futures-util = "0.3.1"
 rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
 webpki = "0.21.0"
-hecs = "0.5.2"
-rcgen = { version = "0.8.2", default-features = false }
+hecs = "0.7.6"
+rcgen = { version = "0.9.2", default-features = false }
 memoffset = "0.6"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
 metrics = { version = "0.12.1", features = ["std"] }
@@ -46,7 +46,7 @@ use-repo-assets = []
 [dev-dependencies]
 approx = "0.3.2"
 bencher = "0.1.5"
-renderdoc = "0.9"
+renderdoc = "0.10.1"
 
 [[bench]]
 name = "surface_extraction"

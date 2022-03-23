@@ -417,18 +417,21 @@ async fn load_material(
         }
     };
     let mut color_data = &color_data[..];
-    let (color_info, mut color_reader) = png::Decoder::new(&mut color_data)
+    let mut color_reader = png::Decoder::new(&mut color_data)
         .read_info()
         .with_context(|| "decoding PNG header")?;
+    let (width, height) = {
+        let info = color_reader.info();
+        (info.width, info.height)
+    };
     let mut color_staging = ctx
         .staging
-        .alloc(color_info.width as usize * color_info.height as usize * 4)
+        .alloc(width as usize * height as usize * 4)
         .await
         .ok_or_else(|| anyhow!("texture too large"))?;
     color_reader
         .next_frame(&mut color_staging)
         .with_context(|| "decoding PNG data")?;
-
     color_staging.flush(ctx.gfx.limits.non_coherent_atom_size);
     let color = unsafe {
         DedicatedImage::new(
@@ -438,8 +441,8 @@ async fn load_material(
                 .image_type(vk::ImageType::TYPE_2D)
                 .format(vk::Format::R8G8B8A8_SRGB)
                 .extent(vk::Extent3D {
-                    width: color_info.width,
-                    height: color_info.height,
+                    width,
+                    height,
                     depth: 1,
                 })
                 .mip_levels(1)
@@ -492,8 +495,8 @@ async fn load_material(
                             layer_count: 1,
                         },
                         image_extent: vk::Extent3D {
-                            width: color_info.width,
-                            height: color_info.height,
+                            width,
+                            height,
                             depth: 1,
                         },
                         ..Default::default()

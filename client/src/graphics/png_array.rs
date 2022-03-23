@@ -46,9 +46,10 @@ impl Loadable for PngArray {
                 let file =
                     File::open(path).with_context(|| format!("reading {}", path.display()))?;
                 let decoder = png::Decoder::new(file);
-                let (info, mut reader) = decoder
+                let mut reader = decoder
                     .read_info()
                     .with_context(|| format!("decoding {}", path.display()))?;
+                let info = reader.info();
                 if let Some(dims) = dims {
                     if dims != (info.width, info.height) {
                         bail!(
