@@ -11,7 +11,7 @@ license = "Apache-2.0 OR Zlib"
 [dependencies]
 common = { path = "../common" }
 tracing = "0.1.10"
-tokio = { version = "0.2", features = ["rt-threaded", "time", "macros", "stream", "sync"] }
+tokio = { version = "1.17", features = ["rt-threaded", "time", "macros", "stream", "sync"] }
 quinn = "0.6.1"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
