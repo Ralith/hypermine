@@ -109,7 +109,12 @@ impl Sim {
         let _guard = span.enter();
 
         // Simulate
-        for (_, (ch, pos)) in self.world.query::<(&Character, &mut Position)>().iter() {
+        let mut node_transforms = FxHashMap::<EntityId, na::Matrix4<f32>>::default();
+        for (_, (ch, pos, id)) in self
+            .world
+            .query::<(&Character, &mut Position, &EntityId)>()
+            .iter()
+        {
             let next_xf =
                 pos.local * math::translate_along(&ch.direction, ch.speed / self.cfg.rate as f32);
             pos.local = math::renormalize_isometry(&next_xf);
@@ -117,6 +122,7 @@ impl Sim {
             if next_node != pos.node {
                 pos.node = next_node;
                 pos.local = transition_xf * pos.local;
+                node_transforms.insert(*id, transition_xf);
             }
             ensure_nearby(&mut self.graph, pos, f64::from(self.cfg.view_distance));
         }
@@ -157,7 +163,13 @@ impl Sim {
                 .world
                 .query::<(&EntityId, &Position)>()
                 .iter()
-                .map(|(_, (&id, &position))| (id, position))
+                .map(|(_, (&id, &position))| {
+                    (
+                        id,
+                        position,
+                        *node_transforms.get(&id).unwrap_or(&na::Matrix4::identity()),
+                    )
+                })
                 .collect(),
             character_orientations: self
                 .world

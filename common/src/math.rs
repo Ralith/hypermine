@@ -105,6 +105,41 @@ pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> 
     translate_along(&direction, boost_length) * rotation.to_homogeneous()
 }
 
+/// returns the result of translating normal vector v0 from p0 to p1
+pub fn translate_normal<N: RealField>(
+    p0: na::Vector4<N>,
+    p1: na::Vector4<N>,
+    v0: na::Vector4<N>,
+) -> na::Vector4<N> {
+    let d = distance(&p0, &p1);
+    if !(d >= na::zero()) {return v0;} 
+
+    let v1 = (v0 * d.cosh() + p1 * d.sinh());
+    // need to do a little processing to increase numerical stability
+    // return v1 + p1 * mip(&p1, &v1);
+    return v1;
+}
+
+/// normalizes vector v with repect to translation matrix t
+pub fn normalize_vector<N: RealField>(
+    t: na::Matrix4<N>,
+    v: na::Vector4<N>,
+) -> na::Vector4<N> {
+    let p = t * origin();
+    let m = mip(&v, &v);
+    if (m <= na::zero()) {return t * na::Vector4::<N>::new(na::one(), na::zero(), na::zero(), na::zero());}
+    
+    let v_mag = m.sqrt();
+    let v_norm = v/v_mag;
+
+    return (v_norm + p * mip(&p, &v_norm)) * v_mag;
+}
+
+// make a orthogonal to b
+pub fn orthogonalize<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
+    return a - b * (mip(a, b) / mip(b, b));
+}
+
 #[rustfmt::skip]
 fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matrix3<N> {
     let zv = m.index((.., 2)).normalize();
@@ -231,6 +266,12 @@ mod tests {
     }
 
     #[test]
+    fn distance_identity() {
+        let a = na::Vector4::new(0.2, 0.0, 0.3, 1.0);
+        assert_abs_diff_eq!(distance(&a, &a), 0.0, epsilon = 1e-5);
+    }
+
+    #[test]
     fn renormalize_translation() {
         let mat = translate(
             &na::Vector4::new(-0.5, -0.5, 0.0, 1.0),
@@ -247,5 +288,30 @@ mod tests {
                                    0.0, 0.0, 1.0, 0.0,
                                    0.0, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
+    }
+
+    #[test]
+    fn orthogonalize_example() {
+        let vec1 = na::Vector4::new(-0.5, -0.5, 0.0, 1.0);
+        let vec2 = na::Vector4::new(0.3, -0.7, 0.0, 1.0);
+        let orth = orthogonalize(&vec1, &vec2);
+
+        assert_abs_diff_eq!(mip(&vec2, &orth), 0.0, epsilon = 1e-5);
+    }
+/*
+    #[test]
+    fn translate_normal_identity() {
+        let p = na::Vector4::new(-0.03635, 0.95129, 0.0, 1.38068);
+        let norm = na::Vector4::new(1.0, 0.0, 0.0, 0.0);
+        assert_abs_diff_eq!(translate_normal(p, p, norm), norm, epsilon = 1e-5);
+    }*/
+
+    fn translate_normal_still_normal() {
+        let p1 = na::Vector4::new(-0.03635, 0.95129, 0.0, 1.38068);
+        let p0 = origin();
+        let norm = na::Vector4::new(1.0, 0.0, 0.0, 0.0);
+        let trans = translate_normal(p0, p1, norm);
+        assert_abs_diff_eq!( mip(&trans, &trans), 1.0, epsilon = 1e-5);
+        assert_abs_diff_eq!( mip(&trans, &p1), 0.0, epsilon = 1e-5);
     }
 }

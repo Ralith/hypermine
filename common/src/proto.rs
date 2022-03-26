@@ -39,7 +39,8 @@ pub struct StateDelta {
     pub step: Step,
     /// Highest input generation received prior to `step`
     pub latest_input: u16,
-    pub positions: Vec<(EntityId, Position)>,
+    /// the last field is the transform required to go from the previous node to the current one.
+    pub positions: Vec<(EntityId, Position, na::Matrix4<f32>)>,
     pub character_orientations: Vec<(EntityId, na::UnitQuaternion<f32>)>,
 }
 

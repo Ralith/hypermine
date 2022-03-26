@@ -75,7 +75,7 @@ impl NodeState {
             road_state: NodeStateRoad::ROOT,
             spice: 0,
             enviro: EnviroFactors {
-                max_elevation: 0.0,
+                max_elevation: -0.0,
                 temperature: 0.0,
                 rainfall: 0.0,
                 blockiness: 0.0,
@@ -126,6 +126,20 @@ impl NodeState {
             road_state: child_road,
             spice,
             enviro,
+        }
+    }
+
+    pub fn surface(&self) -> Plane<f64> {
+        return self.surface;
+    }
+
+    // if the node lies above the ground-plane or not
+    pub fn is_sky(&self) -> bool {
+        match self.kind {
+            Land => false,
+            DeepLand => false,
+            Sky => true,
+            DeepSky => true,
         }
     }
 }

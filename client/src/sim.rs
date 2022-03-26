@@ -6,14 +6,20 @@ use tracing::{debug, error, trace};
 
 use crate::{net, prediction::PredictedMotion, Net};
 use common::{
+    collision::BoundingBox,
+    force,
     graph::{Graph, NodeId},
     math,
-    node::{DualGraph, Node},
+    node::{Chunk, DualGraph, Node},
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
+    world::Material,
     worldgen::NodeState,
     Chunks, EntityId, GraphEntities, Step,
 };
+
+const CHARACTER_RADIUS: f64 = 0.10_f64;
+const CHARACTER_SLOWDOWN_FACTOR: f32 = 6_f32;
 
 /// Game state
 pub struct Sim {
@@ -26,6 +32,7 @@ pub struct Sim {
     pub world: hecs::World,
     pub params: Option<Parameters>,
     pub local_character: Option<Entity>,
+    character_velocity: na::Vector4<f32>, // velocity of the character controller that carries over from frame to frame.
     orientation: na::UnitQuaternion<f32>,
     step: Option<Step>,
 
@@ -54,6 +61,7 @@ impl Sim {
             world: hecs::World::new(),
             params: None,
             local_character: None,
+            character_velocity: na::Vector4::new(0_f32, 0_f32, 0_f32, 0_f32),
             orientation: na::one(),
             step: None,
 
@@ -85,6 +93,8 @@ impl Sim {
         while let Ok(msg) = self.net.incoming.try_recv() {
             self.handle_net(msg);
         }
+
+        self.handle_forces(dt);
 
         if let Some(step_interval) = self.params.as_ref().map(|x| x.step_interval) {
             self.since_input_sent += dt;
@@ -146,8 +156,8 @@ impl Sim {
                     return;
                 }
                 self.step = Some(msg.step);
-                for &(id, new_pos) in &msg.positions {
-                    self.update_position(msg.latest_input, id, new_pos);
+                for &(id, new_pos, node_transform) in &msg.positions {
+                    self.update_position(msg.latest_input, id, new_pos, node_transform);
                 }
                 for &(id, orientation) in &msg.character_orientations {
                     match self.entity_ids.get(&id) {
@@ -166,14 +176,59 @@ impl Sim {
         }
     }
 
-    fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: Position) {
-        if self.params.as_ref().map_or(false, |x| x.character_id == id) {
+    fn update_position(
+        &mut self,
+        latest_input: u16,
+        id: EntityId,
+        new_pos: Position,
+        node_transform: na::Matrix4<f32>,
+    ) {
+        let id_is_character = self.params.as_ref().map_or(false, |x| x.character_id == id);
+
+        if id_is_character {
             self.prediction.reconcile(latest_input, new_pos);
         }
+
         match self.entity_ids.get(&id) {
             None => debug!(%id, "position update for unknown entity"),
             Some(&entity) => match self.world.get_mut::<Position>(entity) {
                 Ok(mut pos) => {
+                    if id_is_character {
+                        let previous_charvel = self.character_velocity;
+
+                        // velocity-related stuff.
+                        let m = math::mip(&self.character_velocity, &self.character_velocity);
+
+                        let (v_mag, v_norm) = match m <= 0_f32 {
+                            true => (0_f32, new_pos.local * na::Vector4::new(1_f32, 0_f32, 0_f32, 0_f32)),
+                            false => {
+                                let v_mag = m.sqrt();
+                                let v_norm = self.character_velocity / v_mag;
+                                (v_mag, v_norm)
+                            },
+                        };
+                        
+                        let p0 = pos.local
+                        * node_transform.try_inverse().unwrap_or(na::Matrix4::zeros())
+                        * math::origin();
+
+                        let p1 = new_pos.local * math::origin();
+
+                        assert!((math::mip(&p0, &p0) < 0.0), "Error, p0 is not in the format of a point" );
+                        assert!((math::mip(&p1, &p1) < 0.0), "Error, p1 is not in the format of a point" );
+                        assert!((math::mip(&v_norm, &v_norm) >= 0.0), "Error, v_norm is not in the format of a vector");
+
+                        self.character_velocity = math::translate_normal(
+                            p0,
+                            p1,
+                            v_norm,
+                        ) * v_mag;
+
+                        for n in self.character_velocity.iter() {
+                            assert!(!n.is_nan(), "Error, character velocity is not a number. character_velocity was {}. v_mag is {}. 
+                            p0 is {}. p1 is {}. Their difference is {}.", previous_charvel, v_mag, p0, p1, (p1 - p0));
+                        }
+                    }
                     if pos.node != new_pos.node {
                         self.graph_entities.remove(pos.node, entity);
                         self.graph_entities.insert(new_pos.node, entity);
@@ -241,8 +296,16 @@ impl Sim {
     }
 
     fn send_input(&mut self) {
-        let (direction, speed) = sanitize_motion_input(self.orientation * self.average_velocity);
         let params = self.params.as_ref().unwrap();
+        let (direction, speed) = sanitize_motion_input(
+            self.orientation * self.average_velocity / CHARACTER_SLOWDOWN_FACTOR // lower player abilities
+                + na::Vector3::new(
+                    self.character_velocity[0],
+                    self.character_velocity[1],
+                    self.character_velocity[2],
+                ) / params.movement_speed,
+        );
+
         let generation = self.prediction.push(
             &direction,
             speed
@@ -263,7 +326,17 @@ impl Sim {
         result.local *= self.orientation.to_homogeneous();
         if let Some(ref params) = self.params {
             // Apply input that hasn't been sent yet
-            let (direction, speed) = sanitize_motion_input(self.average_velocity);
+            let (direction, speed) = sanitize_motion_input(
+                // TODO: Incorparate the gravity into the view calculations.
+                self.average_velocity / CHARACTER_SLOWDOWN_FACTOR,
+                /*+ self.orientation
+                * na::Vector3::new(
+                    self.character_velocity[0],
+                    self.character_velocity[1],
+                    self.character_velocity[2],
+                )
+                / params.movement_speed,*/
+            );
             // We multiply by the entire timestep rather than the time so far because
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
             // future.
@@ -291,6 +364,128 @@ impl Sim {
         self.world
             .despawn(entity)
             .expect("destroyed nonexistent entity");
+    }
+
+    fn handle_forces(&mut self, time: Duration) {
+        // eventually this should be expanded to work on every entity with a physics property, but for now it is just the player
+        match self.local_character {
+            Some(entity) => match self.world.get_mut::<Position>(entity) {
+                Ok(character_position) => {
+                    // starting with simplier method for testing purposese
+                    let is_colliding = self.check_collision(*character_position);
+
+                    let down_info = &self
+                        .graph
+                        .get(character_position.node)
+                        .as_ref()
+                        .unwrap()
+                        .state;
+
+                    let character_v4f64 = na::convert::<_, na::Vector4<f64>>(
+                        character_position.local * math::origin(),
+                    );
+
+                    let mut down_temp = math::lorentz_normalize(&math::orthogonalize(
+                        down_info.surface().normal(),
+                        &character_v4f64,
+                    ));
+                    for n in down_temp.iter() {
+                        assert!(!n.is_nan(), "error, down direction is not a nunber");
+                    }
+                    
+                    let down_local = self.orientation.conjugate() * (character_position.local.try_inverse().unwrap() * na::convert::<_, na::Vector4<f32>>(down_temp)).xyz();
+                    self.orientation *= na::UnitQuaternion::new(na::Vector3::y().cross(&down_local) * 0.01);
+
+                    // the meaning of the surface plane varies based on which side of it you are
+                    let down = match down_info.is_sky() {
+                        true => down_temp,
+                        false => -down_temp,
+                    };
+
+                    
+
+                    // let is_colliding = !down_info.is_sky();
+
+                    let height = down_info.surface().distance_to(&character_v4f64);
+
+                    // let is_colliding = height < 0.04_f64;
+
+                    let acceleration_total = force::gravity(&down, height)
+                        // currently not doing drag or bouyant as added forces.
+                        // + force::normal_buoyant(&down, height, is_colliding)
+                        /*+ force::normal_drag(
+                            is_colliding,
+                            na::convert::<_, na::Vector4<f64>>(self.character_velocity),
+                        )*/;
+
+                    if is_colliding {
+                        self.character_velocity = na::convert::<_, na::Vector4<f32>>(down * -0.05_f64); 
+                    } else {
+                        self.character_velocity *= 0.90_f32.powf(time.as_secs_f32());
+                        self.character_velocity +=
+                            na::convert::<_, na::Vector4<f32>>(acceleration_total) * time.as_secs_f32();
+                    }
+
+                    
+
+                    self.character_velocity = math::normalize_vector(character_position.local, self.character_velocity);
+                    
+                    for n in self.character_velocity.iter() {
+                        assert!(!n.is_nan(), "Error, character velocity is not a number");
+                    }
+                }
+                Err(_e) => (),
+            },
+            None => (),
+        }
+    }
+
+    // helper function for handle_forces
+    fn check_collision(&self, pos: Position) -> bool {
+        let params = self.params.as_ref().unwrap();
+
+        let bb = BoundingBox::create_aabb(
+            pos.node,
+            na::convert::<na::Vector4<f32>, na::Vector4<f64>>(
+                pos.local * na::Vector4::new(0_f32, 0_f32, 0_f32, 1_f32),
+            ),
+            CHARACTER_RADIUS,
+            &self.graph,
+            params.chunk_size,
+        );
+
+        // bb.display_summary();
+
+        for cbb in bb.bounding_boxes {
+            if match self
+                .graph
+                .get(cbb.node)
+                .as_ref()
+                .expect("nodes must be populated before collisons can occur")
+                .chunks[cbb.chunk]
+            {
+                Chunk::Generating => true,
+                Chunk::Fresh => true,
+                Chunk::Populated {
+                    surface: _,
+                    ref voxels,
+                } => {
+                    for voxel_address in cbb.every_voxel() {
+                        if match voxels.get(voxel_address as usize) {
+                            Material::Void => false,
+                            _ => true,
+                        } {
+                            return true; // I think this is correct
+                        }
+                    }
+                    false
+                }
+            } {
+                return true;
+            }
+        }
+        // println!("No collsion.");
+        false
     }
 }
 
