@@ -11,6 +11,7 @@ pub mod codec;
 pub mod collision;
 pub mod cursor;
 pub mod dodeca;
+pub mod force;
 pub mod graph;
 mod graph_entities;
 pub mod lru_slab;

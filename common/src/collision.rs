@@ -7,24 +7,24 @@ The set of voxels that a collision body covers within a chunk
 */
 #[derive(PartialEq, Clone, Debug, Copy)]
 pub struct ChunkBoundingBox {
-    node: NodeId,
-    chunk: Vertex,
-    min_xyz: na::Vector3<i32>,
-    max_xyz: na::Vector3<i32>,
-    dimension: u8,
+    pub node: NodeId,
+    pub chunk: Vertex,
+    pub min_xyz: na::Vector3<u32>,
+    pub max_xyz: na::Vector3<u32>,
+    pub dimension: u8,
 }
 
 pub struct VoxelAddress {
-    node: NodeId,
-    chunk: Vertex,
-    index: i32,
+    pub node: NodeId,
+    pub chunk: Vertex,
+    pub index: u32,
 }
 
 /*
 The set of voxels that a collision body covers.
 */
 pub struct BoundingBox {
-    bounding_boxes: Vec<ChunkBoundingBox>,
+    pub bounding_boxes: Vec<ChunkBoundingBox>,
 }
 
 // from a node coordinate in an arbitrary node, returns the which chunk the point would reside in
@@ -150,7 +150,7 @@ impl BoundingBox {
     pub fn display_summary(&self) {
         let number_of_chunk_bouding_boxes = {
             let mut n = 0_i32;
-            for cbb in self.bounding_boxes.iter() {
+            for _cbb in self.bounding_boxes.iter() {
                 n += 1;
             }
             n
@@ -187,8 +187,8 @@ impl ChunkBoundingBox {
     ) -> Option<Self> {
         let euclidean_position =
             (chunk.chunk_to_node().try_inverse().unwrap() * translated_position).xyz();
-        let mut min_xyz = na::Vector3::<i32>::new(0_i32, 0_i32, 0_i32);
-        let mut max_xyz = na::Vector3::<i32>::new(0_i32, 0_i32, 0_i32);
+        let mut min_xyz = na::Vector3::<u32>::new(0_u32, 0_u32, 0_u32);
+        let mut max_xyz = na::Vector3::<u32>::new(0_u32, 0_u32, 0_u32);
 
         // It's important to note that euclidean_position is measured as chunk lengths, and radius is measured in absolute units.
         // By coicidence, an absolute unit is aproximately a chunk's diameter, and only because of that there is no unit conversion here.
@@ -199,19 +199,19 @@ impl ChunkBoundingBox {
             .all(|n| n + radius > 0_f64 && n - radius < 1_f64)
         {
             min_xyz.x =
-                ((euclidean_position.x - radius).max(0_f64) * dimension as f64).floor() as i32;
+                ((euclidean_position.x - radius).max(0_f64) * dimension as f64).floor() as u32;
             max_xyz.x =
-                ((euclidean_position.x + radius).min(1_f64) * dimension as f64).ceil() as i32;
+                ((euclidean_position.x + radius).min(1_f64) * dimension as f64).ceil() as u32;
 
             min_xyz.y =
-                ((euclidean_position.y - radius).max(0_f64) * dimension as f64).floor() as i32;
+                ((euclidean_position.y - radius).max(0_f64) * dimension as f64).floor() as u32;
             max_xyz.y =
-                ((euclidean_position.y + radius).min(1_f64) * dimension as f64).ceil() as i32;
+                ((euclidean_position.y + radius).min(1_f64) * dimension as f64).ceil() as u32;
 
             min_xyz.z =
-                ((euclidean_position.z - radius).max(0_f64) * dimension as f64).floor() as i32;
+                ((euclidean_position.z - radius).max(0_f64) * dimension as f64).floor() as u32;
             max_xyz.z =
-                ((euclidean_position.z + radius).min(1_f64) * dimension as f64).ceil() as i32;
+                ((euclidean_position.z + radius).min(1_f64) * dimension as f64).ceil() as u32;
             Some(ChunkBoundingBox {
                 node,
                 chunk,
@@ -225,11 +225,11 @@ impl ChunkBoundingBox {
     }
 
     // returns the index (single number) of every voxel contained inside
-    pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = i32> + 'b {
+    pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = u32> + 'b {
         (self.min_xyz[2]..self.max_xyz[2]).flat_map(move |z| {
             (self.min_xyz[1]..self.max_xyz[1]).flat_map(move |y| {
                 (self.min_xyz[0]..self.max_xyz[0]).map(move |x| {
-                    x + (self.dimension as i32) * y + (self.dimension as i32).pow(2) * z
+                    x + (self.dimension as u32) * y + (self.dimension as u32).pow(2) * z
                 })
             })
         })
@@ -427,7 +427,7 @@ mod tests {
         ensure_nearby(&mut graph, &Position::origin(), 4.0);
 
         let central_chunk = Vertex::B; // arbitrary vertex
-        let chunk_coords = na::Vector3::new(2_i32, 6_i32, 9_i32);
+        let chunk_coords = na::Vector3::new(2_u32, 6_u32, 9_u32);
 
         let position = central_chunk.chunk_to_node()
             * na::Vector4::new(
@@ -448,8 +448,8 @@ mod tests {
         bb.display_summary();
 
         let expected_index = chunk_coords[0]
-            + chunk_coords[1] * (CHUNK_SIZE as i32)
-            + chunk_coords[2] * (CHUNK_SIZE as i32).pow(2);
+            + chunk_coords[1] * (CHUNK_SIZE as u32)
+            + chunk_coords[2] * (CHUNK_SIZE as u32).pow(2);
 
         for address in bb.every_voxel_address() {
             if expected_index == address.index {
