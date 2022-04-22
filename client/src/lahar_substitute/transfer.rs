@@ -38,40 +38,6 @@ pub struct TransferContext {
     pub image_barriers: Vec<vk::ImageMemoryBarrier>,
 }
 
-pub fn acquire_buffer(
-    src_queue_family: u32,
-    dst_queue_family: u32,
-    buffer: vk::Buffer,
-    offset: vk::DeviceSize,
-    size: vk::DeviceSize,
-) -> vk::BufferMemoryBarrier {
-    vk::BufferMemoryBarrier::builder()
-        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-        .dst_access_mask(vk::AccessFlags::SHADER_READ)
-        .src_queue_family_index(src_queue_family)
-        .dst_queue_family_index(dst_queue_family)
-        .buffer(buffer)
-        .offset(offset)
-        .size(size)
-        .build()
-}
-
-pub fn acquire_image(
-    src_queue_family: u32,
-    dst_queue_family: u32,
-    image: vk::Image,
-) -> vk::ImageMemoryBarrier {
-    vk::ImageMemoryBarrier::builder()
-        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-        .dst_access_mask(vk::AccessFlags::SHADER_READ)
-        .src_queue_family_index(src_queue_family)
-        .dst_queue_family_index(dst_queue_family)
-        .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        .image(image)
-        .build()
-}
-
 #[derive(Debug, Copy, Clone)]
 pub struct ShutDown;
 
@@ -139,21 +105,6 @@ impl Reactor {
                 },
             },
         )
-    }
-
-    pub unsafe fn spawn(
-        device: Arc<ash::Device>,
-        queue_family: u32,
-        queue: vk::Queue,
-        dst_queue_family: Option<u32>,
-    ) -> (TransferHandle, thread::JoinHandle<()>) {
-        let (transfer, mut core) = Self::new(device, queue_family, queue, dst_queue_family);
-        let thread = thread::spawn(
-            move || {
-                while core.run_for(Duration::from_millis(250)).is_ok() {}
-            },
-        );
-        (transfer, thread)
     }
 
     pub fn poll(&mut self) -> Result<(), Disconnected> {

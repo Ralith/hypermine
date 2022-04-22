@@ -125,7 +125,7 @@ impl Deref for Alloc<'_> {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        &self.bytes
+        self.bytes
     }
 }
 
