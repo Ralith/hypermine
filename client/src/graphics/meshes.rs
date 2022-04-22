@@ -1,6 +1,6 @@
 use std::mem;
 
-use ash::{version::DeviceV1_0, vk, Device};
+use ash::{vk, Device};
 use lahar::{BufferRegionAlloc, DedicatedImage};
 use memoffset::offset_of;
 use vk_shader_macros::include_glsl;

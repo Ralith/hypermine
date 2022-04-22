@@ -1,6 +1,6 @@
 use std::{mem, ptr};
 
-use ash::{version::DeviceV1_0, vk, Device};
+use ash::{vk, Device};
 use lahar::{DedicatedBuffer, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
@@ -334,7 +334,6 @@ impl ScratchBuffer {
             voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
         let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
         let dispatch = dispatch_sizes(self.dimension);
-        self.voxels_staging.flush(device);
         device.cmd_bind_descriptor_sets(
             cmd,
             vk::PipelineBindPoint::COMPUTE,

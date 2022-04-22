@@ -22,3 +22,5 @@ pub use sim::Sim;
 
 use loader::{Asset, Loader};
 use net::Net;
+
+mod lahar_substitute;

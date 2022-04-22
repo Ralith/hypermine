@@ -1,6 +1,6 @@
 use std::{mem, sync::Arc};
 
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use lahar::DedicatedMapping;
 use renderdoc::{RenderDoc, V110};
 

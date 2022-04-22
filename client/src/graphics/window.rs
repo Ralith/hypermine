@@ -1,9 +1,8 @@
-use std::f32;
-use std::ffi::CStr;
+use std::{f32, os::raw::c_char};
 use std::sync::Arc;
 use std::time::Instant;
 
-use ash::{extensions::khr, version::DeviceV1_0, vk};
+use ash::{extensions::khr, vk};
 use lahar::DedicatedImage;
 use tracing::info;
 use winit::{
@@ -35,7 +34,7 @@ impl EarlyWindow {
     }
 
     /// Identify the Vulkan extension needed to render to this window
-    pub fn required_extensions(&self) -> Vec<&'static CStr> {
+    pub fn required_extensions(&self) -> &'static [*const c_char] {
         ash_window::enumerate_required_extensions(&self.window).expect("unsupported platform")
     }
 }

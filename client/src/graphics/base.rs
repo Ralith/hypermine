@@ -7,7 +7,6 @@ use std::{fs, io, ptr};
 use tracing::{error, info, trace, warn};
 
 use ash::{
-    version::{DeviceV1_0, InstanceV1_0, InstanceV1_1},
     vk, Device,
 };
 

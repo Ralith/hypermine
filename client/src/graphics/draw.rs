@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use fxhash::FxHashSet;
 use lahar::Staged;
 use metrics::timing;
@@ -490,7 +490,6 @@ impl Draw {
 
         // Specify the uniform data before actually submitting the command to transfer it
         state.uniforms.write(
-            device,
             Uniforms {
                 view_projection,
                 inverse_projection: *projection.inverse().matrix(),
