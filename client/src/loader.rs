@@ -244,6 +244,8 @@ impl Drop for LoadCtx {
     fn drop(&mut self) {
         let device = &*self.gfx.device;
         unsafe {
+            self.index_alloc.lock().unwrap().destroy(device);
+            self.vertex_alloc.lock().unwrap().destroy(device);
             device.destroy_descriptor_set_layout(self.mesh_ds_layout, None);
         }
     }
