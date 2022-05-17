@@ -225,16 +225,11 @@ impl ChunkBoundingBox {
     }
 
     // returns the index (single number) of every voxel contained inside
-<<<<<<< HEAD
     /*pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = u32> + 'b {
-=======
-    pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = u32> + 'b {
->>>>>>> 2763c2e639b279dfefe6095d009944dbceab1db2
         (self.min_xyz[2]..self.max_xyz[2]).flat_map(move |z| {
             (self.min_xyz[1]..self.max_xyz[1]).flat_map(move |y| {
                 (self.min_xyz[0]..self.max_xyz[0]).map(move |x| {
                     x + (self.dimension as u32) * y + (self.dimension as u32).pow(2) * z
-<<<<<<< HEAD
                 })
             })
         })
@@ -244,8 +239,6 @@ impl ChunkBoundingBox {
             (self.min_xyz[1]..self.max_xyz[1]).flat_map(move |y| {
                 (self.min_xyz[0]..self.max_xyz[0]).map(move |x| {
                     z + (self.dimension as u32) * y + (self.dimension as u32).pow(2) * x
-=======
->>>>>>> 2763c2e639b279dfefe6095d009944dbceab1db2
                 })
             })
         })
