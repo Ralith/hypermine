@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{dodeca, graph::NodeId, EntityId, Step};
+use crate::{dodeca, graph::NodeId, EntityId, Step, force::GravityMethod};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientHello {
@@ -17,6 +17,9 @@ pub struct ServerHello {
     pub movement_speed: f32,
     /// Unit conversion factor
     pub meters_to_absolute: f32,
+    pub gravity_intensity: f64,
+    pub drag_factor: f64,
+    pub gravity_method: GravityMethod,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]

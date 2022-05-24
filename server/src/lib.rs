@@ -145,6 +145,9 @@ impl Server {
                     chunk_size: self.cfg.chunk_size,
                     meters_to_absolute: self.cfg.meters_to_absolute,
                     movement_speed: self.cfg.movement_speed,
+                    gravity_intensity: self.cfg.gravity_intensity,
+                    drag_factor: self.cfg.drag_factor,
+                    gravity_method: self.cfg.gravity_method,
                 };
                 tokio::spawn(async move {
                     // Errors will be handled by recv task

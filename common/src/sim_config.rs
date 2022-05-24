@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{dodeca, math};
 
+use crate::force::GravityMethod;
+
 /// Manually specified simulation config parameters
 #[derive(Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -24,6 +26,9 @@ pub struct SimConfigRaw {
     pub voxel_size: Option<f32>,
     /// Character movement speed in m/s
     pub movement_speed: Option<f32>,
+    pub gravity_intensity : Option<f64>,
+    pub drag_factor: Option<f64>,
+    pub gravity_method: Option<GravityMethod>,
 }
 
 /// Complete simulation config parameters
@@ -34,6 +39,9 @@ pub struct SimConfig {
     pub input_queue_size: Duration,
     pub chunk_size: u8,
     pub movement_speed: f32,
+    pub gravity_intensity: f64,
+    pub drag_factor: f64,
+    pub gravity_method: GravityMethod,
     /// Scaling factor converting meters to absolute units
     pub meters_to_absolute: f32,
 }
@@ -49,6 +57,10 @@ impl SimConfig {
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
             chunk_size,
             movement_speed: x.movement_speed.unwrap_or(12.0) * meters_to_absolute,
+            gravity_intensity: x.gravity_intensity.unwrap_or(0.5),
+            drag_factor: x.drag_factor.unwrap_or(0.90),
+            gravity_method: x.gravity_method.unwrap_or(GravityMethod::PlanarConstant),
+
             meters_to_absolute,
         }
     }

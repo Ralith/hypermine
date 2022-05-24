@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 /* GravityMethod encodes different ways of creating gravity in Hyperbolic space
 
 PlanarConstant has gravity oriented in the "down" direction, and the force of gravity is
@@ -9,6 +10,7 @@ to the area of the surface which is equidistant to the ground-plane at the indic
 
 Zero disables gravity.
 */
+#[derive(Debug, Deserialize, Serialize, Copy, Clone)]
 pub enum GravityMethod {
     PlanarConstant,
     PlanarDivergent,

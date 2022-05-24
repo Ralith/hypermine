@@ -145,6 +145,10 @@ impl Sim {
                     chunk_size: msg.chunk_size,
                     meters_to_absolute: msg.meters_to_absolute,
                     movement_speed: msg.movement_speed,
+                    gravity_intensity: msg.gravity_intensity,
+                    drag_factor: msg.drag_factor,
+                    gravity_method: msg.gravity_method,
+
                 });
                 // Populate the root node
                 populate_fresh_nodes(&mut self.graph);
@@ -345,10 +349,12 @@ impl Sim {
     }
 
     fn handle_forces(&mut self, time: Duration) {
+        let params = self.params.as_ref().unwrap();
+
         let force_system = ForceParams {
-            gravity_intensity: 0.5_f64,
-            air_drag_factor: 0.90_f64,
-            gravity_type: GravityMethod::PlanarConstant,
+            gravity_intensity: params.gravity_intensity,
+            air_drag_factor: params.drag_factor,
+            gravity_type: params.gravity_method,
             float_speed: 0.05_f64,
         };
 
@@ -470,6 +476,9 @@ pub struct Parameters {
     /// Absolute units
     pub movement_speed: f32,
     pub character_id: EntityId,
+    pub gravity_intensity: f64,
+    pub drag_factor: f64,
+    pub gravity_method: GravityMethod,
 }
 
 fn populate_fresh_nodes(graph: &mut DualGraph) {
