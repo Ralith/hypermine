@@ -7,7 +7,7 @@ use tracing::{debug, error, trace};
 use crate::{net, prediction::PredictedMotion, Net};
 use common::{
     collision::BoundingBox,
-    force,
+    force::{ForceParams, GravityMethod},
     graph::{Graph, NodeId},
     math,
     node::{Chunk, DualGraph, Node},
@@ -194,40 +194,10 @@ impl Sim {
             Some(&entity) => match self.world.get_mut::<Position>(entity) {
                 Ok(mut pos) => {
                     if id_is_character {
-                        let previous_charvel = self.character_velocity;
-
-                        // velocity-related stuff.
-                        let m = math::mip(&self.character_velocity, &self.character_velocity);
-
-                        let (v_mag, v_norm) = match m <= 0_f32 {
-                            true => (0_f32, new_pos.local * na::Vector4::new(1_f32, 0_f32, 0_f32, 0_f32)),
-                            false => {
-                                let v_mag = m.sqrt();
-                                let v_norm = self.character_velocity / v_mag;
-                                (v_mag, v_norm)
-                            },
-                        };
-                        
-                        let p0 = pos.local
-                        * node_transform.try_inverse().unwrap_or(na::Matrix4::zeros())
-                        * math::origin();
-
+                        let p0 = node_transform * pos.local * math::origin();
                         let p1 = new_pos.local * math::origin();
-
-                        assert!((math::mip(&p0, &p0) < 0.0), "Error, p0 is not in the format of a point" );
-                        assert!((math::mip(&p1, &p1) < 0.0), "Error, p1 is not in the format of a point" );
-                        assert!((math::mip(&v_norm, &v_norm) >= 0.0), "Error, v_norm is not in the format of a vector");
-
-                        self.character_velocity = math::translate_normal(
-                            p0,
-                            p1,
-                            v_norm,
-                        ) * v_mag;
-
-                        for n in self.character_velocity.iter() {
-                            assert!(!n.is_nan(), "Error, character velocity is not a number. character_velocity was {}. v_mag is {}. 
-                            p0 is {}. p1 is {}. Their difference is {}.", previous_charvel, v_mag, p0, p1, (p1 - p0));
-                        }
+                        self.character_velocity =
+                            math::translate(&p0, &p1) * node_transform * self.character_velocity;
                     }
                     if pos.node != new_pos.node {
                         self.graph_entities.remove(pos.node, entity);
@@ -297,12 +267,20 @@ impl Sim {
 
     fn send_input(&mut self) {
         let params = self.params.as_ref().unwrap();
+        let local_velocity = self
+            .world
+            .get_mut::<Position>(self.local_character.unwrap())
+            .unwrap()
+            .local
+            .try_inverse()
+            .unwrap()
+            * self.character_velocity;
         let (direction, speed) = sanitize_motion_input(
             self.orientation * self.average_velocity / CHARACTER_SLOWDOWN_FACTOR // lower player abilities
                 + na::Vector3::new(
-                    self.character_velocity[0],
-                    self.character_velocity[1],
-                    self.character_velocity[2],
+                    local_velocity[0],
+                    local_velocity[1],
+                    local_velocity[2],
                 ) / params.movement_speed,
         );
 
@@ -367,6 +345,13 @@ impl Sim {
     }
 
     fn handle_forces(&mut self, time: Duration) {
+        let force_system = ForceParams {
+            gravity_intensity: 0.5_f64,
+            air_drag_factor: 0.90_f64,
+            gravity_type: GravityMethod::PlanarConstant,
+            float_speed: 0.05_f64,
+        };
+
         // eventually this should be expanded to work on every entity with a physics property, but for now it is just the player
         match self.local_character {
             Some(entity) => match self.world.get_mut::<Position>(entity) {
@@ -385,51 +370,40 @@ impl Sim {
                         character_position.local * math::origin(),
                     );
 
-                    let mut down_temp = math::lorentz_normalize(&math::orthogonalize(
+                    let down_temp = math::lorentz_normalize(&math::orthogonalize(
                         down_info.surface().normal(),
                         &character_v4f64,
                     ));
                     for n in down_temp.iter() {
                         assert!(!n.is_nan(), "error, down direction is not a nunber");
                     }
-                    
-                    let down_local = self.orientation.conjugate() * (character_position.local.try_inverse().unwrap() * na::convert::<_, na::Vector4<f32>>(down_temp)).xyz();
-                    self.orientation *= na::UnitQuaternion::new(na::Vector3::y().cross(&down_local) * 0.01);
+
+                    let down_local = self.orientation.conjugate()
+                        * (character_position.local.try_inverse().unwrap()
+                            * na::convert::<_, na::Vector4<f32>>(down_temp))
+                        .xyz();
+                    self.orientation *= na::UnitQuaternion::new(
+                        na::Vector3::z() * down_local.x * -3.0 * time.as_secs_f32(),
+                    );
 
                     // the meaning of the surface plane varies based on which side of it you are
-                    let down = match down_info.is_sky() {
-                        true => down_temp,
-                        false => -down_temp,
-                    };
-
-                    
-
-                    // let is_colliding = !down_info.is_sky();
+                    let down = -down_temp;
 
                     let height = down_info.surface().distance_to(&character_v4f64);
 
-                    // let is_colliding = height < 0.04_f64;
+                    let new_velocity = force_system.apply_forces(
+                        &na::convert::<_, na::Vector4<f64>>(self.character_velocity),
+                        &down,
+                        height,
+                        is_colliding,
+                        time.as_secs_f64(),
+                    );
 
-                    let acceleration_total = force::gravity(&down, height)
-                        // currently not doing drag or bouyant as added forces.
-                        // + force::normal_buoyant(&down, height, is_colliding)
-                        /*+ force::normal_drag(
-                            is_colliding,
-                            na::convert::<_, na::Vector4<f64>>(self.character_velocity),
-                        )*/;
+                    self.character_velocity = math::normalize_vector(
+                        character_position.local,
+                        na::convert::<_, na::Vector4<f32>>(new_velocity),
+                    );
 
-                    if is_colliding {
-                        self.character_velocity = na::convert::<_, na::Vector4<f32>>(down * -0.05_f64); 
-                    } else {
-                        self.character_velocity *= 0.90_f32.powf(time.as_secs_f32());
-                        self.character_velocity +=
-                            na::convert::<_, na::Vector4<f32>>(acceleration_total) * time.as_secs_f32();
-                    }
-
-                    
-
-                    self.character_velocity = math::normalize_vector(character_position.local, self.character_velocity);
-                    
                     for n in self.character_velocity.iter() {
                         assert!(!n.is_nan(), "Error, character velocity is not a number");
                     }
@@ -475,7 +449,7 @@ impl Sim {
                             Material::Void => false,
                             _ => true,
                         } {
-                            return true; // I think this is correct
+                            return true;
                         }
                     }
                     false
@@ -484,7 +458,6 @@ impl Sim {
                 return true;
             }
         }
-        // println!("No collsion.");
         false
     }
 }

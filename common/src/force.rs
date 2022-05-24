@@ -1,38 +1,62 @@
-// use crate::Plane;
+/* GravityMethod encodes different ways of creating gravity in Hyperbolic space
 
-// this module covers forces like gravity and the normal force.
+PlanarConstant has gravity oriented in the "down" direction, and the force of gravity is
+constant with repect to height.
 
-// 1/2 absolute units per second squared of acceleration; it will take two seconds for something at rest to fall the length of one chunk.
-const GRAVITY_INTENSITY: f64 = 0.50_f64;
+PlanarConstant has gravity oriented in the "down" direction, and the force of gravity respects
+the divergence theorem, which makes it proportial to the ratio of the area of the ground-plane
+to the area of the surface which is equidistant to the ground-plane at the indicated height.
 
-const BUOYANT_INTENSITY: f64 = GRAVITY_INTENSITY * 2.5_f64;
-
-// 1000 inverse absolute units of drag acceleration; The equilibruim speed of something under all three forces will be 0.1 absolute units a second.
-const GROUND_DRAG_INTENSITY: f64 = 10000_f64;
-const AIR_DRAG_INTENSITY: f64 = GROUND_DRAG_INTENSITY / 15_f64;
-
-// gravity pulls downward
-pub fn gravity(down: &na::Vector4<f64>, height: f64) -> na::Vector4<f64> {
-    // return down * GRAVITY_INTENSITY;
-    // versoin of gravity that conforms to divergence theorem
-    return down * GRAVITY_INTENSITY / height.cosh().powi(2);
+Zero disables gravity.
+*/
+pub enum GravityMethod {
+    PlanarConstant,
+    PlanarDivergent,
+    Zero,
 }
 
-// currently hard collions aren't possible, so you will just "float" to the top of the ground.
-pub fn normal_buoyant(down: &na::Vector4<f64>, height: f64, is_collsion: bool) -> na::Vector4<f64> {
-    if is_collsion {
-        return down * -BUOYANT_INTENSITY / height.cosh().powi(2);
-    }
-    return na::Vector4::zeros();
+pub struct ForceParams {
+    pub gravity_intensity: f64,
+    pub air_drag_factor: f64, // lower number means more drag
+    pub gravity_type: GravityMethod,
+    pub float_speed: f64,
 }
 
-// when sinking in to the ground, you will expereince drag which acts agaist whichever way you are moving
-// and which gains strength proportional to the speed cubed.
-pub fn normal_drag(is_collsion: bool, current_velocity: na::Vector4<f64>) -> na::Vector4<f64> {
-    let speed_squared = current_velocity.norm().powi(2);
+impl ForceParams {
+    pub fn apply_forces(
+        &self,
+        inital_velocity: &na::Vector4<f64>,
+        down: &na::Vector4<f64>,
+        height: f64,
+        is_colliding: bool,
+        time: f64,
+    ) -> na::Vector4<f64> {
+        let mut velocity = inital_velocity.clone();
 
-    if is_collsion {
-        return -(GROUND_DRAG_INTENSITY * speed_squared).min(1_f64) * current_velocity;
+        // with current collsion detection tech, we want the player to slowly rise if they are in the ground
+        if is_colliding {
+            return down * -self.float_speed;
+        }
+
+        // otherwise we apply air resistance and gravity
+        velocity += self.gravity(down, height, time);
+        velocity = self.air_drag(&velocity, time);
+        return velocity;
     }
-    return -(AIR_DRAG_INTENSITY * speed_squared).min(1_f64) * current_velocity;
+
+    /// returns the change in velocity that occurs by pulled by gravity at "height" for "time"
+    fn gravity(&self, down: &na::Vector4<f64>, height: f64, time: f64) -> na::Vector4<f64> {
+        return match self.gravity_type {
+            GravityMethod::PlanarConstant => down * (self.gravity_intensity * time),
+            GravityMethod::PlanarDivergent => {
+                down * (self.gravity_intensity * time / height.cosh().powi(2))
+            }
+            GravityMethod::Zero => na::zero(),
+        };
+    }
+
+    /// rewrites velocity to account for time spent under drag.
+    fn air_drag(&self, inital_velocity: &na::Vector4<f64>, time: f64) -> na::Vector4<f64> {
+        return inital_velocity * self.air_drag_factor.powf(time);
+    }
 }

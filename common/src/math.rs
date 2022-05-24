@@ -112,25 +112,26 @@ pub fn translate_normal<N: RealField>(
     v0: na::Vector4<N>,
 ) -> na::Vector4<N> {
     let d = distance(&p0, &p1);
-    if !(d >= na::zero()) {return v0;} 
+    if !(d >= na::zero()) {
+        return v0;
+    }
 
-    let v1 = (v0 * d.cosh() + p1 * d.sinh());
+    let v1 = v0 * d.cosh() + p1 * d.sinh();
     // need to do a little processing to increase numerical stability
     // return v1 + p1 * mip(&p1, &v1);
     return v1;
 }
 
 /// normalizes vector v with repect to translation matrix t
-pub fn normalize_vector<N: RealField>(
-    t: na::Matrix4<N>,
-    v: na::Vector4<N>,
-) -> na::Vector4<N> {
+pub fn normalize_vector<N: RealField>(t: na::Matrix4<N>, v: na::Vector4<N>) -> na::Vector4<N> {
     let p = t * origin();
     let m = mip(&v, &v);
-    if (m <= na::zero()) {return t * na::Vector4::<N>::new(na::one(), na::zero(), na::zero(), na::zero());}
-    
+    if m <= na::zero() {
+        return t * na::Vector4::<N>::new(na::one(), na::zero(), na::zero(), na::zero());
+    }
+
     let v_mag = m.sqrt();
-    let v_norm = v/v_mag;
+    let v_norm = v / v_mag;
 
     return (v_norm + p * mip(&p, &v_norm)) * v_mag;
 }
@@ -298,7 +299,7 @@ mod tests {
 
         assert_abs_diff_eq!(mip(&vec2, &orth), 0.0, epsilon = 1e-5);
     }
-/*
+    /*
     #[test]
     fn translate_normal_identity() {
         let p = na::Vector4::new(-0.03635, 0.95129, 0.0, 1.38068);
@@ -311,7 +312,7 @@ mod tests {
         let p0 = origin();
         let norm = na::Vector4::new(1.0, 0.0, 0.0, 0.0);
         let trans = translate_normal(p0, p1, norm);
-        assert_abs_diff_eq!( mip(&trans, &trans), 1.0, epsilon = 1e-5);
-        assert_abs_diff_eq!( mip(&trans, &p1), 0.0, epsilon = 1e-5);
+        assert_abs_diff_eq!(mip(&trans, &trans), 1.0, epsilon = 1e-5);
+        assert_abs_diff_eq!(mip(&trans, &p1), 0.0, epsilon = 1e-5);
     }
 }

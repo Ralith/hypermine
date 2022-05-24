@@ -224,16 +224,6 @@ impl ChunkBoundingBox {
         }
     }
 
-    // returns the index (single number) of every voxel contained inside
-    /*pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = u32> + 'b {
-        (self.min_xyz[2]..self.max_xyz[2]).flat_map(move |z| {
-            (self.min_xyz[1]..self.max_xyz[1]).flat_map(move |y| {
-                (self.min_xyz[0]..self.max_xyz[0]).map(move |x| {
-                    x + (self.dimension as u32) * y + (self.dimension as u32).pow(2) * z
-                })
-            })
-        })
-    }*/
     pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = u32> + 'b {
         (self.min_xyz[2]..self.max_xyz[2]).flat_map(move |z| {
             (self.min_xyz[1]..self.max_xyz[1]).flat_map(move |y| {
@@ -442,13 +432,9 @@ mod tests {
                 (chunk_coords[2] as f64) / CHUNK_SIZE_F,
                 1.0,
             );
-        
-        assert_eq!( central_chunk, chunk_from_location(position).unwrap());
-        
 
+        assert_eq!(central_chunk, chunk_from_location(position).unwrap());
     }
-
-
 
     // places a bounding box at a certain [x,y,z], and verifies that the voxel at [x, y, z] is contained within the bounding box.
     #[test]
