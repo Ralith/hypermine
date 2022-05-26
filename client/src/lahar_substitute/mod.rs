@@ -2,6 +2,5 @@
 //! with minor modifications for interoperability with the current versions of ash and lahar. It is intended to be temporary
 //! and will be replaced when the code is sufficiently refactored to support the newer lahar structures.
 pub mod staging;
-pub mod transfer;
 mod condition;
 mod ring_alloc;
