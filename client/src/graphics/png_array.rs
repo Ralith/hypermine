@@ -1,4 +1,4 @@
-use std::{fs, fs::File, path::PathBuf};
+use std::{fs, fs::File, path::PathBuf, time::Duration};
 
 use anyhow::{anyhow, bail, Context};
 use ash::vk;
@@ -109,67 +109,82 @@ impl Loadable for PngArray {
                 let buffer_offset = mem.offset();
                 let dst = image.handle;
 
-                handle
-                    .transfer
-                    .run(move |xf, cmd| {
-                        xf.device.cmd_pipeline_barrier(
-                            cmd,
-                            vk::PipelineStageFlags::TOP_OF_PIPE,
-                            vk::PipelineStageFlags::TRANSFER,
-                            vk::DependencyFlags::default(),
-                            &[],
-                            &[],
-                            &[vk::ImageMemoryBarrier::builder()
-                                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                                .old_layout(vk::ImageLayout::UNDEFINED)
-                                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                                .image(dst)
-                                .subresource_range(range)
-                                .build()],
-                        );
-                        xf.device.cmd_copy_buffer_to_image(
-                            cmd,
-                            src,
-                            dst,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            &[vk::BufferImageCopy {
-                                buffer_offset,
-                                image_subresource: vk::ImageSubresourceLayers {
-                                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                                    mip_level: 0,
-                                    base_array_layer: 0,
-                                    layer_count: range.layer_count,
-                                },
-                                image_extent: vk::Extent3D {
-                                    width,
-                                    height,
-                                    depth: 1,
-                                },
-                                ..Default::default()
-                            }],
-                        );
-                        xf.device.cmd_pipeline_barrier(
-                            cmd,
-                            vk::PipelineStageFlags::TRANSFER,
-                            vk::PipelineStageFlags::FRAGMENT_SHADER,
-                            vk::DependencyFlags::default(),
-                            &[],
-                            &[],
-                            &[vk::ImageMemoryBarrier::builder()
-                                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                                .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                .image(dst)
-                                .subresource_range(range)
-                                .build()],
-                        );
-                    })
-                    .await?;
+                let device = &handle.gfx.device;
+                let mut parallel_queue_handle = handle
+                    .parallel_queue_handle_seed
+                    .clone()
+                    .into_handle(device);
+                let work = parallel_queue_handle.begin(device);
+
+                device.cmd_pipeline_barrier(
+                    work.cmd,
+                    vk::PipelineStageFlags::TOP_OF_PIPE,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::default(),
+                    &[],
+                    &[],
+                    &[vk::ImageMemoryBarrier::builder()
+                        .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .old_layout(vk::ImageLayout::UNDEFINED)
+                        .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                        .image(dst)
+                        .subresource_range(range)
+                        .build()],
+                );
+                device.cmd_copy_buffer_to_image(
+                    work.cmd,
+                    src,
+                    dst,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &[vk::BufferImageCopy {
+                        buffer_offset,
+                        image_subresource: vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: range.layer_count,
+                        },
+                        image_extent: vk::Extent3D {
+                            width,
+                            height,
+                            depth: 1,
+                        },
+                        ..Default::default()
+                    }],
+                );
+                device.cmd_pipeline_barrier(
+                    work.cmd,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    vk::DependencyFlags::default(),
+                    &[],
+                    &[],
+                    &[vk::ImageMemoryBarrier::builder()
+                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .image(dst)
+                        .subresource_range(range)
+                        .build()],
+                );
+
+                parallel_queue_handle.end(device, work);
+
+                // !!!!!!!!!!!!!!!!!!!! TODO: Make this better !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                while device
+                    .get_semaphore_counter_value(parallel_queue_handle.semaphore())
+                    .unwrap()
+                    < work.time.into()
+                {
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+
+                parallel_queue_handle.destroy(device);
 
                 trace!(
                     width = width,

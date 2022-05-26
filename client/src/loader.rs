@@ -9,11 +9,11 @@ use anyhow::Result;
 use ash::vk;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
-use lahar::{BufferRegion, DedicatedImage};
+use lahar::{parallel_queue, BufferRegion, DedicatedImage};
 use tokio::sync::mpsc;
 use tracing::error;
 
-use crate::{graphics::Base, Config, lahar_substitute::{transfer::{self, TransferHandle}, staging::StagingBuffer}};
+use crate::{graphics::Base, lahar_substitute::staging::StagingBuffer, Config};
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
@@ -37,7 +37,7 @@ pub struct Loader {
     runtime: tokio::runtime::Runtime,
     recv: mpsc::UnboundedReceiver<Message>,
     shared: Arc<Shared>,
-    reactor: transfer::Reactor,
+    parallel_queue: parallel_queue::ParallelQueue,
     tables_index: FxHashMap<TypeId, u32>,
     tables: Vec<Box<dyn AnyTable>>,
 }
@@ -54,9 +54,8 @@ impl Loader {
         unsafe {
             gfx.set_name(staging.buffer(), cstr!("staging"));
         }
-        let (transfer, reactor) = unsafe {
-            transfer::Reactor::new(gfx.device.clone(), gfx.queue_family, gfx.queue, None)
-        };
+        let (parallel_queue, parallel_queue_handle_seed) =
+            unsafe { parallel_queue::ParallelQueue::new(&gfx.device, gfx.queue_family, gfx.queue) };
         let vertex_alloc = unsafe {
             BufferRegion::new(
                 gfx.device.as_ref(),
@@ -95,7 +94,7 @@ impl Loader {
                 cfg,
                 gfx,
                 staging,
-                transfer,
+                parallel_queue_handle_seed,
                 vertex_alloc: Mutex::new(vertex_alloc),
                 index_alloc: Mutex::new(index_alloc),
                 mesh_ds_layout,
@@ -105,7 +104,7 @@ impl Loader {
             runtime,
             recv,
             shared,
-            reactor,
+            parallel_queue,
             tables_index: FxHashMap::default(),
             tables: Vec::new(),
         }
@@ -186,7 +185,9 @@ impl Loader {
 
     /// Invoke `finish` functions of spawned loading operations
     pub fn drive(&mut self) {
-        self.reactor.poll().unwrap();
+        unsafe {
+            self.parallel_queue.drive(&self.shared.ctx.gfx.device);
+        }
         while let Ok(msg) = self.recv.try_recv() {
             self.tables[msg.table as usize].finish(msg.index, msg.result);
         }
@@ -207,6 +208,10 @@ impl Loader {
 
 impl Drop for Loader {
     fn drop(&mut self) {
+        unsafe {
+            self.parallel_queue.drain(&self.shared.ctx.gfx.device);
+            self.parallel_queue.destroy(&self.shared.ctx.gfx.device);
+        }
         for table in self.tables.drain(..) {
             table.cleanup(&self.shared.ctx.gfx);
         }
@@ -228,7 +233,7 @@ pub struct LoadCtx {
     pub cfg: Arc<Config>,
     pub gfx: Arc<Base>,
     pub staging: StagingBuffer,
-    pub transfer: TransferHandle,
+    pub parallel_queue_handle_seed: parallel_queue::HandleSeed,
     pub vertex_alloc: Mutex<BufferRegion>,
     pub index_alloc: Mutex<BufferRegion>,
     pub mesh_ds_layout: vk::DescriptorSetLayout,

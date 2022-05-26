@@ -140,7 +140,11 @@ impl Base {
                                 .queue_family_index(queue_family_index)
                                 .queue_priorities(&[1.0])
                                 .build()])
-                            .enabled_extension_names(&device_exts),
+                            .enabled_extension_names(&device_exts)
+                            .push_next(
+                                &mut vk::PhysicalDeviceTimelineSemaphoreFeatures::builder()
+                                    .timeline_semaphore(true),
+                            ),
                         None,
                     )
                     .unwrap(),
