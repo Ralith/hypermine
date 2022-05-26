@@ -150,9 +150,14 @@ impl Loadable for PngArray {
                                 ..Default::default()
                             }],
                         );
-                        xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
-                        xf.image_barriers.push(
-                            vk::ImageMemoryBarrier::builder()
+                        xf.device.cmd_pipeline_barrier(
+                            cmd,
+                            vk::PipelineStageFlags::TRANSFER,
+                            vk::PipelineStageFlags::FRAGMENT_SHADER,
+                            vk::DependencyFlags::default(),
+                            &[],
+                            &[],
+                            &[vk::ImageMemoryBarrier::builder()
                                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
                                 .src_queue_family_index(xf.queue_family)
@@ -161,7 +166,7 @@ impl Loadable for PngArray {
                                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .image(dst)
                                 .subresource_range(range)
-                                .build(),
+                                .build()],
                         );
                     })
                     .await?;

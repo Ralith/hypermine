@@ -294,11 +294,11 @@ async fn load_geom(
         storage.copy_from_slice(&idx.to_ne_bytes());
     }
 
-    let vert_alloc = ctx
-        .vertex_alloc
-        .lock()
-        .unwrap()
-        .alloc(ctx.gfx.device.as_ref(), byte_size as vk::DeviceSize, 4);
+    let vert_alloc = ctx.vertex_alloc.lock().unwrap().alloc(
+        ctx.gfx.device.as_ref(),
+        byte_size as vk::DeviceSize,
+        4,
+    );
     let staging_buffer = ctx.staging.buffer();
     let vert_buffer = vert_alloc.buffer;
     let vert_src_offset = v_staging.offset();
@@ -315,9 +315,13 @@ async fn load_geom(
                     size: byte_size as vk::DeviceSize,
                 }],
             );
-            xf.stages |= vk::PipelineStageFlags::VERTEX_INPUT;
-            xf.buffer_barriers.push(
-                vk::BufferMemoryBarrier::builder()
+            xf.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::VERTEX_INPUT,
+                vk::DependencyFlags::default(),
+                &[],
+                &[vk::BufferMemoryBarrier::builder()
                     .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                     .dst_access_mask(vk::AccessFlags::VERTEX_ATTRIBUTE_READ)
                     .src_queue_family_index(xf.queue_family)
@@ -325,16 +329,17 @@ async fn load_geom(
                     .buffer(vert_buffer)
                     .offset(vert_dst_offset)
                     .size(byte_size as vk::DeviceSize)
-                    .build(),
+                    .build()],
+                &[],
             );
         })
     };
 
-    let idx_alloc = ctx
-        .index_alloc
-        .lock()
-        .unwrap()
-        .alloc(ctx.gfx.device.as_ref(), index_count as vk::DeviceSize * 4, 4);
+    let idx_alloc = ctx.index_alloc.lock().unwrap().alloc(
+        ctx.gfx.device.as_ref(),
+        index_count as vk::DeviceSize * 4,
+        4,
+    );
     let idx_buffer = idx_alloc.buffer;
     let idx_src_offset = i_staging.offset();
     let idx_dst_offset = idx_alloc.offset;
@@ -350,9 +355,13 @@ async fn load_geom(
                     size: index_count as vk::DeviceSize * 4,
                 }],
             );
-            xf.stages |= vk::PipelineStageFlags::VERTEX_INPUT;
-            xf.buffer_barriers.push(
-                vk::BufferMemoryBarrier::builder()
+            xf.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::VERTEX_INPUT,
+                vk::DependencyFlags::default(),
+                &[],
+                &[vk::BufferMemoryBarrier::builder()
                     .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                     .dst_access_mask(vk::AccessFlags::INDEX_READ)
                     .src_queue_family_index(xf.queue_family)
@@ -360,7 +369,8 @@ async fn load_geom(
                     .buffer(idx_buffer)
                     .offset(idx_dst_offset)
                     .size(index_count as vk::DeviceSize * 4)
-                    .build(),
+                    .build()],
+                &[],
             );
         })
     };
@@ -499,9 +509,14 @@ async fn load_material(
                         ..Default::default()
                     }],
                 );
-                xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
-                xf.image_barriers.push(
-                    vk::ImageMemoryBarrier::builder()
+                xf.device.cmd_pipeline_barrier(
+                    cmd,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    vk::DependencyFlags::default(),
+                    &[],
+                    &[],
+                    &[vk::ImageMemoryBarrier::builder()
                         .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                         .dst_access_mask(vk::AccessFlags::SHADER_READ)
                         .src_queue_family_index(xf.queue_family)
@@ -510,7 +525,7 @@ async fn load_material(
                         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .image(color_handle)
                         .subresource_range(range)
-                        .build(),
+                        .build()],
                 );
             })
             .await?;
@@ -570,9 +585,14 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
                     &vk::ClearColorValue { float32: rgba },
                     &[range],
                 );
-                xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
-                xf.image_barriers.push(
-                    vk::ImageMemoryBarrier::builder()
+                xf.device.cmd_pipeline_barrier(
+                    cmd,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    vk::DependencyFlags::default(),
+                    &[],
+                    &[],
+                    &[vk::ImageMemoryBarrier::builder()
                         .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                         .dst_access_mask(vk::AccessFlags::SHADER_READ)
                         .src_queue_family_index(xf.queue_family)
@@ -581,7 +601,7 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
                         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .image(handle)
                         .subresource_range(range)
-                        .build(),
+                        .build()],
                 );
             })
             .await?;

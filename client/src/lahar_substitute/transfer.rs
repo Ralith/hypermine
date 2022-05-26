@@ -33,9 +33,6 @@ pub struct TransferContext {
     pub queue_family: u32,
     /// May be equal to queue_family
     pub dst_queue_family: u32,
-    pub stages: vk::PipelineStageFlags,
-    pub buffer_barriers: Vec<vk::BufferMemoryBarrier>,
-    pub image_barriers: Vec<vk::ImageMemoryBarrier>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -99,9 +96,6 @@ impl Reactor {
                     device,
                     queue_family,
                     dst_queue_family: dst_queue_family.unwrap_or(queue_family),
-                    stages: vk::PipelineStageFlags::empty(),
-                    buffer_barriers: Vec::new(),
-                    image_barriers: Vec::new(),
                 },
             },
         )
@@ -225,15 +219,6 @@ impl Reactor {
             }
         };
         unsafe {
-            device.cmd_pipeline_barrier(
-                pending.cmd,
-                vk::PipelineStageFlags::TRANSFER,
-                self.ctx.stages,
-                vk::DependencyFlags::default(),
-                &[],
-                &self.ctx.buffer_barriers,
-                &self.ctx.image_barriers,
-            );
             device.end_command_buffer(pending.cmd).unwrap();
             device
                 .queue_submit(
@@ -245,9 +230,6 @@ impl Reactor {
                 )
                 .unwrap();
         }
-        self.ctx.stages = vk::PipelineStageFlags::empty();
-        self.ctx.buffer_barriers.clear();
-        self.ctx.image_barriers.clear();
         self.in_flight.push(pending);
         self.in_flight_fences.push(fence);
     }
