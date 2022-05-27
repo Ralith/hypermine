@@ -19,7 +19,7 @@ ash-window = "0.10.0"
 directories = "4.0.1"
 vk-shader-macros = "0.2.5"
 na = { package = "nalgebra", version = "0.19" }
-tokio = { version = "0.2.13", features = ["rt-threaded", "sync", "macros"] }
+tokio = { version = "1.18.2", features = ["rt-multi-thread", "sync", "macros"] }
 png = "0.17.5"
 anyhow = "1.0.26"
 whoami = "1.2.1"
@@ -27,9 +27,9 @@ serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
 fxhash = "0.2.1"
 downcast-rs = "1.1.1"
-quinn = "0.6.1"
+quinn = "0.8.3"
 futures-util = "0.3.1"
-rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
+rustls = { version = "0.20.6", features = ["dangerous_configuration"] }
 webpki = "0.21.0"
 hecs = "0.7.6"
 rcgen = { version = "0.9.2", default-features = false }

@@ -1,6 +1,6 @@
-use std::{f32, os::raw::c_char};
 use std::sync::Arc;
 use std::time::Instant;
+use std::{f32, os::raw::c_char};
 
 use ash::{extensions::khr, vk};
 use lahar::DedicatedImage;

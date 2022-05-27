@@ -6,9 +6,7 @@ use std::sync::Arc;
 use std::{fs, io, ptr};
 use tracing::{error, info, trace, warn};
 
-use ash::{
-    vk, Device,
-};
+use ash::{vk, Device};
 
 use super::Core;
 
