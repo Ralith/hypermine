@@ -111,11 +111,11 @@ async fn load_mesh(
     transform: &na::Matrix4<f32>,
     mesh: &gltf::Mesh<'_>,
 ) -> Result<Vec<Mesh>> {
-    Ok(try_join_all(
+    try_join_all(
         mesh.primitives()
             .map(|x| load_primitive(ctx, buffer, transform, x)),
     )
-    .await?)
+    .await
 }
 
 async fn load_primitive(
