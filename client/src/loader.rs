@@ -35,8 +35,9 @@ pub type LoadFuture<'a, T> =
 
 pub struct Loader {
     runtime: tokio::runtime::Runtime,
+    send: mpsc::UnboundedSender<Message>,
     recv: mpsc::UnboundedReceiver<Message>,
-    shared: Arc<Shared>,
+    ctx: Arc<LoadCtx>,
     parallel_queue: parallel_queue::ParallelQueue,
     tables_index: FxHashMap<TypeId, u32>,
     tables: Vec<Box<dyn AnyTable>>,
@@ -85,22 +86,20 @@ impl Loader {
                 )
                 .unwrap()
         };
-        let shared = Arc::new(Shared {
-            send,
-            ctx: LoadCtx {
-                cfg,
-                gfx,
-                staging,
-                parallel_queue_handle_seed,
-                vertex_alloc: Mutex::new(vertex_alloc),
-                index_alloc: Mutex::new(index_alloc),
-                mesh_ds_layout,
-            },
+        let ctx = Arc::new(LoadCtx {
+            cfg,
+            gfx,
+            staging,
+            parallel_queue_handle_seed,
+            vertex_alloc: Mutex::new(vertex_alloc),
+            index_alloc: Mutex::new(index_alloc),
+            mesh_ds_layout,
         });
         Self {
             runtime,
+            send,
             recv,
-            shared,
+            ctx,
             parallel_queue,
             tables_index: FxHashMap::default(),
             tables: Vec::new(),
@@ -121,11 +120,12 @@ impl Loader {
             .downcast_mut::<Table<L::Output>>()
             .unwrap()
             .alloc();
-        let shared = self.shared.clone();
+        let send = self.send.clone();
+        let ctx = self.ctx.clone();
         self.runtime.spawn(async move {
-            match shared.ctx.load(x).await {
+            match ctx.load(x).await {
                 Ok(x) => {
-                    let _ = shared.send.send(Message {
+                    let _ = send.send(Message {
                         table,
                         index,
                         result: Box::new(x),
@@ -146,17 +146,17 @@ impl Loader {
     pub fn make_queue<T: Loadable>(&mut self, capacity: usize) -> WorkQueue<T> {
         let (input_send, mut input_recv) = mpsc::channel::<T>(capacity);
         let (output_send, output_recv) = mpsc::channel::<T::Output>(capacity);
-        let shared = self.shared.clone();
+        let ctx = self.ctx.clone();
         self.runtime.spawn(async move {
             while let Some(x) = input_recv.recv().await {
-                let shared = shared.clone();
+                let ctx = ctx.clone();
                 let out = output_send.clone();
                 tokio::spawn(async move {
-                    match shared.ctx.load(x).await {
+                    match ctx.load(x).await {
                         Ok(x) => {
                             if let Err(e) = out.send(x).await {
                                 unsafe {
-                                    e.0.cleanup(&shared.ctx.gfx);
+                                    e.0.cleanup(&ctx.gfx);
                                 }
                             }
                         }
@@ -172,7 +172,7 @@ impl Loader {
             }
         });
         WorkQueue {
-            shared: self.shared.clone(),
+            ctx: self.ctx.clone(),
             send: input_send,
             recv: output_recv,
             capacity,
@@ -183,7 +183,7 @@ impl Loader {
     /// Invoke `finish` functions of spawned loading operations
     pub fn drive(&mut self) {
         unsafe {
-            self.parallel_queue.drive(&self.shared.ctx.gfx.device);
+            self.parallel_queue.drive(&self.ctx.gfx.device);
         }
         while let Ok(msg) = self.recv.try_recv() {
             self.tables[msg.table as usize].finish(msg.index, msg.result);
@@ -199,25 +199,20 @@ impl Loader {
     }
 
     pub fn ctx(&self) -> &LoadCtx {
-        &self.shared.ctx
+        &self.ctx
     }
 }
 
 impl Drop for Loader {
     fn drop(&mut self) {
         unsafe {
-            self.parallel_queue.drain(&self.shared.ctx.gfx.device);
-            self.parallel_queue.destroy(&self.shared.ctx.gfx.device);
+            self.parallel_queue.drain(&self.ctx.gfx.device);
+            self.parallel_queue.destroy(&self.ctx.gfx.device);
         }
         for table in self.tables.drain(..) {
-            table.cleanup(&self.shared.ctx.gfx);
+            table.cleanup(&self.ctx.gfx);
         }
     }
-}
-
-struct Shared {
-    send: mpsc::UnboundedSender<Message>,
-    ctx: LoadCtx,
 }
 
 struct Message {
@@ -316,7 +311,7 @@ impl<T: 'static> Copy for Asset<T> {}
 /// particularly useful for terrain, where recent requests are more likely to be close to the
 /// viewpoint.
 pub struct WorkQueue<T: Loadable> {
-    shared: Arc<Shared>,
+    ctx: Arc<LoadCtx>,
     send: mpsc::Sender<T>,
     recv: mpsc::Receiver<T::Output>,
     capacity: usize,
@@ -356,7 +351,7 @@ impl<T: Loadable> Drop for WorkQueue<T> {
         while let Ok(x) = self.recv.try_recv() {
             self.fill -= 1;
             unsafe {
-                x.cleanup(&self.shared.ctx.gfx);
+                x.cleanup(&self.ctx.gfx);
             }
         }
     }
