@@ -1,4 +1,4 @@
-use std::{fs, fs::File, path::PathBuf, time::Duration};
+use std::{fs, fs::File, path::PathBuf};
 
 use anyhow::{anyhow, bail, Context};
 use ash::vk;
@@ -174,15 +174,7 @@ impl Loadable for PngArray {
                 );
 
                 parallel_queue_handle.end(device, work);
-
-                // !!!!!!!!!!!!!!!!!!!! TODO: Make this better !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                while device
-                    .get_semaphore_counter_value(parallel_queue_handle.semaphore())
-                    .unwrap()
-                    < work.time.into()
-                {
-                    std::thread::sleep(Duration::from_millis(500));
-                }
+                handle.complete_work(work).await;
 
                 parallel_queue_handle.destroy(device);
 

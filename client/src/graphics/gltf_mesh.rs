@@ -5,7 +5,6 @@ use std::{
     mem,
     path::{Path, PathBuf},
     ptr,
-    time::Duration,
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -309,7 +308,7 @@ async fn load_geom(
     let mut parallel_queue_handle =
         unsafe { ctx.parallel_queue_handle_seed.clone().into_handle(device) };
 
-    unsafe {
+    let vertex_upload = unsafe {
         let work = parallel_queue_handle.begin(device);
 
         device.cmd_copy_buffer(
@@ -341,6 +340,7 @@ async fn load_geom(
         );
 
         parallel_queue_handle.end(device, work);
+        ctx.complete_work(work)
     };
 
     let idx_alloc = ctx.index_alloc.lock().unwrap().alloc(
@@ -351,7 +351,7 @@ async fn load_geom(
     let idx_buffer = idx_alloc.buffer;
     let idx_src_offset = i_staging.offset();
     let idx_dst_offset = idx_alloc.offset;
-    unsafe {
+    let index_upload = unsafe {
         let work = parallel_queue_handle.begin(device);
 
         device.cmd_copy_buffer(
@@ -383,21 +383,14 @@ async fn load_geom(
         );
 
         parallel_queue_handle.end(device, work);
-
-        // !!!!!!!!!!!!!!!!!!!! TODO: Make this better !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        while device
-            .get_semaphore_counter_value(parallel_queue_handle.semaphore())
-            .unwrap()
-            < work.time.into()
-        {
-            // This should work because the index upload is submitted to the queue after the vertex_upload,
-            // so index upload won't be reported as complete until vertex_upload is also done.
-            std::thread::sleep(Duration::from_millis(500));
-        }
-
-        parallel_queue_handle.destroy(device);
+        ctx.complete_work(work)
     };
 
+    //Upload concurrently
+    tokio::join!(vertex_upload, index_upload);
+    unsafe {
+        parallel_queue_handle.destroy(device);
+    }
     Ok(Geometry {
         vertices: vert_alloc,
         indices: idx_alloc,
@@ -551,15 +544,7 @@ async fn load_material(
         );
 
         parallel_queue_handle.end(device, work);
-
-        // !!!!!!!!!!!!!!!!!!!! TODO: Make this better !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        while device
-            .get_semaphore_counter_value(parallel_queue_handle.semaphore())
-            .unwrap()
-            < work.time.into()
-        {
-            std::thread::sleep(Duration::from_millis(500));
-        }
+        ctx.complete_work(work).await;
 
         parallel_queue_handle.destroy(device);
     }
@@ -641,15 +626,7 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
         );
 
         parallel_queue_handle.end(device, work);
-
-        // !!!!!!!!!!!!!!!!!!!! TODO: Make this better !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        while device
-            .get_semaphore_counter_value(parallel_queue_handle.semaphore())
-            .unwrap()
-            < work.time.into()
-        {
-            std::thread::sleep(Duration::from_millis(500));
-        }
+        ctx.complete_work(work).await;
 
         parallel_queue_handle.destroy(device);
 

@@ -10,7 +10,7 @@ use ash::vk;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
 use lahar::{parallel_queue, BufferRegion, DedicatedImage};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::error;
 
 use crate::{graphics::Base, lahar_substitute::staging::StagingBuffer, Config};
@@ -39,6 +39,8 @@ pub struct Loader {
     recv: mpsc::UnboundedReceiver<Message>,
     ctx: Arc<LoadCtx>,
     parallel_queue: parallel_queue::ParallelQueue,
+    semaphore_counter_watch_sender: watch::Sender<u64>,
+    last_semaphore_counter_value: u64,
     tables_index: FxHashMap<TypeId, u32>,
     tables: Vec<Box<dyn AnyTable>>,
 }
@@ -54,6 +56,7 @@ impl Loader {
         }
         let (parallel_queue, parallel_queue_handle_seed) =
             unsafe { parallel_queue::ParallelQueue::new(&gfx.device, gfx.queue_family, gfx.queue) };
+        let (semaphore_counter_watch_sender, semaphore_counter_watch_receiver) = watch::channel(0);
         let vertex_alloc = unsafe {
             BufferRegion::new(
                 gfx.device.as_ref(),
@@ -91,6 +94,7 @@ impl Loader {
             gfx,
             staging,
             parallel_queue_handle_seed,
+            semaphore_counter_watch_receiver,
             vertex_alloc: Mutex::new(vertex_alloc),
             index_alloc: Mutex::new(index_alloc),
             mesh_ds_layout,
@@ -101,6 +105,8 @@ impl Loader {
             recv,
             ctx,
             parallel_queue,
+            semaphore_counter_watch_sender,
+            last_semaphore_counter_value: 0,
             tables_index: FxHashMap::default(),
             tables: Vec::new(),
         }
@@ -123,7 +129,7 @@ impl Loader {
         let send = self.send.clone();
         let ctx = self.ctx.clone();
         self.runtime.spawn(async move {
-            match ctx.load(x).await {
+            match x.load(&ctx).await {
                 Ok(x) => {
                     let _ = send.send(Message {
                         table,
@@ -152,7 +158,7 @@ impl Loader {
                 let ctx = ctx.clone();
                 let out = output_send.clone();
                 tokio::spawn(async move {
-                    match ctx.load(x).await {
+                    match x.load(&ctx).await {
                         Ok(x) => {
                             if let Err(e) = out.send(x).await {
                                 unsafe {
@@ -180,10 +186,22 @@ impl Loader {
         }
     }
 
-    /// Invoke `finish` functions of spawned loading operations
+    /// Invoke `finish` functions of spawned loading operations and drive the parallel queue
     pub fn drive(&mut self) {
         unsafe {
             self.parallel_queue.drive(&self.ctx.gfx.device);
+            let semaphore_counter_value = self
+                .ctx
+                .gfx
+                .device
+                .get_semaphore_counter_value(self.parallel_queue.semaphore())
+                .unwrap();
+            if semaphore_counter_value > self.last_semaphore_counter_value {
+                self.last_semaphore_counter_value = semaphore_counter_value;
+                let _ = self
+                    .semaphore_counter_watch_sender
+                    .send(semaphore_counter_value);
+            }
         }
         while let Ok(msg) = self.recv.try_recv() {
             self.tables[msg.table as usize].finish(msg.index, msg.result);
@@ -226,14 +244,18 @@ pub struct LoadCtx {
     pub gfx: Arc<Base>,
     pub staging: StagingBuffer,
     pub parallel_queue_handle_seed: parallel_queue::HandleSeed,
+    pub semaphore_counter_watch_receiver: watch::Receiver<u64>,
     pub vertex_alloc: Mutex<BufferRegion>,
     pub index_alloc: Mutex<BufferRegion>,
     pub mesh_ds_layout: vk::DescriptorSetLayout,
 }
 
 impl LoadCtx {
-    async fn load<T: Loadable>(&self, x: T) -> Result<T::Output> {
-        x.load(self).await
+    pub async fn complete_work(&self, work: parallel_queue::Work) {
+        let mut semaphore_counter_watch_receiver = self.semaphore_counter_watch_receiver.clone();
+        while *semaphore_counter_watch_receiver.borrow_and_update() < work.time.into() {
+            semaphore_counter_watch_receiver.changed().await.unwrap();
+        }
     }
 }
 
