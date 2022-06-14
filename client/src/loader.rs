@@ -2,7 +2,7 @@ use std::{
     any::{Any, TypeId},
     convert::TryFrom,
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, cell::RefCell,
 };
 
 use anyhow::Result;
@@ -14,6 +14,10 @@ use tokio::sync::{mpsc, watch};
 use tracing::error;
 
 use crate::{graphics::Base, lahar_substitute::staging::StagingBuffer, Config};
+
+thread_local! {
+    static PARALLEL_QUEUE_HANDLE: RefCell<Option<parallel_queue::Handle>> = RefCell::new(None);
+}
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
@@ -251,6 +255,25 @@ pub struct LoadCtx {
 }
 
 impl LoadCtx {
+    // TODO: Handle freeing of resources
+    // TODO: This might not work, because it won't start until it's awaited, causing a potential mutable variable access conflict
+    pub async unsafe fn prepare_commands(&self, commands: impl FnOnce(&parallel_queue::Work)) {
+        let work = PARALLEL_QUEUE_HANDLE.with(|handle| {
+            if handle.borrow().is_none() {
+                *handle.borrow_mut() = Some(self.parallel_queue_handle_seed.clone().into_handle(&self.gfx.device));
+            }
+
+            let mut handle = handle.borrow_mut();
+            let handle = handle.as_mut().unwrap();
+            let work = handle.begin(&self.gfx.device);
+            commands(&work);
+            handle.end(&self.gfx.device, work);
+            work
+        });
+
+        self.complete_work(work).await;
+    }
+
     pub async fn complete_work(&self, work: parallel_queue::Work) {
         let mut semaphore_counter_watch_receiver = self.semaphore_counter_watch_receiver.clone();
         while *semaphore_counter_watch_receiver.borrow_and_update() < work.time.into() {
