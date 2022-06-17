@@ -2,7 +2,7 @@ use std::{
     any::{Any, TypeId},
     convert::TryFrom,
     marker::PhantomData,
-    sync::{Arc, Mutex}, cell::RefCell,
+    sync::{Arc, Mutex},
 };
 
 use anyhow::Result;
@@ -10,14 +10,11 @@ use ash::vk;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
 use lahar::{parallel_queue, BufferRegion, DedicatedImage};
+use switchyard::{Switchyard, threads::{one_to_one, thread_info}};
 use tokio::sync::{mpsc, watch};
 use tracing::error;
 
 use crate::{graphics::Base, lahar_substitute::staging::StagingBuffer, Config};
-
-thread_local! {
-    static PARALLEL_QUEUE_HANDLE: RefCell<Option<parallel_queue::Handle>> = RefCell::new(None);
-}
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
@@ -35,10 +32,10 @@ pub trait Loadable: Send + 'static {
 }
 
 pub type LoadFuture<'a, T> =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + 'a + Send>>;
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + 'a>>;
 
 pub struct Loader {
-    runtime: tokio::runtime::Runtime,
+    yard: Arc<Switchyard<()>>,
     send: mpsc::UnboundedSender<Message>,
     recv: mpsc::UnboundedReceiver<Message>,
     ctx: Arc<LoadCtx>,
@@ -51,7 +48,7 @@ pub struct Loader {
 
 impl Loader {
     pub fn new(cfg: Arc<Config>, gfx: Arc<Base>) -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
+        let yard = Arc::new(Switchyard::new(one_to_one(thread_info(), Some("loader")), ||()).unwrap());
         let (send, recv) = mpsc::unbounded_channel();
         let staging =
             StagingBuffer::new(gfx.device.clone(), &gfx.memory_properties, 32 * 1024 * 1024);
@@ -104,7 +101,7 @@ impl Loader {
             mesh_ds_layout,
         });
         Self {
-            runtime,
+            yard,
             send,
             recv,
             ctx,
@@ -132,7 +129,7 @@ impl Loader {
             .alloc();
         let send = self.send.clone();
         let ctx = self.ctx.clone();
-        self.runtime.spawn(async move {
+        self.yard.spawn_local(0, move |_| async move {
             match x.load(&ctx).await {
                 Ok(x) => {
                     let _ = send.send(Message {
@@ -157,11 +154,13 @@ impl Loader {
         let (input_send, mut input_recv) = mpsc::channel::<T>(capacity);
         let (output_send, output_recv) = mpsc::channel::<T::Output>(capacity);
         let ctx = self.ctx.clone();
-        self.runtime.spawn(async move {
+        let yard = self.yard.clone();
+        self.yard.spawn(0, async move {
             while let Some(x) = input_recv.recv().await {
                 let ctx = ctx.clone();
                 let out = output_send.clone();
-                tokio::spawn(async move {
+                let yard = yard.clone();
+                yard.spawn_local(0, |_| async move {
                     match x.load(&ctx).await {
                         Ok(x) => {
                             if let Err(e) = out.send(x).await {
@@ -255,25 +254,6 @@ pub struct LoadCtx {
 }
 
 impl LoadCtx {
-    // TODO: Handle freeing of resources
-    // TODO: This might not work, because it won't start until it's awaited, causing a potential mutable variable access conflict
-    pub async unsafe fn prepare_commands(&self, commands: impl FnOnce(&parallel_queue::Work)) {
-        let work = PARALLEL_QUEUE_HANDLE.with(|handle| {
-            if handle.borrow().is_none() {
-                *handle.borrow_mut() = Some(self.parallel_queue_handle_seed.clone().into_handle(&self.gfx.device));
-            }
-
-            let mut handle = handle.borrow_mut();
-            let handle = handle.as_mut().unwrap();
-            let work = handle.begin(&self.gfx.device);
-            commands(&work);
-            handle.end(&self.gfx.device, work);
-            work
-        });
-
-        self.complete_work(work).await;
-    }
-
     pub async fn complete_work(&self, work: parallel_queue::Work) {
         let mut semaphore_counter_watch_receiver = self.semaphore_counter_watch_receiver.clone();
         while *semaphore_counter_watch_receiver.borrow_and_update() < work.time.into() {
