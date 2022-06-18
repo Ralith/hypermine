@@ -10,7 +10,6 @@ use ash::vk;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
 use lahar::{parallel_queue, BufferRegion, DedicatedImage};
-use switchyard::{Switchyard, threads::{one_to_one, thread_info}};
 use tokio::sync::{mpsc, watch};
 use tracing::error;
 
@@ -32,10 +31,10 @@ pub trait Loadable: Send + 'static {
 }
 
 pub type LoadFuture<'a, T> =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + 'a>>;
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + 'a + Send>>;
 
 pub struct Loader {
-    yard: Arc<Switchyard<()>>,
+    runtime: tokio::runtime::Runtime,
     send: mpsc::UnboundedSender<Message>,
     recv: mpsc::UnboundedReceiver<Message>,
     ctx: Arc<LoadCtx>,
@@ -48,7 +47,7 @@ pub struct Loader {
 
 impl Loader {
     pub fn new(cfg: Arc<Config>, gfx: Arc<Base>) -> Self {
-        let yard = Arc::new(Switchyard::new(one_to_one(thread_info(), Some("loader")), ||()).unwrap());
+        let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
         let (send, recv) = mpsc::unbounded_channel();
         let staging =
             StagingBuffer::new(gfx.device.clone(), &gfx.memory_properties, 32 * 1024 * 1024);
@@ -101,7 +100,7 @@ impl Loader {
             mesh_ds_layout,
         });
         Self {
-            yard,
+            runtime,
             send,
             recv,
             ctx,
@@ -129,7 +128,7 @@ impl Loader {
             .alloc();
         let send = self.send.clone();
         let ctx = self.ctx.clone();
-        self.yard.spawn_local(0, move |_| async move {
+        self.runtime.spawn(async move {
             match x.load(&ctx).await {
                 Ok(x) => {
                     let _ = send.send(Message {
@@ -154,13 +153,11 @@ impl Loader {
         let (input_send, mut input_recv) = mpsc::channel::<T>(capacity);
         let (output_send, output_recv) = mpsc::channel::<T::Output>(capacity);
         let ctx = self.ctx.clone();
-        let yard = self.yard.clone();
-        self.yard.spawn(0, async move {
+        self.runtime.spawn(async move {
             while let Some(x) = input_recv.recv().await {
                 let ctx = ctx.clone();
                 let out = output_send.clone();
-                let yard = yard.clone();
-                yard.spawn_local(0, |_| async move {
+                tokio::spawn(async move {
                     match x.load(&ctx).await {
                         Ok(x) => {
                             if let Err(e) = out.send(x).await {
