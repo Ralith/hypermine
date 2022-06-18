@@ -304,43 +304,36 @@ async fn load_geom(
     let vert_src_offset = v_staging.offset();
     let vert_dst_offset = vert_alloc.offset;
 
-    let device = &ctx.gfx.device;
-    let mut parallel_queue_handle =
-        unsafe { ctx.parallel_queue_handle_seed.clone().into_handle(device) };
-
     let vertex_upload = unsafe {
-        let work = parallel_queue_handle.begin(device);
-
-        device.cmd_copy_buffer(
-            work.cmd,
-            staging_buffer,
-            vert_buffer,
-            &[vk::BufferCopy {
-                src_offset: vert_src_offset,
-                dst_offset: vert_dst_offset,
-                size: byte_size as vk::DeviceSize,
-            }],
-        );
-        device.cmd_pipeline_barrier(
-            work.cmd,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::VERTEX_INPUT,
-            vk::DependencyFlags::default(),
-            &[],
-            &[vk::BufferMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::VERTEX_ATTRIBUTE_READ)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(vert_buffer)
-                .offset(vert_dst_offset)
-                .size(byte_size as vk::DeviceSize)
-                .build()],
-            &[],
-        );
-
-        parallel_queue_handle.end(device, work);
-        ctx.complete_work(work)
+        ctx.parallel_queue_submit(|cmd| {
+            ctx.gfx.device.cmd_copy_buffer(
+                cmd,
+                staging_buffer,
+                vert_buffer,
+                &[vk::BufferCopy {
+                    src_offset: vert_src_offset,
+                    dst_offset: vert_dst_offset,
+                    size: byte_size as vk::DeviceSize,
+                }],
+            );
+            ctx.gfx.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::VERTEX_INPUT,
+                vk::DependencyFlags::default(),
+                &[],
+                &[vk::BufferMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .dst_access_mask(vk::AccessFlags::VERTEX_ATTRIBUTE_READ)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .buffer(vert_buffer)
+                    .offset(vert_dst_offset)
+                    .size(byte_size as vk::DeviceSize)
+                    .build()],
+                &[],
+            );
+        })
     };
 
     let idx_alloc = ctx.index_alloc.lock().unwrap().alloc(
@@ -351,46 +344,42 @@ async fn load_geom(
     let idx_buffer = idx_alloc.buffer;
     let idx_src_offset = i_staging.offset();
     let idx_dst_offset = idx_alloc.offset;
+
     let index_upload = unsafe {
-        let work = parallel_queue_handle.begin(device);
-
-        device.cmd_copy_buffer(
-            work.cmd,
-            staging_buffer,
-            idx_buffer,
-            &[vk::BufferCopy {
-                src_offset: idx_src_offset,
-                dst_offset: idx_dst_offset,
-                size: index_count as vk::DeviceSize * 4,
-            }],
-        );
-        device.cmd_pipeline_barrier(
-            work.cmd,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::VERTEX_INPUT,
-            vk::DependencyFlags::default(),
-            &[],
-            &[vk::BufferMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::INDEX_READ)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(idx_buffer)
-                .offset(idx_dst_offset)
-                .size(index_count as vk::DeviceSize * 4)
-                .build()],
-            &[],
-        );
-
-        parallel_queue_handle.end(device, work);
-        ctx.complete_work(work)
+        ctx.parallel_queue_submit(|cmd| {
+            ctx.gfx.device.cmd_copy_buffer(
+                cmd,
+                staging_buffer,
+                idx_buffer,
+                &[vk::BufferCopy {
+                    src_offset: idx_src_offset,
+                    dst_offset: idx_dst_offset,
+                    size: index_count as vk::DeviceSize * 4,
+                }],
+            );
+            ctx.gfx.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::VERTEX_INPUT,
+                vk::DependencyFlags::default(),
+                &[],
+                &[vk::BufferMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .dst_access_mask(vk::AccessFlags::INDEX_READ)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .buffer(idx_buffer)
+                    .offset(idx_dst_offset)
+                    .size(index_count as vk::DeviceSize * 4)
+                    .build()],
+                &[],
+            );
+        })
     };
 
     //Upload concurrently
     tokio::join!(vertex_upload, index_upload);
-    unsafe {
-        parallel_queue_handle.destroy(device);
-    }
+
     Ok(Geometry {
         vertices: vert_alloc,
         indices: idx_alloc,
@@ -475,78 +464,72 @@ async fn load_material(
     let color_handle = color.handle;
     let color_offset = color_staging.offset();
     unsafe {
-        let device = &ctx.gfx.device;
-        let mut parallel_queue_handle = ctx.parallel_queue_handle_seed.clone().into_handle(device);
-        let work = parallel_queue_handle.begin(device);
-
-        let range = vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        };
-        device.cmd_pipeline_barrier(
-            work.cmd,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::DependencyFlags::default(),
-            &[],
-            &[],
-            &[vk::ImageMemoryBarrier::builder()
-                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .image(color_handle)
-                .subresource_range(range)
-                .build()],
-        );
-        device.cmd_copy_buffer_to_image(
-            work.cmd,
-            staging_buffer,
-            color_handle,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &[vk::BufferImageCopy {
-                buffer_offset: color_offset,
-                image_subresource: vk::ImageSubresourceLayers {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                },
-                image_extent: vk::Extent3D {
-                    width,
-                    height,
-                    depth: 1,
-                },
-                ..Default::default()
-            }],
-        );
-        device.cmd_pipeline_barrier(
-            work.cmd,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::DependencyFlags::default(),
-            &[],
-            &[],
-            &[vk::ImageMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image(color_handle)
-                .subresource_range(range)
-                .build()],
-        );
-
-        parallel_queue_handle.end(device, work);
-        ctx.complete_work(work).await;
-
-        parallel_queue_handle.destroy(device);
+        ctx.parallel_queue_submit(|cmd| {
+            let range = vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            };
+            ctx.gfx.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::default(),
+                &[],
+                &[],
+                &[vk::ImageMemoryBarrier::builder()
+                    .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .old_layout(vk::ImageLayout::UNDEFINED)
+                    .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                    .image(color_handle)
+                    .subresource_range(range)
+                    .build()],
+            );
+            ctx.gfx.device.cmd_copy_buffer_to_image(
+                cmd,
+                staging_buffer,
+                color_handle,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::BufferImageCopy {
+                    buffer_offset: color_offset,
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    image_extent: vk::Extent3D {
+                        width,
+                        height,
+                        depth: 1,
+                    },
+                    ..Default::default()
+                }],
+            );
+            ctx.gfx.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::default(),
+                &[],
+                &[],
+                &[vk::ImageMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image(color_handle)
+                    .subresource_range(range)
+                    .build()],
+            );
+        })
+        .await;
     }
     Ok(color)
 }
@@ -571,64 +554,58 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
         );
         let handle = image.handle;
 
-        let device = &ctx.gfx.device;
-        let mut parallel_queue_handle = ctx.parallel_queue_handle_seed.clone().into_handle(device);
-        let work = parallel_queue_handle.begin(device);
-
-        let range = vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        };
-        device.cmd_pipeline_barrier(
-            work.cmd,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::DependencyFlags::default(),
-            &[],
-            &[],
-            &[vk::ImageMemoryBarrier::builder()
-                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .image(handle)
-                .subresource_range(range)
-                .build()],
-        );
-        device.cmd_clear_color_image(
-            work.cmd,
-            handle,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &vk::ClearColorValue { float32: rgba },
-            &[range],
-        );
-        device.cmd_pipeline_barrier(
-            work.cmd,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::DependencyFlags::default(),
-            &[],
-            &[],
-            &[vk::ImageMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image(handle)
-                .subresource_range(range)
-                .build()],
-        );
-
-        parallel_queue_handle.end(device, work);
-        ctx.complete_work(work).await;
-
-        parallel_queue_handle.destroy(device);
+        ctx.parallel_queue_submit(|cmd| {
+            let range = vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            };
+            ctx.gfx.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::default(),
+                &[],
+                &[],
+                &[vk::ImageMemoryBarrier::builder()
+                    .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .old_layout(vk::ImageLayout::UNDEFINED)
+                    .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                    .image(handle)
+                    .subresource_range(range)
+                    .build()],
+            );
+            ctx.gfx.device.cmd_clear_color_image(
+                cmd,
+                handle,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &vk::ClearColorValue { float32: rgba },
+                &[range],
+            );
+            ctx.gfx.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::default(),
+                &[],
+                &[],
+                &[vk::ImageMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image(handle)
+                    .subresource_range(range)
+                    .build()],
+            );
+        })
+        .await;
 
         Ok(image)
     }

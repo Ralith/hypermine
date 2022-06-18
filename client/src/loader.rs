@@ -56,6 +56,7 @@ impl Loader {
         }
         let (parallel_queue, parallel_queue_handle_seed) =
             unsafe { parallel_queue::ParallelQueue::new(&gfx.device, gfx.queue_family, gfx.queue) };
+        let parallel_queue_handle = unsafe { parallel_queue_handle_seed.into_handle(&gfx.device) };
         let (semaphore_counter_watch_sender, semaphore_counter_watch_receiver) = watch::channel(0);
         let vertex_alloc = unsafe {
             BufferRegion::new(
@@ -93,7 +94,7 @@ impl Loader {
             cfg,
             gfx,
             staging,
-            parallel_queue_handle_seed,
+            parallel_queue_handle: Mutex::new(parallel_queue_handle),
             semaphore_counter_watch_receiver,
             vertex_alloc: Mutex::new(vertex_alloc),
             index_alloc: Mutex::new(index_alloc),
@@ -243,17 +244,28 @@ pub struct LoadCtx {
     pub cfg: Arc<Config>,
     pub gfx: Arc<Base>,
     pub staging: StagingBuffer,
-    pub parallel_queue_handle_seed: parallel_queue::HandleSeed,
-    pub semaphore_counter_watch_receiver: watch::Receiver<u64>,
     pub vertex_alloc: Mutex<BufferRegion>,
     pub index_alloc: Mutex<BufferRegion>,
     pub mesh_ds_layout: vk::DescriptorSetLayout,
+    parallel_queue_handle: Mutex<parallel_queue::Handle>,
+    semaphore_counter_watch_receiver: watch::Receiver<u64>,
 }
 
 impl LoadCtx {
-    pub async fn complete_work(&self, work: parallel_queue::Work) {
+    pub unsafe fn parallel_queue_submit(
+        &self,
+        f: impl FnOnce(vk::CommandBuffer),
+    ) -> impl futures_util::Future<Output = ()> + Send + '_ {
+        let mut parallel_queue_handle = self.parallel_queue_handle.lock().unwrap();
+        let work = parallel_queue_handle.begin(&self.gfx.device);
+        f(work.cmd);
+        parallel_queue_handle.end(&self.gfx.device, work);
+        self.wait_for_parallel_queue_semaphore(work.time.into())
+    }
+
+    async fn wait_for_parallel_queue_semaphore(&self, time: u64) {
         let mut semaphore_counter_watch_receiver = self.semaphore_counter_watch_receiver.clone();
-        while *semaphore_counter_watch_receiver.borrow_and_update() < work.time.into() {
+        while *semaphore_counter_watch_receiver.borrow_and_update() < time {
             semaphore_counter_watch_receiver.changed().await.unwrap();
         }
     }
@@ -263,6 +275,7 @@ impl Drop for LoadCtx {
     fn drop(&mut self) {
         let device = &*self.gfx.device;
         unsafe {
+            self.parallel_queue_handle.lock().unwrap().destroy(device);
             self.index_alloc.lock().unwrap().destroy(device);
             self.vertex_alloc.lock().unwrap().destroy(device);
             device.destroy_descriptor_set_layout(self.mesh_ds_layout, None);
