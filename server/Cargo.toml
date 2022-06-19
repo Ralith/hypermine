@@ -11,8 +11,9 @@ license = "Apache-2.0 OR Zlib"
 [dependencies]
 common = { path = "../common" }
 tracing = "0.1.10"
-tokio = { version = "0.2", features = ["rt-threaded", "time", "macros", "stream", "sync"] }
-quinn = "0.6.1"
+tokio = { version = "1.18.2", features = ["rt-multi-thread", "time", "macros", "sync"] }
+tokio-stream = "0.1.8"
+quinn = { version = "0.8.3", features = ["rustls"] }
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = "0.5.5"
 anyhow = "1.0.26"
@@ -24,3 +25,5 @@ rand = { version = "0.7.2", features = [ "small_rng" ] }
 fxhash = "0.2.1"
 na = { package = "nalgebra", version = "0.19" }
 slotmap = "1.0.6"
+rustls = "0.20.6"
+rustls-pemfile = "1.0.0"
