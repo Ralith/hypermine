@@ -11,6 +11,7 @@ macro_rules! cstr {
 
 mod config;
 pub mod graphics;
+mod lahar_deprecated;
 mod loader;
 pub mod metrics;
 pub mod net;
@@ -22,5 +23,3 @@ pub use sim::Sim;
 
 use loader::{Asset, Loader};
 use net::Net;
-
-mod lahar_substitute;

@@ -248,7 +248,6 @@ async fn drive_send(
     });
 
     let mut ordered = ReceiverStream::new(ordered);
-
     while let Some(msg) = ordered.next().await {
         codec::send(&mut stream, &msg).await?;
     }
@@ -261,7 +260,6 @@ async fn drive_send_unordered(
     msgs: mpsc::Receiver<Unordered>,
 ) -> Result<()> {
     let mut msgs = ReceiverStream::new(msgs);
-
     while let Some(msg) = msgs.next().await {
         let stream = conn.open_uni().await?;
         codec::send_whole(stream, &msg).await?;

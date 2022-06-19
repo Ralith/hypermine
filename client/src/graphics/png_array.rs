@@ -110,8 +110,9 @@ impl Loadable for PngArray {
                 let dst = image.handle;
 
                 handle
-                    .parallel_queue_submit(|cmd| {
-                        handle.gfx.device.cmd_pipeline_barrier(
+                    .transfer
+                    .run(move |xf, cmd| {
+                        xf.device.cmd_pipeline_barrier(
                             cmd,
                             vk::PipelineStageFlags::TOP_OF_PIPE,
                             vk::PipelineStageFlags::TRANSFER,
@@ -128,7 +129,7 @@ impl Loadable for PngArray {
                                 .subresource_range(range)
                                 .build()],
                         );
-                        handle.gfx.device.cmd_copy_buffer_to_image(
+                        xf.device.cmd_copy_buffer_to_image(
                             cmd,
                             src,
                             dst,
@@ -149,26 +150,21 @@ impl Loadable for PngArray {
                                 ..Default::default()
                             }],
                         );
-                        handle.gfx.device.cmd_pipeline_barrier(
-                            cmd,
-                            vk::PipelineStageFlags::TRANSFER,
-                            vk::PipelineStageFlags::FRAGMENT_SHADER,
-                            vk::DependencyFlags::default(),
-                            &[],
-                            &[],
-                            &[vk::ImageMemoryBarrier::builder()
+                        xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+                        xf.image_barriers.push(
+                            vk::ImageMemoryBarrier::builder()
                                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                                .src_queue_family_index(xf.queue_family)
+                                .dst_queue_family_index(xf.dst_queue_family)
                                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .image(dst)
                                 .subresource_range(range)
-                                .build()],
+                                .build(),
                         );
                     })
-                    .await;
+                    .await?;
 
                 trace!(
                     width = width,

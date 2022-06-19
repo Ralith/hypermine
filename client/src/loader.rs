@@ -9,11 +9,18 @@ use anyhow::Result;
 use ash::vk;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
-use lahar::{parallel_queue, BufferRegion, DedicatedImage};
-use tokio::sync::{mpsc, watch};
+use lahar::{BufferRegion, DedicatedImage};
+use tokio::sync::mpsc;
 use tracing::error;
 
-use crate::{graphics::Base, lahar_substitute::staging::StagingBuffer, Config};
+use crate::{
+    graphics::Base,
+    lahar_deprecated::{
+        staging::StagingBuffer,
+        transfer::{self, TransferHandle},
+    },
+    Config,
+};
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
@@ -35,12 +42,9 @@ pub type LoadFuture<'a, T> =
 
 pub struct Loader {
     runtime: tokio::runtime::Runtime,
-    send: mpsc::UnboundedSender<Message>,
     recv: mpsc::UnboundedReceiver<Message>,
-    ctx: Arc<LoadCtx>,
-    parallel_queue: parallel_queue::ParallelQueue,
-    semaphore_counter_watch_sender: watch::Sender<u64>,
-    last_semaphore_counter_value: u64,
+    shared: Arc<Shared>,
+    reactor: transfer::Reactor,
     tables_index: FxHashMap<TypeId, u32>,
     tables: Vec<Box<dyn AnyTable>>,
 }
@@ -54,13 +58,12 @@ impl Loader {
         unsafe {
             gfx.set_name(staging.buffer(), cstr!("staging"));
         }
-        let (parallel_queue, parallel_queue_handle_seed) =
-            unsafe { parallel_queue::ParallelQueue::new(&gfx.device, gfx.queue_family, gfx.queue) };
-        let parallel_queue_handle = unsafe { parallel_queue_handle_seed.into_handle(&gfx.device) };
-        let (semaphore_counter_watch_sender, semaphore_counter_watch_receiver) = watch::channel(0);
+        let (transfer, reactor) = unsafe {
+            transfer::Reactor::new(gfx.device.clone(), gfx.queue_family, gfx.queue, None)
+        };
         let vertex_alloc = unsafe {
             BufferRegion::new(
-                gfx.device.as_ref(),
+                &gfx.device,
                 &gfx.memory_properties,
                 16 * 1024 * 1024,
                 vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -68,7 +71,7 @@ impl Loader {
         };
         let index_alloc = unsafe {
             BufferRegion::new(
-                gfx.device.as_ref(),
+                &gfx.device,
                 &gfx.memory_properties,
                 16 * 1024 * 1024,
                 vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
@@ -90,24 +93,23 @@ impl Loader {
                 )
                 .unwrap()
         };
-        let ctx = Arc::new(LoadCtx {
-            cfg,
-            gfx,
-            staging,
-            parallel_queue_handle: Mutex::new(parallel_queue_handle),
-            semaphore_counter_watch_receiver,
-            vertex_alloc: Mutex::new(vertex_alloc),
-            index_alloc: Mutex::new(index_alloc),
-            mesh_ds_layout,
+        let shared = Arc::new(Shared {
+            send,
+            ctx: LoadCtx {
+                cfg,
+                gfx,
+                staging,
+                transfer,
+                vertex_alloc: Mutex::new(vertex_alloc),
+                index_alloc: Mutex::new(index_alloc),
+                mesh_ds_layout,
+            },
         });
         Self {
             runtime,
-            send,
             recv,
-            ctx,
-            parallel_queue,
-            semaphore_counter_watch_sender,
-            last_semaphore_counter_value: 0,
+            shared,
+            reactor,
             tables_index: FxHashMap::default(),
             tables: Vec::new(),
         }
@@ -127,12 +129,11 @@ impl Loader {
             .downcast_mut::<Table<L::Output>>()
             .unwrap()
             .alloc();
-        let send = self.send.clone();
-        let ctx = self.ctx.clone();
+        let shared = self.shared.clone();
         self.runtime.spawn(async move {
-            match x.load(&ctx).await {
+            match shared.ctx.load(x).await {
                 Ok(x) => {
-                    let _ = send.send(Message {
+                    let _ = shared.send.send(Message {
                         table,
                         index,
                         result: Box::new(x),
@@ -153,17 +154,17 @@ impl Loader {
     pub fn make_queue<T: Loadable>(&mut self, capacity: usize) -> WorkQueue<T> {
         let (input_send, mut input_recv) = mpsc::channel::<T>(capacity);
         let (output_send, output_recv) = mpsc::channel::<T::Output>(capacity);
-        let ctx = self.ctx.clone();
+        let shared = self.shared.clone();
         self.runtime.spawn(async move {
             while let Some(x) = input_recv.recv().await {
-                let ctx = ctx.clone();
+                let shared = shared.clone();
                 let out = output_send.clone();
                 tokio::spawn(async move {
-                    match x.load(&ctx).await {
+                    match shared.ctx.load(x).await {
                         Ok(x) => {
                             if let Err(e) = out.send(x).await {
                                 unsafe {
-                                    e.0.cleanup(&ctx.gfx);
+                                    e.0.cleanup(&shared.ctx.gfx);
                                 }
                             }
                         }
@@ -179,7 +180,7 @@ impl Loader {
             }
         });
         WorkQueue {
-            ctx: self.ctx.clone(),
+            shared: self.shared.clone(),
             send: input_send,
             recv: output_recv,
             capacity,
@@ -187,23 +188,9 @@ impl Loader {
         }
     }
 
-    /// Invoke `finish` functions of spawned loading operations and drive the parallel queue
+    /// Invoke `finish` functions of spawned loading operations
     pub fn drive(&mut self) {
-        unsafe {
-            self.parallel_queue.drive(&self.ctx.gfx.device);
-            let semaphore_counter_value = self
-                .ctx
-                .gfx
-                .device
-                .get_semaphore_counter_value(self.parallel_queue.semaphore())
-                .unwrap();
-            if semaphore_counter_value > self.last_semaphore_counter_value {
-                self.last_semaphore_counter_value = semaphore_counter_value;
-                let _ = self
-                    .semaphore_counter_watch_sender
-                    .send(semaphore_counter_value);
-            }
-        }
+        self.reactor.poll().unwrap();
         while let Ok(msg) = self.recv.try_recv() {
             self.tables[msg.table as usize].finish(msg.index, msg.result);
         }
@@ -218,20 +205,21 @@ impl Loader {
     }
 
     pub fn ctx(&self) -> &LoadCtx {
-        &self.ctx
+        &self.shared.ctx
     }
 }
 
 impl Drop for Loader {
     fn drop(&mut self) {
-        unsafe {
-            self.parallel_queue.drain(&self.ctx.gfx.device);
-            self.parallel_queue.destroy(&self.ctx.gfx.device);
-        }
         for table in self.tables.drain(..) {
-            table.cleanup(&self.ctx.gfx);
+            table.cleanup(&self.shared.ctx.gfx);
         }
     }
+}
+
+struct Shared {
+    send: mpsc::UnboundedSender<Message>,
+    ctx: LoadCtx,
 }
 
 struct Message {
@@ -244,30 +232,15 @@ pub struct LoadCtx {
     pub cfg: Arc<Config>,
     pub gfx: Arc<Base>,
     pub staging: StagingBuffer,
+    pub transfer: TransferHandle,
     pub vertex_alloc: Mutex<BufferRegion>,
     pub index_alloc: Mutex<BufferRegion>,
     pub mesh_ds_layout: vk::DescriptorSetLayout,
-    parallel_queue_handle: Mutex<parallel_queue::Handle>,
-    semaphore_counter_watch_receiver: watch::Receiver<u64>,
 }
 
 impl LoadCtx {
-    pub unsafe fn parallel_queue_submit(
-        &self,
-        f: impl FnOnce(vk::CommandBuffer),
-    ) -> impl futures_util::Future<Output = ()> + Send + '_ {
-        let mut parallel_queue_handle = self.parallel_queue_handle.lock().unwrap();
-        let work = parallel_queue_handle.begin(&self.gfx.device);
-        f(work.cmd);
-        parallel_queue_handle.end(&self.gfx.device, work);
-        self.wait_for_parallel_queue_semaphore(work.time.into())
-    }
-
-    async fn wait_for_parallel_queue_semaphore(&self, time: u64) {
-        let mut semaphore_counter_watch_receiver = self.semaphore_counter_watch_receiver.clone();
-        while *semaphore_counter_watch_receiver.borrow_and_update() < time {
-            semaphore_counter_watch_receiver.changed().await.unwrap();
-        }
+    async fn load<T: Loadable>(&self, x: T) -> Result<T::Output> {
+        x.load(self).await
     }
 }
 
@@ -275,7 +248,6 @@ impl Drop for LoadCtx {
     fn drop(&mut self) {
         let device = &*self.gfx.device;
         unsafe {
-            self.parallel_queue_handle.lock().unwrap().destroy(device);
             self.index_alloc.lock().unwrap().destroy(device);
             self.vertex_alloc.lock().unwrap().destroy(device);
             device.destroy_descriptor_set_layout(self.mesh_ds_layout, None);
@@ -346,7 +318,7 @@ impl<T: 'static> Copy for Asset<T> {}
 /// particularly useful for terrain, where recent requests are more likely to be close to the
 /// viewpoint.
 pub struct WorkQueue<T: Loadable> {
-    ctx: Arc<LoadCtx>,
+    shared: Arc<Shared>,
     send: mpsc::Sender<T>,
     recv: mpsc::Receiver<T::Output>,
     capacity: usize,
@@ -386,7 +358,7 @@ impl<T: Loadable> Drop for WorkQueue<T> {
         while let Ok(x) = self.recv.try_recv() {
             self.fill -= 1;
             unsafe {
-                x.cleanup(&self.ctx.gfx);
+                x.cleanup(&self.shared.ctx.gfx);
             }
         }
     }
