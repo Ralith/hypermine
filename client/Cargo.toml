@@ -13,7 +13,7 @@ common = { path = "../common" }
 server = { path = "../server" }
 tracing = "0.1.10"
 ash = { version = "0.37.0", features = ["loaded"] }
-lahar = { git = "https://github.com/Ralith/lahar", rev = "a1a58bc9eb6087daf99a077d1c52469bf63cb583" }
+lahar = { git = "https://github.com/Ralith/lahar", rev = "88abd75e41d04c3a4199d95f581cb135f5962844" }
 winit = "0.26.1"
 ash-window = "0.10.0"
 directories = "4.0.1"
