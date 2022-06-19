@@ -6,14 +6,21 @@ use std::{
 };
 
 use anyhow::Result;
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
-use lahar::{transfer, transfer::TransferHandle, BufferRegion, DedicatedImage, StagingBuffer};
+use lahar::{BufferRegion, DedicatedImage};
 use tokio::sync::mpsc;
 use tracing::error;
 
-use crate::{graphics::Base, Config};
+use crate::{
+    graphics::Base,
+    lahar_deprecated::{
+        staging::StagingBuffer,
+        transfer::{self, TransferHandle},
+    },
+    Config,
+};
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
@@ -59,7 +66,7 @@ impl Loader {
         };
         let vertex_alloc = unsafe {
             BufferRegion::new(
-                gfx.device.clone(),
+                &gfx.device,
                 &gfx.memory_properties,
                 16 * 1024 * 1024,
                 vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -67,7 +74,7 @@ impl Loader {
         };
         let index_alloc = unsafe {
             BufferRegion::new(
-                gfx.device.clone(),
+                &gfx.device,
                 &gfx.memory_properties,
                 16 * 1024 * 1024,
                 vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
@@ -244,6 +251,8 @@ impl Drop for LoadCtx {
     fn drop(&mut self) {
         let device = &*self.gfx.device;
         unsafe {
+            self.index_alloc.lock().unwrap().destroy(device);
+            self.vertex_alloc.lock().unwrap().destroy(device);
             device.destroy_descriptor_set_layout(self.mesh_ds_layout, None);
         }
     }

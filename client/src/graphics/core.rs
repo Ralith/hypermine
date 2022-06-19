@@ -1,10 +1,10 @@
 use std::ffi::CStr;
+use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::ptr;
 use std::slice;
 
 use ash::extensions::ext::DebugUtils;
-use ash::version::{EntryV1_0, InstanceV1_0};
 use ash::{vk, Entry, Instance};
 use tracing::{debug, error, info, trace, warn};
 
@@ -36,16 +36,16 @@ impl Drop for Core {
 }
 
 impl Core {
-    pub fn new(exts: &[&CStr]) -> Self {
-        let entry = Entry::new().unwrap();
-
+    pub fn new(exts: &[*const c_char]) -> Self {
         unsafe {
-            let supported_exts = entry.enumerate_instance_extension_properties().unwrap();
+            let entry = Entry::load().unwrap();
+
+            let supported_exts = entry.enumerate_instance_extension_properties(None).unwrap();
             let has_debug = supported_exts
                 .iter()
                 .any(|x| CStr::from_ptr(x.extension_name.as_ptr()) == DebugUtils::name());
 
-            let mut exts = exts.iter().map(|x| x.as_ptr()).collect::<Vec<_>>();
+            let mut exts = exts.to_vec();
             if has_debug {
                 exts.push(DebugUtils::name().as_ptr());
             } else {
@@ -59,7 +59,7 @@ impl Core {
                 .application_version(0)
                 .engine_name(name)
                 .engine_version(0)
-                .api_version(vk::make_version(1, 1, 0));
+                .api_version(vk::make_api_version(0, 1, 1, 0));
             let mut instance_info = vk::InstanceCreateInfo::builder()
                 .application_info(&app_info)
                 .enabled_extension_names(&exts);

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use fxhash::FxHashSet;
 use lahar::Staged;
 use metrics::timing;
@@ -489,15 +489,12 @@ impl Draw {
         device.end_command_buffer(state.post_cmd).unwrap();
 
         // Specify the uniform data before actually submitting the command to transfer it
-        state.uniforms.write(
-            device,
-            Uniforms {
-                view_projection,
-                inverse_projection: *projection.inverse().matrix(),
-                fog_density: fog::density(self.cfg.local_simulation.view_distance, 1e-3, 5.0),
-                time: self.epoch.elapsed().as_secs_f32().fract(),
-            },
-        );
+        state.uniforms.write(Uniforms {
+            view_projection,
+            inverse_projection: *projection.inverse().matrix(),
+            fog_density: fog::density(self.cfg.local_simulation.view_distance, 1e-3, 5.0),
+            time: self.epoch.elapsed().as_secs_f32().fract(),
+        });
 
         // Submit the commands to the GPU
         device

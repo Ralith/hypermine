@@ -1,4 +1,4 @@
-use ash::{version::DeviceV1_0, vk, Device};
+use ash::{vk, Device};
 use vk_shader_macros::include_glsl;
 
 use super::Base;

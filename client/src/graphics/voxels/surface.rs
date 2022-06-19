@@ -1,6 +1,6 @@
 use std::ptr;
 
-use ash::{version::DeviceV1_0, vk, Device};
+use ash::{vk, Device};
 use lahar::{DedicatedImage, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
