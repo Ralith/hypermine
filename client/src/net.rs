@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc, thread};
+use std::{sync::Arc, thread};
 
 use anyhow::{anyhow, Error, Result};
 use futures_util::{StreamExt, TryStreamExt};
@@ -43,7 +43,7 @@ async fn run(
     incoming: mpsc::UnboundedSender<Message>,
     outgoing: mpsc::UnboundedReceiver<proto::Command>,
 ) -> Result<()> {
-    let mut endpoint = quinn::Endpoint::client("[::]:0".parse::<SocketAddr>().unwrap())?;
+    let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
     let crypto = rustls::ClientConfig::builder()
         .with_safe_defaults()
         .with_custom_certificate_verifier(Arc::new(AcceptAnyCert))
