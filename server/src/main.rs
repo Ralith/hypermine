@@ -40,7 +40,7 @@ pub fn run() -> Result<()> {
             .into_iter()
             .map(rustls::PrivateKey)
             .next()
-            .ok_or_else(|| anyhow!("No private keys found"))?,
+            .ok_or_else(|| anyhow!("no private key found with PKCS #8 format"))?,
         ),
         _ => {
             // TODO: Cache on disk
