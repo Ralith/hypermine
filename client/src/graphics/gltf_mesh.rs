@@ -294,11 +294,11 @@ async fn load_geom(
         storage.copy_from_slice(&idx.to_ne_bytes());
     }
 
-    let vert_alloc = ctx.vertex_alloc.lock().unwrap().alloc(
-        &ctx.gfx.device,
-        byte_size as vk::DeviceSize,
-        4,
-    );
+    let vert_alloc =
+        ctx.vertex_alloc
+            .lock()
+            .unwrap()
+            .alloc(&ctx.gfx.device, byte_size as vk::DeviceSize, 4);
     let staging_buffer = ctx.staging.buffer();
     let vert_buffer = vert_alloc.buffer;
     let vert_src_offset = v_staging.offset();
@@ -330,11 +330,11 @@ async fn load_geom(
         })
     };
 
-    let idx_alloc = ctx
-        .index_alloc
-        .lock()
-        .unwrap()
-        .alloc(&ctx.gfx.device, index_count as vk::DeviceSize * 4, 4);
+    let idx_alloc = ctx.index_alloc.lock().unwrap().alloc(
+        &ctx.gfx.device,
+        index_count as vk::DeviceSize * 4,
+        4,
+    );
     let idx_buffer = idx_alloc.buffer;
     let idx_src_offset = i_staging.offset();
     let idx_dst_offset = idx_alloc.offset;

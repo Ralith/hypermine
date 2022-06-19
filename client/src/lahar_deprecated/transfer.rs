@@ -6,8 +6,11 @@ use std::thread;
 use std::time::Duration;
 
 use ash::vk;
-use tokio::sync::{mpsc::{self, error::TryRecvError}, oneshot};
 use futures_util::FutureExt;
+use tokio::sync::{
+    mpsc::{self, error::TryRecvError},
+    oneshot,
+};
 
 #[derive(Clone)]
 pub struct TransferHandle {
