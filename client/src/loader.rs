@@ -51,7 +51,10 @@ pub struct Loader {
 
 impl Loader {
     pub fn new(cfg: Arc<Config>, gfx: Arc<Base>) -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
+        let runtime = tokio::runtime::Builder::new()
+            .threaded_scheduler()
+            .build()
+            .unwrap();
         let (send, recv) = mpsc::unbounded_channel();
         let staging =
             StagingBuffer::new(gfx.device.clone(), &gfx.memory_properties, 32 * 1024 * 1024);
@@ -158,7 +161,7 @@ impl Loader {
         self.runtime.spawn(async move {
             while let Some(x) = input_recv.recv().await {
                 let shared = shared.clone();
-                let out = output_send.clone();
+                let mut out = output_send.clone();
                 tokio::spawn(async move {
                     match shared.ctx.load(x).await {
                         Ok(x) => {

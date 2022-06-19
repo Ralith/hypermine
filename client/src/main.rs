@@ -32,8 +32,10 @@ fn main() {
             let _guard = span.enter();
             if let Err(e) = server::run(
                 server::NetParams {
-                    certificate_chain: vec![rustls::Certificate(cert)],
-                    private_key: rustls::PrivateKey(key),
+                    certificate_chain: quinn::CertificateChain::from_certs(
+                        quinn::Certificate::from_der(&cert),
+                    ),
+                    private_key: quinn::PrivateKey::from_der(&key).unwrap(),
                     socket,
                 },
                 sim_cfg,

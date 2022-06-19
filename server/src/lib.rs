@@ -12,7 +12,6 @@ use futures::{select, StreamExt, TryStreamExt};
 use hecs::Entity;
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tracing::{debug, error, error_span, info, trace};
 
 use common::{codec, proto, SimConfig};
@@ -20,21 +19,20 @@ use input_queue::InputQueue;
 use sim::Sim;
 
 pub struct NetParams {
-    pub certificate_chain: Vec<rustls::Certificate>,
-    pub private_key: rustls::PrivateKey,
+    pub certificate_chain: quinn::CertificateChain,
+    pub private_key: quinn::PrivateKey,
     pub socket: UdpSocket,
 }
 
 #[tokio::main]
 pub async fn run(net: NetParams, sim: SimConfig) -> Result<()> {
-    let server_config =
-        quinn::ServerConfig::with_single_cert(net.certificate_chain, net.private_key)
-            .context("parsing certificate")?;
-    let (endpoint, incoming) = quinn::Endpoint::new(
-        quinn::EndpointConfig::default(),
-        Some(server_config),
-        net.socket,
-    )?;
+    let mut server_config = quinn::ServerConfigBuilder::default();
+    server_config
+        .certificate(net.certificate_chain, net.private_key)
+        .context("parsing certificate")?;
+    let mut endpoint = quinn::Endpoint::builder();
+    endpoint.listen(server_config.build());
+    let (endpoint, incoming) = endpoint.with_socket(net.socket)?;
     info!(address = %endpoint.local_addr().unwrap(), "listening");
 
     let server = Server::new(sim);
@@ -59,15 +57,12 @@ impl Server {
     }
 
     async fn run(mut self, incoming: quinn::Incoming) {
-        let mut ticks = IntervalStream::new(tokio::time::interval(
-            Duration::from_secs(1) / self.cfg.rate as u32,
-        ))
-        .fuse();
+        let mut ticks = tokio::time::interval(Duration::from_secs(1) / self.cfg.rate as u32).fuse();
         let mut incoming = incoming
             .inspect(|x| trace!(address = %x.remote_address(), "connection incoming"))
             .buffer_unordered(16);
         let (client_events_send, client_events) = mpsc::channel(128);
-        let mut client_events = ReceiverStream::new(client_events).fuse();
+        let mut client_events = client_events.fuse();
         loop {
             select! {
                 _ = ticks.next() => { self.on_step(); },
@@ -135,7 +130,7 @@ impl Server {
                 assert!(client.handles.is_none());
                 let snapshot = Arc::new(self.sim.snapshot());
                 let (id, entity) = self.sim.spawn_character(hello);
-                let (ordered_send, ordered_recv) = mpsc::channel(32);
+                let (mut ordered_send, ordered_recv) = mpsc::channel(32);
                 ordered_send.try_send(snapshot).unwrap();
                 let (unordered_send, unordered_recv) = mpsc::channel(32);
                 client.handles = Some(ClientHandles {
@@ -237,7 +232,7 @@ async fn drive_send(
     conn: quinn::Connection,
     hello: proto::ServerHello,
     unordered: mpsc::Receiver<Unordered>,
-    ordered: mpsc::Receiver<Ordered>,
+    mut ordered: mpsc::Receiver<Ordered>,
 ) -> Result<()> {
     let mut stream = conn.open_uni().await?;
     codec::send(&mut stream, &hello).await?;
@@ -247,7 +242,6 @@ async fn drive_send(
         let _ = drive_send_unordered(conn.clone(), unordered).await;
     });
 
-    let mut ordered = ReceiverStream::new(ordered);
     while let Some(msg) = ordered.next().await {
         codec::send(&mut stream, &msg).await?;
     }
@@ -257,9 +251,8 @@ async fn drive_send(
 
 async fn drive_send_unordered(
     conn: quinn::Connection,
-    msgs: mpsc::Receiver<Unordered>,
+    mut msgs: mpsc::Receiver<Unordered>,
 ) -> Result<()> {
-    let mut msgs = ReceiverStream::new(msgs);
     while let Some(msg) = msgs.next().await {
         let stream = conn.open_uni().await?;
         codec::send_whole(stream, &msg).await?;

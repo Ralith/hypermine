@@ -3,6 +3,7 @@ mod config;
 use std::{fs, net::UdpSocket, path::Path};
 
 use anyhow::{anyhow, Context, Result};
+use quinn::{Certificate, CertificateChain, PrivateKey};
 use tracing::warn;
 
 use common::SimConfig;
@@ -26,21 +27,12 @@ pub fn run() -> Result<()> {
 
     let (certificate_chain, private_key) = match (&cfg.certificate_chain, &cfg.private_key) {
         (&Some(ref certificate_chain), &Some(ref private_key)) => (
-            rustls_pemfile::certs(
-                &mut &*fs::read(certificate_chain).context("reading certificate chain")?,
+            CertificateChain::from_pem(
+                &fs::read(certificate_chain).context("reading certificate chain")?,
             )
-            .context("parsing certificate chain")?
-            .into_iter()
-            .map(rustls::Certificate)
-            .collect(),
-            rustls_pemfile::pkcs8_private_keys(
-                &mut &*fs::read(private_key).context("reading private key")?,
-            )
-            .context("parsing private key")?
-            .into_iter()
-            .map(rustls::PrivateKey)
-            .next()
-            .ok_or_else(|| anyhow!("No private keys found"))?,
+            .context("parsing certificate chain")?,
+            PrivateKey::from_pem(&fs::read(private_key).context("reading private key")?)
+                .context("parsing private key")?,
         ),
         _ => {
             // TODO: Cache on disk
@@ -58,7 +50,10 @@ pub fn run() -> Result<()> {
             .unwrap();
             let key = cert.serialize_private_key_der();
             let cert = cert.serialize_der().unwrap();
-            (vec![rustls::Certificate(cert)], rustls::PrivateKey(key))
+            (
+                CertificateChain::from_certs(Certificate::from_der(&cert)),
+                PrivateKey::from_der(&key).unwrap(),
+            )
         }
     };
 

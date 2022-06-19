@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc, thread};
+use std::{sync::Arc, thread};
 
 use anyhow::{anyhow, Error, Result};
 use futures_util::{StreamExt, TryStreamExt};
@@ -37,19 +37,20 @@ pub enum Message {
     ConnectionLost(Error),
 }
 
-#[tokio::main(worker_threads = 1)]
+#[tokio::main(core_threads = 1)]
 async fn run(
     cfg: Arc<Config>,
     incoming: mpsc::UnboundedSender<Message>,
     outgoing: mpsc::UnboundedReceiver<proto::Command>,
 ) -> Result<()> {
-    let mut endpoint = quinn::Endpoint::client("[::]:0".parse::<SocketAddr>().unwrap())?;
-    let crypto = rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_custom_certificate_verifier(Arc::new(AcceptAnyCert))
-        .with_no_client_auth();
-    let client_cfg = quinn::ClientConfig::new(Arc::new(crypto));
-    endpoint.set_default_client_config(client_cfg);
+    let mut endpoint = quinn::Endpoint::builder();
+    let mut client_cfg = quinn::ClientConfig::default();
+    let tls_cfg = Arc::get_mut(&mut client_cfg.crypto).unwrap();
+    tls_cfg
+        .dangerous()
+        .set_certificate_verifier(Arc::new(AcceptAnyCert));
+    endpoint.default_client_config(client_cfg);
+    let (endpoint, _) = endpoint.bind(&"[::]:0".parse().unwrap())?;
 
     let result = inner(cfg, incoming, outgoing, endpoint.clone()).await;
     endpoint.wait_idle().await;
@@ -67,7 +68,7 @@ async fn inner(
         connection,
         mut uni_streams,
         ..
-    } = endpoint.connect(server, "localhost").unwrap().await?;
+    } = endpoint.connect(&server, "localhost").unwrap().await?;
 
     // Open the first stream for our hello message
     let clienthello_stream = connection.open_uni().await?;
@@ -137,16 +138,14 @@ async fn handle_unordered(
 
 struct AcceptAnyCert;
 
-impl rustls::client::ServerCertVerifier for AcceptAnyCert {
+impl rustls::ServerCertVerifier for AcceptAnyCert {
     fn verify_server_cert(
         &self,
-        _end_entity: &rustls::Certificate,
-        _intermediates: &[rustls::Certificate],
-        _server_name: &rustls::ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _roots: &rustls::RootCertStore,
+        _presented_certs: &[rustls::Certificate],
+        _dns_name: webpki::DNSNameRef,
         _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::ServerCertVerified::assertion())
+    ) -> Result<rustls::ServerCertVerified, rustls::TLSError> {
+        Ok(rustls::ServerCertVerified::assertion())
     }
 }

@@ -163,7 +163,7 @@ impl Reactor {
                     let cmd = self.prepare(sender);
                     op(&mut self.ctx, cmd);
                 }
-                Err(TryRecvError::Disconnected) => return Err(self::Disconnected),
+                Err(TryRecvError::Closed) => return Err(self::Disconnected),
                 Err(TryRecvError::Empty) => return Ok(()),
             }
         }
