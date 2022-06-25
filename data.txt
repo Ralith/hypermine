@@ -1,16 +1,15 @@
-[2mMay 24 13:07:17.110[0m [32m INFO[0m found config at /home/david2/.config/hypermine/client.toml
-[2mMay 24 13:07:17.110[0m [31mERROR[0m failed to parse config: invalid TOML value, did you mean to use a quoted string? at line 7 column 18
-[2mMay 24 13:07:17.114[0m [32m INFO[0m [1mserver[0m: listening address=[::1]:52821
-[2mMay 24 13:07:17.182[0m [31mERROR[0m /usr/lib/i386-linux-gnu/libvulkan_lvp.so: wrong ELF class: ELFCLASS32 id=Loader Message number=0 queue_labels= cmd_labels= objects=INSTANCE 55648ef3cfd0
-[2mMay 24 13:07:17.182[0m [31mERROR[0m /usr/lib/i386-linux-gnu/libvulkan_intel.so: wrong ELF class: ELFCLASS32 id=Loader Message number=0 queue_labels= cmd_labels= objects=INSTANCE 55648ef3cfd0
-[2mMay 24 13:07:17.206[0m [31mERROR[0m /usr/lib/i386-linux-gnu/libvulkan_radeon.so: wrong ELF class: ELFCLASS32 id=Loader Message number=0 queue_labels= cmd_labels= objects=INSTANCE 55648ef3cfd0
-[2mMay 24 13:07:17.253[0m [32m INFO[0m [1mserver[0m: connection established id=1v1 address=[::1]:35213
-[2mMay 24 13:07:17.253[0m [32m INFO[0m [1mserver[0m:[1mclient[0m[1m{[0mid=1v1[1m}[0m: spawning character id=f50bcc7a11883177 name=david2,,,
-[2mMay 24 13:07:17.261[0m [32m INFO[0m selected device name="NVIDIA GeForce GTX 1660"
-[2mMay 24 13:08:00.232[0m [32m INFO[0m exiting due to closed window
-[2mMay 24 13:08:00.253[0m [32m INFO[0m metric key=frame.cpu.voxels.graph_traversal percentile_25=1.855487ms percentile_50=2.000895ms percentile_75=3.082239ms max=5.328895ms
-[2mMay 24 13:08:00.253[0m [32m INFO[0m metric key=frame.cpu.voxels.node_scan percentile_25=1.512447ms percentile_50=1.799167ms percentile_75=2.590719ms max=7.847935ms
-[2mMay 24 13:08:00.253[0m [32m INFO[0m metric key=frame.cpu.voxels.draw percentile_25=35.263µs percentile_50=44.767µs percentile_75=66.751µs max=221.183µs
-[2mMay 24 13:08:00.253[0m [32m INFO[0m metric key=frame.gpu.after_draw percentile_25=22.927µs percentile_50=27.631µs percentile_75=28.687µs max=4.110335ms
-[2mMay 24 13:08:00.253[0m [32m INFO[0m metric key=frame.gpu.draw percentile_25=1.839103ms percentile_50=2.451455ms percentile_75=3.237887ms max=7.901183ms
-[2mMay 24 13:08:00.253[0m [32m INFO[0m metric key=frame.cpu percentile_25=6.828031ms percentile_50=7.598079ms percentile_75=10.608639ms max=15.785983ms
+[2mJun 25 11:19:12.172[0m [32m INFO[0m found config at /home/david2/.config/hypermine/client.toml
+[2mJun 25 11:19:12.176[0m [32m INFO[0m [1mserver[0m: listening address=[::1]:52757
+[2mJun 25 11:19:12.236[0m [31mERROR[0m /usr/lib/i386-linux-gnu/libvulkan_lvp.so: wrong ELF class: ELFCLASS32 id=Loader Message number=0 queue_labels= cmd_labels= objects=INSTANCE 55e512011c70
+[2mJun 25 11:19:12.236[0m [31mERROR[0m /usr/lib/i386-linux-gnu/libvulkan_intel.so: wrong ELF class: ELFCLASS32 id=Loader Message number=0 queue_labels= cmd_labels= objects=INSTANCE 55e512011c70
+[2mJun 25 11:19:12.246[0m [31mERROR[0m /usr/lib/i386-linux-gnu/libvulkan_radeon.so: wrong ELF class: ELFCLASS32 id=Loader Message number=0 queue_labels= cmd_labels= objects=INSTANCE 55e512011c70
+[2mJun 25 11:19:12.277[0m [32m INFO[0m [1mserver[0m: connection established id=1v1 address=[::1]:33710
+[2mJun 25 11:19:12.277[0m [32m INFO[0m [1mserver[0m:[1mclient[0m[1m{[0mid=1v1[1m}[0m: spawning character id=1214b37f4b0b9d55 name=david2,,,
+[2mJun 25 11:19:12.282[0m [32m INFO[0m selected device name="NVIDIA GeForce GTX 1660"
+[2mJun 25 11:22:55.974[0m [32m INFO[0m exiting due to closed window
+[2mJun 25 11:22:55.992[0m [32m INFO[0m metric key=frame.cpu.voxels.graph_traversal percentile_25=1.689599ms percentile_50=2.016255ms percentile_75=2.416639ms max=5.828607ms
+[2mJun 25 11:22:55.992[0m [32m INFO[0m metric key=frame.gpu.after_draw percentile_25=22.895µs percentile_50=28.687µs percentile_75=74.047µs max=2.957311ms
+[2mJun 25 11:22:55.992[0m [32m INFO[0m metric key=frame.cpu.voxels.node_scan percentile_25=1.739775ms percentile_50=2.030591ms percentile_75=2.785279ms max=5.844991ms
+[2mJun 25 11:22:55.992[0m [32m INFO[0m metric key=frame.cpu percentile_25=7.204863ms percentile_50=8.052735ms percentile_75=10.788863ms max=16.596991ms
+[2mJun 25 11:22:55.993[0m [32m INFO[0m metric key=frame.gpu.draw percentile_25=1.433599ms percentile_50=2.040831ms percentile_75=2.562047ms max=6.344703ms
+[2mJun 25 11:22:55.993[0m [32m INFO[0m metric key=frame.cpu.voxels.draw percentile_25=54.143µs percentile_50=96.127µs percentile_75=143.743µs max=758.271µs

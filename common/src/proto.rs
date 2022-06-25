@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{dodeca, graph::NodeId, EntityId, Step, force::GravityMethod};
+use crate::{dodeca, force::GravityMethod, graph::NodeId, EntityId, Step};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientHello {

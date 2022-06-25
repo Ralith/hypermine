@@ -94,6 +94,14 @@ impl Vertex {
             .cloned()
     }
 
+    #[inline]
+    pub fn from_index(x: usize) -> Self {
+        use Vertex::*;
+        const VALUES: [Vertex; VERTEX_COUNT] =
+            [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T];
+        VALUES[x]
+    }
+
     /// Vertex shared by three sides, if any
     #[inline]
     pub fn from_sides(a: Side, b: Side, c: Side) -> Option<Self> {

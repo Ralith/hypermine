@@ -1,5 +1,9 @@
 use crate::node::DualGraph;
-use crate::{dodeca::Vertex, graph::NodeId};
+use crate::{
+    dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
+    graph::NodeId,
+};
+use lazy_static::lazy_static;
 
 #[allow(dead_code)]
 /*
@@ -101,12 +105,23 @@ impl BoundingBox {
             for side in sides.iter() {
                 let node = graph.neighbor(opposite_node, *side);
                 let translated_position = side.reflection() * opposite_position;
-
+                // the chunk next to the origin chunk
                 Self::add_sub_bb(
                     &mut bounding_boxes,
                     ChunkBoundingBox::get_chunk_bounding_box(
                         node.unwrap(),
-                        Vertex::from_sides(sides[0], sides[1], sides[2]).unwrap(), // pretty sure this is pointless
+                        start_chunk,
+                        translated_position,
+                        radius,
+                        dimension,
+                    ),
+                );
+                // the chunk on the opposite side of the edge
+                Self::add_sub_bb(
+                    &mut bounding_boxes,
+                    ChunkBoundingBox::get_chunk_bounding_box(
+                        node.unwrap(),
+                        PERPENDICULAR_VERTEX[*side as usize][start_chunk as usize].unwrap(),
                         translated_position,
                         radius,
                         dimension,
@@ -185,8 +200,11 @@ impl ChunkBoundingBox {
         radius: f64,
         dimension: u8,
     ) -> Option<Self> {
-        let euclidean_position =
-            (chunk.chunk_to_node().try_inverse().unwrap() * translated_position).xyz();
+        let euclidean_position = {
+            let temp = chunk.chunk_to_node().try_inverse().unwrap() * translated_position;
+            temp.xyz() / temp[3]
+        };
+
         let mut min_xyz = na::Vector3::<u32>::new(0_u32, 0_u32, 0_u32);
         let mut max_xyz = na::Vector3::<u32>::new(0_u32, 0_u32, 0_u32);
 
@@ -225,14 +243,53 @@ impl ChunkBoundingBox {
     }
 
     pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = u32> + 'b {
+        let lwm = (self.dimension as u32) + 2;
         (self.min_xyz[2]..self.max_xyz[2]).flat_map(move |z| {
             (self.min_xyz[1]..self.max_xyz[1]).flat_map(move |y| {
-                (self.min_xyz[0]..self.max_xyz[0]).map(move |x| {
-                    z + (self.dimension as u32) * y + (self.dimension as u32).pow(2) * x
-                })
+                (self.min_xyz[0]..self.max_xyz[0])
+                    .map(move |x| (x + 1) + lwm * (y + 1) + lwm.pow(2) * (z + 1))
             })
         })
     }
+}
+
+lazy_static! {
+    /// given a side s and a vertex v, returns a vertex that is adjacent to v but not
+    /// incident on s, if such a vertex exists
+    // I can't decide if this should be here or dodeca.rs
+    static ref PERPENDICULAR_VERTEX: [[Option<Vertex>; VERTEX_COUNT]; SIDE_COUNT] = {
+        let mut result = [[None; VERTEX_COUNT]; SIDE_COUNT];
+
+        for s in 0..SIDE_COUNT {
+            let side = Side::from_index(s);
+            let incident_vertices = side.vertices();
+            for v in 0..5 {
+                let vertex = incident_vertices[v];
+                let mut vertex_counts = [0; VERTEX_COUNT];
+
+                // count the number of times that vertices appear in all incident sides
+                let sides_to_tally = vertex.canonical_sides();
+                for i in 0..3 {
+                    // five verticies per side
+                    let vertices_to_count = sides_to_tally[i].vertices();
+                    for j in 0..5 {
+                        vertex_counts[vertices_to_count[j] as usize] += 1;
+                    }
+                }
+
+                // inceident corners as not perpendicular
+                for i in side.vertices().iter() {vertex_counts[*i as usize] = -1}
+
+                for i in 0..VERTEX_COUNT {
+                    if vertex_counts[i] == 2 {
+                        result[s][vertex as usize] = Some(Vertex::from_index(i));
+                        break;
+                    }
+                }
+            }
+        }
+        result
+    };
 }
 
 #[cfg(test)]
@@ -243,7 +300,7 @@ mod tests {
     use crate::{graph::Graph, proto::Position, traversal::ensure_nearby};
     use approx::*;
 
-    const CHUNK_SIZE: u8 = 12; // might want to test with multiple values in the future.
+    const CHUNK_SIZE: u8 = 12_u8; // might want to test with multiple values in the future.
     static CHUNK_SIZE_F: f64 = CHUNK_SIZE as f64;
 
     // place a small bounding box near the center of the node. There should be exactly 20 chunks in contact.
@@ -463,9 +520,9 @@ mod tests {
 
         bb.display_summary();
 
-        let expected_index = chunk_coords[0]
-            + chunk_coords[1] * (CHUNK_SIZE as u32)
-            + chunk_coords[2] * (CHUNK_SIZE as u32).pow(2);
+        let lwm = (CHUNK_SIZE + 2_u8) as u32;
+
+        let expected_index = chunk_coords[0] + 1 + (chunk_coords[1] + 1) * lwm + (chunk_coords[2] + 1)*lwm.pow(2);
 
         for address in bb.every_voxel_address() {
             if expected_index == address.index {
@@ -473,5 +530,64 @@ mod tests {
             }
         }
         panic!();
+    }
+
+    #[test]
+    fn internal_coordinates_tiny() {
+        let mut graph = Graph::new();
+        ensure_nearby(&mut graph, &Position::origin(), 4.0);
+
+        let central_chunk = Vertex::B; // arbitrary vertex
+        let chunk_coords = na::Vector3::new(1_u32, 1_u32, 1_u32);
+
+        let tiny_chunk_size = 1_u8;
+
+        let position = central_chunk.chunk_to_node()
+            * na::Vector4::new(
+                (chunk_coords[0] as f64) / 1.0_f64,
+                (chunk_coords[1] as f64) / 1.0_f64,
+                (chunk_coords[2] as f64) / 1.0_f64,
+                1.0,
+            );
+
+        let bb = BoundingBox::create_aabb(NodeId::ROOT, position, 0.3, &graph, 1);
+
+        bb.display_summary();
+        
+        let lwm = (tiny_chunk_size + 2_u8) as u32;
+
+        //let expected_index = chunk_coords[0] + 1 + (chunk_coords[1] + 1) * lwm + (chunk_coords[2] + 1)*lwm.pow(2);
+        let expected_index = chunk_coords[0] + chunk_coords[1] * lwm + chunk_coords[2]*lwm.pow(2);
+        
+        for address in bb.every_voxel_address() {
+            if expected_index == address.index {
+                return;
+            }
+        }
+        panic!();
+    }
+
+    #[test]
+    fn perpendicular_vertex_is_complete() {
+        //print!("{:?}", PERPENDICULAR_VERTEX);
+        let mut error_count = 0_i32;
+
+        for s in 0..SIDE_COUNT {
+            let side = Side::from_index(s);
+            let incident_vertices = side.vertices();
+            for v in 0..5 {
+                let vertex = incident_vertices[v];
+                println!("side of {:?} and vertex of {:?}", side, vertex); // not helpful, but I don't want to mess with the formatter.
+                let result = PERPENDICULAR_VERTEX[s][vertex as usize];
+                if result.is_some() {
+                    println!("\tresults in {:?}", result.unwrap());
+                } else {
+                    println!("\tIs not thought to exist.");
+                    error_count += 1;
+                }
+            }
+        }
+
+        assert!(error_count == 0_i32);
     }
 }

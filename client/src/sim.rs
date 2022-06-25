@@ -148,7 +148,6 @@ impl Sim {
                     gravity_intensity: msg.gravity_intensity,
                     drag_factor: msg.drag_factor,
                     gravity_method: msg.gravity_method,
-
                 });
                 // Populate the root node
                 populate_fresh_nodes(&mut self.graph);

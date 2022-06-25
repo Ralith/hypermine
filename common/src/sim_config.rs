@@ -26,7 +26,7 @@ pub struct SimConfigRaw {
     pub voxel_size: Option<f32>,
     /// Character movement speed in m/s
     pub movement_speed: Option<f32>,
-    pub gravity_intensity : Option<f64>,
+    pub gravity_intensity: Option<f64>,
     pub drag_factor: Option<f64>,
     pub gravity_method: Option<GravityMethod>,
 }
