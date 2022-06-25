@@ -53,7 +53,10 @@ pub async fn recv_whole<T: DeserializeOwned>(
     let mut cursor = 0;
     loop {
         let slice = unsafe {
-            std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(cursor), buf.capacity() - cursor)
+            std::slice::from_raw_parts_mut(
+                buf.as_mut_ptr().add(cursor),
+                size_limit.min(buf.capacity()) - cursor,
+            )
         };
         match stream.read(slice).await? {
             Some(n) => {
@@ -62,7 +65,7 @@ pub async fn recv_whole<T: DeserializeOwned>(
                     bail!("message too large");
                 }
                 if cursor == buf.capacity() {
-                    buf.reserve(size_limit.min(buf.capacity() * 2));
+                    buf.reserve(size_limit.min(buf.capacity() * 2) - buf.len());
                 }
                 unsafe {
                     buf.set_len(cursor);
