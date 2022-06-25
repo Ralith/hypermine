@@ -47,34 +47,8 @@ pub async fn send_whole<T: Serialize + ?Sized>(
 /// Receive the entirety of `stream` as a `T`
 pub async fn recv_whole<T: DeserializeOwned>(
     size_limit: usize,
-    mut stream: quinn::RecvStream,
+    stream: quinn::RecvStream,
 ) -> Result<T> {
-    let mut buf = Vec::<u8>::with_capacity(1024);
-    let mut cursor = 0;
-    loop {
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(
-                buf.as_mut_ptr().add(cursor),
-                size_limit.min(buf.capacity()) - cursor,
-            )
-        };
-        match stream.read(slice).await? {
-            Some(n) => {
-                cursor += n;
-                if cursor == size_limit {
-                    bail!("message too large");
-                }
-                if cursor == buf.capacity() {
-                    buf.reserve(size_limit.min(buf.capacity() * 2) - buf.len());
-                }
-                unsafe {
-                    buf.set_len(cursor);
-                }
-            }
-            None => {
-                break;
-            }
-        }
-    }
+    let buf = stream.read_to_end(size_limit).await?;
     Ok(bincode::deserialize(&buf)?)
 }
