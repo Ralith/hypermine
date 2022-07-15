@@ -4,3 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ggez = "0.7.0"
+na = { package = "nalgebra", version = "0.31.0" }
