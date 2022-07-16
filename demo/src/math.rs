@@ -2,6 +2,8 @@ use std::ops::{DivAssign, SubAssign};
 
 use na::{ComplexField, U3};
 
+pub const TAU: f64 = std::f64::consts::TAU;
+
 pub fn translation(v: &na::Vector3<f64>) -> na::Matrix3<f64> {
     let f = 1.0 / v.z;
     na::Matrix3::new(
