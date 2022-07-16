@@ -39,7 +39,10 @@ impl Tessellation {
         }
 
         for (i, vertex) in vertices.iter_mut().enumerate() {
-            *vertex = reflection_vectors[(i + 1) % NUM_SIDES] + reflection_vectors[(i) % NUM_SIDES];
+            *vertex = math::normal(
+                &reflection_vectors[(i + 1) % NUM_SIDES],
+                &reflection_vectors[(i) % NUM_SIDES],
+            );
             *vertex /= (-math::sqr(vertex)).sqrt();
         }
 
