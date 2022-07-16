@@ -1,6 +1,6 @@
 use std::ops::{DivAssign, SubAssign};
 
-use na::{ComplexField, U3};
+use na::{ComplexField, RowVector3, U3};
 
 pub const TAU: f64 = std::f64::consts::TAU;
 
@@ -29,6 +29,10 @@ pub fn iso_inverse(m: &na::Matrix3<f64>) -> na::Matrix3<f64> {
     )
 }
 
+pub fn reflection(v: &na::Vector3<f64>) -> na::Matrix3<f64> {
+    na::Matrix3::identity() - (v * RowVector3::new(v.x, v.y, -v.z)) * 2.0
+}
+
 pub fn normal(v0: &na::Vector3<f64>, v1: &na::Vector3<f64>) -> na::Vector3<f64> {
     na::Vector3::new(
         v0.y * v1.z - v0.z * v1.y,
@@ -38,14 +42,14 @@ pub fn normal(v0: &na::Vector3<f64>, v1: &na::Vector3<f64>) -> na::Vector3<f64> 
 }
 
 // TODO: Can nalgebra take advantage of deref coersion so that mip can accept a slice or a regular vector?
-pub fn mip<S>(v0: na::Vector<f64, U3, S>, v1: na::Vector<f64, U3, S>) -> f64
+pub fn mip<S>(v0: &na::Vector<f64, U3, S>, v1: &na::Vector<f64, U3, S>) -> f64
 where
     S: na::Storage<f64, U3>,
 {
     v0[0] * v1[0] + v0[1] * v1[1] - v0[2] * v1[2]
 }
 
-pub fn sqr<S>(v: na::Vector<f64, U3, S>) -> f64
+pub fn sqr<S>(v: &na::Vector<f64, U3, S>) -> f64
 where
     S: na::Storage<f64, U3>,
 {
@@ -63,14 +67,23 @@ pub fn displacement(v: &na::Vector3<f64>) -> na::Matrix3<f64> {
 }
 
 pub fn qr_normalize(m: &mut na::Matrix3<f64>) {
-    div_assign(sqr(m.column(0)).sqrt(), m.column_mut(0));
-    sub_assign(m.column(0) * mip(m.column(0), m.column(1)), m.column_mut(1));
-    sub_assign(m.column(0) * mip(m.column(0), m.column(2)), m.column_mut(2));
+    div_assign(sqr(&m.column(0)).sqrt(), m.column_mut(0));
+    sub_assign(
+        m.column(0) * mip(&m.column(0), &m.column(1)),
+        m.column_mut(1),
+    );
+    sub_assign(
+        m.column(0) * mip(&m.column(0), &m.column(2)),
+        m.column_mut(2),
+    );
 
-    div_assign(sqr(m.column(1)).sqrt(), m.column_mut(1));
-    sub_assign(m.column(1) * mip(m.column(1), m.column(2)), m.column_mut(2));
+    div_assign(sqr(&m.column(1)).sqrt(), m.column_mut(1));
+    sub_assign(
+        m.column(1) * mip(&m.column(1), &m.column(2)),
+        m.column_mut(2),
+    );
 
-    div_assign((-sqr(m.column(2))).sqrt(), m.column_mut(2));
+    div_assign((-sqr(&m.column(2))).sqrt(), m.column_mut(2));
 }
 
 fn div_assign(divisor: f64, mut slice: na::VectorSliceMut3<f64>) {
