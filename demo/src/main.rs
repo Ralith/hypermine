@@ -1,10 +1,9 @@
-use ggez::{conf::WindowMode, event, graphics, mint, Context, ContextBuilder, GameResult};
-
-mod math;
+use ggez::{conf, event, graphics, mint, Context, ContextBuilder, GameResult};
 
 fn main() {
     let (mut ctx, event_loop) = ContextBuilder::new("demo", "hypermine")
-        .window_mode(WindowMode::default().resizable(true))
+        .window_mode(conf::WindowMode::default().resizable(true))
+        .window_setup(conf::WindowSetup::default().title("Hypermine 2D concept demos"))
         .build()
         .unwrap();
     let demo = State::new(&mut ctx);
@@ -57,8 +56,8 @@ impl event::EventHandler for State {
             graphics::Rect {
                 x: 0.0,
                 y: 0.0,
-                w: width,
-                h: height,
+                w: width.max(1.0),
+                h: height.max(1.0),
             },
         )
         .unwrap();
