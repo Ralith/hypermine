@@ -107,63 +107,19 @@ impl State {
 }
 
 impl event::EventHandler for State {
-    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
+    fn update(&mut self, _ctx: &mut Context) -> GameResult {
         Ok(())
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        graphics::clear(ctx, graphics::Color::new(0.2, 0.2, 0.2, 1.0));
-        let screen_coordinates = graphics::screen_coordinates(ctx);
-        let width = screen_coordinates.w;
-        let height = screen_coordinates.h;
-
-        let scale = (width.min(height) - 1.0) / 2.0;
-
-        let draw_params = graphics::DrawParam::default()
-            .offset(mint::Point2 {
-                x: -width / 2.0 / scale,
-                y: -height / 2.0 / scale,
-            })
-            .scale([scale, scale]);
-
-        let circle = graphics::Mesh::new_circle(
-            ctx,
-            graphics::DrawMode::fill(),
-            mint::Point2 { x: 0.0, y: 0.0 },
-            1.0,
-            0.1 / scale,
-            graphics::Color::BLACK,
-        )?;
-        graphics::draw(ctx, &circle, draw_params)?;
-
-        let transform = na::Matrix3::identity();
-        draw2(
-            &self.get_voxel_mesh(ctx, &transform, 0, Vertex::AB)?,
-            draw_params,
-            ctx,
-        )?;
-        draw2(
-            &self.get_voxel_mesh(ctx, &transform, 1, Vertex::BC)?,
-            draw_params,
-            ctx,
-        )?;
-        draw2(
-            &self.get_voxel_mesh(ctx, &transform, 0, Vertex::CD)?,
-            draw_params,
-            ctx,
-        )?;
-        draw2(
-            &self.get_voxel_mesh(ctx, &transform, 1, Vertex::DE)?,
-            draw_params,
-            ctx,
-        )?;
-        draw2(
-            &self.get_voxel_mesh(ctx, &transform, 0, Vertex::EA)?,
-            draw_params,
-            ctx,
-        )?;
-
-        graphics::present(ctx)
+    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        let mut pass = RenderPass::new(ctx, self);
+        pass.draw_background()?;
+        pass.draw_chunk(Vertex::AB)?;
+        pass.draw_chunk(Vertex::BC)?;
+        pass.draw_chunk(Vertex::CD)?;
+        pass.draw_chunk(Vertex::DE)?;
+        pass.draw_chunk(Vertex::EA)?;
+        pass.present()
     }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
@@ -180,10 +136,57 @@ impl event::EventHandler for State {
     }
 }
 
-fn draw2<D, T>(drawable: &D, params: T, ctx: &mut Context) -> GameResult
-where
-    D: graphics::Drawable,
-    T: Into<graphics::DrawParam>,
-{
-    graphics::draw(ctx, drawable, params)
+struct RenderPass<'a> {
+    state: &'a State,
+    ctx: &'a mut Context,
+    draw_params: graphics::DrawParam,
+    scale: f32,
+}
+
+impl<'a> RenderPass<'a> {
+    fn new(ctx: &'a mut Context, state: &'a State) -> RenderPass<'a> {
+        let screen_coordinates = graphics::screen_coordinates(ctx);
+        let width = screen_coordinates.w;
+        let height = screen_coordinates.h;
+
+        let scale = (width.min(height) - 1.0) / 2.0;
+
+        let draw_params = graphics::DrawParam::default()
+            .offset(mint::Point2 {
+                x: -width / 2.0 / scale,
+                y: -height / 2.0 / scale,
+            })
+            .scale([scale, scale]);
+
+        RenderPass {
+            state,
+            ctx,
+            draw_params,
+            scale,
+        }
+    }
+
+    fn draw_background(&mut self) -> GameResult {
+        graphics::clear(self.ctx, graphics::Color::new(0.2, 0.2, 0.2, 1.0));
+        let circle = graphics::Mesh::new_circle(
+            self.ctx,
+            graphics::DrawMode::fill(),
+            mint::Point2 { x: 0.0, y: 0.0 },
+            1.0,
+            0.1 / self.scale,
+            graphics::Color::BLACK,
+        )?;
+        graphics::draw(self.ctx, &circle, self.draw_params)
+    }
+
+    fn draw_chunk(&mut self, vertex: Vertex) -> GameResult {
+        let mesh = self
+            .state
+            .get_voxel_mesh(self.ctx, &na::Matrix3::identity(), 0, vertex)?;
+        graphics::draw(self.ctx, &mesh, self.draw_params)
+    }
+
+    fn present(&mut self) -> GameResult {
+        graphics::present(self.ctx)
+    }
 }
