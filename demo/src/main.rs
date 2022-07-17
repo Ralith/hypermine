@@ -1,6 +1,6 @@
 use demo::{
     math,
-    node_string::{NodeString, Vertex},
+    node_string::{NodeString, Side, Vertex},
     tessellation::Tessellation,
 };
 use ggez::{conf, event, graphics, mint, Context, ContextBuilder, GameResult};
@@ -114,11 +114,16 @@ impl event::EventHandler for State {
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         let mut pass = RenderPass::new(ctx, self);
         pass.draw_background()?;
-        pass.draw_chunk(Vertex::AB)?;
-        pass.draw_chunk(Vertex::BC)?;
-        pass.draw_chunk(Vertex::CD)?;
-        pass.draw_chunk(Vertex::DE)?;
-        pass.draw_chunk(Vertex::EA)?;
+        pass.draw_node_chunks()?;
+        pass.push_transform(self.tessellation.reflection(Side::A), 1);
+        pass.draw_node_chunks()?;
+        pass.push_transform(self.tessellation.reflection(Side::B), 1);
+        pass.draw_node_chunks()?;
+        pass.pop_transform();
+        pass.pop_transform();
+        pass.push_transform(self.tessellation.reflection(Side::B), 1);
+        pass.draw_node_chunks()?;
+        pass.pop_transform();
         pass.present()
     }
 
@@ -141,6 +146,7 @@ struct RenderPass<'a> {
     ctx: &'a mut Context,
     draw_params: graphics::DrawParam,
     scale: f32,
+    stack: Vec<(na::Matrix3<f64>, u32)>,
 }
 
 impl<'a> RenderPass<'a> {
@@ -163,7 +169,27 @@ impl<'a> RenderPass<'a> {
             ctx,
             draw_params,
             scale,
+            stack: vec![(na::Matrix3::identity(), 0)],
         }
+    }
+
+    fn push_transform(&mut self, transform: &na::Matrix3<f64>, node_parity: u32) {
+        self.stack.push((
+            self.get_transform() * transform,
+            self.get_parity() ^ node_parity,
+        ));
+    }
+
+    fn pop_transform(&mut self) {
+        self.stack.pop();
+    }
+
+    fn get_transform(&self) -> &na::Matrix3<f64> {
+        &self.stack.last().expect("Transformation stack underflow").0
+    }
+
+    fn get_parity(&self) -> u32 {
+        self.stack.last().expect("Transformation stack underflow").1
     }
 
     fn draw_background(&mut self) -> GameResult {
@@ -179,10 +205,21 @@ impl<'a> RenderPass<'a> {
         graphics::draw(self.ctx, &circle, self.draw_params)
     }
 
+    fn draw_node_chunks(&mut self) -> GameResult {
+        self.draw_chunk(Vertex::AB)?;
+        self.draw_chunk(Vertex::BC)?;
+        self.draw_chunk(Vertex::CD)?;
+        self.draw_chunk(Vertex::DE)?;
+        self.draw_chunk(Vertex::EA)?;
+        Ok(())
+    }
+
     fn draw_chunk(&mut self, vertex: Vertex) -> GameResult {
+        let transform = *self.get_transform();
+        let parity = self.get_parity();
         let mesh = self
             .state
-            .get_voxel_mesh(self.ctx, &na::Matrix3::identity(), 0, vertex)?;
+            .get_voxel_mesh(self.ctx, &transform, parity, vertex)?;
         graphics::draw(self.ctx, &mesh, self.draw_params)
     }
 
