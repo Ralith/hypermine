@@ -26,10 +26,40 @@ impl State {
         }
     }
 
-    fn get_voxel_mesh(&self, ctx: &mut Context) -> GameResult<graphics::Mesh> {
-        let transform = self
-            .tessellation
-            .voxel_to_hyperboloid(&NodeString::default(), Vertex::AB);
+    fn get_voxel_mesh(
+        &self,
+        ctx: &mut Context,
+        transform: &na::Matrix3<f64>,
+        node_parity: u32,
+        vertex: Vertex,
+    ) -> GameResult<graphics::Mesh> {
+        let transform = transform
+            * self
+                .tessellation
+                .voxel_to_hyperboloid(&NodeString::default(), vertex);
+
+        let hue = match vertex {
+            Vertex::AB => [1.0, 0.0, 0.0],
+            Vertex::BC => [1.0, 0.8, 0.0],
+            Vertex::CD => [0.0, 1.0, 0.4],
+            Vertex::DE => [0.0, 0.4, 1.0],
+            Vertex::EA => [0.8, 0.0, 1.0],
+        };
+
+        let on_color = [
+            [
+                1.0 - (1.0 - hue[0]) * (1.0 - 0.9),
+                1.0 - (1.0 - hue[1]) * (1.0 - 0.9),
+                1.0 - (1.0 - hue[2]) * (1.0 - 0.9),
+                1.0,
+            ],
+            [
+                1.0 - (1.0 - hue[0]) * (1.0 - 0.7),
+                1.0 - (1.0 - hue[1]) * (1.0 - 0.7),
+                1.0 - (1.0 - hue[2]) * (1.0 - 0.7),
+                1.0,
+            ],
+        ];
 
         let resolution = 4;
         let vertices: Vec<graphics::Vertex> = (0..resolution)
@@ -39,11 +69,7 @@ impl State {
                     let x_max = (x + 1) as f64 / resolution as f64;
                     let y_min = y as f64 / resolution as f64;
                     let y_max = (y + 1) as f64 / resolution as f64;
-                    let color = if (x + y) % 2 == 0 {
-                        [0.8, 0.8, 0.8, 1.0]
-                    } else {
-                        [0.9, 0.9, 0.9, 1.0]
-                    };
+                    let color = on_color[((x + y + node_parity) % 2) as usize];
                     [
                         graphics::Vertex {
                             pos: math::to_point(&(transform * na::Vector3::new(x_min, y_min, 1.0))),
@@ -110,8 +136,32 @@ impl event::EventHandler for State {
         )?;
         graphics::draw(ctx, &circle, draw_params)?;
 
-        let test = self.get_voxel_mesh(ctx)?;
-        graphics::draw(ctx, &test, draw_params)?;
+        let transform = na::Matrix3::identity();
+        draw2(
+            &self.get_voxel_mesh(ctx, &transform, 0, Vertex::AB)?,
+            draw_params,
+            ctx,
+        )?;
+        draw2(
+            &self.get_voxel_mesh(ctx, &transform, 1, Vertex::BC)?,
+            draw_params,
+            ctx,
+        )?;
+        draw2(
+            &self.get_voxel_mesh(ctx, &transform, 0, Vertex::CD)?,
+            draw_params,
+            ctx,
+        )?;
+        draw2(
+            &self.get_voxel_mesh(ctx, &transform, 1, Vertex::DE)?,
+            draw_params,
+            ctx,
+        )?;
+        draw2(
+            &self.get_voxel_mesh(ctx, &transform, 0, Vertex::EA)?,
+            draw_params,
+            ctx,
+        )?;
 
         graphics::present(ctx)
     }
@@ -128,4 +178,12 @@ impl event::EventHandler for State {
         )
         .unwrap();
     }
+}
+
+fn draw2<D, T>(drawable: &D, params: T, ctx: &mut Context) -> GameResult
+where
+    D: graphics::Drawable,
+    T: Into<graphics::DrawParam>,
+{
+    graphics::draw(ctx, drawable, params)
 }
