@@ -1,4 +1,7 @@
-use crate::{math, node_string::Side};
+use crate::{
+    math,
+    node_string::{NodeString, Side, Vertex},
+};
 
 // Order 4 pentagonal tiling
 // Note: Despite being constants, it is undefined behavior to change these values, as certain hardcoded unsafe code
@@ -68,6 +71,16 @@ impl Tessellation {
 
     pub fn reflection(&self, side: Side) -> &na::Matrix3<f64> {
         unsafe { self.reflections.get_unchecked(side as usize) }
+    }
+
+    // TODO: This function is inefficient and should be replaced with a graph datastructure
+    pub fn voxel_to_hyperboloid(&self, ns: &NodeString, vert: Vertex) -> na::Matrix3<f64> {
+        let mut transform = na::Matrix3::identity();
+        for &side in ns.iter() {
+            transform *= self.reflection(side);
+        }
+        transform *= unsafe { self.voxel_to_hyperboloid.get_unchecked(vert as usize) };
+        transform
     }
 }
 

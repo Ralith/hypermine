@@ -1,3 +1,8 @@
+use demo::{
+    math,
+    node_string::{NodeString, Vertex},
+    tessellation::Tessellation,
+};
 use ggez::{conf, event, graphics, mint, Context, ContextBuilder, GameResult};
 
 fn main() {
@@ -10,11 +15,68 @@ fn main() {
     event::run(ctx, event_loop, demo);
 }
 
-struct State {}
+struct State {
+    tessellation: Tessellation,
+}
 
 impl State {
     pub fn new(_ctx: &mut Context) -> State {
-        State {}
+        State {
+            tessellation: Tessellation::new(),
+        }
+    }
+
+    fn get_voxel_mesh(&self, ctx: &mut Context) -> GameResult<graphics::Mesh> {
+        let transform = self
+            .tessellation
+            .voxel_to_hyperboloid(&NodeString::default(), Vertex::AB);
+
+        let resolution = 4;
+        let vertices: Vec<graphics::Vertex> = (0..resolution)
+            .flat_map(|x| {
+                (0..resolution).flat_map(move |y| {
+                    let x_min = x as f64 / resolution as f64;
+                    let x_max = (x + 1) as f64 / resolution as f64;
+                    let y_min = y as f64 / resolution as f64;
+                    let y_max = (y + 1) as f64 / resolution as f64;
+                    let color = if (x + y) % 2 == 0 {
+                        [0.8, 0.8, 0.8, 1.0]
+                    } else {
+                        [0.9, 0.9, 0.9, 1.0]
+                    };
+                    [
+                        graphics::Vertex {
+                            pos: math::to_point(&(transform * na::Vector3::new(x_min, y_min, 1.0))),
+                            uv: [0., 0.],
+                            color,
+                        },
+                        graphics::Vertex {
+                            pos: math::to_point(&(transform * na::Vector3::new(x_max, y_min, 1.0))),
+                            uv: [1., 0.],
+                            color,
+                        },
+                        graphics::Vertex {
+                            pos: math::to_point(&(transform * na::Vector3::new(x_max, y_max, 1.0))),
+                            uv: [1., 1.],
+                            color,
+                        },
+                        graphics::Vertex {
+                            pos: math::to_point(&(transform * na::Vector3::new(x_min, y_max, 1.0))),
+                            uv: [0., 1.],
+                            color,
+                        },
+                    ]
+                })
+            })
+            .collect();
+
+        let indices: Vec<u32> = (0..vertices.len() as u32)
+            .flat_map(|i| [i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3])
+            .collect();
+
+        graphics::MeshBuilder::new()
+            .raw(&vertices, &indices, None)?
+            .build(ctx)
     }
 }
 
@@ -47,6 +109,10 @@ impl event::EventHandler for State {
             graphics::Color::BLACK,
         )?;
         graphics::draw(ctx, &circle, draw_params)?;
+
+        let test = self.get_voxel_mesh(ctx)?;
+        graphics::draw(ctx, &test, draw_params)?;
+
         graphics::present(ctx)
     }
 

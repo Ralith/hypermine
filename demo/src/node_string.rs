@@ -15,6 +15,15 @@ pub enum Side {
     E = 4,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Vertex {
+    AB = 0,
+    BC = 1,
+    CD = 2,
+    DE = 3,
+    EA = 4,
+}
+
 fn adjacent(a: Side, b: Side) -> bool {
     unsafe {
         *NEIGHBORHOOD
@@ -81,6 +90,10 @@ impl NodeString {
 
     pub fn is_empty(&self) -> bool {
         self.path.is_empty()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<Side> {
+        self.path.iter()
     }
 }
 

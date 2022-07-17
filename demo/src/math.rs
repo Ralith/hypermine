@@ -1,8 +1,11 @@
+use na::{ComplexField, RowVector3, U3};
 use std::ops::{DivAssign, SubAssign};
 
-use na::{ComplexField, RowVector3, U3};
-
 pub const TAU: f64 = std::f64::consts::TAU;
+
+pub fn to_point(v: &na::Vector3<f64>) -> [f32; 2] {
+    [(v.x / v.z) as f32, (v.y / v.z) as f32]
+}
 
 pub fn translation(v: &na::Vector3<f64>) -> na::Matrix3<f64> {
     let f = 1.0 / v.z;
