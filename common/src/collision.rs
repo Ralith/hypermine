@@ -476,7 +476,7 @@ mod tests {
         }
     }
 
-    // eunsures that chunk_from_location has expected behavior
+    // ensures that chunk_from_location has expected behavior
     #[test]
     fn chunk_from_location_proper_chunk() {
         let central_chunk = Vertex::F; // arbitrary vertex
@@ -522,7 +522,8 @@ mod tests {
 
         let lwm = (CHUNK_SIZE + 2_u8) as u32;
 
-        let expected_index = chunk_coords[0] + 1 + (chunk_coords[1] + 1) * lwm + (chunk_coords[2] + 1)*lwm.pow(2);
+        let expected_index =
+            chunk_coords[0] + 1 + (chunk_coords[1] + 1) * lwm + (chunk_coords[2] + 1) * lwm.pow(2);
 
         for address in bb.every_voxel_address() {
             if expected_index == address.index {
@@ -553,12 +554,12 @@ mod tests {
         let bb = BoundingBox::create_aabb(NodeId::ROOT, position, 0.3, &graph, 1);
 
         bb.display_summary();
-        
+
         let lwm = (tiny_chunk_size + 2_u8) as u32;
 
         //let expected_index = chunk_coords[0] + 1 + (chunk_coords[1] + 1) * lwm + (chunk_coords[2] + 1)*lwm.pow(2);
-        let expected_index = chunk_coords[0] + chunk_coords[1] * lwm + chunk_coords[2]*lwm.pow(2);
-        
+        let expected_index = chunk_coords[0] + chunk_coords[1] * lwm + chunk_coords[2] * lwm.pow(2);
+
         for address in bb.every_voxel_address() {
             if expected_index == address.index {
                 return;

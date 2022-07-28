@@ -117,8 +117,6 @@ pub fn translate_normal<N: RealField>(
     }
 
     let v1 = v0 * d.cosh() + p1 * d.sinh();
-    // need to do a little processing to increase numerical stability
-    // return v1 + p1 * mip(&p1, &v1);
     return v1;
 }
 
@@ -136,7 +134,7 @@ pub fn normalize_vector<N: RealField>(t: na::Matrix4<N>, v: na::Vector4<N>) -> n
     return (v_norm + p * mip(&p, &v_norm)) * v_mag;
 }
 
-// make a orthogonal to b
+/// make a orthogonal to b
 pub fn orthogonalize<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
     return a - b * (mip(a, b) / mip(b, b));
 }

@@ -43,7 +43,7 @@ impl ForceParams {
         // otherwise we apply air resistance and gravity
         velocity += self.gravity(down, height, time);
         velocity = self.air_drag(&velocity, time);
-        return velocity;
+        velocity
     }
 
     /// returns the change in velocity that occurs by pulled by gravity at "height" for "time"

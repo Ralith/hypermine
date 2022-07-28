@@ -308,15 +308,8 @@ impl Sim {
         if let Some(ref params) = self.params {
             // Apply input that hasn't been sent yet
             let (direction, speed) = sanitize_motion_input(
-                // TODO: Incorparate the gravity into the view calculations.
+                // TODO: Incorparate the persistent velocity into the view calculations.
                 self.average_velocity / CHARACTER_SLOWDOWN_FACTOR,
-                /*+ self.orientation
-                * na::Vector3::new(
-                    self.character_velocity[0],
-                    self.character_velocity[1],
-                    self.character_velocity[2],
-                )
-                / params.movement_speed,*/
             );
             // We multiply by the entire timestep rather than the time so far because
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
@@ -361,7 +354,7 @@ impl Sim {
         match self.local_character {
             Some(entity) => match self.world.get_mut::<Position>(entity) {
                 Ok(character_position) => {
-                    // starting with simplier method for testing purposese
+                    // starting with simpler method for testing purposese
                     let is_colliding = self.check_collision(*character_position);
 
                     let down_info = &self
@@ -432,8 +425,6 @@ impl Sim {
             &self.graph,
             params.chunk_size,
         );
-
-        // bb.display_summary();
 
         for cbb in bb.bounding_boxes {
             if match self
