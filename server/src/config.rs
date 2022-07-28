@@ -22,10 +22,8 @@ pub struct Config {
 
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
-        Ok(
-            toml::from_slice(&fs::read(path).context("reading config file")?)
-                .context("parsing config file")?,
-        )
+        toml::from_slice(&fs::read(path).context("reading config file")?)
+            .context("parsing config file")
     }
 }
 

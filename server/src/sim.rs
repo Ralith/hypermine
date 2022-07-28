@@ -1,4 +1,4 @@
-use std::{mem, sync::Arc};
+use std::sync::Arc;
 
 use fxhash::FxHashMap;
 use hecs::Entity;
@@ -139,7 +139,7 @@ impl Sim {
         let spawns = Spawns {
             step: self.step,
             spawns,
-            despawns: mem::replace(&mut self.despawns, Vec::new()),
+            despawns: std::mem::take(&mut self.despawns),
             nodes: self
                 .graph
                 .fresh()

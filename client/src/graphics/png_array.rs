@@ -1,7 +1,7 @@
 use std::{fs, fs::File, path::PathBuf};
 
 use anyhow::{anyhow, bail, Context};
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use lahar::DedicatedImage;
 use tracing::trace;
 
@@ -46,9 +46,10 @@ impl Loadable for PngArray {
                 let file =
                     File::open(path).with_context(|| format!("reading {}", path.display()))?;
                 let decoder = png::Decoder::new(file);
-                let (info, mut reader) = decoder
+                let mut reader = decoder
                     .read_info()
                     .with_context(|| format!("decoding {}", path.display()))?;
+                let info = reader.info();
                 if let Some(dims) = dims {
                     if dims != (info.width, info.height) {
                         bail!(
@@ -96,8 +97,6 @@ impl Loadable for PngArray {
                         .samples(vk::SampleCountFlags::TYPE_1)
                         .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
                 );
-
-                mem.flush(handle.gfx.limits.non_coherent_atom_size);
 
                 let range = vk::ImageSubresourceRange {
                     aspect_mask: vk::ImageAspectFlags::COLOR,

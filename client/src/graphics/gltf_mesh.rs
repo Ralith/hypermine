@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use futures_util::future::{try_join_all, BoxFuture, FutureExt};
 use lahar::{BufferRegionAlloc, DedicatedImage};
 use tracing::{error, trace};
@@ -110,11 +110,11 @@ async fn load_mesh(
     transform: &na::Matrix4<f32>,
     mesh: &gltf::Mesh<'_>,
 ) -> Result<Vec<Mesh>> {
-    Ok(try_join_all(
+    try_join_all(
         mesh.primitives()
             .map(|x| load_primitive(ctx, buffer, transform, x)),
     )
-    .await?)
+    .await
 }
 
 async fn load_primitive(
@@ -294,12 +294,11 @@ async fn load_geom(
         storage.copy_from_slice(&idx.to_ne_bytes());
     }
 
-    v_staging.flush(ctx.gfx.limits.non_coherent_atom_size);
-    let vert_alloc = ctx
-        .vertex_alloc
-        .lock()
-        .unwrap()
-        .alloc(byte_size as vk::DeviceSize, 4);
+    let vert_alloc =
+        ctx.vertex_alloc
+            .lock()
+            .unwrap()
+            .alloc(&ctx.gfx.device, byte_size as vk::DeviceSize, 4);
     let staging_buffer = ctx.staging.buffer();
     let vert_buffer = vert_alloc.buffer;
     let vert_src_offset = v_staging.offset();
@@ -331,12 +330,11 @@ async fn load_geom(
         })
     };
 
-    i_staging.flush(ctx.gfx.limits.non_coherent_atom_size);
-    let idx_alloc = ctx
-        .index_alloc
-        .lock()
-        .unwrap()
-        .alloc(index_count as vk::DeviceSize * 4, 4);
+    let idx_alloc = ctx.index_alloc.lock().unwrap().alloc(
+        &ctx.gfx.device,
+        index_count as vk::DeviceSize * 4,
+        4,
+    );
     let idx_buffer = idx_alloc.buffer;
     let idx_src_offset = i_staging.offset();
     let idx_dst_offset = idx_alloc.offset;
@@ -417,19 +415,21 @@ async fn load_material(
         }
     };
     let mut color_data = &color_data[..];
-    let (color_info, mut color_reader) = png::Decoder::new(&mut color_data)
+    let mut color_reader = png::Decoder::new(&mut color_data)
         .read_info()
         .with_context(|| "decoding PNG header")?;
+    let (width, height) = {
+        let info = color_reader.info();
+        (info.width, info.height)
+    };
     let mut color_staging = ctx
         .staging
-        .alloc(color_info.width as usize * color_info.height as usize * 4)
+        .alloc(width as usize * height as usize * 4)
         .await
         .ok_or_else(|| anyhow!("texture too large"))?;
     color_reader
         .next_frame(&mut color_staging)
         .with_context(|| "decoding PNG data")?;
-
-    color_staging.flush(ctx.gfx.limits.non_coherent_atom_size);
     let color = unsafe {
         DedicatedImage::new(
             device,
@@ -438,8 +438,8 @@ async fn load_material(
                 .image_type(vk::ImageType::TYPE_2D)
                 .format(vk::Format::R8G8B8A8_SRGB)
                 .extent(vk::Extent3D {
-                    width: color_info.width,
-                    height: color_info.height,
+                    width,
+                    height,
                     depth: 1,
                 })
                 .mip_levels(1)
@@ -492,8 +492,8 @@ async fn load_material(
                             layer_count: 1,
                         },
                         image_extent: vk::Extent3D {
-                            width: color_info.width,
-                            height: color_info.height,
+                            width,
+                            height,
                             depth: 1,
                         },
                         ..Default::default()

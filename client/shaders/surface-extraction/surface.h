@@ -3,9 +3,9 @@
 
 // A face between a voxel and its neighbor in the -X, -Y, or -Z direction
 struct Surface {
-    // (x y, z, axis)
+    // From most to least significant byte, (axis, z, y, x)
     uint pos_axis;
-    // (occlusion, padding, mat, mat)
+    // From most to least significant byte, (occlusion, <padding>, mat, mat)
     uint occlusion_mat;
 };
 

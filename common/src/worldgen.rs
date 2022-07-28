@@ -113,8 +113,8 @@ impl NodeState {
             _ => unreachable!(),
         };
 
-        let child_kind = self.kind.clone().child(side);
-        let child_road = self.road_state.clone().child(side);
+        let child_kind = self.kind.child(side);
+        let child_road = self.road_state.child(side);
 
         Self {
             kind: child_kind,
@@ -413,7 +413,7 @@ impl ChunkParams {
         for _ in 0..tree_candidate_count {
             let loc = na::Vector3::from_distribution(&random_position, rng);
             let voxel_of_interest_index = index(self.dimension, loc);
-            let neighbor_data = self.voxel_neighbors(loc, &voxels);
+            let neighbor_data = self.voxel_neighbors(loc, voxels);
 
             let num_void_neighbors = neighbor_data
                 .iter()
@@ -442,12 +442,12 @@ impl ChunkParams {
     /// Provides information on the type of material in a voxel's six neighbours
     fn voxel_neighbors(&self, coords: na::Vector3<u8>, voxels: &VoxelData) -> [NeighborData; 6] {
         [
-            self.neighbor(coords, -1, 0, 0, &voxels),
-            self.neighbor(coords, 1, 0, 0, &voxels),
-            self.neighbor(coords, 0, -1, 0, &voxels),
-            self.neighbor(coords, 0, 1, 0, &voxels),
-            self.neighbor(coords, 0, 0, -1, &voxels),
-            self.neighbor(coords, 0, 0, 1, &voxels),
+            self.neighbor(coords, -1, 0, 0, voxels),
+            self.neighbor(coords, 1, 0, 0, voxels),
+            self.neighbor(coords, 0, -1, 0, voxels),
+            self.neighbor(coords, 0, 1, 0, voxels),
+            self.neighbor(coords, 0, 0, -1, voxels),
+            self.neighbor(coords, 0, 0, 1, voxels),
         ]
     }
 
@@ -514,13 +514,13 @@ impl EnviroFactors {
         }
     }
 }
-impl Into<(f64, f64, f64, f64)> for EnviroFactors {
-    fn into(self) -> (f64, f64, f64, f64) {
+impl From<EnviroFactors> for (f64, f64, f64, f64) {
+    fn from(envirofactors: EnviroFactors) -> Self {
         (
-            self.max_elevation,
-            self.temperature,
-            self.rainfall,
-            self.blockiness,
+            envirofactors.max_elevation,
+            envirofactors.temperature,
+            envirofactors.rainfall,
+            envirofactors.blockiness,
         )
     }
 }

@@ -6,14 +6,21 @@ use std::{
 };
 
 use anyhow::Result;
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
-use lahar::{transfer, transfer::TransferHandle, BufferRegion, DedicatedImage, StagingBuffer};
+use lahar::{BufferRegion, DedicatedImage};
 use tokio::sync::mpsc;
 use tracing::error;
 
-use crate::{graphics::Base, Config};
+use crate::{
+    graphics::Base,
+    lahar_deprecated::{
+        staging::StagingBuffer,
+        transfer::{self, TransferHandle},
+    },
+    Config,
+};
 
 pub trait Cleanup {
     unsafe fn cleanup(self, gfx: &Base);
@@ -44,10 +51,7 @@ pub struct Loader {
 
 impl Loader {
     pub fn new(cfg: Arc<Config>, gfx: Arc<Base>) -> Self {
-        let runtime = tokio::runtime::Builder::new()
-            .threaded_scheduler()
-            .build()
-            .unwrap();
+        let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
         let (send, recv) = mpsc::unbounded_channel();
         let staging =
             StagingBuffer::new(gfx.device.clone(), &gfx.memory_properties, 32 * 1024 * 1024);
@@ -59,7 +63,7 @@ impl Loader {
         };
         let vertex_alloc = unsafe {
             BufferRegion::new(
-                gfx.device.clone(),
+                &gfx.device,
                 &gfx.memory_properties,
                 16 * 1024 * 1024,
                 vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -67,7 +71,7 @@ impl Loader {
         };
         let index_alloc = unsafe {
             BufferRegion::new(
-                gfx.device.clone(),
+                &gfx.device,
                 &gfx.memory_properties,
                 16 * 1024 * 1024,
                 vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
@@ -154,7 +158,7 @@ impl Loader {
         self.runtime.spawn(async move {
             while let Some(x) = input_recv.recv().await {
                 let shared = shared.clone();
-                let mut out = output_send.clone();
+                let out = output_send.clone();
                 tokio::spawn(async move {
                     match shared.ctx.load(x).await {
                         Ok(x) => {
@@ -244,6 +248,8 @@ impl Drop for LoadCtx {
     fn drop(&mut self) {
         let device = &*self.gfx.device;
         unsafe {
+            self.index_alloc.lock().unwrap().destroy(device);
+            self.vertex_alloc.lock().unwrap().destroy(device);
             device.destroy_descriptor_set_layout(self.mesh_ds_layout, None);
         }
     }
@@ -278,7 +284,7 @@ impl<T: 'static + Cleanup> AnyTable for Table<T> {
     }
 
     fn cleanup(self: Box<Self>, gfx: &Base) {
-        for x in self.data.into_iter().filter_map(|x| x) {
+        for x in self.data.into_iter().flatten() {
             unsafe {
                 x.cleanup(gfx);
             }

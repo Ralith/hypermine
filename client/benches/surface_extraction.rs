@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
 use client::graphics::{

@@ -39,7 +39,7 @@ impl<N: RealField> HPoint<N> {
 /// Point reflection around `p`
 pub fn reflect<N: RealField>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()
-        - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(&p, &p)
+        - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(p, p)
 }
 
 /// Transform that translates `a` to `b`
@@ -148,8 +148,8 @@ fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matr
     let sign = m.determinant().signum();
     na::Matrix3::new(
         sign * (yv.y * zv.z - yv.z * zv.y), yv.x, zv.x,
-	sign * (yv.z * zv.x - yv.x * zv.z), yv.y, zv.y,
-	sign * (yv.x * zv.y - yv.y * zv.x), yv.z, zv.z,
+        sign * (yv.z * zv.x - yv.x * zv.z), yv.y, zv.y,
+        sign * (yv.x * zv.y - yv.y * zv.x), yv.z, zv.z,
     )
 }
 

@@ -32,10 +32,8 @@ fn main() {
             let _guard = span.enter();
             if let Err(e) = server::run(
                 server::NetParams {
-                    certificate_chain: quinn::CertificateChain::from_certs(
-                        quinn::Certificate::from_der(&cert),
-                    ),
-                    private_key: quinn::PrivateKey::from_der(&key).unwrap(),
+                    certificate_chain: vec![rustls::Certificate(cert)],
+                    private_key: rustls::PrivateKey(key),
                     socket,
                 },
                 sim_cfg,
@@ -50,7 +48,7 @@ fn main() {
     // Create the OS window
     let window = graphics::EarlyWindow::new();
     // Initialize Vulkan with the extensions needed to render to the window
-    let core = Arc::new(graphics::Core::new(&window.required_extensions()));
+    let core = Arc::new(graphics::Core::new(window.required_extensions()));
 
     // Kick off networking
     let net = net::spawn(config.clone());

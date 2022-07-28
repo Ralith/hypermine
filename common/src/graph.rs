@@ -150,8 +150,8 @@ impl<N> Graph<N> {
         }
     }
 
-    /// Ensures that all neighbour nodes of a particular node exist in the graph,
-    /// as well as the nodes from the origin to each neighbour node.
+    /// Ensures that the neighbour node at a particular side of a particular node exists in the graph,
+    /// as well as the nodes from the origin to the neighbour node.
     pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
         let v = &self.nodes[node.idx()];
         if let Some(x) = v.neighbors[side as usize] {
@@ -185,7 +185,7 @@ impl<N> Graph<N> {
     }
 
     pub fn insert_child(&mut self, parent: NodeId, side: Side) -> NodeId {
-        // Always create shorter nodes first so that self.nodes is always sorted by length, enabling
+        // Always create shorter nodes first so that self.nodes always puts parent nodes before their child nodes, enabling
         // graceful synchronization of the graph
         let shorter_neighbors = self.populate_shorter_neighbors_of_child(parent, side);
         let id = NodeId::from_idx(self.nodes.len());
@@ -213,13 +213,13 @@ impl<N> Graph<N> {
         }
     }
 
-    /// Ensure all shorter neighbors of a not-yet-created child node exist and return them
+    /// Ensure all shorter neighbors of a not-yet-created child node exist and return them, excluding the given parent node
     fn populate_shorter_neighbors_of_child(
         &mut self,
         parent: NodeId,
         parent_side: Side,
     ) -> impl Iterator<Item = (Side, NodeId)> {
-        let mut neighbors = [None; 3]; // Maximum number of shorter neighbors is 3
+        let mut neighbors = [None; 2]; // Maximum number of shorter neighbors other than the given parent is 2
         let mut count = 0;
         for neighbor_side in Side::iter() {
             if neighbor_side == parent_side
@@ -233,7 +233,7 @@ impl<N> Graph<N> {
             neighbors[count] = Some((neighbor_side, neighbor));
             count += 1;
         }
-        (0..3).filter_map(move |i| neighbors[i])
+        (0..2).filter_map(move |i| neighbors[i])
     }
 
     /// Register `a` and `b` as adjacent along `side`

@@ -149,7 +149,7 @@ impl Vertex {
         ]) * na::Matrix4::new_scaling(0.5)
     }
 
-    /// Convenience method for `self.cube_to_node().determinant() < 0`.
+    /// Convenience method for `self.chunk_to_node().determinant() < 0`.
     pub fn parity(self) -> bool {
         CHUNK_TO_NODE_PARITY[self as usize]
     }
