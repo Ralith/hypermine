@@ -112,12 +112,12 @@ pub fn translate_normal<N: RealField>(
     v0: na::Vector4<N>,
 ) -> na::Vector4<N> {
     let d = distance(&p0, &p1);
-    if !(d >= na::zero()) {
+    // TODO: verfiy this is equvilent to !(d >= na::zero())
+    if na::zero::<N>() > d {
         return v0;
     }
 
-    let v1 = v0 * d.cosh() + p1 * d.sinh();
-    return v1;
+    v0 * d.cosh() + p1 * d.sinh()
 }
 
 /// normalizes vector v with repect to translation matrix t
@@ -131,12 +131,12 @@ pub fn normalize_vector<N: RealField>(t: na::Matrix4<N>, v: na::Vector4<N>) -> n
     let v_mag = m.sqrt();
     let v_norm = v / v_mag;
 
-    return (v_norm + p * mip(&p, &v_norm)) * v_mag;
+    (v_norm + p * mip(&p, &v_norm)) * v_mag
 }
 
 /// make a orthogonal to b
 pub fn orthogonalize<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
-    return a - b * (mip(a, b) / mip(b, b));
+    a - b * (mip(a, b) / mip(b, b))
 }
 
 #[rustfmt::skip]
@@ -297,20 +297,11 @@ mod tests {
 
         assert_abs_diff_eq!(mip(&vec2, &orth), 0.0, epsilon = 1e-5);
     }
-    /*
+
     #[test]
     fn translate_normal_identity() {
         let p = na::Vector4::new(-0.03635, 0.95129, 0.0, 1.38068);
         let norm = na::Vector4::new(1.0, 0.0, 0.0, 0.0);
         assert_abs_diff_eq!(translate_normal(p, p, norm), norm, epsilon = 1e-5);
-    }*/
-
-    fn translate_normal_still_normal() {
-        let p1 = na::Vector4::new(-0.03635, 0.95129, 0.0, 1.38068);
-        let p0 = origin();
-        let norm = na::Vector4::new(1.0, 0.0, 0.0, 0.0);
-        let trans = translate_normal(p0, p1, norm);
-        assert_abs_diff_eq!(mip(&trans, &trans), 1.0, epsilon = 1e-5);
-        assert_abs_diff_eq!(mip(&trans, &p1), 0.0, epsilon = 1e-5);
     }
 }

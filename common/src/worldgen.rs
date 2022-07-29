@@ -130,7 +130,7 @@ impl NodeState {
     }
 
     pub fn surface(&self) -> Plane<f64> {
-        return self.surface;
+        self.surface
     }
 
     // if the node lies above the ground-plane or not

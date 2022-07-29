@@ -33,7 +33,7 @@ impl ForceParams {
         is_colliding: bool,
         time: f64,
     ) -> na::Vector4<f64> {
-        let mut velocity = inital_velocity.clone();
+        let mut velocity = *inital_velocity;
 
         // with current collsion detection tech, we want the player to slowly rise if they are in the ground
         if is_colliding {
@@ -48,17 +48,17 @@ impl ForceParams {
 
     /// returns the change in velocity that occurs by pulled by gravity at "height" for "time"
     fn gravity(&self, down: &na::Vector4<f64>, height: f64, time: f64) -> na::Vector4<f64> {
-        return match self.gravity_type {
+        match self.gravity_type {
             GravityMethod::PlanarConstant => down * (self.gravity_intensity * time),
             GravityMethod::PlanarDivergent => {
                 down * (self.gravity_intensity * time / height.cosh().powi(2))
             }
             GravityMethod::Zero => na::zero(),
-        };
+        }
     }
 
     /// rewrites velocity to account for time spent under drag.
     fn air_drag(&self, inital_velocity: &na::Vector4<f64>, time: f64) -> na::Vector4<f64> {
-        return inital_velocity * self.air_drag_factor.powf(time);
+        inital_velocity * self.air_drag_factor.powf(time)
     }
 }

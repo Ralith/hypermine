@@ -152,7 +152,7 @@ impl BoundingBox {
         }
     }
 
-    pub fn every_voxel_address<'a>(&'a self) -> impl Iterator<Item = VoxelAddress> + 'a {
+    pub fn every_voxel_address(&self) -> impl Iterator<Item = VoxelAddress> + '_ {
         self.bounding_boxes.iter().flat_map(|cbb| {
             cbb.every_voxel().map(move |index| VoxelAddress {
                 node: cbb.node,
@@ -242,7 +242,7 @@ impl ChunkBoundingBox {
         }
     }
 
-    pub fn every_voxel<'b>(&'b self) -> impl Iterator<Item = u32> + 'b {
+    pub fn every_voxel(&self) -> impl Iterator<Item = u32> + '_ {
         let lwm = (self.dimension as u32) + 2;
         (self.min_xyz[2]..self.max_xyz[2]).flat_map(move |z| {
             (self.min_xyz[1]..self.max_xyz[1]).flat_map(move |y| {
@@ -260,9 +260,11 @@ lazy_static! {
     static ref PERPENDICULAR_VERTEX: [[Option<Vertex>; VERTEX_COUNT]; SIDE_COUNT] = {
         let mut result = [[None; VERTEX_COUNT]; SIDE_COUNT];
 
-        for s in 0..SIDE_COUNT {
-            let side = Side::from_index(s);
+        for side in Side::iter() {
             let incident_vertices = side.vertices();
+
+            // 'v' and 'vertex as usize' will have different values.
+            #[allow(clippy::needless_range_loop)]
             for v in 0..5 {
                 let vertex = incident_vertices[v];
                 let mut vertex_counts = [0; VERTEX_COUNT];
@@ -280,9 +282,9 @@ lazy_static! {
                 // inceident corners as not perpendicular
                 for i in side.vertices().iter() {vertex_counts[*i as usize] = -1}
 
-                for i in 0..VERTEX_COUNT {
-                    if vertex_counts[i] == 2 {
-                        result[s][vertex as usize] = Some(Vertex::from_index(i));
+                for i in Vertex::iter() {
+                    if vertex_counts[i as usize] == 2 {
+                        result[side as usize][vertex as usize] = Some(i);
                         break;
                     }
                 }
@@ -295,10 +297,7 @@ lazy_static! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{DualGraph, Node};
-    use crate::Chunks;
     use crate::{graph::Graph, proto::Position, traversal::ensure_nearby};
-    use approx::*;
 
     const CHUNK_SIZE: u8 = 12_u8; // might want to test with multiple values in the future.
     static CHUNK_SIZE_F: f64 = CHUNK_SIZE as f64;
@@ -460,7 +459,7 @@ mod tests {
                     BoundingBox::create_aabb(NodeId::ROOT, position, radius, &graph, CHUNK_SIZE);
 
                 let mut actual_voxels = 0;
-                for address in bb.every_voxel_address() {
+                for _address in bb.every_voxel_address() {
                     actual_voxels += 1;
                 }
 
@@ -576,6 +575,9 @@ mod tests {
         for s in 0..SIDE_COUNT {
             let side = Side::from_index(s);
             let incident_vertices = side.vertices();
+
+            // 'v' and 'vertex as usize' will have different values.
+            #[allow(clippy::needless_range_loop)]
             for v in 0..5 {
                 let vertex = incident_vertices[v];
                 println!("side of {:?} and vertex of {:?}", side, vertex); // not helpful, but I don't want to mess with the formatter.

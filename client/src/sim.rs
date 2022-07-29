@@ -412,7 +412,9 @@ impl Sim {
         }
     }
 
-    // helper function for handle_forces
+    /// checks to see if there are any non-Void voxels near Position.
+    // acts as a helper function for handle_forces
+    // currently uses a hyperbolic equivilent of an AABB.
     fn check_collision(&self, pos: Position) -> bool {
         let params = self.params.as_ref().unwrap();
 
@@ -441,10 +443,7 @@ impl Sim {
                     ref voxels,
                 } => {
                     for voxel_address in cbb.every_voxel() {
-                        if match voxels.get(voxel_address as usize) {
-                            Material::Void => false,
-                            _ => true,
-                        } {
+                        if !matches!(voxels.get(voxel_address as usize), Material::Void) {
                             return true;
                         }
                     }
