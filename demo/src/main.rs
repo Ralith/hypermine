@@ -20,7 +20,7 @@ impl State {
     pub fn new(_ctx: &mut Context) -> State {
         State {
             pos: na::Matrix3::identity(),
-            tessellation: Tessellation::new(),
+            tessellation: Tessellation::new(12),
         }
     }
 }

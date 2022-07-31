@@ -6,8 +6,8 @@ use crate::{
 // Order 4 pentagonal tiling
 // Note: Despite being constants, it is undefined behavior to change these values, as certain hardcoded unsafe code
 // depends on them being set to their current values, NUM_SIDES = 5 and ORDER = 4
-pub const NUM_SIDES: usize = 5;
-pub const ORDER: usize = 4;
+const NUM_SIDES: usize = 5;
+const ORDER: usize = 4;
 
 pub struct Tessellation {
     reflection_vectors: [na::Vector3<f64>; NUM_SIDES],
@@ -15,10 +15,12 @@ pub struct Tessellation {
     vertices: [na::Vector3<f64>; NUM_SIDES],
     voxel_to_hyperboloid: [na::Matrix3<f64>; NUM_SIDES],
     hyperboloid_to_voxel: [na::Matrix3<f64>; NUM_SIDES],
+    nodes: Vec<Node>,
+    chunk_size: usize,
 }
 
 impl Tessellation {
-    pub fn new() -> Self {
+    pub fn new(chunk_size: usize) -> Self {
         let side_angle = math::TAU / NUM_SIDES as f64;
         let order_angle = math::TAU / ORDER as f64;
 
@@ -66,6 +68,8 @@ impl Tessellation {
             vertices,
             voxel_to_hyperboloid,
             hyperboloid_to_voxel: voxel_to_hyperboloid.map(|m| m.try_inverse().unwrap()),
+            nodes: Vec::new(),
+            chunk_size,
         }
     }
 
@@ -82,10 +86,63 @@ impl Tessellation {
         transform *= unsafe { self.voxel_to_hyperboloid.get_unchecked(vert as usize) };
         transform
     }
+
+    pub fn chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
+        ChunkData {
+            chunk_size: self.chunk_size,
+            data: &self.nodes[node.index].chunks[vertex as usize].data,
+        }
+    }
+
+    fn link_nodes(&mut self, node0: NodeHandle, node1: NodeHandle, side: Side) {
+        self.nodes[node0.index].neighbors[side as usize] = Some(node1);
+        self.nodes[node1.index].neighbors[side as usize] = Some(node0);
+    }
 }
 
-impl Default for Tessellation {
-    fn default() -> Self {
-        Tessellation::new()
+struct Node {
+    neighbors: [Option<NodeHandle>; NUM_SIDES],
+    chunks: [Chunk; 5], // Per vertex
+}
+
+impl Node {
+    fn new(chunk_size: usize) -> Node {
+        Node {
+            neighbors: [None; NUM_SIDES],
+            chunks: [0; 5].map(|_| Chunk::new(chunk_size)),
+        }
+    }
+}
+
+struct Chunk {
+    data: Vec<u8>,
+}
+
+impl Chunk {
+    fn new(chunk_size: usize) -> Chunk {
+        Chunk {
+            data: (0..chunk_size * chunk_size).map(|_| 1).collect(),
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct NodeHandle {
+    index: usize,
+}
+
+#[derive(Copy, Clone)]
+pub struct ChunkData<'a> {
+    chunk_size: usize,
+    data: &'a Vec<u8>,
+}
+
+impl<'a> ChunkData<'a> {
+    pub fn chunk_size(&self) -> usize {
+        self.chunk_size
+    }
+
+    pub fn value(&self, x: usize, y: usize) -> u8 {
+        self.data[x * self.chunk_size + y]
     }
 }
