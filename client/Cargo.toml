@@ -14,7 +14,7 @@ server = { path = "../server" }
 tracing = "0.1.10"
 ash = { version = "0.37.0", features = ["loaded"] }
 lahar = { git = "https://github.com/Ralith/lahar", rev = "88abd75e41d04c3a4199d95f581cb135f5962844" }
-winit = "0.26.1"
+winit = "0.27.1"
 ash-window = "0.10.0"
 directories = "4.0.1"
 vk-shader-macros = "0.2.5"
