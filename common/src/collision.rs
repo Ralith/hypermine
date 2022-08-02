@@ -4,12 +4,13 @@ use crate::{
     graph::NodeId,
 };
 use lazy_static::lazy_static;
+use std::fmt;
 
 #[allow(dead_code)]
 /*
 The set of voxels that a collision body covers within a chunk
 */
-#[derive(PartialEq, Clone, Debug, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct ChunkBoundingBox {
     pub node: NodeId,
     pub chunk: Vertex,
@@ -161,33 +162,6 @@ impl BoundingBox {
             })
         })
     }
-
-    pub fn display_summary(&self) {
-        let number_of_chunk_bouding_boxes = {
-            let mut n = 0_i32;
-            for _cbb in self.bounding_boxes.iter() {
-                n += 1;
-            }
-            n
-        };
-        println!(
-            "Bounding box spanning {} chunks:",
-            number_of_chunk_bouding_boxes
-        );
-        for cbb in self.bounding_boxes.iter() {
-            println!("\tA chunk");
-            //println!("\t\twith node id {}", cbb.node); // can't easily display node id
-            println!(
-                "\t\twith bounding box stretching from ({}, {}, {}) to ({}, {}, {})",
-                cbb.min_xyz[0],
-                cbb.min_xyz[1],
-                cbb.min_xyz[2],
-                cbb.max_xyz[0],
-                cbb.max_xyz[1],
-                cbb.max_xyz[2]
-            );
-        }
-    }
 }
 
 // translated_position should be the object position in the node coordinates of the chunk.
@@ -294,6 +268,24 @@ lazy_static! {
     };
 }
 
+impl fmt::Debug for BoundingBox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Bounding Box")
+            .field("Chunk components", &self.bounding_boxes)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ChunkBoundingBox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Chunk Bounding Box")
+            .field("chunk", &self.chunk)
+            .field("spanning from", &self.min_xyz.data)
+            .field("spanning to", &self.max_xyz.data)
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,7 +388,7 @@ mod tests {
             &graph,
             CHUNK_SIZE,
         );
-        bb.display_summary();
+        println!("{:?}", bb);
 
         assert_eq!(bb.bounding_boxes.len(), 10);
     }
@@ -467,7 +459,7 @@ mod tests {
                     "actual_voxels for reasonable_voxel_count: {} vs {}(min), {}(expected), {}(max)",
                     actual_voxels, minimum_expected_voxel_count, expected_voxel_count, maximum_expected_voxel_count
                 );
-                bb.display_summary();
+                println!("{:?}", bb);
                 println!("x_f64 is {} radius is {}", x_f64, radius);
                 assert!(actual_voxels >= minimum_expected_voxel_count);
                 assert!(actual_voxels <= maximum_expected_voxel_count);
@@ -517,7 +509,7 @@ mod tests {
             CHUNK_SIZE,
         );
 
-        bb.display_summary();
+        println!("{:?}", bb);
 
         let lwm = (CHUNK_SIZE + 2_u8) as u32;
 
@@ -552,7 +544,7 @@ mod tests {
 
         let bb = BoundingBox::create_aabb(NodeId::ROOT, position, 0.3, &graph, 1);
 
-        bb.display_summary();
+        println!("{:?}", bb);
 
         let lwm = (tiny_chunk_size + 2_u8) as u32;
 
