@@ -15,7 +15,7 @@ tracing = "0.1.10"
 ash = { version = "0.37.0", features = ["loaded"] }
 lahar = { git = "https://github.com/Ralith/lahar", rev = "88abd75e41d04c3a4199d95f581cb135f5962844" }
 winit = "0.26.1"
-ash-window = "0.10.0"
+ash-window = "0.11.0"
 directories = "4.0.1"
 vk-shader-macros = "0.2.5"
 na = { package = "nalgebra", version = "0.31.2" }
@@ -30,7 +30,7 @@ downcast-rs = "1.1.1"
 quinn = "0.8.3"
 futures-util = "0.3.1"
 rustls = { version = "0.20.6", features = ["dangerous_configuration"] }
-webpki = "0.21.0"
+webpki = "0.22.0"
 hecs = "0.9.0"
 rcgen = { version = "0.9.2", default-features = false }
 memoffset = "0.6"
@@ -44,7 +44,7 @@ default = ["use-repo-assets"]
 use-repo-assets = []
 
 [dev-dependencies]
-approx = "0.3.2"
+approx = "0.5.1"
 bencher = "0.1.5"
 renderdoc = "0.10.1"
 
