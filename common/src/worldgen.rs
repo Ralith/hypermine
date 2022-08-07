@@ -552,14 +552,14 @@ fn chunk_incident_enviro_factors(
 }
 
 /// Linearly interpolate at interior and boundary of a cube given values at the eight corners.
-fn trilerp<N: na::RealField>(
+fn trilerp<N: na::RealField + Copy>(
     &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
     t: na::Vector3<N>,
 ) -> N {
-    fn lerp<N: na::RealField>(v0: N, v1: N, t: N) -> N {
+    fn lerp<N: na::RealField + Copy>(v0: N, v1: N, t: N) -> N {
         v0 * (N::one() - t) + v1 * t
     }
-    fn bilerp<N: na::RealField>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>) -> N {
+    fn bilerp<N: na::RealField + Copy>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>) -> N {
         lerp(lerp(v00, v01, t.x), lerp(v10, v11, t.x), t.y)
     }
 
@@ -574,7 +574,7 @@ fn trilerp<N: na::RealField>(
 /// v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
 /// such that the overall shape is an S-shaped piecewise function.
 /// threshold should be between 0 and 0.5.
-fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
+fn serp<N: na::RealField + Copy>(v0: N, v1: N, t: N, threshold: N) -> N {
     if t < threshold {
         v0
     } else if t < (N::one() - threshold) {
