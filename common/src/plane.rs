@@ -20,7 +20,7 @@ impl From<Side> for Plane<f64> {
     }
 }
 
-impl<N: na::RealField> From<na::Unit<na::Vector3<N>>> for Plane<N> {
+impl<N: na::RealField + Copy> From<na::Unit<na::Vector3<N>>> for Plane<N> {
     /// A plane passing through the origin
     fn from(x: na::Unit<na::Vector3<N>>) -> Self {
         Self {
@@ -29,7 +29,7 @@ impl<N: na::RealField> From<na::Unit<na::Vector3<N>>> for Plane<N> {
     }
 }
 
-impl<N: na::RealField> Neg for Plane<N> {
+impl<N: na::RealField + Copy> Neg for Plane<N> {
     type Output = Self;
     fn neg(self) -> Self {
         Self {
@@ -46,7 +46,7 @@ impl Mul<Plane<f64>> for Side {
     }
 }
 
-impl<'a, N: na::RealField> Mul<Plane<N>> for &'a na::Matrix4<N> {
+impl<'a, N: na::RealField + Copy> Mul<Plane<N>> for &'a na::Matrix4<N> {
     type Output = Plane<N>;
     fn mul(self, rhs: Plane<N>) -> Plane<N> {
         Plane {
@@ -55,7 +55,7 @@ impl<'a, N: na::RealField> Mul<Plane<N>> for &'a na::Matrix4<N> {
     }
 }
 
-impl<N: na::RealField> Plane<N> {
+impl<N: na::RealField + Copy> Plane<N> {
     /// Hyperbolic normal vector identifying the plane
     pub fn normal(&self) -> &na::Vector4<N> {
         &self.normal

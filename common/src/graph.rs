@@ -111,7 +111,7 @@ impl<N> Graph<N> {
 
     /// Given a `transform` relative to a `reference` node, computes the node
     /// that it's closest to and the transform that moves it there
-    pub fn normalize_transform<T: na::RealField>(
+    pub fn normalize_transform<T: na::RealField + Copy>(
         &self,
         mut reference: NodeId,
         original: &na::Matrix4<T>,
