@@ -71,7 +71,7 @@ impl Sim {
         entity: Entity,
         command: Command,
     ) -> Result<(), hecs::ComponentError> {
-        let mut ch = self.world.get_mut::<Character>(entity)?;
+        let mut ch = self.world.get::<&mut Character>(entity)?;
         let (direction, speed) = sanitize_motion_input(command.velocity);
         ch.direction = direction;
         ch.speed = speed * self.cfg.movement_speed;
@@ -80,7 +80,7 @@ impl Sim {
     }
 
     pub fn destroy(&mut self, entity: Entity) {
-        let id = *self.world.get::<EntityId>(entity).unwrap();
+        let id = *self.world.get::<&EntityId>(entity).unwrap();
         self.entity_ids.remove(&id);
         self.world.despawn(entity).unwrap();
         self.despawns.push(id);
@@ -124,7 +124,7 @@ impl Sim {
         // Capture state changes for broadcast to clients
         let mut spawns = Vec::with_capacity(self.spawns.len());
         for entity in self.spawns.drain(..) {
-            let id = *self.world.get::<EntityId>(entity).unwrap();
+            let id = *self.world.get::<&EntityId>(entity).unwrap();
             spawns.push((id, dump_entity(&self.world, entity)));
         }
         if !self.graph.fresh().is_empty() {
@@ -185,10 +185,10 @@ enum Empty {}
 
 fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     let mut components = Vec::new();
-    if let Ok(x) = world.get::<Position>(entity) {
+    if let Ok(x) = world.get::<&Position>(entity) {
         components.push(Component::Position(*x));
     }
-    if let Ok(x) = world.get::<Character>(entity) {
+    if let Ok(x) = world.get::<&Character>(entity) {
         components.push(Component::Character(proto::Character {
             name: x.name.clone(),
             orientation: x.orientation,
