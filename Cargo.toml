@@ -3,6 +3,7 @@ members = ["client", "server", "common"]
 
 [profile.dev]
 opt-level = 1
+debug-assertions = true
 
 [profile.dev.package."*"]
 opt-level = 2
