@@ -6,7 +6,6 @@ use crate::{
 use lazy_static::lazy_static;
 use std::fmt;
 
-#[allow(dead_code)]
 /*
 The set of voxels that a collision body covers within a chunk
 */
@@ -32,10 +31,10 @@ pub struct BoundingBox {
     pub bounding_boxes: Vec<ChunkBoundingBox>,
 }
 
-// from a node coordinate in an arbitrary node, returns the which chunk the point would reside in
+// from a node coordinate in an arbitrary node, returns the chunk the point would reside in
 pub fn chunk_from_location(location: na::Vector4<f64>) -> Option<Vertex> {
     for v in Vertex::iter() {
-        let pos = (v.chunk_to_node().try_inverse().unwrap() * location).xyz();
+        let pos = (v.node_to_chunk() * location).xyz();
         if (pos.x >= 0_f64)
             && (pos.x <= 1_f64)
             && (pos.y >= 0_f64)
@@ -147,7 +146,7 @@ impl BoundingBox {
     }
 
     // adds a sub-bounding box to a list if it exists
-    pub fn add_sub_bb(list: &mut Vec<ChunkBoundingBox>, result: Option<ChunkBoundingBox>) {
+    fn add_sub_bb(list: &mut Vec<ChunkBoundingBox>, result: Option<ChunkBoundingBox>) {
         if let Some(x) = result {
             list.push(x);
         }
@@ -175,7 +174,7 @@ impl ChunkBoundingBox {
         dimension: u8,
     ) -> Option<Self> {
         let euclidean_position = {
-            let temp = chunk.chunk_to_node().try_inverse().unwrap() * translated_position;
+            let temp = chunk.node_to_chunk() * translated_position;
             temp.xyz() / temp[3]
         };
 
@@ -183,7 +182,7 @@ impl ChunkBoundingBox {
         let mut max_xyz = na::Vector3::<u32>::new(0_u32, 0_u32, 0_u32);
 
         // It's important to note that euclidean_position is measured as chunk lengths, and radius is measured in absolute units.
-        // By coicidence, an absolute unit is aproximately a chunk's diameter, and only because of that there is no unit conversion here.
+        // By coincidence, an absolute unit is approximately a chunk's diameter, and only because of that there is no unit conversion here.
 
         // verify at least one box corner is within the chunk
         if euclidean_position
@@ -239,22 +238,22 @@ lazy_static! {
 
             // 'v' and 'vertex as usize' will have different values.
             #[allow(clippy::needless_range_loop)]
-            for v in 0..5 {
-                let vertex = incident_vertices[v];
+            for vertex in incident_vertices {
+                // let vertex = incident_vertices[v];
                 let mut vertex_counts = [0; VERTEX_COUNT];
 
                 // count the number of times that vertices appear in all incident sides
                 let sides_to_tally = vertex.canonical_sides();
-                for i in 0..3 {
-                    // five verticies per side
-                    let vertices_to_count = sides_to_tally[i].vertices();
-                    for j in 0..5 {
-                        vertex_counts[vertices_to_count[j] as usize] += 1;
+                for side_to_tally in sides_to_tally {
+                    // five vertices per side
+                    let vertices_to_count = side_to_tally.vertices();
+                    for vertex_to_count in vertices_to_count {
+                        vertex_counts[vertex_to_count as usize] += 1;
                     }
                 }
 
-                // inceident corners as not perpendicular
-                for i in side.vertices().iter() {vertex_counts[*i as usize] = -1}
+                // incident corners are not perpendicular
+                for &c in side.vertices().iter() {vertex_counts[c as usize] = -1}
 
                 for i in Vertex::iter() {
                     if vertex_counts[i as usize] == 2 {
@@ -294,20 +293,11 @@ mod tests {
     const CHUNK_SIZE: u8 = 12_u8; // might want to test with multiple values in the future.
     static CHUNK_SIZE_F: f64 = CHUNK_SIZE as f64;
 
-    // place a small bounding box near the center of the node. There should be exactly 20 chunks in contact.
-    #[test]
-    fn proper_chunks_20() {
+    fn proper_chunks_generic(x: f64, y: f64, z: f64, expected_chunks: usize) {
         let mut graph = Graph::new();
         ensure_nearby(&mut graph, &Position::origin(), 4.0);
-
-        let central_chunk = Vertex::A; // arbitrary vertex
-        let position = central_chunk.chunk_to_node()
-            * na::Vector4::new(
-                0.4 / CHUNK_SIZE_F,
-                0.4 / CHUNK_SIZE_F,
-                0.4 / CHUNK_SIZE_F,
-                1.0,
-            );
+        let central_chunk = Vertex::B; // arbitrary vertex
+        let position = central_chunk.chunk_to_node() * na::Vector4::new(x, y, z, 1.0);
 
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
@@ -317,36 +307,44 @@ mod tests {
             CHUNK_SIZE,
         );
 
-        assert_eq!(bb.bounding_boxes.len(), 20);
+        assert_eq!(bb.bounding_boxes.len(), expected_chunks);
+    }
+
+    // place a small bounding box near the center of the node. There should be exactly 20 chunks in contact.
+    #[test]
+    fn proper_chunks_20() {
+        proper_chunks_generic(
+            0.4 / CHUNK_SIZE_F,
+            0.4 / CHUNK_SIZE_F,
+            0.4 / CHUNK_SIZE_F,
+            20,
+        );
     }
 
     // place a small bounding box in the center of a chunk. There should be exactly 1 chunk in contact.
     #[test]
     fn proper_chunks_1() {
-        let mut graph = Graph::new();
-        ensure_nearby(&mut graph, &Position::origin(), 4.0);
-
-        let central_chunk = Vertex::A; // arbitrary vertex
-        let position = central_chunk.chunk_to_node() * na::Vector4::new(0.5, 0.5, 0.5, 1.0);
-
-        let bb = BoundingBox::create_aabb(
-            NodeId::ROOT,
-            position,
-            1.0 / CHUNK_SIZE_F,
-            &graph,
-            CHUNK_SIZE,
-        );
-
-        assert_eq!(bb.bounding_boxes.len(), 1);
+        proper_chunks_generic(0.5, 0.5, 0.5, 1)
     }
 
     // place a small bounding box next to a dodecaherdral vertex. There should be exactly 8 chunks in contact.
     #[test]
     fn proper_chunks_8() {
+        proper_chunks_generic(
+            1.0 - 0.4 / CHUNK_SIZE_F,
+            1.0 - 0.4 / CHUNK_SIZE_F,
+            1.0 - 0.4 / CHUNK_SIZE_F,
+            8,
+        );
+    }
+
+    // place a small bounding box next to a dodecaherdral vertex. All chunks in contact should be of the same index
+    #[test]
+    fn proper_vertex_ids_corner() {
         let mut graph = Graph::new();
         ensure_nearby(&mut graph, &Position::origin(), 4.0);
 
-        let central_chunk = Vertex::K; // arbitrary vertex
+        let central_chunk = Vertex::C; // arbitrary vertex
         let position = central_chunk.chunk_to_node()
             * na::Vector4::new(
                 1.0 - 0.4 / CHUNK_SIZE_F,
@@ -363,55 +361,26 @@ mod tests {
             CHUNK_SIZE,
         );
 
-        assert_eq!(bb.bounding_boxes.len(), 8);
+        for cbb in bb.bounding_boxes {
+            assert!(cbb.chunk == central_chunk);
+        }
     }
 
     // place a small bounding box on the center of a dodecaherdral face. There should be exactly 10 chunks in contact.
     #[test]
     fn proper_chunks_10() {
-        let mut graph = Graph::new();
-        ensure_nearby(&mut graph, &Position::origin(), 4.0);
-
-        let central_chunk = Vertex::D; // arbitrary vertex
-        let position = central_chunk.chunk_to_node()
-            * na::Vector4::new(
-                1.0 - 0.5 / CHUNK_SIZE_F,
-                0.25 / CHUNK_SIZE_F,
-                0.25 / CHUNK_SIZE_F,
-                1.0,
-            );
-
-        let bb = BoundingBox::create_aabb(
-            NodeId::ROOT,
-            position,
-            2.0 / CHUNK_SIZE_F,
-            &graph,
-            CHUNK_SIZE,
+        proper_chunks_generic(
+            1.0 - 0.5 / CHUNK_SIZE_F,
+            0.25 / CHUNK_SIZE_F,
+            0.25 / CHUNK_SIZE_F,
+            10,
         );
-        println!("{:?}", bb);
-
-        assert_eq!(bb.bounding_boxes.len(), 10);
     }
 
     // place a small bounding box right between the center of a dodecaherdral face and the node center. There should be exactly 5 chunks in contact.
     #[test]
     fn proper_chunks_5() {
-        let mut graph = Graph::new();
-        ensure_nearby(&mut graph, &Position::origin(), 4.0);
-
-        let central_chunk = Vertex::E; // arbitrary vertex
-        let position = central_chunk.chunk_to_node()
-            * na::Vector4::new(0.4 / CHUNK_SIZE_F, 0.4 / CHUNK_SIZE_F, 0.5, 1.0);
-
-        let bb = BoundingBox::create_aabb(
-            NodeId::ROOT,
-            position,
-            2.0 / CHUNK_SIZE_F,
-            &graph,
-            CHUNK_SIZE,
-        );
-
-        assert_eq!(bb.bounding_boxes.len(), 5);
+        proper_chunks_generic(0.4 / CHUNK_SIZE_F, 0.4 / CHUNK_SIZE_F, 0.5, 5);
     }
 
     // place bounding boxes in a variety of places with a variety of sizes and make sure the amount of voxels contained within are roughly what you would
@@ -450,17 +419,18 @@ mod tests {
                 let bb =
                     BoundingBox::create_aabb(NodeId::ROOT, position, radius, &graph, CHUNK_SIZE);
 
-                let mut actual_voxels = 0;
-                for _address in bb.every_voxel_address() {
-                    actual_voxels += 1;
-                }
+                let actual_voxels = bb.every_voxel_address().count() as i32;
 
                 println!(
                     "actual_voxels for reasonable_voxel_count: {} vs {}(min), {}(expected), {}(max)",
                     actual_voxels, minimum_expected_voxel_count, expected_voxel_count, maximum_expected_voxel_count
                 );
-                println!("{:?}", bb);
-                println!("x_f64 is {} radius is {}", x_f64, radius);
+                println!(
+                    "\tSpans {} chunks; {} voxels per chunk",
+                    bb.bounding_boxes.len(),
+                    actual_voxels / (bb.bounding_boxes.len() as i32)
+                );
+                println!("\tx_f64 is {} radius is {}", x_f64, radius);
                 assert!(actual_voxels >= minimum_expected_voxel_count);
                 assert!(actual_voxels <= maximum_expected_voxel_count);
             }
@@ -470,18 +440,19 @@ mod tests {
     // ensures that chunk_from_location has expected behavior
     #[test]
     fn chunk_from_location_proper_chunk() {
-        let central_chunk = Vertex::F; // arbitrary vertex
-        let chunk_coords = na::Vector3::new(1_u32, 1_u32, 1_u32);
+        for central_chunk in Vertex::iter() {
+            let chunk_coords = na::Vector3::new(1_u32, 1_u32, 1_u32);
 
-        let position = central_chunk.chunk_to_node()
-            * na::Vector4::new(
-                (chunk_coords[0] as f64) / CHUNK_SIZE_F,
-                (chunk_coords[1] as f64) / CHUNK_SIZE_F,
-                (chunk_coords[2] as f64) / CHUNK_SIZE_F,
-                1.0,
-            );
+            let position = central_chunk.chunk_to_node()
+                * na::Vector4::new(
+                    (chunk_coords[0] as f64) / CHUNK_SIZE_F,
+                    (chunk_coords[1] as f64) / CHUNK_SIZE_F,
+                    (chunk_coords[2] as f64) / CHUNK_SIZE_F,
+                    1.0,
+                );
 
-        assert_eq!(central_chunk, chunk_from_location(position).unwrap());
+            assert_eq!(central_chunk, chunk_from_location(position).unwrap());
+        }
     }
 
     // places a bounding box at a certain [x,y,z], and verifies that the voxel at [x, y, z] is contained within the bounding box.

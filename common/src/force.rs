@@ -1,15 +1,17 @@
 use serde::{Deserialize, Serialize};
-/* GravityMethod encodes different ways of creating gravity in Hyperbolic space
+/**
+ * GravityMethod encodes different ways of creating gravity in Hyperbolic space
+ *
+ * PlanarConstant has gravity oriented in the "down" direction, and the force of gravity is
+ * constant with respect to height.
+ *
+ * PlanarDivergent has gravity oriented in the "down" direction, and the force of gravity respects
+ * the divergence theorem, which makes it proportial to the ratio of the area of the ground-plane
+ * to the area of the surface which is equidistant to the ground-plane at the indicated height.
+ *
+ * Zero disables gravity.
+ */
 
-PlanarConstant has gravity oriented in the "down" direction, and the force of gravity is
-constant with repect to height.
-
-PlanarConstant has gravity oriented in the "down" direction, and the force of gravity respects
-the divergence theorem, which makes it proportial to the ratio of the area of the ground-plane
-to the area of the surface which is equidistant to the ground-plane at the indicated height.
-
-Zero disables gravity.
-*/
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
 pub enum GravityMethod {
     PlanarConstant,
@@ -25,6 +27,7 @@ pub struct ForceParams {
 }
 
 impl ForceParams {
+    /// returns the result of applying appropriate forces to "inital_velocity" over "time"
     pub fn apply_forces(
         &self,
         inital_velocity: &na::Vector4<f64>,
@@ -35,7 +38,7 @@ impl ForceParams {
     ) -> na::Vector4<f64> {
         let mut velocity = *inital_velocity;
 
-        // with current collsion detection tech, we want the player to slowly rise if they are in the ground
+        // with current collision detection tech, we want the player to slowly rise if they are in the ground
         if is_colliding {
             return down * -self.float_speed;
         }

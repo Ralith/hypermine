@@ -43,6 +43,8 @@ impl Side {
         ADJACENT[self as usize][other as usize]
     }
 
+    /// All verticies incident on self
+    #[inline]
     pub fn vertices(self) -> [Vertex; 5] {
         SIDE_VERTICES[self as usize]
     }
@@ -94,14 +96,6 @@ impl Vertex {
             .cloned()
     }
 
-    #[inline]
-    pub fn from_index(x: usize) -> Self {
-        use Vertex::*;
-        const VALUES: [Vertex; VERTEX_COUNT] =
-            [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T];
-        VALUES[x]
-    }
-
     /// Vertex shared by three sides, if any
     #[inline]
     pub fn from_sides(a: Side, b: Side, c: Side) -> Option<Self> {
@@ -147,6 +141,11 @@ impl Vertex {
             c.reflection().column(3) - origin,
             origin,
         ]) * na::Matrix4::new_scaling(0.5)
+    }
+
+    /// Transform from hyperbolic node space to euclidean chunk coordinates
+    pub fn node_to_chunk(self) -> na::Matrix4<f64> {
+        self.chunk_to_node().try_inverse().unwrap()
     }
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
@@ -264,7 +263,7 @@ lazy_static! {
 
         for a in 0..5 {
             for b in 0..SIDE_COUNT {
-                out[b][a] = result_list[b][a]; // flipped some things
+                out[b][a] = result_list[b][a];
             }
 
         }

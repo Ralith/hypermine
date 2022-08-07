@@ -61,7 +61,7 @@ impl Sim {
             world: hecs::World::new(),
             params: None,
             local_character: None,
-            character_velocity: na::Vector4::new(0_f32, 0_f32, 0_f32, 0_f32),
+            character_velocity: na::Vector4::zeros(),
             orientation: na::one(),
             step: None,
 
@@ -368,24 +368,18 @@ impl Sim {
                         character_position.local * math::origin(),
                     );
 
-                    let down_temp = math::lorentz_normalize(&math::orthogonalize(
+                    let down = -math::lorentz_normalize(&math::orthogonalize(
                         down_info.surface().normal(),
                         &character_v4f64,
                     ));
-                    for n in down_temp.iter() {
-                        assert!(!n.is_nan(), "error, down direction is not a nunber");
-                    }
 
                     let down_local = self.orientation.conjugate()
                         * (character_position.local.try_inverse().unwrap()
-                            * na::convert::<_, na::Vector4<f32>>(down_temp))
+                            * na::convert::<_, na::Vector4<f32>>(-down))
                         .xyz();
                     self.orientation *= na::UnitQuaternion::new(
                         na::Vector3::z() * down_local.x * -3.0 * time.as_secs_f32(),
                     );
-
-                    // the meaning of the surface plane varies based on which side of it you are
-                    let down = -down_temp;
 
                     let height = down_info.surface().distance_to(&character_v4f64);
 
