@@ -199,18 +199,13 @@ impl<N> Graph<N> {
         id
     }
 
-    /// find the node opposite "node" along "sides".
-    // This can be improved to return None in less situations
-    pub fn opposing_node(&self, node: NodeId, sides: [Side; 3]) -> Option<NodeId> {
-        if let Some(n1) = self.neighbor(node, sides[0]) {
-            if let Some(n2) = self.neighbor(n1, sides[1]) {
-                self.neighbor(n2, sides[2])
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    /// find the node opposite "node" along "vertex"
+    pub fn opposing_node(&self, node: NodeId, vertex: Vertex) -> Option<NodeId> {
+        let sides = vertex.canonical_sides();
+        self.neighbor(
+            self.neighbor(self.neighbor(node, sides[0])?, sides[1])?,
+            sides[2],
+        )
     }
 
     /// Ensure all shorter neighbors of a not-yet-created child node exist and return them, excluding the given parent node

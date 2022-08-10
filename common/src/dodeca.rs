@@ -61,6 +61,12 @@ impl Side {
         let r = na::convert::<_, na::RowVector4<N>>(self.reflection().row(3).clone_owned());
         (r * p).x < p.w
     }
+
+    /// given a vertex v, returns a vertex that is adjacent to v but not incident on self, if such a vertex exists
+    #[inline]
+    pub fn perpendicular_vertex(self, v: Vertex) -> Option<Vertex> {
+        PERPENDICULAR_VERTEX[self as usize][v as usize]
+    }
 }
 
 /// Vertices of a right dodecahedron
@@ -280,6 +286,45 @@ lazy_static! {
 
         result
     };
+
+    /// given a side s and a vertex v, returns a vertex that is adjacent to v but not
+    /// incident on s, if such a vertex exists
+    static ref PERPENDICULAR_VERTEX: [[Option<Vertex>; VERTEX_COUNT]; SIDE_COUNT] = {
+        let mut result = [[None; VERTEX_COUNT]; SIDE_COUNT];
+
+        for side in Side::iter() {
+            let incident_vertices = side.vertices();
+
+            // 'v' and 'vertex as usize' will have different values.
+            #[allow(clippy::needless_range_loop)]
+            for vertex in incident_vertices {
+                // let vertex = incident_vertices[v];
+                let mut vertex_counts = [0; VERTEX_COUNT];
+
+                // count the number of times that vertices appear in all incident sides
+                let sides_to_tally = vertex.canonical_sides();
+                for side_to_tally in sides_to_tally {
+                    // five vertices per side
+                    let vertices_to_count = side_to_tally.vertices();
+                    for vertex_to_count in vertices_to_count {
+                        vertex_counts[vertex_to_count as usize] += 1;
+                    }
+                }
+
+                // incident corners are not perpendicular
+                for &c in side.vertices().iter() {vertex_counts[c as usize] = -1}
+
+                for i in Vertex::iter() {
+                    if vertex_counts[i as usize] == 2 {
+                        result[side as usize][vertex as usize] = Some(i);
+                        break;
+                    }
+                }
+            }
+        }
+        result
+    };
+
 }
 
 #[cfg(test)]
@@ -337,5 +382,30 @@ mod tests {
             (1.5 * phi).sqrt().asinh(),
             epsilon = 1e-10
         );
+    }
+
+    #[test]
+    fn perpendicular_vertex_is_complete() {
+        let mut error_count = 0_i32;
+
+        for s in 0..SIDE_COUNT {
+            let side = Side::from_index(s);
+            let incident_vertices = side.vertices();
+
+            #[allow(clippy::needless_range_loop)]
+            for v in 0..5 {
+                let vertex = incident_vertices[v];
+                println!("side of {:?} and vertex of {:?}", side, vertex);
+                let result = side.perpendicular_vertex(vertex);
+                if result.is_some() {
+                    println!("\tresults in {:?}", result.unwrap());
+                } else {
+                    println!("\tIs not thought to exist.");
+                    error_count += 1;
+                }
+            }
+        }
+
+        assert!(error_count == 0_i32);
     }
 }

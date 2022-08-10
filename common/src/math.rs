@@ -105,21 +105,6 @@ pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> 
     translate_along(&direction, boost_length) * rotation.to_homogeneous()
 }
 
-/// returns the result of translating normal vector v0 from p0 to p1
-pub fn translate_normal<N: RealField>(
-    p0: na::Vector4<N>,
-    p1: na::Vector4<N>,
-    v0: na::Vector4<N>,
-) -> na::Vector4<N> {
-    let d = distance(&p0, &p1);
-    // TODO: verfiy this is equvilent to !(d >= na::zero())
-    if na::zero::<N>() > d {
-        return v0;
-    }
-
-    v0 * d.cosh() + p1 * d.sinh()
-}
-
 /// normalizes vector v with repect to translation matrix t
 pub fn normalize_vector<N: RealField>(t: na::Matrix4<N>, v: na::Vector4<N>) -> na::Vector4<N> {
     let p = t * origin();
@@ -296,12 +281,5 @@ mod tests {
         let orth = orthogonalize(&vec1, &vec2);
 
         assert_abs_diff_eq!(mip(&vec2, &orth), 0.0, epsilon = 1e-5);
-    }
-
-    #[test]
-    fn translate_normal_identity() {
-        let p = na::Vector4::new(-0.03635, 0.95129, 0.0, 1.38068);
-        let norm = na::Vector4::new(1.0, 0.0, 0.0, 0.0);
-        assert_abs_diff_eq!(translate_normal(p, p, norm), norm, epsilon = 1e-5);
     }
 }

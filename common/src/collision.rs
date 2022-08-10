@@ -1,9 +1,5 @@
 use crate::node::DualGraph;
-use crate::{
-    dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT},
-    graph::NodeId,
-};
-use lazy_static::lazy_static;
+use crate::{dodeca::Vertex, graph::NodeId};
 use std::fmt;
 
 /*
@@ -31,24 +27,20 @@ pub struct BoundingBox {
     pub bounding_boxes: Vec<ChunkBoundingBox>,
 }
 
-// from a node coordinate in an arbitrary node, returns the chunk the point would reside in
-pub fn chunk_from_location(location: na::Vector4<f64>) -> Option<Vertex> {
+/// from a node coordinate in an arbitrary node, returns the chunk the point would reside in.
+// Does not make any attempt to verify the location is within the node in question.
+// guaranteed to return something if this precondition is met.
+fn chunk_from_location(location: na::Vector4<f64>) -> Vertex {
+    let epsilon = 0.001;
     for v in Vertex::iter() {
         let pos = (v.node_to_chunk() * location).xyz();
-        if (pos.x >= 0_f64)
-            && (pos.x <= 1_f64)
-            && (pos.y >= 0_f64)
-            && (pos.y <= 1_f64)
-            && (pos.z >= 0_f64)
-            && (pos.z <= 1_f64)
-        {
-            return Some(v);
+        if (pos.x >= -epsilon) && (pos.y >= -epsilon) && (pos.z >= -epsilon) {
+            return v;
         }
     }
-    None
+    panic!();
 }
 
-// Does not figure out which chunk it is in automatically
 // The pattern I use to unwrap the results of neighbor is kind of awkward.
 impl BoundingBox {
     pub fn create_aabb(
@@ -63,8 +55,7 @@ impl BoundingBox {
             "Error: the radius of a bounding box may not exceed 1 absolute unit."
         );
 
-        let start_chunk =
-            chunk_from_location(position).expect("Error: cannot find chunk for given position.");
+        let start_chunk = chunk_from_location(position);
         let mut bounding_boxes = Vec::<ChunkBoundingBox>::new();
         let sides = start_chunk.canonical_sides();
 
@@ -79,8 +70,8 @@ impl BoundingBox {
         }
 
         // get BBs for foreign chunks sharing a dodeca side
-        for side in sides.iter() {
-            if let Some(node) = graph.neighbor(start_node, *side) {
+        for &side in sides.iter() {
+            if let Some(node) = graph.neighbor(start_node, side) {
                 let translated_position = side.reflection() * position;
                 for v in side.vertices().iter() {
                     Self::add_sub_bb(
@@ -97,13 +88,13 @@ impl BoundingBox {
             }
         }
 
-        if let Some(opposite_node) = graph.opposing_node(start_node, sides) {
+        if let Some(opposite_node) = graph.opposing_node(start_node, start_chunk) {
             let opposite_position =
                 sides[0].reflection() * sides[1].reflection() * sides[2].reflection() * position;
 
             // get BBs for the chunks sharing an edge
-            for side in sides.iter() {
-                let node = graph.neighbor(opposite_node, *side);
+            for &side in sides.iter() {
+                let node = graph.neighbor(opposite_node, side);
                 let translated_position = side.reflection() * opposite_position;
                 // the chunk next to the origin chunk
                 Self::add_sub_bb(
@@ -121,7 +112,7 @@ impl BoundingBox {
                     &mut bounding_boxes,
                     ChunkBoundingBox::get_chunk_bounding_box(
                         node.unwrap(),
-                        PERPENDICULAR_VERTEX[*side as usize][start_chunk as usize].unwrap(),
+                        side.perpendicular_vertex(start_chunk).unwrap(),
                         translated_position,
                         radius,
                         dimension,
@@ -129,7 +120,7 @@ impl BoundingBox {
                 );
             }
 
-            // get BB for chunk sharing only a vertex.
+            // get BB for the chunk sharing only a vertex.
             Self::add_sub_bb(
                 &mut bounding_boxes,
                 ChunkBoundingBox::get_chunk_bounding_box(
@@ -226,47 +217,6 @@ impl ChunkBoundingBox {
     }
 }
 
-lazy_static! {
-    /// given a side s and a vertex v, returns a vertex that is adjacent to v but not
-    /// incident on s, if such a vertex exists
-    // I can't decide if this should be here or dodeca.rs
-    static ref PERPENDICULAR_VERTEX: [[Option<Vertex>; VERTEX_COUNT]; SIDE_COUNT] = {
-        let mut result = [[None; VERTEX_COUNT]; SIDE_COUNT];
-
-        for side in Side::iter() {
-            let incident_vertices = side.vertices();
-
-            // 'v' and 'vertex as usize' will have different values.
-            #[allow(clippy::needless_range_loop)]
-            for vertex in incident_vertices {
-                // let vertex = incident_vertices[v];
-                let mut vertex_counts = [0; VERTEX_COUNT];
-
-                // count the number of times that vertices appear in all incident sides
-                let sides_to_tally = vertex.canonical_sides();
-                for side_to_tally in sides_to_tally {
-                    // five vertices per side
-                    let vertices_to_count = side_to_tally.vertices();
-                    for vertex_to_count in vertices_to_count {
-                        vertex_counts[vertex_to_count as usize] += 1;
-                    }
-                }
-
-                // incident corners are not perpendicular
-                for &c in side.vertices().iter() {vertex_counts[c as usize] = -1}
-
-                for i in Vertex::iter() {
-                    if vertex_counts[i as usize] == 2 {
-                        result[side as usize][vertex as usize] = Some(i);
-                        break;
-                    }
-                }
-            }
-        }
-        result
-    };
-}
-
 impl fmt::Debug for BoundingBox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Bounding Box")
@@ -302,7 +252,7 @@ mod tests {
         let bb = BoundingBox::create_aabb(
             NodeId::ROOT,
             position,
-            2.0 / CHUNK_SIZE_F,
+            1.6 / CHUNK_SIZE_F,
             &graph,
             CHUNK_SIZE,
         );
@@ -451,7 +401,7 @@ mod tests {
                     1.0,
                 );
 
-            assert_eq!(central_chunk, chunk_from_location(position).unwrap());
+            assert_eq!(central_chunk, chunk_from_location(position));
         }
     }
 
@@ -528,32 +478,5 @@ mod tests {
             }
         }
         panic!();
-    }
-
-    #[test]
-    fn perpendicular_vertex_is_complete() {
-        //print!("{:?}", PERPENDICULAR_VERTEX);
-        let mut error_count = 0_i32;
-
-        for s in 0..SIDE_COUNT {
-            let side = Side::from_index(s);
-            let incident_vertices = side.vertices();
-
-            // 'v' and 'vertex as usize' will have different values.
-            #[allow(clippy::needless_range_loop)]
-            for v in 0..5 {
-                let vertex = incident_vertices[v];
-                println!("side of {:?} and vertex of {:?}", side, vertex); // not helpful, but I don't want to mess with the formatter.
-                let result = PERPENDICULAR_VERTEX[s][vertex as usize];
-                if result.is_some() {
-                    println!("\tresults in {:?}", result.unwrap());
-                } else {
-                    println!("\tIs not thought to exist.");
-                    error_count += 1;
-                }
-            }
-        }
-
-        assert!(error_count == 0_i32);
     }
 }
