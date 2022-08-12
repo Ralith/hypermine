@@ -314,7 +314,7 @@ impl SwapchainMgr {
     /// Construct a swapchain manager for a certain window
     fn new(window: &Window, gfx: Arc<Base>, fallback_size: PhysicalSize<u32>) -> Self {
         let device = &*gfx.device;
-        let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, &*device);
+        let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, device);
         let surface_formats = unsafe {
             window
                 .surface_fn

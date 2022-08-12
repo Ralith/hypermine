@@ -52,6 +52,7 @@ impl fmt::Display for ShutDown {
 
 impl std::error::Error for ShutDown {}
 
+#[allow(clippy::type_complexity)]
 struct Message {
     sender: oneshot::Sender<()>,
     op: Box<dyn FnOnce(&mut TransferContext, vk::CommandBuffer) + Send>,
