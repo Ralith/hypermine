@@ -30,7 +30,6 @@ impl Default for Chunk {
     }
 }
 
-#[derive(PartialEq)]
 pub enum VoxelData {
     Solid(Material),
     Dense(Box<[Material]>),
