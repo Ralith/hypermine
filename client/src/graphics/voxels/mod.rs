@@ -7,7 +7,7 @@ mod tests;
 use std::{sync::Arc, time::Instant};
 
 use ash::{vk, Device};
-use metrics::timing;
+use metrics::histogram;
 use tracing::warn;
 
 use super::draw::nearby_nodes;
@@ -120,7 +120,7 @@ impl Voxels {
             &view,
             f64::from(self.config.local_simulation.view_distance),
         );
-        timing!(
+        histogram!(
             "frame.cpu.voxels.graph_traversal",
             graph_traversal_started.elapsed()
         );
@@ -240,7 +240,7 @@ impl Voxels {
             cmd,
             &extractions,
         );
-        timing!("frame.cpu.voxels.node_scan", node_scan_started.elapsed());
+        histogram!("frame.cpu.voxels.node_scan", node_scan_started.elapsed());
     }
 
     pub unsafe fn draw(
@@ -265,7 +265,7 @@ impl Voxels {
         for chunk in &frame.drawn {
             self.draw.draw(device, cmd, &self.surfaces, chunk.0);
         }
-        timing!("frame.cpu.voxels.draw", started.elapsed());
+        histogram!("frame.cpu.voxels.draw", started.elapsed());
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {
