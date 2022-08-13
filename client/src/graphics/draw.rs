@@ -4,7 +4,7 @@ use std::time::Instant;
 use ash::vk;
 use fxhash::FxHashSet;
 use lahar::Staged;
-use metrics::timing;
+use metrics::histogram;
 
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{sim, Asset, Config, Loader, Sim};
@@ -312,10 +312,12 @@ impl Draw {
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 )
                 .unwrap();
-            let draw_nanos = self.gfx.limits.timestamp_period * (queries[1] - queries[0]) as f32;
-            let after_nanos = self.gfx.limits.timestamp_period * (queries[2] - queries[1]) as f32;
-            timing!("frame.gpu.draw", draw_nanos as u64);
-            timing!("frame.gpu.after_draw", after_nanos as u64);
+            let draw_seconds =
+                self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[1] - queries[0]) as f64;
+            let after_seconds =
+                self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[2] - queries[1]) as f64;
+            histogram!("frame.gpu.draw", draw_seconds);
+            histogram!("frame.gpu.after_draw", after_seconds);
         }
 
         device
@@ -516,7 +518,7 @@ impl Draw {
             .unwrap();
         state.used = true;
         state.in_flight = true;
-        timing!("frame.cpu", draw_started.elapsed());
+        histogram!("frame.cpu", draw_started.elapsed());
     }
 
     /// Wait for all drawing to complete
