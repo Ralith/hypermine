@@ -337,7 +337,7 @@ mod tests {
     // expect in a euclidean bounding box of the same radius.
     #[test]
     fn reasonable_voxel_count() {
-        let margin_of_error = 3.0; // three times more voxels than what would be expected.
+        let margin_of_error = 1.5; // 1.5 times more voxels than what would be expected.
         let radi_to_test = CHUNK_SIZE; // higher number means more test precision. Try to keep it a divisor of CHUNK_SIZE_F.
 
         let mut graph = Graph::new();
@@ -352,10 +352,10 @@ mod tests {
                 // Getting the correct estimation for the number of voxels can be tricky
                 let expected_voxel_count = (radius * 2.0 * CHUNK_SIZE_F).powf(3.0); // value to display
                 let minimum_expected_voxel_count =
-                    (((radius * 2.0 * CHUNK_SIZE_F) - 1_f64).powf(3.0) / margin_of_error).floor()
+                    ((((radius * CHUNK_SIZE_F) - 1_f64).powf(3.0) / margin_of_error).floor() * 8_f64 )
                         as i32;
                 let maximum_expected_voxel_count =
-                    (((radius * 2.0 * CHUNK_SIZE_F) + 1_f64).powf(3.0) * margin_of_error).ceil()
+                    ((((radius * CHUNK_SIZE_F) + 1_f64).powf(3.0)  * margin_of_error).ceil() * 20_f64)
                         as i32;
 
                 let position = central_chunk.chunk_to_node()
