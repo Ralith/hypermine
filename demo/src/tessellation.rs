@@ -19,6 +19,7 @@ pub struct Tessellation {
     voxel_to_hyperboloid: EnumMap<Vertex, na::Matrix3<f64>>,
     hyperboloid_to_voxel: EnumMap<Vertex, na::Matrix3<f64>>,
     nodes: Vec<Node>,
+    root: NodeHandle,
     chunk_size: usize,
 }
 
@@ -80,7 +81,8 @@ impl Tessellation {
             vertices,
             voxel_to_hyperboloid,
             hyperboloid_to_voxel: voxel_to_hyperboloid.map(|_, m| m.try_inverse().unwrap()),
-            nodes: Vec::new(),
+            nodes: vec![Node::new(chunk_size)],
+            root: NodeHandle { index: 0 },
             chunk_size,
         }
     }
@@ -106,15 +108,64 @@ impl Tessellation {
         }
     }
 
+    pub fn root(&self) -> NodeHandle {
+        self.root
+    }
+
+    pub fn extend_tree(&mut self, node: NodeHandle, distance: u32) {
+        if distance == 0 {
+            return;
+        }
+
+        for side in Side::iter() {
+            if self.get_node(node).is_child[side] {
+                let child = self.add_child(node, side);
+                self.extend_tree(child, distance - 1);
+            }
+        }
+    }
+
+    fn add_child(&mut self, node: NodeHandle, side: Side) -> NodeHandle {
+        let child = self.add_node();
+        self.get_node_mut(child).is_child[side] = false;
+        self.get_node_mut(child).parent = Some(side);
+        self.link_nodes(node, child, side);
+
+        // Higher-priority sides and already-pruned sides need to be pruned from the child
+        for candidate_side in Side::iter().filter(|&s| side.is_neighbor(s)) {
+            if candidate_side < side || self.get_node(node).is_child[candidate_side] {
+                self.get_node_mut(child).is_child[candidate_side] = false;
+            }
+        }
+
+        child
+    }
+
     fn link_nodes(&mut self, node0: NodeHandle, node1: NodeHandle, side: Side) {
         self.nodes[node0.index].neighbors[side] = Some(node1);
         self.nodes[node1.index].neighbors[side] = Some(node0);
+    }
+
+    fn add_node(&mut self) -> NodeHandle {
+        let node = Node::new(self.chunk_size);
+        self.nodes.push(node);
+        NodeHandle { index: self.nodes.len() - 1 }
+    }
+
+    fn get_node_mut(&mut self, node: NodeHandle) -> &mut Node {
+        &mut self.nodes[node.index]
+    }
+
+    fn get_node(&mut self, node: NodeHandle) -> &Node {
+        &self.nodes[node.index]
     }
 }
 
 struct Node {
     neighbors: EnumMap<Side, Option<NodeHandle>>,
     chunks: EnumMap<Vertex, Chunk>, // Per vertex
+    is_child: EnumMap<Side, bool>,
+    parent: Option<Side>,
 }
 
 impl Node {
@@ -122,6 +173,8 @@ impl Node {
         Node {
             neighbors: EnumMap::default(),
             chunks: enum_map! { _ => Chunk::new(chunk_size) },
+            is_child: enum_map! { _ => true },
+            parent: None,
         }
     }
 }

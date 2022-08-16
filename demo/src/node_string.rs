@@ -20,6 +20,17 @@ pub enum Side {
     E = 4,
 }
 
+impl Side {
+    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
+        use Side::*;
+        [A, B, C, D, E].iter().cloned()
+    }
+
+    pub fn is_neighbor(&self, side: Side) -> bool {
+        NEIGHBORHOOD[*self][side]
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Enum)]
 pub enum Vertex {
     AB = 0,
