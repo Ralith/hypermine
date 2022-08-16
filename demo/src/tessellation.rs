@@ -1,20 +1,23 @@
+use enum_map::{enum_map, EnumMap};
+
 use crate::{
     math,
     node_string::{NodeString, Side, Vertex},
 };
 
 // Order 4 pentagonal tiling
-// Note: Despite being constants, it is undefined behavior to change these values, as certain hardcoded unsafe code
+// Note: Despite being constants, they are not really configurable, as the rest of the code
 // depends on them being set to their current values, NUM_SIDES = 5 and ORDER = 4
 const NUM_SIDES: usize = 5;
 const ORDER: usize = 4;
 
 pub struct Tessellation {
-    reflection_vectors: [na::Vector3<f64>; NUM_SIDES],
-    reflections: [na::Matrix3<f64>; NUM_SIDES],
-    vertices: [na::Vector3<f64>; NUM_SIDES],
-    voxel_to_hyperboloid: [na::Matrix3<f64>; NUM_SIDES],
-    hyperboloid_to_voxel: [na::Matrix3<f64>; NUM_SIDES],
+    vertex_sides: EnumMap<Vertex, (Side, Side)>,
+    reflection_vectors: EnumMap<Side, na::Vector3<f64>>,
+    reflections: EnumMap<Side, na::Matrix3<f64>>,
+    vertices: EnumMap<Vertex, na::Vector3<f64>>,
+    voxel_to_hyperboloid: EnumMap<Vertex, na::Matrix3<f64>>,
+    hyperboloid_to_voxel: EnumMap<Vertex, na::Matrix3<f64>>,
     nodes: Vec<Node>,
     chunk_size: usize,
 }
@@ -30,12 +33,20 @@ impl Tessellation {
         let reflection_r = ((1.0 + cos_order_angle) / (1.0 - cos_side_angle)).sqrt();
         let reflection_z = ((cos_side_angle + cos_order_angle) / (1.0 - cos_side_angle)).sqrt();
 
-        let mut reflection_vectors = [na::Vector3::default(); NUM_SIDES];
-        let mut vertices = [na::Vector3::default(); NUM_SIDES];
-        let mut voxel_to_hyperboloid = [na::Matrix3::default(); NUM_SIDES];
+        let vertex_sides: EnumMap<Vertex, (Side, Side)> = enum_map! {
+            Vertex::AB => (Side::A, Side::B),
+            Vertex::BC => (Side::B, Side::C),
+            Vertex::CD => (Side::C, Side::D),
+            Vertex::DE => (Side::D, Side::E),
+            Vertex::EA => (Side::E, Side::A),
+        };
 
-        for (i, reflection) in reflection_vectors.iter_mut().enumerate() {
-            let theta = side_angle * i as f64;
+        let mut reflection_vectors: EnumMap<Side, na::Vector3<f64>> = EnumMap::default();
+        let mut vertices: EnumMap<Vertex, na::Vector3<f64>> = EnumMap::default();
+        let mut voxel_to_hyperboloid: EnumMap<Vertex, na::Matrix3<f64>> = EnumMap::default();
+
+        for (side, reflection) in reflection_vectors.iter_mut() {
+            let theta = side_angle * (side as usize) as f64;
             *reflection = na::Vector3::new(
                 reflection_r * theta.cos(),
                 reflection_r * theta.sin(),
@@ -43,17 +54,17 @@ impl Tessellation {
             );
         }
 
-        for (i, vertex) in vertices.iter_mut().enumerate() {
-            *vertex = math::normal(
-                &reflection_vectors[(i + 1) % NUM_SIDES],
-                &reflection_vectors[(i) % NUM_SIDES],
+        for (vertex, vertex_pos) in vertices.iter_mut() {
+            *vertex_pos = math::normal(
+                &reflection_vectors[vertex_sides[vertex].0],
+                &reflection_vectors[vertex_sides[vertex].1],
             );
-            *vertex /= (-math::sqr(vertex)).sqrt();
+            *vertex_pos /= (-math::sqr(vertex_pos)).sqrt();
         }
 
-        for (i, mat) in voxel_to_hyperboloid.iter_mut().enumerate() {
-            let reflector0 = &reflection_vectors[(i) % NUM_SIDES];
-            let reflector1 = &reflection_vectors[(i + 1) % NUM_SIDES];
+        for (vertex, mat) in voxel_to_hyperboloid.iter_mut() {
+            let reflector0 = &reflection_vectors[vertex_sides[vertex].0];
+            let reflector1 = &reflection_vectors[vertex_sides[vertex].1];
             let origin = na::Vector3::new(0.0, 0.0, 1.0);
             *mat = na::Matrix3::from_columns(&[
                 -reflector0 * reflector0.z,
@@ -63,18 +74,19 @@ impl Tessellation {
         }
 
         Tessellation {
+            vertex_sides,
             reflection_vectors,
-            reflections: reflection_vectors.map(|v| math::reflection(&v)),
+            reflections: reflection_vectors.map(|_, v| math::reflection(&v)),
             vertices,
             voxel_to_hyperboloid,
-            hyperboloid_to_voxel: voxel_to_hyperboloid.map(|m| m.try_inverse().unwrap()),
+            hyperboloid_to_voxel: voxel_to_hyperboloid.map(|_, m| m.try_inverse().unwrap()),
             nodes: Vec::new(),
             chunk_size,
         }
     }
 
     pub fn reflection(&self, side: Side) -> &na::Matrix3<f64> {
-        unsafe { self.reflections.get_unchecked(side as usize) }
+        &self.reflections[side]
     }
 
     // TODO: This function is inefficient and should be replaced with a graph datastructure
@@ -83,33 +95,33 @@ impl Tessellation {
         for &side in ns.iter() {
             transform *= self.reflection(side);
         }
-        transform *= unsafe { self.voxel_to_hyperboloid.get_unchecked(vert as usize) };
+        transform *= self.voxel_to_hyperboloid[vert];
         transform
     }
 
     pub fn chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
         ChunkData {
             chunk_size: self.chunk_size,
-            data: &self.nodes[node.index].chunks[vertex as usize].data,
+            data: &self.nodes[node.index].chunks[vertex].data,
         }
     }
 
     fn link_nodes(&mut self, node0: NodeHandle, node1: NodeHandle, side: Side) {
-        self.nodes[node0.index].neighbors[side as usize] = Some(node1);
-        self.nodes[node1.index].neighbors[side as usize] = Some(node0);
+        self.nodes[node0.index].neighbors[side] = Some(node1);
+        self.nodes[node1.index].neighbors[side] = Some(node0);
     }
 }
 
 struct Node {
-    neighbors: [Option<NodeHandle>; NUM_SIDES],
-    chunks: [Chunk; 5], // Per vertex
+    neighbors: EnumMap<Side, Option<NodeHandle>>,
+    chunks: EnumMap<Vertex, Chunk>, // Per vertex
 }
 
 impl Node {
     fn new(chunk_size: usize) -> Node {
         Node {
-            neighbors: [None; NUM_SIDES],
-            chunks: [0; 5].map(|_| Chunk::new(chunk_size)),
+            neighbors: EnumMap::default(),
+            chunks: enum_map! { _ => Chunk::new(chunk_size) },
         }
     }
 }
@@ -142,7 +154,7 @@ impl<'a> ChunkData<'a> {
         self.chunk_size
     }
 
-    pub fn value(&self, x: usize, y: usize) -> u8 {
+    pub fn get(&self, x: usize, y: usize) -> u8 {
         self.data[x * self.chunk_size + y]
     }
 }

@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+enum-map = "2.4.1"
 ggez = "0.7.0"
+lazy_static = "1.4.0"
 na = { package = "nalgebra", version = "0.31.0" }
