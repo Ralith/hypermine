@@ -10,7 +10,7 @@ license = "Apache-2.0 OR Zlib"
 
 [dependencies]
 serde = { version = "1.0.104", features = ["derive"] }
-na = { package = "nalgebra", version = "0.31.2", features = ["rand", "serde-serialize"] }
+nalgebra = { version = "0.31.2", features = ["rand", "serde-serialize"] }
 bincode = "1.2.1"
 anyhow = "1.0.26"
 quinn = "0.8.3"
