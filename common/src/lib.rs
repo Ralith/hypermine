@@ -6,6 +6,7 @@ use rand::{
 #[macro_use]
 mod id;
 
+extern crate nalgebra as na;
 mod chunks;
 pub mod codec;
 pub mod cursor;

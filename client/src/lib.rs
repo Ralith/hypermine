@@ -9,6 +9,7 @@ macro_rules! cstr {
     }};
 }
 
+extern crate nalgebra as na;
 mod config;
 pub mod graphics;
 mod lahar_deprecated;
