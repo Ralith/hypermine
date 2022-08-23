@@ -63,8 +63,8 @@ impl event::EventHandler for State {
         pass.push_transform(&math::iso_inverse(&self.pos), 0);
         pass.draw_background()?;
 
-        for (_node, transform) in nodes {
-            pass.push_transform(&transform, 0);
+        for handle in nodes {
+            pass.push_transform(&handle.transform, 0);
             pass.draw_node_chunks()?;
             pass.pop_transform();
         }

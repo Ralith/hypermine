@@ -119,23 +119,29 @@ impl Tessellation {
         node: NodeHandle,
         transform: na::Matrix3<f64>,
         distance: u32,
-    ) -> Vec<(NodeHandle, na::Matrix3<f64>)> {
+    ) -> Vec<NodeHandleWithContext> {
         let mut visited = HashMap::new();
         visited.insert(node, ());
 
-        let mut result = vec![(node, transform)];
+        let mut result = vec![NodeHandleWithContext {
+            handle: node,
+            transform,
+        }];
 
         let mut frontier_start: usize = 0;
 
         for _ in 0..distance {
             let frontier_end = result.len();
             for i in frontier_start..frontier_end {
-                let (current_node, current_transform) = result[i];
+                let handle_with_context = result[i];
                 for side in Side::iter() {
-                    let neighbor = self.ensure_neighbor(current_node, side);
+                    let neighbor = self.ensure_neighbor(handle_with_context.handle, side);
                     if let hash_map::Entry::Vacant(e) = visited.entry(neighbor) {
                         e.insert(());
-                        result.push((neighbor, current_transform * self.reflection(side)));
+                        result.push(NodeHandleWithContext {
+                            handle: neighbor,
+                            transform: handle_with_context.transform * self.reflection(side),
+                        });
                     }
                 }
             }
@@ -169,6 +175,7 @@ impl Tessellation {
         let child = self.add_node();
         self.get_node_mut(child).is_child[side] = false;
         self.get_node_mut(child).parent = Some(side);
+        self.get_node_mut(child).is_odd = !self.get_node(node).is_odd;
         self.link_nodes(node, child, side);
 
         // Higher-priority sides and already-pruned sides need to be pruned from the child
@@ -208,6 +215,7 @@ struct Node {
     chunks: EnumMap<Vertex, Chunk>, // Per vertex
     is_child: EnumMap<Side, bool>,
     parent: Option<Side>,
+    is_odd: bool,
 }
 
 impl Node {
@@ -217,6 +225,7 @@ impl Node {
             chunks: enum_map! { _ => Chunk::new(chunk_size) },
             is_child: enum_map! { _ => true },
             parent: None,
+            is_odd: false,
         }
     }
 }
@@ -236,6 +245,12 @@ impl Chunk {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeHandle {
     index: usize,
+}
+
+#[derive(Copy, Clone)]
+pub struct NodeHandleWithContext {
+    pub handle: NodeHandle,
+    pub transform: na::Matrix3<f64>,
 }
 
 #[derive(Copy, Clone)]
