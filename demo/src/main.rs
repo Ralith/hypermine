@@ -1,4 +1,4 @@
-use demo::{draw, math, node_string::Side, tessellation::Tessellation};
+use demo::{draw, math, tessellation::Tessellation};
 use ggez::{conf, event, graphics, input, timer, Context, ContextBuilder, GameResult};
 
 fn main() {
@@ -57,19 +57,18 @@ impl event::EventHandler for State {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        let nodes = self.tessellation.ensure_nearby(self.tessellation.root(), na::Matrix3::identity(), 2);
+
         let mut pass = draw::RenderPass::new(ctx, &self.tessellation);
         pass.push_transform(&math::iso_inverse(&self.pos), 0);
         pass.draw_background()?;
-        pass.draw_node_chunks()?;
-        pass.push_transform(self.tessellation.reflection(Side::A), 1);
-        pass.draw_node_chunks()?;
-        pass.push_transform(self.tessellation.reflection(Side::B), 1);
-        pass.draw_node_chunks()?;
-        pass.pop_transform();
-        pass.pop_transform();
-        pass.push_transform(self.tessellation.reflection(Side::B), 1);
-        pass.draw_node_chunks()?;
-        pass.pop_transform();
+
+        for (_node, transform) in nodes {
+            pass.push_transform(&transform, 0);
+            pass.draw_node_chunks()?;
+            pass.pop_transform();
+        }
+
         pass.present()
     }
 
