@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use enum_map::{enum_map, EnumMap};
 
 use crate::{
     math,
     node_string::{NodeString, Side, Vertex},
+    tessellation,
 };
 
 // Order 4 pentagonal tiling
@@ -112,17 +115,42 @@ impl Tessellation {
         self.root
     }
 
-    pub fn extend_tree(&mut self, node: NodeHandle, distance: u32) {
-        if distance == 0 {
-            return;
-        }
+    pub fn ensure_nearby(&mut self, node: NodeHandle, distance: u32) -> Vec<NodeHandle> {
+        fn recurse(
+            tessellation: &mut Tessellation,
+            current_node: NodeHandle,
+            remaining_distance: u32,
+            visited: &mut HashMap<NodeHandle, ()>,
+            result: &mut Vec<NodeHandle>,
+        ) {
+            if visited.contains_key(&current_node) {
+                return;
+            }
 
-        for side in Side::iter() {
-            if self.get_node(node).is_child[side] {
-                let child = self.add_child(node, side);
-                self.extend_tree(child, distance - 1);
+            visited.insert(current_node, ());
+            result.push(current_node);
+
+            if remaining_distance == 0 {
+                return;
+            }
+
+            for side in Side::iter() {
+                let neighbor = tessellation.ensure_neighbor(current_node, side);
+                recurse(
+                    tessellation,
+                    neighbor,
+                    remaining_distance - 1,
+                    visited,
+                    result,
+                )
             }
         }
+
+        let mut visited = HashMap::new();
+        let mut result = Vec::new();
+
+        recurse(self, node, distance, &mut visited, &mut result);
+        result
     }
 
     fn ensure_neighbor(&mut self, node: NodeHandle, side: Side) -> NodeHandle {
@@ -213,7 +241,7 @@ impl Chunk {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeHandle {
     index: usize,
 }
@@ -247,6 +275,14 @@ mod test {
         let a = tessellation.ensure_neighbor(root, Side::A);
         let ab = tessellation.ensure_neighbor(a, Side::B);
         let _b = tessellation.ensure_neighbor(ab, Side::A);
+        print_graph(&tessellation);
+    }
+
+    #[test]
+    fn test_ensure_nearby() {
+        let mut tessellation = Tessellation::new(12);
+        let root = tessellation.root();
+        println!("{}", tessellation.ensure_nearby(root, 3).len());
         print_graph(&tessellation);
     }
 
