@@ -125,6 +125,26 @@ impl Tessellation {
         }
     }
 
+    fn ensure_neighbor(&mut self, node: NodeHandle, side: Side) -> NodeHandle {
+        let actual_node = self.get_node(node);
+
+        if let Some(neighbor) = actual_node.neighbors[side] {
+            return neighbor;
+        }
+
+        if actual_node.is_child[side] {
+            return self.add_child(node, side);
+        }
+
+        let parent_side = actual_node.parent.unwrap();
+        let parent_neighbor =
+            self.ensure_neighbor(actual_node.neighbors[parent_side].unwrap(), side);
+
+        let neighbor = self.ensure_neighbor(parent_neighbor, parent_side);
+        self.link_nodes(node, neighbor, side);
+        neighbor
+    }
+
     fn add_child(&mut self, node: NodeHandle, side: Side) -> NodeHandle {
         let child = self.add_node();
         self.get_node_mut(child).is_child[side] = false;
@@ -133,7 +153,7 @@ impl Tessellation {
 
         // Higher-priority sides and already-pruned sides need to be pruned from the child
         for candidate_side in Side::iter().filter(|&s| side.is_neighbor(s)) {
-            if candidate_side < side || self.get_node(node).is_child[candidate_side] {
+            if candidate_side < side || !self.get_node(node).is_child[candidate_side] {
                 self.get_node_mut(child).is_child[candidate_side] = false;
             }
         }
@@ -149,14 +169,16 @@ impl Tessellation {
     fn add_node(&mut self) -> NodeHandle {
         let node = Node::new(self.chunk_size);
         self.nodes.push(node);
-        NodeHandle { index: self.nodes.len() - 1 }
+        NodeHandle {
+            index: self.nodes.len() - 1,
+        }
     }
 
     fn get_node_mut(&mut self, node: NodeHandle) -> &mut Node {
         &mut self.nodes[node.index]
     }
 
-    fn get_node(&mut self, node: NodeHandle) -> &Node {
+    fn get_node(&self, node: NodeHandle) -> &Node {
         &self.nodes[node.index]
     }
 }
@@ -191,7 +213,7 @@ impl Chunk {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct NodeHandle {
     index: usize,
 }
@@ -209,5 +231,28 @@ impl<'a> ChunkData<'a> {
 
     pub fn get(&self, x: usize, y: usize) -> u8 {
         self.data[x * self.chunk_size + y]
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::node_string::Side;
+
+    use super::Tessellation;
+
+    #[test]
+    fn test_ensure_neighbor() {
+        let mut tessellation = Tessellation::new(12);
+        let root = tessellation.root();
+        let a = tessellation.ensure_neighbor(root, Side::A);
+        let ab = tessellation.ensure_neighbor(a, Side::B);
+        let _b = tessellation.ensure_neighbor(ab, Side::A);
+        print_graph(&tessellation);
+    }
+
+    fn print_graph(tessellation: &Tessellation) {
+        for (i, node) in tessellation.nodes.iter().enumerate() {
+            println!("{}: {:?}", i, node.neighbors.map(|_, o| o.map(|h| h.index)));
+        }
     }
 }
