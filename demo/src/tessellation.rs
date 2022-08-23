@@ -1,11 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 
 use enum_map::{enum_map, EnumMap};
 
 use crate::{
     math,
     node_string::{NodeString, Side, Vertex},
-    tessellation,
 };
 
 // Order 4 pentagonal tiling
@@ -116,40 +115,28 @@ impl Tessellation {
     }
 
     pub fn ensure_nearby(&mut self, node: NodeHandle, distance: u32) -> Vec<NodeHandle> {
-        fn recurse(
-            tessellation: &mut Tessellation,
-            current_node: NodeHandle,
-            remaining_distance: u32,
-            visited: &mut HashMap<NodeHandle, ()>,
-            result: &mut Vec<NodeHandle>,
-        ) {
-            if visited.contains_key(&current_node) {
-                return;
-            }
+        let mut visited = HashMap::new();
+        visited.insert(node, ());
 
-            visited.insert(current_node, ());
-            result.push(current_node);
+        let mut result = vec![node];
 
-            if remaining_distance == 0 {
-                return;
-            }
+        let mut frontier = vec![node];
 
-            for side in Side::iter() {
-                let neighbor = tessellation.ensure_neighbor(current_node, side);
-                recurse(
-                    tessellation,
-                    neighbor,
-                    remaining_distance - 1,
-                    visited,
-                    result,
-                )
+        for _ in 0..distance {
+            let mut next_frontier = Vec::new();
+            for &current_node in &frontier {
+                for side in Side::iter() {
+                    let neighbor = self.ensure_neighbor(current_node, side);
+                    if let hash_map::Entry::Vacant(e) = visited.entry(neighbor) {
+                        e.insert(());
+                        result.push(neighbor);
+                        next_frontier.push(neighbor);
+                    }
+                }
             }
+            frontier = next_frontier;
         }
 
-        let mut visited = HashMap::new();
-        let mut result = Vec::new();
-
-        recurse(self, node, distance, &mut visited, &mut result);
         result
     }
 
