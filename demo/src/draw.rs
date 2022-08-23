@@ -3,7 +3,7 @@ use ggez::{graphics, mint, Context, GameResult};
 use crate::{
     math,
     node_string::{NodeString, Vertex},
-    tessellation::Tessellation,
+    tessellation::{Tessellation, NodeHandle},
 };
 
 pub struct RenderPass<'a> {
@@ -70,18 +70,18 @@ impl<'a> RenderPass<'a> {
         graphics::draw(self.ctx, &circle, self.draw_params)
     }
 
-    pub fn draw_node_chunks(&mut self) -> GameResult {
-        self.draw_chunk(Vertex::AB)?;
-        self.draw_chunk(Vertex::BC)?;
-        self.draw_chunk(Vertex::CD)?;
-        self.draw_chunk(Vertex::DE)?;
-        self.draw_chunk(Vertex::EA)?;
+    pub fn draw_node_chunks(&mut self, node: NodeHandle) -> GameResult {
+        self.draw_chunk(node, Vertex::AB)?;
+        self.draw_chunk(node, Vertex::BC)?;
+        self.draw_chunk(node, Vertex::CD)?;
+        self.draw_chunk(node, Vertex::DE)?;
+        self.draw_chunk(node, Vertex::EA)?;
         Ok(())
     }
 
-    fn draw_chunk(&mut self, vertex: Vertex) -> GameResult {
+    fn draw_chunk(&mut self, node: NodeHandle, vertex: Vertex) -> GameResult {
         let transform = *self.get_transform();
-        let parity = self.get_parity();
+        let parity = self.tessellation.parity(node);
         let mesh = self.get_voxel_mesh(&transform, parity, vertex)?;
         graphics::draw(self.ctx, &mesh, self.draw_params)
     }

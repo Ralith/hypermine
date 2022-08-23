@@ -65,7 +65,7 @@ impl event::EventHandler for State {
 
         for handle in nodes {
             pass.push_transform(&handle.transform, 0);
-            pass.draw_node_chunks()?;
+            pass.draw_node_chunks(handle.node)?;
             pass.pop_transform();
         }
 

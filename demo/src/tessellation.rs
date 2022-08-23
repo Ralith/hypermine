@@ -114,6 +114,14 @@ impl Tessellation {
         self.root
     }
 
+    pub fn parity(&self, node: NodeHandle) -> u32 {
+        if self.get_node(node).is_odd {
+            1
+        } else {
+            0
+        }
+    }
+
     pub fn ensure_nearby(
         &mut self,
         node: NodeHandle,
@@ -124,7 +132,7 @@ impl Tessellation {
         visited.insert(node, ());
 
         let mut result = vec![NodeHandleWithContext {
-            handle: node,
+            node,
             transform,
         }];
 
@@ -135,11 +143,11 @@ impl Tessellation {
             for i in frontier_start..frontier_end {
                 let handle_with_context = result[i];
                 for side in Side::iter() {
-                    let neighbor = self.ensure_neighbor(handle_with_context.handle, side);
+                    let neighbor = self.ensure_neighbor(handle_with_context.node, side);
                     if let hash_map::Entry::Vacant(e) = visited.entry(neighbor) {
                         e.insert(());
                         result.push(NodeHandleWithContext {
-                            handle: neighbor,
+                            node: neighbor,
                             transform: handle_with_context.transform * self.reflection(side),
                         });
                     }
@@ -249,7 +257,7 @@ pub struct NodeHandle {
 
 #[derive(Copy, Clone)]
 pub struct NodeHandleWithContext {
-    pub handle: NodeHandle,
+    pub node: NodeHandle,
     pub transform: na::Matrix3<f64>,
 }
 
