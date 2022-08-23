@@ -114,27 +114,32 @@ impl Tessellation {
         self.root
     }
 
-    pub fn ensure_nearby(&mut self, node: NodeHandle, distance: u32) -> Vec<NodeHandle> {
+    pub fn ensure_nearby(
+        &mut self,
+        node: NodeHandle,
+        transform: na::Matrix3<f64>,
+        distance: u32,
+    ) -> Vec<(NodeHandle, na::Matrix3<f64>)> {
         let mut visited = HashMap::new();
         visited.insert(node, ());
 
-        let mut result = vec![node];
+        let mut result = vec![(node, transform)];
 
-        let mut frontier = vec![node];
+        let mut frontier_start: usize = 0;
 
         for _ in 0..distance {
-            let mut next_frontier = Vec::new();
-            for &current_node in &frontier {
+            let frontier_end = result.len();
+            for i in frontier_start..frontier_end {
+                let (current_node, current_transform) = result[i];
                 for side in Side::iter() {
                     let neighbor = self.ensure_neighbor(current_node, side);
                     if let hash_map::Entry::Vacant(e) = visited.entry(neighbor) {
                         e.insert(());
-                        result.push(neighbor);
-                        next_frontier.push(neighbor);
+                        result.push((neighbor, current_transform * self.reflection(side)));
                     }
                 }
             }
-            frontier = next_frontier;
+            frontier_start = frontier_end;
         }
 
         result
@@ -269,7 +274,12 @@ mod test {
     fn test_ensure_nearby() {
         let mut tessellation = Tessellation::new(12);
         let root = tessellation.root();
-        println!("{}", tessellation.ensure_nearby(root, 3).len());
+        println!(
+            "{}",
+            tessellation
+                .ensure_nearby(root, na::Matrix3::identity(), 3)
+                .len()
+        );
         print_graph(&tessellation);
     }
 
