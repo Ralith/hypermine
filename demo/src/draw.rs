@@ -3,7 +3,7 @@ use ggez::{graphics, mint, Context, GameResult};
 use crate::{
     math,
     node_string::{NodeString, Vertex},
-    tessellation::{Tessellation, NodeHandle},
+    tessellation::{NodeHandle, Tessellation},
 };
 
 pub struct RenderPass<'a> {
@@ -80,9 +80,7 @@ impl<'a> RenderPass<'a> {
     }
 
     fn draw_chunk(&mut self, node: NodeHandle, vertex: Vertex) -> GameResult {
-        let transform = *self.get_transform();
-        let parity = self.tessellation.parity(node);
-        let mesh = self.get_voxel_mesh(&transform, parity, vertex)?;
+        let mesh = self.get_voxel_mesh(node, vertex)?;
         graphics::draw(self.ctx, &mesh, self.draw_params)
     }
 
@@ -90,16 +88,15 @@ impl<'a> RenderPass<'a> {
         graphics::present(self.ctx)
     }
 
-    fn get_voxel_mesh(
-        &mut self,
-        transform: &na::Matrix3<f64>,
-        node_parity: u32,
-        vertex: Vertex,
-    ) -> GameResult<graphics::Mesh> {
-        let transform = transform
+    fn get_voxel_mesh(&mut self, node: NodeHandle, vertex: Vertex) -> GameResult<graphics::Mesh> {
+        let transform = self.get_transform()
             * self
                 .tessellation
                 .voxel_to_hyperboloid(&NodeString::default(), vertex);
+
+        let parity = self.tessellation.parity(node) as usize;
+
+        let chunk_data = self.tessellation.chunk_data(node, vertex);
 
         let hue = match vertex {
             Vertex::AB => [1.0, 0.0, 0.0],
@@ -124,6 +121,11 @@ impl<'a> RenderPass<'a> {
             ],
         ];
 
+        let off_color = [
+            [hue[0] * 0.05, hue[1] * 0.05, hue[2] * 0.05, 1.0],
+            [hue[0] * 0.1, hue[1] * 0.1, hue[2] * 0.1, 1.0],
+        ];
+
         let resolution = 12;
         let vertices: Vec<graphics::Vertex> = (0..resolution)
             .flat_map(|x| {
@@ -132,7 +134,9 @@ impl<'a> RenderPass<'a> {
                     let x_max = (x + 1) as f64 / resolution as f64;
                     let y_min = y as f64 / resolution as f64;
                     let y_max = (y + 1) as f64 / resolution as f64;
-                    let color = on_color[((x + y + node_parity) % 2) as usize];
+                    let voxel_type = chunk_data.get(x, y);
+                    let color =
+                        (if voxel_type != 0 { on_color } else { off_color })[(x + y + parity) % 2];
                     [
                         graphics::Vertex {
                             pos: math::to_point(&(transform * na::Vector3::new(x_min, y_min, 1.0))),

@@ -122,6 +122,13 @@ impl Tessellation {
         }
     }
 
+    pub fn get_chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
+        ChunkData {
+            chunk_size: self.chunk_size,
+            data: &self.get_node(node).chunks[vertex].data,
+        }
+    }
+
     pub fn ensure_nearby(
         &mut self,
         node: NodeHandle,
@@ -131,10 +138,7 @@ impl Tessellation {
         let mut visited = HashMap::new();
         visited.insert(node, ());
 
-        let mut result = vec![NodeHandleWithContext {
-            node,
-            transform,
-        }];
+        let mut result = vec![NodeHandleWithContext { node, transform }];
 
         let mut frontier_start: usize = 0;
 
@@ -245,7 +249,12 @@ struct Chunk {
 impl Chunk {
     fn new(chunk_size: usize) -> Chunk {
         Chunk {
-            data: (0..chunk_size * chunk_size).map(|_| 1).collect(),
+            data: (0..chunk_size * chunk_size)
+                .map(|i| match i % 5 {
+                    0..=1 => 1,
+                    _ => 0,
+                })
+                .collect(),
         }
     }
 }
