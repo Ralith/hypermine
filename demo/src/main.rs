@@ -1,5 +1,9 @@
-use demo::{draw, math, tessellation::Tessellation};
-use ggez::{conf, event, graphics, input, timer, Context, ContextBuilder, GameResult};
+use demo::{
+    draw, math,
+    player::{Player, PlayerInput},
+    tessellation::Tessellation,
+};
+use ggez::{conf, event, graphics, timer, Context, ContextBuilder, GameResult};
 
 fn main() {
     let (mut ctx, event_loop) = ContextBuilder::new("demo", "hypermine")
@@ -12,15 +16,17 @@ fn main() {
 }
 
 struct State {
-    pos: na::Matrix3<f64>,
+    player: Player,
     tessellation: Tessellation,
 }
 
 impl State {
     pub fn new(_ctx: &mut Context) -> State {
+        let tessellation = Tessellation::new(12);
+
         State {
-            pos: na::Matrix3::identity(),
-            tessellation: Tessellation::new(12),
+            player: Player::new(tessellation.root()),
+            tessellation,
         }
     }
 }
@@ -31,36 +37,18 @@ impl event::EventHandler for State {
 
         while timer::check_update_time(ctx, DESIRED_FPS) {
             let seconds = 1. / (DESIRED_FPS as f64);
-
-            let left_pressed = input::keyboard::is_key_pressed(ctx, event::KeyCode::A);
-            let right_pressed = input::keyboard::is_key_pressed(ctx, event::KeyCode::D);
-            let down_pressed = input::keyboard::is_key_pressed(ctx, event::KeyCode::S);
-            let up_pressed = input::keyboard::is_key_pressed(ctx, event::KeyCode::W);
-            let mut x_velocity =
-                if left_pressed { -1. } else { 0. } + if right_pressed { 1. } else { 0. };
-            let mut y_velocity =
-                if down_pressed { -1. } else { 0. } + if up_pressed { 1. } else { 0. };
-            let sqr_velocity_magnitude: f64 = x_velocity * x_velocity + y_velocity * y_velocity;
-            if sqr_velocity_magnitude > 1. {
-                let factor = 1. / sqr_velocity_magnitude.sqrt();
-                x_velocity *= factor;
-                y_velocity *= factor;
-            }
-            self.pos *= math::displacement(&na::Vector3::new(
-                x_velocity * seconds,
-                y_velocity * seconds,
-                0.,
-            ));
-            math::qr_normalize(&mut self.pos);
+            self.player.step(&PlayerInput::new(ctx, seconds));
         }
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        let nodes = self.tessellation.ensure_nearby(self.tessellation.root(), na::Matrix3::identity(), 2);
+        let nodes =
+            self.tessellation
+                .ensure_nearby(self.tessellation.root(), na::Matrix3::identity(), 2);
 
         let mut pass = draw::RenderPass::new(ctx, &self.tessellation);
-        pass.push_transform(&math::iso_inverse(&self.pos), 0);
+        pass.push_transform(&math::iso_inverse(self.player.pos()), 0);
         pass.draw_background()?;
 
         for handle in nodes {

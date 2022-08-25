@@ -250,7 +250,7 @@ impl Chunk {
     fn new(chunk_size: usize) -> Chunk {
         Chunk {
             data: (0..chunk_size * chunk_size)
-                .map(|i| match i % 5 {
+                .map(|i| match i % 6 {
                     0..=1 => 1,
                     _ => 0,
                 })
