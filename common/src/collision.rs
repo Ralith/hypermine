@@ -5,7 +5,7 @@ use std::fmt;
 /*
 The set of voxels that a collision body covers within a chunk
 */
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct ChunkBoundingBox {
     pub node: NodeId,
     pub chunk: Vertex,
@@ -28,8 +28,8 @@ pub struct BoundingBox {
 }
 
 /// from a node coordinate in an arbitrary node, returns the chunk the point would reside in.
-// Does not make any attempt to verify the location is within the node in question.
-// guaranteed to return something if this precondition is met.
+/// Does not make any attempt to verify the location is within the node in question.
+/// guaranteed to return something if this precondition is met.
 fn chunk_from_location(location: na::Vector4<f64>) -> Vertex {
     let epsilon = 0.001;
     for v in Vertex::iter() {
@@ -125,7 +125,7 @@ impl BoundingBox {
                 &mut bounding_boxes,
                 ChunkBoundingBox::get_chunk_bounding_box(
                     opposite_node,
-                    Vertex::from_sides(sides[0], sides[1], sides[2]).unwrap(),
+                    start_chunk,
                     opposite_position,
                     radius,
                     dimension,
@@ -352,11 +352,11 @@ mod tests {
                 // Getting the correct estimation for the number of voxels can be tricky
                 let expected_voxel_count = (radius * 2.0 * CHUNK_SIZE_F).powf(3.0); // value to display
                 let minimum_expected_voxel_count =
-                    ((((radius * CHUNK_SIZE_F) - 1_f64).powf(3.0) / margin_of_error).floor() * 8_f64 )
-                        as i32;
+                    ((((radius * CHUNK_SIZE_F) - 1_f64).powf(3.0) / margin_of_error).floor()
+                        * 8_f64) as i32;
                 let maximum_expected_voxel_count =
-                    ((((radius * CHUNK_SIZE_F) + 1_f64).powf(3.0)  * margin_of_error).ceil() * 20_f64)
-                        as i32;
+                    ((((radius * CHUNK_SIZE_F) + 1_f64).powf(3.0) * margin_of_error).ceil()
+                        * 20_f64) as i32;
 
                 let position = central_chunk.chunk_to_node()
                     * na::Vector4::new(

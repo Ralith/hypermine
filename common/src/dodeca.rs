@@ -43,7 +43,7 @@ impl Side {
         ADJACENT[self as usize][other as usize]
     }
 
-    /// All verticies incident on self
+    /// All vertices incident on self
     #[inline]
     pub fn vertices(self) -> [Vertex; 5] {
         SIDE_VERTICES[self as usize]
@@ -255,7 +255,7 @@ lazy_static! {
         result
     };
 
-    /// The 5 vertices incedent on a side
+    /// The 5 vertices incident on a side
     static ref SIDE_VERTICES: [[Vertex; 5]; SIDE_COUNT] = {
         let mut result_list = vec![Vec::new(); SIDE_COUNT];
 
@@ -295,8 +295,6 @@ lazy_static! {
         for side in Side::iter() {
             let incident_vertices = side.vertices();
 
-            // 'v' and 'vertex as usize' will have different values.
-            #[allow(clippy::needless_range_loop)]
             for vertex in incident_vertices {
                 // let vertex = incident_vertices[v];
                 let mut vertex_counts = [0; VERTEX_COUNT];
@@ -392,9 +390,7 @@ mod tests {
             let side = Side::from_index(s);
             let incident_vertices = side.vertices();
 
-            #[allow(clippy::needless_range_loop)]
-            for v in 0..5 {
-                let vertex = incident_vertices[v];
+            for vertex in incident_vertices {
                 println!("side of {:?} and vertex of {:?}", side, vertex);
                 let result = side.perpendicular_vertex(vertex);
                 if result.is_some() {

@@ -105,7 +105,7 @@ pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> 
     translate_along(&direction, boost_length) * rotation.to_homogeneous()
 }
 
-/// normalizes vector v with repect to translation matrix t
+/// normalizes vector v with respect to translation matrix t
 pub fn normalize_vector<N: RealField>(t: na::Matrix4<N>, v: na::Vector4<N>) -> na::Vector4<N> {
     let p = t * origin();
     let m = mip(&v, &v);
