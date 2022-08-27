@@ -120,7 +120,7 @@ impl<N> Graph<N> {
         let mut location = original * math::origin();
         'outer: loop {
             for side in Side::iter() {
-                if !side.faces(&location) {
+                if !side.is_facing(&location) {
                     continue;
                 }
                 reference = match self.neighbor(reference, side) {
