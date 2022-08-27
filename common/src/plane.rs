@@ -2,7 +2,7 @@ use std::ops::{Mul, Neg};
 
 use crate::{
     dodeca::{Side, Vertex},
-    math::{lorentz_normalize, mip, origin},
+    math::{lorentz_normalize, mip},
 };
 
 /// A hyperbolic plane
@@ -14,9 +14,8 @@ pub struct Plane<N: na::RealField> {
 impl From<Side> for Plane<f64> {
     /// A surface overlapping with a particular dodecahedron side
     fn from(side: Side) -> Self {
-        let n = side.reflection().column(3) - origin();
         Self {
-            normal: lorentz_normalize(&n),
+            normal: *side.normal(),
         }
     }
 }
@@ -81,7 +80,7 @@ impl Plane<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::math::translate_along;
+    use crate::math::{origin, translate_along};
     use approx::*;
 
     #[test]
