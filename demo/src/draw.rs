@@ -3,7 +3,7 @@ use ggez::{graphics, mint, Context, GameResult};
 use crate::{
     color::Color,
     math,
-    node_string::{NodeString, Vertex},
+    penta::Vertex,
     tessellation::{NodeHandle, Tessellation},
 };
 
@@ -93,7 +93,7 @@ impl<'a> RenderPass<'a> {
         let transform = self.get_transform()
             * self
                 .tessellation
-                .voxel_to_hyperboloid(&NodeString::default(), vertex);
+                .voxel_to_hyperboloid(vertex);
 
         let parity = self.tessellation.parity(node) as usize;
 

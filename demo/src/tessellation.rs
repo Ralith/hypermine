@@ -4,7 +4,7 @@ use enum_map::{enum_map, EnumMap};
 
 use crate::{
     math,
-    node_string::{NodeString, Side, Vertex},
+    penta::{Side, Vertex},
 };
 
 // Order 4 pentagonal tiling
@@ -93,14 +93,8 @@ impl Tessellation {
         &self.reflections[side]
     }
 
-    // TODO: This function is inefficient and should be replaced with a graph datastructure
-    pub fn voxel_to_hyperboloid(&self, ns: &NodeString, vert: Vertex) -> na::Matrix3<f64> {
-        let mut transform = na::Matrix3::identity();
-        for &side in ns.iter() {
-            transform *= self.reflection(side);
-        }
-        transform *= self.voxel_to_hyperboloid[vert];
-        transform
+    pub fn voxel_to_hyperboloid(&self, vert: Vertex) -> &na::Matrix3<f64> {
+        &self.voxel_to_hyperboloid[vert]
     }
 
     pub fn chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
@@ -288,7 +282,7 @@ impl<'a> ChunkData<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::node_string::Side;
+    use crate::penta::Side;
 
     use super::Tessellation;
 

@@ -2,11 +2,8 @@
 
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign, Div, DivAssign};
 
-/// A color represented in RGB, where the hue/saturation of red, green, and blue are as usual,
-/// but the brightness is normalized so that the ideal grayscale value is just R + G + B.
-/// This means that to be a displayable color, red has to be between 0 and 0.299, green has to
-/// be between 0 and 0.587, and blue has to be between 0 and 0.114. The color space is also linear.
-/// TODO: Edit documentation, as red, green, and blue are now defined as normal (but still linear)
+/// A color represented in linear RGB. A method exist to get its luminance, which weights red,
+/// green, and blue appropriately.
 #[derive(Clone, Copy)]
 pub struct Color {
     red: f64,
