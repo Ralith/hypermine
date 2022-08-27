@@ -57,7 +57,7 @@ impl Side {
 
     /// Whether `p` is opposite the dodecahedron across the plane containing `self`
     #[inline]
-    pub fn faces<N: na::RealField>(self, p: &na::Vector4<N>) -> bool {
+    pub fn is_facing<N: na::RealField>(self, p: &na::Vector4<N>) -> bool {
         let r = na::convert::<_, na::RowVector4<N>>(self.reflection().row(3).clone_owned());
         (r * p).x < p.w
     }
@@ -324,10 +324,10 @@ mod tests {
     }
 
     #[test]
-    fn side_faces() {
+    fn side_is_facing() {
         for side in Side::iter() {
-            assert!(!side.faces::<f32>(&math::origin()));
-            assert!(side.faces(&(side.reflection() * math::origin())));
+            assert!(!side.is_facing::<f32>(&math::origin()));
+            assert!(side.is_facing(&(side.reflection() * math::origin())));
         }
     }
 
