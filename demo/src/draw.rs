@@ -1,6 +1,7 @@
 use ggez::{graphics, mint, Context, GameResult};
 
 use crate::{
+    color::Color,
     math,
     node_string::{NodeString, Vertex},
     tessellation::{NodeHandle, Tessellation},
@@ -99,32 +100,21 @@ impl<'a> RenderPass<'a> {
         let chunk_data = self.tessellation.chunk_data(node, vertex);
 
         let hue = match vertex {
-            Vertex::AB => [1.0, 0.0, 0.0],
-            Vertex::BC => [1.0, 0.8, 0.0],
-            Vertex::CD => [0.0, 1.0, 0.4],
-            Vertex::DE => [0.0, 0.4, 1.0],
-            Vertex::EA => [0.8, 0.0, 1.0],
+            Vertex::AB => Color::from_hue(0.0),
+            Vertex::BC => Color::from_hue(0.2),
+            Vertex::CD => Color::from_hue(0.4),
+            Vertex::DE => Color::from_hue(0.6),
+            Vertex::EA => Color::from_hue(0.8),
         };
 
+        let inverted_hue = hue.inverted();
+        let hue_normalized = hue / hue.luminance();
+        let inverted_hue_normalized = inverted_hue / inverted_hue.luminance();
         let on_color = [
-            [
-                1.0 - (1.0 - hue[0]) * (1.0 - 0.9),
-                1.0 - (1.0 - hue[1]) * (1.0 - 0.9),
-                1.0 - (1.0 - hue[2]) * (1.0 - 0.9),
-                1.0,
-            ],
-            [
-                1.0 - (1.0 - hue[0]) * (1.0 - 0.7),
-                1.0 - (1.0 - hue[1]) * (1.0 - 0.7),
-                1.0 - (1.0 - hue[2]) * (1.0 - 0.7),
-                1.0,
-            ],
+            (Color::WHITE - inverted_hue_normalized * 0.1).into(),
+            (Color::WHITE - inverted_hue_normalized * 0.22).into(),
         ];
-
-        let off_color = [
-            [hue[0] * 0.05, hue[1] * 0.05, hue[2] * 0.05, 1.0],
-            [hue[0] * 0.1, hue[1] * 0.1, hue[2] * 0.1, 1.0],
-        ];
+        let off_color = [(hue_normalized * 0.0005).into(), (hue_normalized * 0.001).into()];
 
         let resolution = 12;
         let vertices: Vec<graphics::Vertex> = (0..resolution)

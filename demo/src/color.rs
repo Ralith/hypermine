@@ -1,6 +1,6 @@
 //! A few simple utilities to make it easier to color entities in the demo appropriately
 
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign, Div, DivAssign};
 
 /// A color represented in RGB, where the hue/saturation of red, green, and blue are as usual,
 /// but the brightness is normalized so that the ideal grayscale value is just R + G + B.
@@ -19,6 +19,12 @@ impl Color {
     const GREEN_FACTOR: f64 = 0.587;
     const BLUE_FACTOR: f64 = 0.114;
 
+    pub const WHITE: Color = Color {
+        red: 1.0,
+        green: 1.0,
+        blue: 1.0,
+    };
+
     pub fn from_hue(hue: f64) -> Color {
         let hue_normalized = (hue - hue.floor()) * 6.0;
         let hue_type = hue_normalized.floor().min(5.0);
@@ -33,9 +39,9 @@ impl Color {
             _ => panic!("{} isn't in [0,6)", hue_type),
         };
         Color {
-            red: rgb.0,
-            green: rgb.1,
-            blue: rgb.2,
+            red: Self::srgb_to_linear(rgb.0),
+            green: Self::srgb_to_linear(rgb.1),
+            blue: Self::srgb_to_linear(rgb.2),
         }
     }
 
@@ -44,6 +50,28 @@ impl Color {
             red: 1.0 - self.red,
             green: 1.0 - self.green,
             blue: 1.0 - self.blue,
+        }
+    }
+
+    pub fn luminance(&self) -> f64 {
+        self.red * Self::RED_FACTOR
+            + self.green * Self::GREEN_FACTOR
+            + self.blue * Self::BLUE_FACTOR
+    }
+
+    fn srgb_to_linear(srgb: f64) -> f64 {
+        if srgb <= 0.04045 {
+            srgb / 12.92
+        } else {
+            ((srgb + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    fn linear_to_srgb(linear: f64) -> f64 {
+        if linear <= 0.0031308 {
+            linear * 12.92
+        } else {
+            linear.powf(1.0 / 2.4) * 1.055 - 0.055
         }
     }
 }
@@ -88,6 +116,26 @@ impl MulAssign<f64> for Color {
     }
 }
 
+impl Div<f64> for Color {
+    type Output = Self;
+
+    fn div(self, rhs: f64) -> Self::Output {
+        Color {
+            red: self.red / rhs,
+            green: self.green / rhs,
+            blue: self.blue / rhs,
+        }
+    }
+}
+
+impl DivAssign<f64> for Color {
+    fn div_assign(&mut self, rhs: f64) {
+        self.red /= rhs;
+        self.green /= rhs;
+        self.blue /= rhs;
+    }
+}
+
 impl Sub for Color {
     type Output = Self;
 
@@ -117,5 +165,16 @@ impl Neg for Color {
             green: -self.green,
             blue: -self.blue,
         }
+    }
+}
+
+impl From<Color> for [f32; 4] {
+    fn from(color: Color) -> Self {
+        [
+            Color::linear_to_srgb(color.red).clamp(0.0, 1.0) as f32,
+            Color::linear_to_srgb(color.green).clamp(0.0, 1.0) as f32,
+            Color::linear_to_srgb(color.blue).clamp(0.0, 1.0) as f32,
+            1.0,
+        ]
     }
 }
