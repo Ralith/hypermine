@@ -96,3 +96,7 @@ fn div_assign(divisor: f64, mut slice: na::VectorSliceMut3<f64>) {
 fn sub_assign(subtrahend: na::Vector3<f64>, mut slice: na::VectorSliceMut3<f64>) {
     slice.sub_assign(subtrahend);
 }
+
+pub fn euclidean_point(v: &na::Vector3<f64>) -> na::Vector2<f64> {
+    na::Vector2::new(v.x / v.z, v.y / v.z)
+}

@@ -37,7 +37,7 @@ impl event::EventHandler for State {
 
         while timer::check_update_time(ctx, DESIRED_FPS) {
             let seconds = 1. / (DESIRED_FPS as f64);
-            self.player.step(&PlayerInput::new(ctx, seconds));
+            self.player.step(&PlayerInput::new(ctx, &self.tessellation, seconds));
         }
         Ok(())
     }
@@ -57,6 +57,7 @@ impl event::EventHandler for State {
             pass.pop_transform();
         }
 
+        pass.draw_center()?;
         pass.present()
     }
 

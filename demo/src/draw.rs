@@ -80,6 +80,18 @@ impl<'a> RenderPass<'a> {
         Ok(())
     }
 
+    pub fn draw_center(&mut self) -> GameResult {
+        let circle = graphics::Mesh::new_circle(
+            self.ctx,
+            graphics::DrawMode::fill(),
+            mint::Point2 { x: 0.0, y: 0.0 },
+            0.02,
+            0.1 / self.scale,
+            graphics::Color::from_rgb(128, 128, 128),
+        )?;
+        graphics::draw(self.ctx, &circle, self.draw_params)
+    }
+
     fn draw_chunk(&mut self, node: NodeHandle, vertex: Vertex) -> GameResult {
         let mesh = self.get_voxel_mesh(node, vertex)?;
         graphics::draw(self.ctx, &mesh, self.draw_params)

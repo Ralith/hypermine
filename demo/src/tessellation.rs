@@ -97,6 +97,10 @@ impl Tessellation {
         &self.voxel_to_hyperboloid[vert]
     }
 
+    pub fn hyperboloid_to_voxel(&self, vert: Vertex) -> &na::Matrix3<f64> {
+        &self.hyperboloid_to_voxel[vert]
+    }
+
     pub fn chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
         ChunkData {
             chunk_size: self.chunk_size,
