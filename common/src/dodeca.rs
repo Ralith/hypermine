@@ -133,14 +133,12 @@ impl Vertex {
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node(self) -> na::Matrix4<f64> {
-        let origin = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-        let [a, b, c] = self.canonical_sides();
-        na::Matrix4::from_columns(&[
-            a.reflection().column(3) - origin,
-            b.reflection().column(3) - origin,
-            c.reflection().column(3) - origin,
-            origin,
-        ]) * na::Matrix4::new_scaling(0.5)
+        self.dual_to_node() * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
+    }
+
+    /// Transform from hyperbolic node space to euclidean chunk coordinates
+    pub fn node_to_chunk(self) -> na::Matrix4<f64> {
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * self.node_to_dual()
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
@@ -151,6 +149,13 @@ impl Vertex {
     /// Transform from dodeca-centric coordinates to cube-centric coordinates
     pub fn node_to_dual(self) -> &'static na::Matrix4<f64> {
         &NODE_TO_DUAL[self as usize]
+    }
+
+    /// Scale factor used in conversion from cube-centric coordinates to euclidean chunk coordinates.
+    /// Scaling the x, y, and z components of a vector in cube-centric coordinates by this value
+    /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
+    pub fn dual_to_chunk_factor() -> f64 {
+        (2.0 + 5.0f64.sqrt()).sqrt()
     }
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
@@ -328,7 +333,7 @@ mod tests {
 
     #[test]
     fn radius() {
-        let corner = Vertex::A.chunk_to_node() * na::Vector4::repeat(1.0);
+        let corner = Vertex::A.chunk_to_node() * math::origin();
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS,
             math::distance(&corner, &math::origin()),
@@ -338,6 +343,28 @@ mod tests {
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS,
             (1.5 * phi).sqrt().asinh(),
+            epsilon = 1e-10
+        );
+    }
+
+    #[test]
+    fn chunk_to_node() {
+        // Chunk coordinates of (1, 1, 1) should be at the center of a dodecahedron.
+        let mut chunk_corner_in_node_coordinates =
+            Vertex::A.chunk_to_node() * na::Vector4::new(1.0, 1.0, 1.0, 1.0);
+        chunk_corner_in_node_coordinates /= chunk_corner_in_node_coordinates.w;
+        assert_abs_diff_eq!(
+            chunk_corner_in_node_coordinates,
+            na::Vector4::new(0.0, 0.0, 0.0, 1.0),
+            epsilon = 1e-10
+        );
+    }
+
+    #[test]
+    fn node_to_chunk() {
+        assert_abs_diff_eq!(
+            Vertex::A.chunk_to_node().try_inverse().unwrap(),
+            Vertex::A.node_to_chunk(),
             epsilon = 1e-10
         );
     }

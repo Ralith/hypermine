@@ -263,15 +263,16 @@ impl ChunkParams {
         for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
-            let cube_coords = center * 0.5;
+            let trilerp_coords = center.map(|x| (1.0 - x) * 0.5);
 
-            let rain = trilerp(&self.env.rainfalls, cube_coords) + rng.sample(&normal.unwrap());
-            let temp = trilerp(&self.env.temperatures, cube_coords) + rng.sample(&normal.unwrap());
+            let rain = trilerp(&self.env.rainfalls, trilerp_coords) + rng.sample(&normal.unwrap());
+            let temp =
+                trilerp(&self.env.temperatures, trilerp_coords) + rng.sample(&normal.unwrap());
 
             // elev is calculated in multiple steps. The initial value elev_pre_terracing
             // is used to calculate elev_pre_noise which is used to calculate elev.
-            let elev_pre_terracing = trilerp(&self.env.max_elevations, cube_coords);
-            let block = trilerp(&self.env.blockinesses, cube_coords);
+            let elev_pre_terracing = trilerp(&self.env.max_elevations, trilerp_coords);
+            let block = trilerp(&self.env.blockinesses, trilerp_coords);
             let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
             let strength = 0.4 / (1.0 + voxel_elevation.powi(2));
             let terracing_small = terracing_diff(elev_pre_terracing, block, 5.0, strength, 2.0);
@@ -371,7 +372,7 @@ impl ChunkParams {
         let x = coords[0];
         let y = coords[1];
         let z = coords[2];
-        let offset = 2 * self.dimension / 3;
+        let offset = self.dimension / 3;
 
         // straight lines.
         criteria_met += u32::from(x == offset);

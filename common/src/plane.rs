@@ -104,8 +104,8 @@ mod tests {
     fn check_surface_flipped() {
         let root = Plane::from(Side::A);
         assert_abs_diff_eq!(
-            root.distance_to_chunk(Vertex::A, &(na::Vector3::x() * 2.0)),
-            root.distance_to_chunk(Vertex::J, &(na::Vector3::x() * 2.0)) * -1.0,
+            root.distance_to_chunk(Vertex::A, &na::Vector3::new(-1.0, 1.0, 1.0)),
+            root.distance_to_chunk(Vertex::J, &na::Vector3::new(-1.0, 1.0, 1.0)) * -1.0,
             epsilon = 1e-5
         );
     }
@@ -115,7 +115,7 @@ mod tests {
         assert_abs_diff_eq!(
             Plane::from(Side::A).distance_to_chunk(
                 Vertex::from_sides(Side::A, Side::B, Side::C).unwrap(),
-                &na::Vector3::new(1.0, 0.3, 0.9), // The first 1.0 is important, the plane is the midplane of the cube in Side::A direction
+                &na::Vector3::new(0.0, 0.7, 0.1), // The first 0.0 is important, the plane is the midplane of the cube in Side::A direction
             ),
             0.0,
             epsilon = 1e-8,
@@ -128,33 +128,33 @@ mod tests {
 
         // A cube corner should have the same elevation seen from different cubes
         assert_abs_diff_eq!(
-            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(0.0, 0.0, 0.0)),
+            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, 1.0)),
             Plane::from(Side::A).distance_to_chunk(
                 Vertex::from_sides(Side::F, Side::H, Side::J).unwrap(),
-                &na::Vector3::new(0.0, 0.0, 0.0),
+                &na::Vector3::new(1.0, 1.0, 1.0),
             ),
             epsilon = 1e-8,
         );
 
         // The same corner should have the same distance_to_chunk when represented from the same cube at different corners
         assert_abs_diff_eq!(
-            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 0.0, 0.0)),
+            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(0.0, 1.0, 1.0)),
             (Side::A * Plane::from(Side::A))
-                .distance_to_chunk(abc, &na::Vector3::new(1.0, 0.0, 0.0),),
+                .distance_to_chunk(abc, &na::Vector3::new(0.0, 1.0, 1.0),),
             epsilon = 1e-8,
         );
 
         // Corners of midplane cubes separated by the midplane should have the same distance_to_chunk with a different sign
         assert_abs_diff_eq!(
-            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(0.0, 0.0, 0.0)),
-            -Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(2.0, 0.0, 0.0)),
+            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, 1.0)),
+            -Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(-1.0, 1.0, 1.0)),
             epsilon = 1e-8,
         );
 
         // Corners of midplane cubes not separated by the midplane should have the same distance_to_chunk
         assert_abs_diff_eq!(
-            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(0.0, 0.0, 0.0)),
-            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(0.0, 0.0, 2.0)),
+            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, 1.0)),
+            Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, -1.0)),
             epsilon = 1e-8,
         );
     }
