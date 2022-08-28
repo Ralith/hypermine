@@ -9,7 +9,7 @@ pub fn is_colliding(tessellation: &Tessellation, node: NodeHandle, pos: &na::Vec
         let chunk_data = tessellation.get_chunk_data(node, vertex);
         let float_size = chunk_data.chunk_size() as f64;
         let voxel_coords =
-            ((vertex.hyperboloid_to_voxel() * pos).euclidean_point()
+            ((vertex.penta_to_voxel() * pos).euclidean_point()
                 * chunk_data.chunk_size() as f64)
                 .map(|x| x.floor());
 
@@ -26,10 +26,10 @@ pub fn is_colliding(tessellation: &Tessellation, node: NodeHandle, pos: &na::Vec
 
 // Ray-tracing version
 pub fn collision_point(
-    tessellation: &Tessellation,
-    node: NodeHandle,
-    pos: &na::Vector3<f64>,
-    dir: &na::Vector3<f64>,
+    _tessellation: &Tessellation,
+    _node: NodeHandle,
+    _pos: &na::Vector3<f64>,
+    _dir: &na::Vector3<f64>,
 ) {
-    let t = 1.0;
+    let _t = 1.0;
 }

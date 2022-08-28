@@ -3,7 +3,7 @@ use std::f64::consts::TAU;
 use enum_map::{enum_map, Enum, EnumMap};
 use lazy_static::lazy_static;
 
-use crate::math::HyperboloidVector;
+use crate::math::{HyperboloidMatrix, HyperboloidVector};
 
 lazy_static! {
     static ref NEIGHBORHOOD: EnumMap<Side, EnumMap<Side, bool>> = enum_map! {
@@ -37,6 +37,11 @@ impl Side {
     }
 
     #[inline]
+    pub fn normal(self) -> &'static na::Vector3<f64> {
+        &PENTA.normals[self]
+    }
+
+    #[inline]
     pub fn reflection(self) -> &'static na::Matrix3<f64> {
         &PENTA.reflections[self]
     }
@@ -58,13 +63,43 @@ impl Vertex {
     }
 
     #[inline]
-    pub fn voxel_to_hyperboloid(self) -> &'static na::Matrix3<f64> {
-        &PENTA.voxel_to_hyperboloid[self]
+    pub fn sides(self) -> (Side, Side) {
+        PENTA.vertex_sides[self]
     }
 
     #[inline]
-    pub fn hyperboloid_to_voxel(self) -> &'static na::Matrix3<f64> {
-        &PENTA.hyperboloid_to_voxel[self]
+    pub fn pos(self) -> &'static na::Vector3<f64> {
+        &PENTA.vertex_pos[self]
+    }
+
+    #[inline]
+    pub fn square_to_penta(self) -> &'static na::Matrix3<f64> {
+        &PENTA.square_to_penta[self]
+    }
+
+    #[inline]
+    pub fn penta_to_square(self) -> &'static na::Matrix3<f64> {
+        &PENTA.penta_to_square[self]
+    }
+
+    #[inline]
+    pub fn voxel_to_square_factor() -> f64 {
+        PENTA.voxel_to_square_factor
+    }
+
+    #[inline]
+    pub fn square_to_voxel_factor() -> f64 {
+        PENTA.square_to_voxel_factor
+    }
+
+    #[inline]
+    pub fn voxel_to_penta(self) -> &'static na::Matrix3<f64> {
+        &PENTA.voxel_to_penta[self]
+    }
+
+    #[inline]
+    pub fn penta_to_voxel(self) -> &'static na::Matrix3<f64> {
+        &PENTA.penta_to_voxel[self]
     }
 }
 
@@ -72,9 +107,13 @@ struct Penta {
     vertex_sides: EnumMap<Vertex, (Side, Side)>,
     normals: EnumMap<Side, na::Vector3<f64>>,
     reflections: EnumMap<Side, na::Matrix3<f64>>,
-    vertices: EnumMap<Vertex, na::Vector3<f64>>,
-    voxel_to_hyperboloid: EnumMap<Vertex, na::Matrix3<f64>>,
-    hyperboloid_to_voxel: EnumMap<Vertex, na::Matrix3<f64>>,
+    vertex_pos: EnumMap<Vertex, na::Vector3<f64>>,
+    square_to_penta: EnumMap<Vertex, na::Matrix3<f64>>,
+    penta_to_square: EnumMap<Vertex, na::Matrix3<f64>>,
+    voxel_to_square_factor: f64,
+    square_to_voxel_factor: f64,
+    voxel_to_penta: EnumMap<Vertex, na::Matrix3<f64>>,
+    penta_to_voxel: EnumMap<Vertex, na::Matrix3<f64>>,
 }
 
 impl Penta {
@@ -104,7 +143,8 @@ impl Penta {
 
         let mut normals: EnumMap<Side, na::Vector3<f64>> = EnumMap::default();
         let mut vertices: EnumMap<Vertex, na::Vector3<f64>> = EnumMap::default();
-        let mut voxel_to_hyperboloid: EnumMap<Vertex, na::Matrix3<f64>> = EnumMap::default();
+        let mut square_to_penta: EnumMap<Vertex, na::Matrix3<f64>> = EnumMap::default();
+        let mut voxel_to_penta: EnumMap<Vertex, na::Matrix3<f64>> = EnumMap::default();
 
         for (side, reflection) in normals.iter_mut() {
             let theta = side_angle * (side as usize) as f64;
@@ -116,12 +156,24 @@ impl Penta {
         }
 
         for (vertex, vertex_pos) in vertices.iter_mut() {
-            *vertex_pos = normals[vertex_sides[vertex].0]
-                .normal(&normals[vertex_sides[vertex].1]);
-            *vertex_pos /= vertex_pos.sqr().sqrt();
+            *vertex_pos = normals[vertex_sides[vertex].1].normal(&normals[vertex_sides[vertex].0]);
+            *vertex_pos /= (-vertex_pos.sqr()).sqrt();
         }
 
-        for (vertex, mat) in voxel_to_hyperboloid.iter_mut() {
+        for (vertex, mat) in square_to_penta.iter_mut() {
+            *mat = na::Matrix3::from_columns(&[
+                -normals[vertex_sides[vertex].0],
+                -normals[vertex_sides[vertex].1],
+                vertices[vertex],
+            ]);
+        }
+
+        let penta_to_square = square_to_penta.map(|_, m| m.iso_inverse());
+
+        let voxel_to_square_factor = (5.0f64.sqrt() - 2.0).sqrt();
+        let square_to_voxel_factor = (5.0f64.sqrt() + 2.0).sqrt();
+
+        for (vertex, mat) in voxel_to_penta.iter_mut() {
             let reflector0 = &normals[vertex_sides[vertex].0];
             let reflector1 = &normals[vertex_sides[vertex].1];
             let origin = na::Vector3::new(0.0, 0.0, 1.0);
@@ -136,9 +188,13 @@ impl Penta {
             vertex_sides,
             normals,
             reflections: normals.map(|_, v| v.reflection()),
-            vertices,
-            voxel_to_hyperboloid,
-            hyperboloid_to_voxel: voxel_to_hyperboloid.map(|_, m| m.try_inverse().unwrap()),
+            vertex_pos: vertices,
+            square_to_penta,
+            penta_to_square,
+            voxel_to_square_factor,
+            square_to_voxel_factor,
+            voxel_to_penta: square_to_penta.map(|_, m| m * na::Matrix3::new_scaling(voxel_to_square_factor)),
+            penta_to_voxel: penta_to_square.map(|_, m| na::Matrix3::new_scaling(square_to_voxel_factor) * m),
         }
     }
 }
