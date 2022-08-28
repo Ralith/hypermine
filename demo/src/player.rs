@@ -1,5 +1,5 @@
 use crate::{
-    collision::is_colliding,
+    collision::collision_point,
     math::{HyperboloidMatrix, HyperboloidVector},
     tessellation::{NodeHandle, Tessellation},
 };
@@ -71,13 +71,15 @@ impl Player {
         }
 
         // Apply velocity to position
+        let current_pos_point = self.pos * na::Vector3::z();
         let candidate_pos = self.pos * (self.vel * input.dt).displacement();
-        if !is_colliding(
-            input.tessellation,
-            self.node,
-            &(candidate_pos * na::Vector3::new(0.0, 0.0, 1.0)),
-        ) {
+        let candidate_pos_point = candidate_pos * na::Vector3::z();
+        let t = collision_point(input.tessellation, self.node, &current_pos_point, &(candidate_pos_point - current_pos_point));
+        if t == 1.0 {
             self.pos = candidate_pos;
+        } else {
+            self.pos *= (((self.vel * input.dt).displacement_vec() - na::Vector3::z()) * t + na::Vector3::z() * (1.0 - t)).translation();
+            self.vel = na::Vector3::zeros();
         }
 
         // Prevent errors from building up
