@@ -1,5 +1,5 @@
 use demo::{
-    draw, math,
+    draw, math::HyperboloidMatrix,
     player::{Player, PlayerInput},
     tessellation::Tessellation,
 };
@@ -48,7 +48,7 @@ impl event::EventHandler for State {
                 .ensure_nearby(self.tessellation.root(), na::Matrix3::identity(), 2);
 
         let mut pass = draw::RenderPass::new(ctx, &self.tessellation);
-        pass.push_transform(&math::iso_inverse(self.player.pos()), 0);
+        pass.push_transform(&self.player.pos().iso_inverse(), 0);
         pass.draw_background()?;
 
         for handle in nodes {

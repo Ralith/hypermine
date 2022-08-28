@@ -1,4 +1,8 @@
-use crate::{math, tessellation::{NodeHandle, Tessellation}, collision::is_colliding};
+use crate::{
+    collision::is_colliding,
+    math::{HyperboloidMatrix, HyperboloidVector},
+    tessellation::{NodeHandle, Tessellation},
+};
 
 pub struct Player {
     pos: na::Matrix3<f64>,
@@ -50,7 +54,7 @@ impl Player {
 
     pub fn step(&mut self, input: &PlayerInput) {
         // Apply rotation input
-        self.pos *= math::rotation(input.rotation_axis * self.rotation_speed * input.dt);
+        self.pos *= na::Matrix3::new_rotation(input.rotation_axis * self.rotation_speed * input.dt);
 
         // Apply input to velocity
         let mut target_unit_vel = na::Vector3::new(input.x_axis, input.y_axis, 0.);
@@ -67,13 +71,17 @@ impl Player {
         }
 
         // Apply velocity to position
-        let candidate_pos = self.pos * math::displacement(&(self.vel * input.dt));
-        if !is_colliding(input.tessellation, self.node, &(candidate_pos * na::Vector3::new(0.0, 0.0, 1.0))) {
-            self.pos *= math::displacement(&(self.vel * input.dt));
+        let candidate_pos = self.pos * (self.vel * input.dt).displacement();
+        if !is_colliding(
+            input.tessellation,
+            self.node,
+            &(candidate_pos * na::Vector3::new(0.0, 0.0, 1.0)),
+        ) {
+            self.pos = candidate_pos;
         }
 
         // Prevent errors from building up
-        math::qr_normalize(&mut self.pos);
+        self.pos.qr_normalize();
     }
 
     pub fn pos(&self) -> &na::Matrix3<f64> {

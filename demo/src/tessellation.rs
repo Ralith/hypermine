@@ -1,9 +1,9 @@
-use std::collections::{hash_map, HashMap};
+use std::{collections::{hash_map, HashMap}, f64::consts::TAU};
 
 use enum_map::{enum_map, EnumMap};
 
 use crate::{
-    math,
+    math::HyperboloidVector,
     penta::{Side, Vertex},
 };
 
@@ -27,8 +27,8 @@ pub struct Tessellation {
 
 impl Tessellation {
     pub fn new(chunk_size: usize) -> Self {
-        let side_angle = math::TAU / NUM_SIDES as f64;
-        let order_angle = math::TAU / ORDER as f64;
+        let side_angle = TAU / NUM_SIDES as f64;
+        let order_angle = TAU / ORDER as f64;
 
         let cos_side_angle = side_angle.cos();
         let cos_order_angle = order_angle.cos();
@@ -58,11 +58,9 @@ impl Tessellation {
         }
 
         for (vertex, vertex_pos) in vertices.iter_mut() {
-            *vertex_pos = math::normal(
-                &reflection_vectors[vertex_sides[vertex].0],
-                &reflection_vectors[vertex_sides[vertex].1],
-            );
-            *vertex_pos /= (-math::sqr(vertex_pos)).sqrt();
+            *vertex_pos = reflection_vectors[vertex_sides[vertex].0]
+                .normal(&reflection_vectors[vertex_sides[vertex].1]);
+            *vertex_pos /= vertex_pos.sqr().sqrt();
         }
 
         for (vertex, mat) in voxel_to_hyperboloid.iter_mut() {
@@ -79,7 +77,7 @@ impl Tessellation {
         Tessellation {
             vertex_sides,
             reflection_vectors,
-            reflections: reflection_vectors.map(|_, v| math::reflection(&v)),
+            reflections: reflection_vectors.map(|_, v| v.reflection()),
             vertices,
             voxel_to_hyperboloid,
             hyperboloid_to_voxel: voxel_to_hyperboloid.map(|_, m| m.try_inverse().unwrap()),

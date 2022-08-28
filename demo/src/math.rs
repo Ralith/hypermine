@@ -1,102 +1,115 @@
 use na::{ComplexField, RowVector3, U3};
-use std::ops::{DivAssign, SubAssign};
+use std::ops::{DivAssign, Index, SubAssign};
 
-pub const TAU: f64 = std::f64::consts::TAU;
-
-pub fn to_point(v: &na::Vector3<f64>) -> [f32; 2] {
-    [(v.x / v.z) as f32, (v.y / v.z) as f32]
+pub trait HyperboloidVector: Index<usize, Output = f64> {
+    fn to_point(&self) -> [f32; 2];
+    fn translation(&self) -> na::Matrix3<f64>;
+    fn reflection(&self) -> na::Matrix3<f64>;
+    fn normal(&self, v1: &impl HyperboloidVector) -> na::Vector3<f64>;
+    fn mip(&self, v1: &impl HyperboloidVector) -> f64;
+    fn sqr(&self) -> f64;
+    fn displacement(&self) -> na::Matrix3<f64>;
+    fn euclidean_point(&self) -> na::Vector2<f64>;
 }
 
-pub fn translation(v: &na::Vector3<f64>) -> na::Matrix3<f64> {
-    let f = 1.0 / v.z;
-    na::Matrix3::new(
-        v.x * v.x * f + 1.0,
-        v.x * v.y * f,
-        v.x,
-        v.x * v.y * f,
-        v.y * v.y * f + 1.0,
-        v.y,
-        v.x,
-        v.y,
-        v.z,
-    )
+pub trait HyperboloidMatrix {
+    fn iso_inverse(&self) -> na::Matrix3<f64>;
+    fn qr_normalize(&mut self);
 }
 
-pub fn rotation(theta: f64) -> na::Matrix3<f64> {
-    na::Matrix3::new_rotation(theta)
+impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
+    fn to_point(&self) -> [f32; 2] {
+        [(self[0] / self[2]) as f32, (self[1] / self[2]) as f32]
+    }
+
+    fn translation(&self) -> na::Matrix3<f64> {
+        let f = 1.0 / self[2];
+        na::Matrix3::new(
+            self[0] * self[0] * f + 1.0,
+            self[0] * self[1] * f,
+            self[0],
+            self[0] * self[1] * f,
+            self[1] * self[1] * f + 1.0,
+            self[1],
+            self[0],
+            self[1],
+            self[2],
+        )
+    }
+
+    fn reflection(&self) -> na::Matrix3<f64> {
+        na::Matrix3::identity() - (self * RowVector3::new(self[0], self[1], -self[2])) * 2.0
+    }
+
+    fn normal(&self, v1: &impl HyperboloidVector) -> na::Vector3<f64> {
+        na::Vector3::new(
+            self[1] * v1[2] - self[2] * v1[1],
+            self[2] * v1[0] - self[0] * v1[2],
+            -(self[0] * v1[1] - self[1] * v1[0]),
+        )
+    }
+
+    fn mip(&self, v1: &impl HyperboloidVector) -> f64 {
+        self[0] * v1[0] + self[1] * v1[1] - self[2] * v1[2]
+    }
+
+    fn sqr(&self) -> f64 {
+        self[0] * self[0] + self[1] * self[1] - self[2] * self[2]
+    }
+
+    fn displacement(&self) -> na::Matrix3<f64> {
+        let norm = self.norm();
+        let scale_factor = norm.sinhc();
+        na::Vector3::new(self[0] * scale_factor, self[1] * scale_factor, norm.cosh()).translation()
+    }
+
+    fn euclidean_point(&self) -> na::Vector2<f64> {
+        na::Vector2::new(self[0] / self[2], self[1] / self[2])
+    }
 }
 
-pub fn iso_inverse(m: &na::Matrix3<f64>) -> na::Matrix3<f64> {
-    na::Matrix3::new(
-        m.m11, m.m21, -m.m31, m.m12, m.m22, -m.m32, -m.m13, -m.m23, m.m33,
-    )
-}
+impl HyperboloidMatrix for na::Matrix3<f64> {
+    fn iso_inverse(&self) -> na::Matrix3<f64> {
+        na::Matrix3::new(
+            self[(0, 0)],
+            self[(1, 0)],
+            -self[(2, 0)],
+            self[(0, 1)],
+            self[(1, 1)],
+            -self[(2, 1)],
+            -self[(0, 2)],
+            -self[(1, 2)],
+            self[(2, 2)],
+        )
+    }
 
-pub fn reflection(v: &na::Vector3<f64>) -> na::Matrix3<f64> {
-    na::Matrix3::identity() - (v * RowVector3::new(v.x, v.y, -v.z)) * 2.0
-}
+    fn qr_normalize(&mut self) {
+        fn div_assign(divisor: f64, mut slice: na::VectorSliceMut3<f64>) {
+            // Reorder arguments to allow for nested expressions
+            slice.div_assign(divisor);
+        }
 
-pub fn normal(v0: &na::Vector3<f64>, v1: &na::Vector3<f64>) -> na::Vector3<f64> {
-    na::Vector3::new(
-        v0.y * v1.z - v0.z * v1.y,
-        v0.z * v1.x - v0.x * v1.z,
-        -(v0.x * v1.y - v0.y * v1.x),
-    )
-}
+        fn sub_assign(subtrahend: na::Vector3<f64>, mut slice: na::VectorSliceMut3<f64>) {
+            // Reorder arguments to allow for nested expressions
+            slice.sub_assign(subtrahend);
+        }
 
-// TODO: Can nalgebra take advantage of deref coersion so that mip can accept a slice or a regular vector?
-pub fn mip<S>(v0: &na::Vector<f64, U3, S>, v1: &na::Vector<f64, U3, S>) -> f64
-where
-    S: na::Storage<f64, U3>,
-{
-    v0[0] * v1[0] + v0[1] * v1[1] - v0[2] * v1[2]
-}
+        div_assign(self.column(0).sqr().sqrt(), self.column_mut(0));
+        sub_assign(
+            self.column(0) * self.column(0).mip(&self.column(1)),
+            self.column_mut(1),
+        );
+        sub_assign(
+            self.column(0) * self.column(0).mip(&self.column(2)),
+            self.column_mut(2),
+        );
 
-pub fn sqr<S>(v: &na::Vector<f64, U3, S>) -> f64
-where
-    S: na::Storage<f64, U3>,
-{
-    v[0] * v[0] + v[1] * v[1] - v[2] * v[2]
-}
+        div_assign(self.column(1).sqr().sqrt(), self.column_mut(1));
+        sub_assign(
+            self.column(1) * self.column(1).mip(&self.column(2)),
+            self.column_mut(2),
+        );
 
-pub fn displacement(v: &na::Vector3<f64>) -> na::Matrix3<f64> {
-    let norm = v.norm();
-    let scale_factor = norm.sinhc();
-    translation(&na::Vector3::new(
-        v.x * scale_factor,
-        v.y * scale_factor,
-        norm.cosh(),
-    ))
-}
-
-pub fn qr_normalize(m: &mut na::Matrix3<f64>) {
-    div_assign(sqr(&m.column(0)).sqrt(), m.column_mut(0));
-    sub_assign(
-        m.column(0) * mip(&m.column(0), &m.column(1)),
-        m.column_mut(1),
-    );
-    sub_assign(
-        m.column(0) * mip(&m.column(0), &m.column(2)),
-        m.column_mut(2),
-    );
-
-    div_assign(sqr(&m.column(1)).sqrt(), m.column_mut(1));
-    sub_assign(
-        m.column(1) * mip(&m.column(1), &m.column(2)),
-        m.column_mut(2),
-    );
-
-    div_assign((-sqr(&m.column(2))).sqrt(), m.column_mut(2));
-}
-
-fn div_assign(divisor: f64, mut slice: na::VectorSliceMut3<f64>) {
-    slice.div_assign(divisor);
-}
-
-fn sub_assign(subtrahend: na::Vector3<f64>, mut slice: na::VectorSliceMut3<f64>) {
-    slice.sub_assign(subtrahend);
-}
-
-pub fn euclidean_point(v: &na::Vector3<f64>) -> na::Vector2<f64> {
-    na::Vector2::new(v.x / v.z, v.y / v.z)
+        div_assign((-self.column(2).sqr()).sqrt(), self.column_mut(2));
+    }
 }

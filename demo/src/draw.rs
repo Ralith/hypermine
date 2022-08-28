@@ -2,7 +2,6 @@ use ggez::{graphics, mint, Context, GameResult};
 
 use crate::{
     color::Color,
-    math,
     penta::Vertex,
     tessellation::{NodeHandle, Tessellation},
 };
@@ -102,10 +101,7 @@ impl<'a> RenderPass<'a> {
     }
 
     fn get_voxel_mesh(&mut self, node: NodeHandle, vertex: Vertex) -> GameResult<graphics::Mesh> {
-        let transform = self.get_transform()
-            * self
-                .tessellation
-                .voxel_to_hyperboloid(vertex);
+        let transform = self.get_transform() * self.tessellation.voxel_to_hyperboloid(vertex);
 
         let parity = self.tessellation.parity(node) as usize;
 
@@ -126,7 +122,10 @@ impl<'a> RenderPass<'a> {
             (Color::WHITE - inverted_hue_normalized * 0.1).into(),
             (Color::WHITE - inverted_hue_normalized * 0.22).into(),
         ];
-        let off_color = [(hue_normalized * 0.0005).into(), (hue_normalized * 0.001).into()];
+        let off_color = [
+            (hue_normalized * 0.0005).into(),
+            (hue_normalized * 0.001).into(),
+        ];
 
         let resolution = 12;
         let vertices: Vec<graphics::Vertex> = (0..resolution)
@@ -141,22 +140,22 @@ impl<'a> RenderPass<'a> {
                         (if voxel_type != 0 { on_color } else { off_color })[(x + y + parity) % 2];
                     [
                         graphics::Vertex {
-                            pos: math::to_point(&(transform * na::Vector3::new(x_min, y_min, 1.0))),
+                            pos: Self::to_point(&(transform * na::Vector3::new(x_min, y_min, 1.0))),
                             uv: [0., 0.],
                             color,
                         },
                         graphics::Vertex {
-                            pos: math::to_point(&(transform * na::Vector3::new(x_max, y_min, 1.0))),
+                            pos: Self::to_point(&(transform * na::Vector3::new(x_max, y_min, 1.0))),
                             uv: [1., 0.],
                             color,
                         },
                         graphics::Vertex {
-                            pos: math::to_point(&(transform * na::Vector3::new(x_max, y_max, 1.0))),
+                            pos: Self::to_point(&(transform * na::Vector3::new(x_max, y_max, 1.0))),
                             uv: [1., 1.],
                             color,
                         },
                         graphics::Vertex {
-                            pos: math::to_point(&(transform * na::Vector3::new(x_min, y_max, 1.0))),
+                            pos: Self::to_point(&(transform * na::Vector3::new(x_min, y_max, 1.0))),
                             uv: [0., 1.],
                             color,
                         },
@@ -172,5 +171,9 @@ impl<'a> RenderPass<'a> {
         graphics::MeshBuilder::new()
             .raw(&vertices, &indices, None)?
             .build(self.ctx)
+    }
+
+    fn to_point(v: &na::Vector3<f64>) -> [f32; 2] {
+        [(v[0] / v[2]) as f32, (v[1] / v[2]) as f32]
     }
 }
