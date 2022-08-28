@@ -8,8 +8,11 @@ pub trait HyperboloidVector: Index<usize, Output = f64> {
     fn normal(&self, v1: &impl HyperboloidVector) -> na::Vector3<f64>;
     fn mip(&self, v1: &impl HyperboloidVector) -> f64;
     fn sqr(&self) -> f64;
+    fn m_normalized_point(&self) -> na::Vector3<f64>;
+    fn m_normalized_vector(&self) -> na::Vector3<f64>;
     fn displacement(&self) -> na::Matrix3<f64>;
     fn displacement_vec(&self) -> na::Vector3<f64>;
+    fn tangent_displacement_vec(&self) -> na::Vector3<f64>;
     fn euclidean_point(&self) -> na::Vector2<f64>;
 }
 
@@ -58,6 +61,14 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         self[0] * self[0] + self[1] * self[1] - self[2] * self[2]
     }
 
+    fn m_normalized_point(&self) -> na::Vector3<f64> {
+        self / (-self.sqr()).sqrt()
+    }
+
+    fn m_normalized_vector(&self) -> na::Vector3<f64> {
+        self / self.sqr().sqrt()
+    }
+
     fn displacement(&self) -> na::Matrix3<f64> {
         self.displacement_vec().translation()
     }
@@ -66,6 +77,12 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         let norm = self.norm();
         let scale_factor = norm.sinhc();
         na::Vector3::new(self[0] * scale_factor, self[1] * scale_factor, norm.cosh())
+    }
+
+    fn tangent_displacement_vec(&self) -> na::Vector3<f64> {
+        let norm = self.norm();
+        let scale_factor = norm.sinhc() / norm.cosh();
+        na::Vector3::new(self[0] * scale_factor, self[1] * scale_factor, 0.0)
     }
 
     fn euclidean_point(&self) -> na::Vector2<f64> {

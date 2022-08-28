@@ -5,7 +5,7 @@ use crate::{
 };
 
 pub struct Player {
-    pos: na::Matrix3<f64>,
+    transform: na::Matrix3<f64>,
     node: NodeHandle,
     vel: na::Vector3<f64>,
     max_ground_speed: f64,
@@ -43,7 +43,7 @@ impl<'a> PlayerInput<'a> {
 impl Player {
     pub fn new(node: NodeHandle) -> Player {
         Player {
-            pos: na::Matrix3::identity(),
+            transform: na::Matrix3::identity(),
             node,
             vel: na::Vector3::zeros(),
             max_ground_speed: 0.5,
@@ -54,7 +54,7 @@ impl Player {
 
     pub fn step(&mut self, input: &PlayerInput) {
         // Apply rotation input
-        self.pos *= na::Matrix3::new_rotation(input.rotation_axis * self.rotation_speed * input.dt);
+        self.transform *= na::Matrix3::new_rotation(input.rotation_axis * self.rotation_speed * input.dt);
 
         // Apply input to velocity
         let mut target_unit_vel = na::Vector3::new(input.x_axis, input.y_axis, 0.);
@@ -71,22 +71,22 @@ impl Player {
         }
 
         // Apply velocity to position
-        let current_pos_point = self.pos * na::Vector3::z();
-        let candidate_pos = self.pos * (self.vel * input.dt).displacement();
-        let candidate_pos_point = candidate_pos * na::Vector3::z();
-        let t = collision_point(input.tessellation, self.node, &current_pos_point, &(candidate_pos_point - current_pos_point));
+        let current_pos = self.transform * na::Vector3::z();
+        let candidate_displacement = (self.vel * input.dt).tangent_displacement_vec();
+        let candidate_transform = self.transform * candidate_displacement.displacement();
+        let t = collision_point(input.tessellation, self.node, &current_pos, &(self.transform * candidate_displacement));
         if t == 1.0 {
-            self.pos = candidate_pos;
+            self.transform = candidate_transform;
         } else {
-            self.pos *= (((self.vel * input.dt).displacement_vec() - na::Vector3::z()) * t + na::Vector3::z() * (1.0 - t)).translation();
+            self.transform *= (na::Vector3::z() + candidate_displacement * t).m_normalized_point().translation();
             self.vel = na::Vector3::zeros();
         }
 
         // Prevent errors from building up
-        self.pos.qr_normalize();
+        self.transform.qr_normalize();
     }
 
     pub fn pos(&self) -> &na::Matrix3<f64> {
-        &self.pos
+        &self.transform
     }
 }
