@@ -101,7 +101,7 @@ impl<'a> RenderPass<'a> {
     }
 
     fn get_voxel_mesh(&mut self, node: NodeHandle, vertex: Vertex) -> GameResult<graphics::Mesh> {
-        let transform = self.get_transform() * self.tessellation.voxel_to_hyperboloid(vertex);
+        let transform = self.get_transform() * vertex.voxel_to_hyperboloid();
 
         let parity = self.tessellation.parity(node) as usize;
 

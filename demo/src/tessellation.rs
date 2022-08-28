@@ -1,25 +1,10 @@
-use std::{collections::{hash_map, HashMap}, f64::consts::TAU};
+use std::collections::{hash_map, HashMap};
 
 use enum_map::{enum_map, EnumMap};
 
-use crate::{
-    math::HyperboloidVector,
-    penta::{Side, Vertex},
-};
-
-// Order 4 pentagonal tiling
-// Note: Despite being constants, they are not really configurable, as the rest of the code
-// depends on them being set to their current values, NUM_SIDES = 5 and ORDER = 4
-const NUM_SIDES: usize = 5;
-const ORDER: usize = 4;
+use crate::penta::{Side, Vertex};
 
 pub struct Tessellation {
-    vertex_sides: EnumMap<Vertex, (Side, Side)>,
-    reflection_vectors: EnumMap<Side, na::Vector3<f64>>,
-    reflections: EnumMap<Side, na::Matrix3<f64>>,
-    vertices: EnumMap<Vertex, na::Vector3<f64>>,
-    voxel_to_hyperboloid: EnumMap<Vertex, na::Matrix3<f64>>,
-    hyperboloid_to_voxel: EnumMap<Vertex, na::Matrix3<f64>>,
     nodes: Vec<Node>,
     root: NodeHandle,
     chunk_size: usize,
@@ -27,76 +12,11 @@ pub struct Tessellation {
 
 impl Tessellation {
     pub fn new(chunk_size: usize) -> Self {
-        let side_angle = TAU / NUM_SIDES as f64;
-        let order_angle = TAU / ORDER as f64;
-
-        let cos_side_angle = side_angle.cos();
-        let cos_order_angle = order_angle.cos();
-
-        let reflection_r = ((1.0 + cos_order_angle) / (1.0 - cos_side_angle)).sqrt();
-        let reflection_z = ((cos_side_angle + cos_order_angle) / (1.0 - cos_side_angle)).sqrt();
-
-        let vertex_sides: EnumMap<Vertex, (Side, Side)> = enum_map! {
-            Vertex::AB => (Side::A, Side::B),
-            Vertex::BC => (Side::B, Side::C),
-            Vertex::CD => (Side::C, Side::D),
-            Vertex::DE => (Side::D, Side::E),
-            Vertex::EA => (Side::E, Side::A),
-        };
-
-        let mut reflection_vectors: EnumMap<Side, na::Vector3<f64>> = EnumMap::default();
-        let mut vertices: EnumMap<Vertex, na::Vector3<f64>> = EnumMap::default();
-        let mut voxel_to_hyperboloid: EnumMap<Vertex, na::Matrix3<f64>> = EnumMap::default();
-
-        for (side, reflection) in reflection_vectors.iter_mut() {
-            let theta = side_angle * (side as usize) as f64;
-            *reflection = na::Vector3::new(
-                reflection_r * theta.cos(),
-                reflection_r * theta.sin(),
-                reflection_z,
-            );
-        }
-
-        for (vertex, vertex_pos) in vertices.iter_mut() {
-            *vertex_pos = reflection_vectors[vertex_sides[vertex].0]
-                .normal(&reflection_vectors[vertex_sides[vertex].1]);
-            *vertex_pos /= vertex_pos.sqr().sqrt();
-        }
-
-        for (vertex, mat) in voxel_to_hyperboloid.iter_mut() {
-            let reflector0 = &reflection_vectors[vertex_sides[vertex].0];
-            let reflector1 = &reflection_vectors[vertex_sides[vertex].1];
-            let origin = na::Vector3::new(0.0, 0.0, 1.0);
-            *mat = na::Matrix3::from_columns(&[
-                -reflector0 * reflector0.z,
-                -reflector1 * reflector1.z,
-                origin + reflector0 * reflector0.z + reflector1 * reflector1.z,
-            ]);
-        }
-
         Tessellation {
-            vertex_sides,
-            reflection_vectors,
-            reflections: reflection_vectors.map(|_, v| v.reflection()),
-            vertices,
-            voxel_to_hyperboloid,
-            hyperboloid_to_voxel: voxel_to_hyperboloid.map(|_, m| m.try_inverse().unwrap()),
             nodes: vec![Node::new(chunk_size)],
             root: NodeHandle { index: 0 },
             chunk_size,
         }
-    }
-
-    pub fn reflection(&self, side: Side) -> &na::Matrix3<f64> {
-        &self.reflections[side]
-    }
-
-    pub fn voxel_to_hyperboloid(&self, vert: Vertex) -> &na::Matrix3<f64> {
-        &self.voxel_to_hyperboloid[vert]
-    }
-
-    pub fn hyperboloid_to_voxel(&self, vert: Vertex) -> &na::Matrix3<f64> {
-        &self.hyperboloid_to_voxel[vert]
     }
 
     pub fn chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
@@ -148,7 +68,7 @@ impl Tessellation {
                         e.insert(());
                         result.push(NodeHandleWithContext {
                             node: neighbor,
-                            transform: handle_with_context.transform * self.reflection(side),
+                            transform: handle_with_context.transform * side.reflection(),
                         });
                     }
                 }

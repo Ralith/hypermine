@@ -9,7 +9,7 @@ pub fn is_colliding(tessellation: &Tessellation, node: NodeHandle, pos: &na::Vec
         let chunk_data = tessellation.get_chunk_data(node, vertex);
         let float_size = chunk_data.chunk_size() as f64;
         let voxel_coords =
-            ((tessellation.hyperboloid_to_voxel(vertex) * pos).euclidean_point()
+            ((vertex.hyperboloid_to_voxel() * pos).euclidean_point()
                 * chunk_data.chunk_size() as f64)
                 .map(|x| x.floor());
 
