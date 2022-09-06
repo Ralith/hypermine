@@ -75,10 +75,11 @@ impl Player {
         let candidate_displacement = (self.vel * input.dt).tangent_displacement_vec();
         let candidate_transform = self.transform * candidate_displacement.displacement();
         let t = collision_point(input.tessellation, self.node, &current_pos, &(self.transform * candidate_displacement));
-        if t == 1.0 {
-            self.transform = candidate_transform;
-        } else {
-            self.transform *= (na::Vector3::z() + candidate_displacement * t).m_normalized_point().translation();
+        let t_with_epsilon = (t - 1e-5).max(0.0);
+
+        self.transform *= (na::Vector3::z() + candidate_displacement * t_with_epsilon).m_normalized_point().translation();
+
+        if t != 1.0 {
             self.vel = na::Vector3::zeros();
         }
 
