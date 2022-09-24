@@ -54,7 +54,8 @@ impl Player {
 
     pub fn step(&mut self, input: &PlayerInput) {
         // Apply rotation input
-        self.transform *= na::Matrix3::new_rotation(input.rotation_axis * self.rotation_speed * input.dt);
+        self.transform *=
+            na::Matrix3::new_rotation(input.rotation_axis * self.rotation_speed * input.dt);
 
         // Apply input to velocity
         let mut target_unit_vel = na::Vector3::new(input.x_axis, input.y_axis, 0.);
@@ -73,14 +74,25 @@ impl Player {
         // Apply velocity to position
         let current_pos = self.transform * na::Vector3::z();
         let candidate_displacement = (self.vel * input.dt).tangent_displacement_vec();
-        let candidate_transform = self.transform * candidate_displacement.displacement();
-        let t = collision_point(input.tessellation, self.node, &current_pos, &(self.transform * candidate_displacement));
+        let (t, normal) = collision_point(
+            input.tessellation,
+            self.node,
+            &current_pos,
+            &(self.transform * candidate_displacement),
+        );
         let t_with_epsilon = (t - 1e-5).max(0.0);
 
-        self.transform *= (na::Vector3::z() + candidate_displacement * t_with_epsilon).m_normalized_point().translation();
+        self.transform *= (na::Vector3::z() + candidate_displacement * t_with_epsilon)
+            .m_normalized_point()
+            .translation();
 
-        if t != 1.0 {
-            self.vel = na::Vector3::zeros();
+        if let Some(normal) = normal {
+            let local_normal = {
+                let mut n = self.transform.iso_inverse() * normal;
+                n.z = 0.0;
+                n
+            };
+            self.vel -= local_normal * local_normal.mip(&self.vel);
         }
 
         // Prevent errors from building up

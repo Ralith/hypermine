@@ -29,8 +29,9 @@ pub fn collision_point(
     node: NodeHandle,
     pos: &na::Vector3<f64>,
     dir: &na::Vector3<f64>,
-) -> f64 {
+) -> (f64, Option<na::Vector3<f64>>) {
     let mut t = 1.0;
+    let mut normal: Option<na::Vector3<f64>> = None;
     for vertex in Vertex::iter() {
         if vertex != Vertex::AB {
             continue;
@@ -50,13 +51,14 @@ pub fn collision_point(
             let a = i as f64 / float_size * Vertex::voxel_to_square_factor();
             // Solve for t: (square_pos + square_dir*t).x == a * (square_pos + square_dir*t).z
             // square_pos.x - square_pos.z * a == -t * (square_dir.x - square_dir.z * a)
-            let t_candidate = -(square_pos.x - square_pos.z * a)
-                / (square_dir.x - square_dir.z * a);
+            let t_candidate =
+                -(square_pos.x - square_pos.z * a) / (square_dir.x - square_dir.z * a);
             if t_candidate >= 0.0 && t_candidate < t && x_dir > 0.0 {
                 t = t_candidate;
+                normal = Some((vertex.square_to_penta() * na::Vector3::new(1.0, 0.0, a)).m_normalized_vector());
             }
         }
     }
 
-    t
+    (t, normal)
 }
