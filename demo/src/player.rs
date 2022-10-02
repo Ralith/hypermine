@@ -72,10 +72,24 @@ impl Player {
         }
 
         // Apply velocity to position
+        let mut remaining_dt = input.dt;
+        for _ in 0..5 {
+            if remaining_dt == 0.0 {
+                break;
+            }
+            remaining_dt = self.apply_velocity_iteration(input.tessellation, remaining_dt);
+        }
+
+        // Prevent errors from building up
+        self.transform.qr_normalize();
+    }
+
+    // Returns dt remaining
+    fn apply_velocity_iteration(&mut self, tessellation: &Tessellation, dt: f64) -> f64 {
         let current_pos = self.transform * na::Vector3::z();
-        let candidate_displacement = (self.vel * input.dt).tangent_displacement_vec();
+        let candidate_displacement = (self.vel * dt).tangent_displacement_vec();
         let (t, normal) = collision_point(
-            input.tessellation,
+            tessellation,
             self.node,
             &current_pos,
             &(self.transform * candidate_displacement),
@@ -87,16 +101,14 @@ impl Player {
             .translation();
 
         if let Some(normal) = normal {
-            let local_normal = {
-                let mut n = self.transform.iso_inverse() * normal;
-                n.z = 0.0;
-                n
-            };
-            self.vel -= local_normal * local_normal.mip(&self.vel);
+            let expected_displacement_norm = self.vel.norm() * dt;
+            let actual_displacement_norm = (candidate_displacement * t_with_epsilon).norm().atanh();
+            let local_normal = (self.transform.iso_inverse() * normal).project_z();
+            self.vel = self.vel.project(&local_normal);
+            dt * (1.0 - actual_displacement_norm / expected_displacement_norm)
+        } else {
+            0.0
         }
-
-        // Prevent errors from building up
-        self.transform.qr_normalize();
     }
 
     pub fn pos(&self) -> &na::Matrix3<f64> {

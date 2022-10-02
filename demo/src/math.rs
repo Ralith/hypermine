@@ -1,12 +1,14 @@
 use na::{ComplexField, RowVector3, U3};
 use std::ops::{DivAssign, Index, SubAssign};
 
-pub trait HyperboloidVector: Index<usize, Output = f64> {
+type GeneralVector3<S> = na::Vector<f64, U3, S>;
+
+pub trait HyperboloidVector: Index<usize, Output = f64> + std::ops::Mul<f64, Output = na::Vector3<f64>> {
     fn to_point(&self) -> [f32; 2];
     fn translation(&self) -> na::Matrix3<f64>;
     fn reflection(&self) -> na::Matrix3<f64>;
-    fn normal(&self, v1: &impl HyperboloidVector) -> na::Vector3<f64>;
-    fn mip(&self, v1: &impl HyperboloidVector) -> f64;
+    fn normal(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64>;
+    fn mip(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> f64;
     fn sqr(&self) -> f64;
     fn m_normalized_point(&self) -> na::Vector3<f64>;
     fn m_normalized_vector(&self) -> na::Vector3<f64>;
@@ -14,6 +16,8 @@ pub trait HyperboloidVector: Index<usize, Output = f64> {
     fn displacement_vec(&self) -> na::Vector3<f64>;
     fn tangent_displacement_vec(&self) -> na::Vector3<f64>;
     fn euclidean_point(&self) -> na::Vector2<f64>;
+    fn project_z(&self) -> na::Vector3<f64>;
+    fn project(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64>;
 }
 
 pub trait HyperboloidMatrix {
@@ -45,7 +49,7 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         na::Matrix3::identity() - (self * RowVector3::new(self[0], self[1], -self[2])) * 2.0
     }
 
-    fn normal(&self, v1: &impl HyperboloidVector) -> na::Vector3<f64> {
+    fn normal(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64> {
         na::Vector3::new(
             self[1] * v1[2] - self[2] * v1[1],
             self[2] * v1[0] - self[0] * v1[2],
@@ -53,7 +57,7 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         )
     }
 
-    fn mip(&self, v1: &impl HyperboloidVector) -> f64 {
+    fn mip(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> f64 {
         self[0] * v1[0] + self[1] * v1[1] - self[2] * v1[2]
     }
 
@@ -87,6 +91,14 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
 
     fn euclidean_point(&self) -> na::Vector2<f64> {
         na::Vector2::new(self[0] / self[2], self[1] / self[2])
+    }
+
+    fn project_z(&self) -> na::Vector3<f64> {
+        na::Vector3::new(self[0], self[1], 0.0)
+    }
+
+    fn project(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64> {
+        self - v * v.mip(self)
     }
 }
 
