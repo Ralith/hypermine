@@ -4,6 +4,7 @@ use std::{f32, os::raw::c_char};
 
 use ash::{extensions::khr, vk};
 use lahar::DedicatedImage;
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tracing::info;
 use winit::{
     dpi::PhysicalSize,
@@ -35,7 +36,8 @@ impl EarlyWindow {
 
     /// Identify the Vulkan extension needed to render to this window
     pub fn required_extensions(&self) -> &'static [*const c_char] {
-        ash_window::enumerate_required_extensions(&self.window).expect("unsupported platform")
+        ash_window::enumerate_required_extensions(self.event_loop.raw_display_handle())
+            .expect("unsupported platform")
     }
 }
 
@@ -64,7 +66,14 @@ impl Window {
         sim: Sim,
     ) -> Self {
         let surface = unsafe {
-            ash_window::create_surface(&core.entry, &core.instance, &early.window, None).unwrap()
+            ash_window::create_surface(
+                &core.entry,
+                &core.instance,
+                early.window.raw_display_handle(),
+                early.window.raw_window_handle(),
+                None,
+            )
+            .unwrap()
         };
         let surface_fn = khr::Surface::new(&core.entry, &core.instance);
 
