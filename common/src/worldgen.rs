@@ -263,15 +263,16 @@ impl ChunkParams {
         for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
-            let cube_coords = center * 0.5;
+            let trilerp_coords = center.map(|x| (1.0 - x) * 0.5);
 
-            let rain = trilerp(&self.env.rainfalls, cube_coords) + rng.sample(&normal.unwrap());
-            let temp = trilerp(&self.env.temperatures, cube_coords) + rng.sample(&normal.unwrap());
+            let rain = trilerp(&self.env.rainfalls, trilerp_coords) + rng.sample(&normal.unwrap());
+            let temp =
+                trilerp(&self.env.temperatures, trilerp_coords) + rng.sample(&normal.unwrap());
 
             // elev is calculated in multiple steps. The initial value elev_pre_terracing
             // is used to calculate elev_pre_noise which is used to calculate elev.
-            let elev_pre_terracing = trilerp(&self.env.max_elevations, cube_coords);
-            let block = trilerp(&self.env.blockinesses, cube_coords);
+            let elev_pre_terracing = trilerp(&self.env.max_elevations, trilerp_coords);
+            let block = trilerp(&self.env.blockinesses, trilerp_coords);
             let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
             let strength = 0.4 / (1.0 + voxel_elevation.powi(2));
             let terracing_small = terracing_diff(elev_pre_terracing, block, 5.0, strength, 2.0);
@@ -371,7 +372,7 @@ impl ChunkParams {
         let x = coords[0];
         let y = coords[1];
         let z = coords[2];
-        let offset = 2 * self.dimension / 3;
+        let offset = self.dimension / 3;
 
         // straight lines.
         criteria_met += u32::from(x == offset);
@@ -551,14 +552,14 @@ fn chunk_incident_enviro_factors(
 }
 
 /// Linearly interpolate at interior and boundary of a cube given values at the eight corners.
-fn trilerp<N: na::RealField>(
+fn trilerp<N: na::RealField + Copy>(
     &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
     t: na::Vector3<N>,
 ) -> N {
-    fn lerp<N: na::RealField>(v0: N, v1: N, t: N) -> N {
+    fn lerp<N: na::RealField + Copy>(v0: N, v1: N, t: N) -> N {
         v0 * (N::one() - t) + v1 * t
     }
-    fn bilerp<N: na::RealField>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>) -> N {
+    fn bilerp<N: na::RealField + Copy>(v00: N, v01: N, v10: N, v11: N, t: na::Vector2<N>) -> N {
         lerp(lerp(v00, v01, t.x), lerp(v10, v11, t.x), t.y)
     }
 
@@ -573,7 +574,7 @@ fn trilerp<N: na::RealField>(
 /// v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
 /// such that the overall shape is an S-shaped piecewise function.
 /// threshold should be between 0 and 0.5.
-fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
+fn serp<N: na::RealField + Copy>(v0: N, v1: N, t: N, threshold: N) -> N {
     if t < threshold {
         v0
     } else if t < (N::one() - threshold) {

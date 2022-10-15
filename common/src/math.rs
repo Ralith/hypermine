@@ -22,7 +22,7 @@ impl<N: Scalar> HPoint<N> {
     }
 }
 
-impl<N: RealField> HPoint<N> {
+impl<N: RealField + Copy> HPoint<N> {
     pub fn origin() -> Self {
         Self::new(na::zero(), na::zero(), na::zero())
     }
@@ -37,18 +37,18 @@ impl<N: RealField> HPoint<N> {
 }
 
 /// Point reflection around `p`
-pub fn reflect<N: RealField>(p: &na::Vector4<N>) -> na::Matrix4<N> {
+pub fn reflect<N: RealField + Copy>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()
         - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(p, p)
 }
 
 /// Transform that translates `a` to `b`
-pub fn translate<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Matrix4<N> {
+pub fn translate<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Matrix4<N> {
     reflect(&midpoint(a, b)) * reflect(a)
 }
 
 #[rustfmt::skip]
-pub fn translate_along<N: RealField>(v: &na::Unit<na::Vector3<N>>, distance: N) -> na::Matrix4<N> {
+pub fn translate_along<N: RealField + Copy>(v: &na::Unit<na::Vector3<N>>, distance: N) -> na::Matrix4<N> {
     if distance == na::zero() {
         return na::Matrix4::identity();
     }
@@ -66,23 +66,23 @@ pub fn translate_along<N: RealField>(v: &na::Unit<na::Vector3<N>>, distance: N) 
 }
 
 /// 4D reflection around a normal vector; length is not significant (so long as it's nonzero)
-pub fn euclidean_reflect<N: RealField>(v: &na::Vector4<N>) -> na::Matrix4<N> {
+pub fn euclidean_reflect<N: RealField + Copy>(v: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::identity() - v * v.transpose() * (na::convert::<_, N>(2.0) / v.norm_squared())
 }
 
-pub fn midpoint<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
+pub fn midpoint<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
     a * (mip(b, b) * mip(a, b)).sqrt() + b * (mip(a, a) * mip(a, b)).sqrt()
 }
 
-pub fn distance<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
+pub fn distance<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     (mip(a, b).powi(2) / (mip(a, a) * mip(b, b))).sqrt().acosh()
 }
 
-pub fn origin<N: RealField>() -> na::Vector4<N> {
+pub fn origin<N: RealField + Copy>() -> na::Vector4<N> {
     na::Vector4::new(na::zero(), na::zero(), na::zero(), na::one())
 }
 
-pub fn lorentz_normalize<N: RealField>(v: &na::Vector4<N>) -> na::Vector4<N> {
+pub fn lorentz_normalize<N: RealField + Copy>(v: &na::Vector4<N>) -> na::Vector4<N> {
     let sf2 = mip(v, v);
     if sf2 == na::zero() {
         return origin();
@@ -91,22 +91,20 @@ pub fn lorentz_normalize<N: RealField>(v: &na::Vector4<N>) -> na::Vector4<N> {
     v / sf
 }
 
-pub fn renormalize_isometry<N: RealField>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
+pub fn renormalize_isometry<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
     let dest = m.index((.., 3));
     let norm = dest.xyz().norm();
     let boost_length = (dest.w + norm).ln();
     let direction = na::Unit::new_unchecked(dest.xyz() / norm);
     let inverse_boost = translate_along(&direction, -boost_length);
     let rotation = renormalize_rotation_reflection(
-        &(inverse_boost * m)
-            .fixed_slice::<na::U3, na::U3>(0, 0)
-            .clone_owned(),
+        &(inverse_boost * m).fixed_slice::<3, 3>(0, 0).clone_owned(),
     );
     translate_along(&direction, boost_length) * rotation.to_homogeneous()
 }
 
 #[rustfmt::skip]
-fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matrix3<N> {
+fn renormalize_rotation_reflection<N: RealField + Copy>(m: &na::Matrix3<N>) -> na::Matrix3<N> {
     let zv = m.index((.., 2)).normalize();
     let yv = m.index((.., 1));
     let dot = zv.dot(&yv);
@@ -120,17 +118,17 @@ fn renormalize_rotation_reflection<N: RealField>(m: &na::Matrix3<N>) -> na::Matr
 }
 
 /// Whether an isometry reverses winding with respect to the norm
-pub fn parity<N: RealField>(m: &na::Matrix4<N>) -> bool {
-    m.fixed_slice::<na::U3, na::U3>(0, 0).determinant() < na::zero::<N>()
+pub fn parity<N: RealField + Copy>(m: &na::Matrix4<N>) -> bool {
+    m.fixed_slice::<3, 3>(0, 0).determinant() < na::zero::<N>()
 }
 
 /// Minkowski inner product, aka <a, b>_h
-pub fn mip<N: RealField>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
+pub fn mip<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     a.x * b.x + a.y * b.y + a.z * b.z - a.w * b.w
 }
 
 #[rustfmt::skip]
-fn i31<N: RealField>() -> na::Matrix4<N> {
+fn i31<N: RealField + Copy>() -> na::Matrix4<N> {
     na::convert::<_, na::Matrix4<N>>(na::Matrix4::<f64>::new(
         1.0, 0.0, 0.0,  0.0,
         0.0, 1.0, 0.0,  0.0,

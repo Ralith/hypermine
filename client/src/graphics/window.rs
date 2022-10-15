@@ -4,6 +4,7 @@ use std::{f32, os::raw::c_char};
 
 use ash::{extensions::khr, vk};
 use lahar::DedicatedImage;
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tracing::info;
 use winit::{
     dpi::PhysicalSize,
@@ -11,7 +12,7 @@ use winit::{
         DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
     },
     event_loop::{ControlFlow, EventLoop},
-    window::{Window as WinitWindow, WindowBuilder},
+    window::{CursorGrabMode, Window as WinitWindow, WindowBuilder},
 };
 
 use super::{Base, Core, Draw, Frustum};
@@ -35,7 +36,8 @@ impl EarlyWindow {
 
     /// Identify the Vulkan extension needed to render to this window
     pub fn required_extensions(&self) -> &'static [*const c_char] {
-        ash_window::enumerate_required_extensions(&self.window).expect("unsupported platform")
+        ash_window::enumerate_required_extensions(self.event_loop.raw_display_handle())
+            .expect("unsupported platform")
     }
 }
 
@@ -64,7 +66,14 @@ impl Window {
         sim: Sim,
     ) -> Self {
         let surface = unsafe {
-            ash_window::create_surface(&core.entry, &core.instance, &early.window, None).unwrap()
+            ash_window::create_surface(
+                &core.entry,
+                &core.instance,
+                early.window.raw_display_handle(),
+                early.window.raw_window_handle(),
+                None,
+            )
+            .unwrap()
         };
         let surface_fn = khr::Surface::new(&core.entry, &core.instance);
 
@@ -180,7 +189,10 @@ impl Window {
                         state: ElementState::Pressed,
                         ..
                     } => {
-                        let _ = self.window.set_cursor_grab(true);
+                        let _ = self
+                            .window
+                            .set_cursor_grab(CursorGrabMode::Confined)
+                            .or_else(|_e| self.window.set_cursor_grab(CursorGrabMode::Locked));
                         self.window.set_cursor_visible(false);
                         mouse_captured = true;
                     }
@@ -218,7 +230,7 @@ impl Window {
                             down = state == ElementState::Pressed;
                         }
                         VirtualKeyCode::Escape => {
-                            let _ = self.window.set_cursor_grab(false);
+                            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
                             mouse_captured = false;
                         }
@@ -226,7 +238,7 @@ impl Window {
                     },
                     WindowEvent::Focused(focused) => {
                         if !focused {
-                            let _ = self.window.set_cursor_grab(false);
+                            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
                             mouse_captured = false;
                         }
@@ -314,7 +326,7 @@ impl SwapchainMgr {
     /// Construct a swapchain manager for a certain window
     fn new(window: &Window, gfx: Arc<Base>, fallback_size: PhysicalSize<u32>) -> Self {
         let device = &*gfx.device;
-        let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, &*device);
+        let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, device);
         let surface_formats = unsafe {
             window
                 .surface_fn
