@@ -34,7 +34,7 @@ rustls = { version = "0.20.6", features = ["dangerous_configuration"] }
 webpki = "0.22.0"
 hecs = "0.9.0"
 rcgen = { version = "0.10.0", default-features = false }
-memoffset = "0.6"
+memoffset = "0.7"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
 metrics = { version = "0.20.1" }
 hdrhistogram = { version = "7", default-features = false }
