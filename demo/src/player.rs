@@ -88,19 +88,19 @@ impl Player {
     fn apply_velocity_iteration(&mut self, tessellation: &Tessellation, dt: f64) -> f64 {
         let current_pos = self.transform * na::Vector3::z();
         let candidate_displacement = (self.vel * dt).tangent_displacement_vec();
-        let (t, normal) = collision_point(
+        let collision = collision_point(
             tessellation,
             self.node,
             &current_pos,
             &(self.transform * candidate_displacement),
         );
-        let t_with_epsilon = (t - 1e-5).max(0.0);
+        let t_with_epsilon = (collision.t - 1e-5).max(0.0);
 
         self.transform *= (na::Vector3::z() + candidate_displacement * t_with_epsilon)
             .m_normalized_point()
             .translation();
 
-        if let Some(normal) = normal {
+        if let Some(normal) = collision.normal {
             let expected_displacement_norm = self.vel.norm() * dt;
             let actual_displacement_norm = (candidate_displacement * t_with_epsilon).norm().atanh();
             let local_normal = (self.transform.iso_inverse() * normal).project_z();

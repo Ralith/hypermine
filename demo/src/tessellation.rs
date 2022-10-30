@@ -198,6 +198,8 @@ impl<'a> ChunkData<'a> {
     }
 
     pub fn get(&self, x: usize, y: usize) -> u8 {
+        assert!(x < self.chunk_size);
+        assert!(y < self.chunk_size);
         self.data[x * self.chunk_size + y]
     }
 }
