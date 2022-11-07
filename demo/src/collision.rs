@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     math::HyperboloidVector,
     penta::Vertex,
@@ -7,6 +9,12 @@ use crate::{
 pub struct Collision {
     pub t: f64,
     pub normal: Option<na::Vector3<f64>>,
+}
+
+#[derive(Clone, Copy, Hash)]
+struct ChunkHandle {
+    node_handle: NodeHandle,
+    vertex: Vertex,
 }
 
 pub fn is_colliding(tessellation: &Tessellation, node: NodeHandle, pos: &na::Vector3<f64>) -> bool {
@@ -35,10 +43,16 @@ pub fn collision_point(
     pos: &na::Vector3<f64>,
     dir: &na::Vector3<f64>,
 ) -> Collision {
+    let mut visited_chunks: HashSet<ChunkHandle> = HashSet::new();
+    // TODO: If pos or pos+dir*max_t lies beyond the chunk boundary (with a buffer for object size), repeat
+    // collision checking with the neighboring chunk unless it has already been visited. We can start at vertex
+    // AB for simplicity even if that's not where pos is, although this should be optimized later.
+
     let mut collision = Collision {
         t: 1.0,
         normal: None,
     };
+    // TODO: To avoid checking every vertex of a given chunk, replace this for loop with the graph traversal above.
     for vertex in Vertex::iter() {
         let chunk_data = tessellation.get_chunk_data(node, vertex);
         let square_pos = vertex.penta_to_square() * pos;
