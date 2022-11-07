@@ -40,9 +40,6 @@ pub fn collision_point(
         normal: None,
     };
     for vertex in Vertex::iter() {
-        if vertex != Vertex::AB {
-            continue;
-        }
         let chunk_data = tessellation.get_chunk_data(node, vertex);
         let square_pos = vertex.penta_to_square() * pos;
         let square_dir = vertex.penta_to_square() * dir;
