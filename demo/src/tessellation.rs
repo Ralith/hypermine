@@ -22,6 +22,7 @@ impl Tessellation {
     pub fn chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
         ChunkData {
             chunk_size: self.chunk_size,
+            strides: [1, self.chunk_size],
             data: &self.nodes[node.index].chunks[vertex].data,
         }
     }
@@ -41,6 +42,7 @@ impl Tessellation {
     pub fn get_chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
         ChunkData {
             chunk_size: self.chunk_size,
+            strides: [1, self.chunk_size],
             data: &self.get_node(node).chunks[vertex].data,
         }
     }
@@ -189,6 +191,7 @@ pub struct NodeHandleWithContext {
 #[derive(Copy, Clone)]
 pub struct ChunkData<'a> {
     chunk_size: usize,
+    strides: [usize; 2],
     data: &'a Vec<u8>,
 }
 
@@ -200,7 +203,13 @@ impl<'a> ChunkData<'a> {
     pub fn get(&self, x: usize, y: usize) -> u8 {
         assert!(x < self.chunk_size);
         assert!(y < self.chunk_size);
-        self.data[x * self.chunk_size + y]
+        self.data[x + y * self.chunk_size]
+    }
+
+    pub fn get2(&self, coord0: usize, pos0: usize, coord1: usize, pos1: usize) -> u8 {
+        assert!(pos0 < self.chunk_size);
+        assert!(pos1 < self.chunk_size);
+        self.data[pos0 * self.strides[coord0] + pos1 * self.strides[coord1]]
     }
 }
 
