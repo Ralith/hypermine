@@ -46,42 +46,17 @@ pub fn collision_point(
         let chunk_data = tessellation.get_chunk_data(node, vertex);
         let square_pos = vertex.penta_to_square() * pos;
         let square_dir = vertex.penta_to_square() * dir;
-        let x_dir = if square_dir
-            .mip(&na::Vector3::new(square_pos.z, 0.0, square_pos.x))
-            .signum()
-            > 0.0
-        {
-            1
-        } else {
-            0
-        };
-        let y_dir = if square_dir
-            .mip(&na::Vector3::new(0.0, square_pos.z, square_pos.y))
-            .signum()
-            > 0.0
-        {
-            1
-        } else {
-            0
-        };
-        handle_basic_collision(
-            chunk_data,
-            &square_pos,
-            &square_dir,
-            &mut collision,
-            vertex.square_to_penta(),
-            0,
-            x_dir,
-        );
-        handle_basic_collision(
-            chunk_data,
-            &square_pos,
-            &square_dir,
-            &mut collision,
-            vertex.square_to_penta(),
-            1,
-            y_dir,
-        );
+
+        for coord_axis in 0..2 {
+            handle_basic_collision(
+                chunk_data,
+                &square_pos,
+                &square_dir,
+                &mut collision,
+                vertex.square_to_penta(),
+                coord_axis,
+            );
+        }
     }
 
     collision.normal = collision.normal.map(|n| n.m_normalized_vector());
@@ -95,15 +70,16 @@ fn handle_basic_collision(
     collision: &mut Collision,
     collision_transform: &na::Matrix3<f64>,
     coord_axis: usize,
-    plane_dir: usize,
 ) {
     let float_size = chunk_data.chunk_size() as f64;
-
     let coord_plane0 = (coord_axis + 1) % 2;
+    let mip_dir_axis_sign =
+        (square_dir[coord_axis] * square_pos.z - square_dir.z * square_pos[coord_axis]).signum();
+    let i_offset = 0.5 - mip_dir_axis_sign * 0.5;
 
     for i in 0..chunk_data.chunk_size() {
         // Factor a in plane equation x/z == a => x == a*z
-        let a = (i + (plane_dir + 1) % 2) as f64 / float_size * Vertex::voxel_to_square_factor();
+        let a = (i as f64 + i_offset) / float_size * Vertex::voxel_to_square_factor();
         // Solve for t: (square_pos + square_dir*t).x == a * (square_pos + square_dir*t).z
         // square_pos.x - square_pos.z * a == -t * (square_dir.x - square_dir.z * a)
         let t_candidate = -(square_pos[coord_axis] - square_pos.z * a)
