@@ -67,6 +67,10 @@ impl Vertex {
         PENTA.vertex_sides[self]
     }
 
+    pub fn adjacent_vertices(self) -> (Vertex, Vertex) {
+        PENTA.vertex_adjacent_vertices[self]
+    }
+
     #[inline]
     pub fn pos(self) -> &'static na::Vector3<f64> {
         &PENTA.vertex_pos[self]
@@ -105,6 +109,7 @@ impl Vertex {
 
 struct Penta {
     vertex_sides: EnumMap<Vertex, (Side, Side)>,
+    vertex_adjacent_vertices: EnumMap<Vertex, (Vertex, Vertex)>,
     normals: EnumMap<Side, na::Vector3<f64>>,
     reflections: EnumMap<Side, na::Matrix3<f64>>,
     vertex_pos: EnumMap<Vertex, na::Vector3<f64>>,
@@ -139,6 +144,14 @@ impl Penta {
             Vertex::CD => (Side::C, Side::D),
             Vertex::DE => (Side::D, Side::E),
             Vertex::EA => (Side::E, Side::A),
+        };
+
+        let vertex_adjacent_vertices: EnumMap<Vertex, (Vertex, Vertex)> = enum_map! {
+            Vertex::AB => (Vertex::BC, Vertex::EA),
+            Vertex::BC => (Vertex::CD, Vertex::AB),
+            Vertex::CD => (Vertex::DE, Vertex::BC),
+            Vertex::DE => (Vertex::EA, Vertex::CD),
+            Vertex::EA => (Vertex::AB, Vertex::DE),
         };
 
         let mut normals: EnumMap<Side, na::Vector3<f64>> = EnumMap::default();
@@ -186,6 +199,7 @@ impl Penta {
 
         Penta {
             vertex_sides,
+            vertex_adjacent_vertices,
             normals,
             reflections: normals.map(|_, v| v.reflection()),
             vertex_pos: vertices,
@@ -193,8 +207,10 @@ impl Penta {
             penta_to_square,
             voxel_to_square_factor,
             square_to_voxel_factor,
-            voxel_to_penta: square_to_penta.map(|_, m| m * na::Matrix3::new_scaling(voxel_to_square_factor)),
-            penta_to_voxel: penta_to_square.map(|_, m| na::Matrix3::new_scaling(square_to_voxel_factor) * m),
+            voxel_to_penta: square_to_penta
+                .map(|_, m| m * na::Matrix3::new_scaling(voxel_to_square_factor)),
+            penta_to_voxel: penta_to_square
+                .map(|_, m| na::Matrix3::new_scaling(square_to_voxel_factor) * m),
         }
     }
 }

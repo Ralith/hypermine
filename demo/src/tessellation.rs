@@ -47,6 +47,10 @@ impl Tessellation {
         }
     }
 
+    pub fn get_neighbor(&self, node: NodeHandle, side: Side) -> Option<NodeHandle> {
+        self.get_node(node).neighbors[side]
+    }
+
     pub fn ensure_nearby(
         &mut self,
         node: NodeHandle,

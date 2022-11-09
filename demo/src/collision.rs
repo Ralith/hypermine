@@ -1,7 +1,7 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use crate::{
-    math::HyperboloidVector,
+    math::{HyperboloidMatrix, HyperboloidVector},
     penta::Vertex,
     tessellation::{ChunkData, NodeHandle, Tessellation},
 };
@@ -11,10 +11,16 @@ pub struct Collision {
     pub normal: Option<na::Vector3<f64>>,
 }
 
-#[derive(Clone, Copy, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct ChunkHandle {
-    node_handle: NodeHandle,
+    node: NodeHandle,
     vertex: Vertex,
+}
+
+impl ChunkHandle {
+    fn new(node: NodeHandle, vertex: Vertex) -> Self {
+        ChunkHandle { node, vertex }
+    }
 }
 
 pub fn is_colliding(tessellation: &Tessellation, node: NodeHandle, pos: &na::Vector3<f64>) -> bool {
@@ -44,19 +50,21 @@ pub fn collision_point(
     dir: &na::Vector3<f64>,
 ) -> Collision {
     let mut visited_chunks: HashSet<ChunkHandle> = HashSet::new();
-    // TODO: If pos or pos+dir*max_t lies beyond the chunk boundary (with a buffer for object size), repeat
-    // collision checking with the neighboring chunk unless it has already been visited. We can start at vertex
-    // AB for simplicity even if that's not where pos is, although this should be optimized later.
+    let mut chunk_queue: VecDeque<(ChunkHandle, na::Matrix3<f64>)> = VecDeque::new();
+
+    let start_chunk = ChunkHandle::new(node, Vertex::AB);
+    visited_chunks.insert(start_chunk);
+    chunk_queue.push_back((start_chunk, na::Matrix3::identity()));
 
     let mut collision = Collision {
         t: 1.0,
         normal: None,
     };
-    // TODO: To avoid checking every vertex of a given chunk, replace this for loop with the graph traversal above.
-    for vertex in Vertex::iter() {
-        let chunk_data = tessellation.get_chunk_data(node, vertex);
-        let square_pos = vertex.penta_to_square() * pos;
-        let square_dir = vertex.penta_to_square() * dir;
+
+    while let Some((chunk, transform)) = chunk_queue.pop_front() {
+        let chunk_data = tessellation.get_chunk_data(chunk.node, chunk.vertex);
+        let square_pos = chunk.vertex.penta_to_square() * transform * pos;
+        let square_dir = chunk.vertex.penta_to_square() * transform * dir;
 
         for coord_axis in 0..2 {
             handle_basic_collision(
@@ -64,9 +72,64 @@ pub fn collision_point(
                 &square_pos,
                 &square_dir,
                 &mut collision,
-                vertex.square_to_penta(),
+                &(transform.iso_inverse() * chunk.vertex.square_to_penta()),
                 coord_axis,
             );
+        }
+
+        // If pos or pos+dir*max_t lies beyond the chunk boundary (TODO: with a buffer for object size), repeat
+        // collision checking with the neighboring chunk unless it has already been visited. We start at vertex
+        // AB and the center node for simplicity even if that's not where pos is, although this should be optimized later.
+
+        // Check for neighboring nodes. TODO: The use of unwrap here will cause a crash if you arrive at an ungenerated chunk.
+        if square_pos[0] <= 0.0 || square_pos[0] + square_dir[0] * collision.t < 0.0 {
+            let side = chunk.vertex.sides().0;
+            let next_chunk = ChunkHandle::new(
+                tessellation.get_neighbor(chunk.node, side).unwrap(),
+                chunk.vertex,
+            );
+            if visited_chunks.insert(next_chunk) {
+                // TODO: Verify that the multiplication is in the correct order
+                chunk_queue.push_back((next_chunk, side.reflection() * transform));
+            }
+        }
+
+        if square_pos[1] <= 0.0 || square_pos[1] + square_dir[1] * collision.t < 0.0 {
+            let side = chunk.vertex.sides().1;
+            let next_chunk = ChunkHandle::new(
+                tessellation.get_neighbor(chunk.node, side).unwrap(),
+                chunk.vertex,
+            );
+            if visited_chunks.insert(next_chunk) {
+                // TODO: Verify that the multiplication is in the correct order
+                chunk_queue.push_back((next_chunk, side.reflection() * transform));
+            }
+        }
+
+        // Check for neighboring chunks within the same node
+        let max = 1.0 * Vertex::voxel_to_square_factor();
+        if square_pos[0] / square_pos[2] >= max
+            || (square_pos[0] + square_dir[0] * collision.t)
+                / (square_pos[2] + square_dir[2] * collision.t)
+                >= max
+        {
+            let vertex = chunk.vertex.adjacent_vertices().0;
+            let next_chunk = ChunkHandle::new(chunk.node, vertex);
+            if visited_chunks.insert(next_chunk) {
+                chunk_queue.push_back((next_chunk, transform));
+            }
+        }
+
+        if square_pos[1] / square_pos[2] >= max
+            || (square_pos[1] + square_dir[1] * collision.t)
+                / (square_pos[2] + square_dir[2] * collision.t)
+                >= max
+        {
+            let vertex = chunk.vertex.adjacent_vertices().1;
+            let next_chunk = ChunkHandle::new(chunk.node, vertex);
+            if visited_chunks.insert(next_chunk) {
+                chunk_queue.push_back((next_chunk, transform));
+            }
         }
     }
 
