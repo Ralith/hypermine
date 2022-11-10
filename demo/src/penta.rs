@@ -63,11 +63,11 @@ impl Vertex {
     }
 
     #[inline]
-    pub fn sides(self) -> (Side, Side) {
+    pub fn sides(self) -> [Side; 2] {
         PENTA.vertex_sides[self]
     }
 
-    pub fn adjacent_vertices(self) -> (Vertex, Vertex) {
+    pub fn adjacent_vertices(self) -> [Vertex; 2] {
         PENTA.vertex_adjacent_vertices[self]
     }
 
@@ -108,8 +108,8 @@ impl Vertex {
 }
 
 struct Penta {
-    vertex_sides: EnumMap<Vertex, (Side, Side)>,
-    vertex_adjacent_vertices: EnumMap<Vertex, (Vertex, Vertex)>,
+    vertex_sides: EnumMap<Vertex, [Side; 2]>,
+    vertex_adjacent_vertices: EnumMap<Vertex, [Vertex; 2]>,
     normals: EnumMap<Side, na::Vector3<f64>>,
     reflections: EnumMap<Side, na::Matrix3<f64>>,
     vertex_pos: EnumMap<Vertex, na::Vector3<f64>>,
@@ -138,20 +138,20 @@ impl Penta {
         let reflection_r = ((1.0 + cos_order_angle) / (1.0 - cos_side_angle)).sqrt();
         let reflection_z = ((cos_side_angle + cos_order_angle) / (1.0 - cos_side_angle)).sqrt();
 
-        let vertex_sides: EnumMap<Vertex, (Side, Side)> = enum_map! {
-            Vertex::AB => (Side::A, Side::B),
-            Vertex::BC => (Side::B, Side::C),
-            Vertex::CD => (Side::C, Side::D),
-            Vertex::DE => (Side::D, Side::E),
-            Vertex::EA => (Side::E, Side::A),
+        let vertex_sides: EnumMap<Vertex, [Side; 2]> = enum_map! {
+            Vertex::AB => [Side::A, Side::B],
+            Vertex::BC => [Side::B, Side::C],
+            Vertex::CD => [Side::C, Side::D],
+            Vertex::DE => [Side::D, Side::E],
+            Vertex::EA => [Side::E, Side::A],
         };
 
-        let vertex_adjacent_vertices: EnumMap<Vertex, (Vertex, Vertex)> = enum_map! {
-            Vertex::AB => (Vertex::BC, Vertex::EA),
-            Vertex::BC => (Vertex::CD, Vertex::AB),
-            Vertex::CD => (Vertex::DE, Vertex::BC),
-            Vertex::DE => (Vertex::EA, Vertex::CD),
-            Vertex::EA => (Vertex::AB, Vertex::DE),
+        let vertex_adjacent_vertices: EnumMap<Vertex, [Vertex; 2]> = enum_map! {
+            Vertex::AB => [Vertex::BC, Vertex::EA],
+            Vertex::BC => [Vertex::CD, Vertex::AB],
+            Vertex::CD => [Vertex::DE, Vertex::BC],
+            Vertex::DE => [Vertex::EA, Vertex::CD],
+            Vertex::EA => [Vertex::AB, Vertex::DE],
         };
 
         let mut normals: EnumMap<Side, na::Vector3<f64>> = EnumMap::default();
@@ -169,14 +169,14 @@ impl Penta {
         }
 
         for (vertex, vertex_pos) in vertices.iter_mut() {
-            *vertex_pos = normals[vertex_sides[vertex].1].normal(&normals[vertex_sides[vertex].0]);
+            *vertex_pos = normals[vertex_sides[vertex][1]].normal(&normals[vertex_sides[vertex][0]]);
             *vertex_pos /= (-vertex_pos.sqr()).sqrt();
         }
 
         for (vertex, mat) in square_to_penta.iter_mut() {
             *mat = na::Matrix3::from_columns(&[
-                -normals[vertex_sides[vertex].0],
-                -normals[vertex_sides[vertex].1],
+                -normals[vertex_sides[vertex][0]],
+                -normals[vertex_sides[vertex][1]],
                 vertices[vertex],
             ]);
         }
@@ -187,8 +187,8 @@ impl Penta {
         let square_to_voxel_factor = (5.0f64.sqrt() + 2.0).sqrt();
 
         for (vertex, mat) in voxel_to_penta.iter_mut() {
-            let reflector0 = &normals[vertex_sides[vertex].0];
-            let reflector1 = &normals[vertex_sides[vertex].1];
+            let reflector0 = &normals[vertex_sides[vertex][0]];
+            let reflector1 = &normals[vertex_sides[vertex][1]];
             let origin = na::Vector3::new(0.0, 0.0, 1.0);
             *mat = na::Matrix3::from_columns(&[
                 -reflector0 * reflector0.z,

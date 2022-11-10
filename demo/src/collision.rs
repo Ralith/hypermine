@@ -83,7 +83,7 @@ pub fn collision_point(
 
         // Check for neighboring nodes. TODO: The use of unwrap here will cause a crash if you arrive at an ungenerated chunk.
         if square_pos[0] <= 0.0 || square_pos[0] + square_dir[0] * collision.t < 0.0 {
-            let side = chunk.vertex.sides().0;
+            let side = chunk.vertex.sides()[0];
             let next_chunk = ChunkHandle::new(
                 tessellation.get_neighbor(chunk.node, side).unwrap(),
                 chunk.vertex,
@@ -95,7 +95,7 @@ pub fn collision_point(
         }
 
         if square_pos[1] <= 0.0 || square_pos[1] + square_dir[1] * collision.t < 0.0 {
-            let side = chunk.vertex.sides().1;
+            let side = chunk.vertex.sides()[1];
             let next_chunk = ChunkHandle::new(
                 tessellation.get_neighbor(chunk.node, side).unwrap(),
                 chunk.vertex,
@@ -113,7 +113,7 @@ pub fn collision_point(
                 / (square_pos[2] + square_dir[2] * collision.t)
                 >= max
         {
-            let vertex = chunk.vertex.adjacent_vertices().0;
+            let vertex = chunk.vertex.adjacent_vertices()[0];
             let next_chunk = ChunkHandle::new(chunk.node, vertex);
             if visited_chunks.insert(next_chunk) {
                 chunk_queue.push_back((next_chunk, transform));
@@ -125,7 +125,7 @@ pub fn collision_point(
                 / (square_pos[2] + square_dir[2] * collision.t)
                 >= max
         {
-            let vertex = chunk.vertex.adjacent_vertices().1;
+            let vertex = chunk.vertex.adjacent_vertices()[1];
             let next_chunk = ChunkHandle::new(chunk.node, vertex);
             if visited_chunks.insert(next_chunk) {
                 chunk_queue.push_back((next_chunk, transform));
