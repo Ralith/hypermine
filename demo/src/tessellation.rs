@@ -1,6 +1,7 @@
 use std::collections::{hash_map, HashMap};
 
 use enum_map::{enum_map, EnumMap};
+use rand::Rng;
 
 use crate::penta::{Side, Vertex};
 
@@ -172,10 +173,7 @@ impl Chunk {
     fn new(chunk_size: usize) -> Chunk {
         Chunk {
             data: (0..chunk_size * chunk_size)
-                .map(|i| match i % 6 {
-                    0..=1 => 1,
-                    _ => 0,
-                })
+                .map(|_| if rand::thread_rng().gen::<f64>() < 0.2 { 1 } else { 0 })
                 .collect(),
         }
     }
