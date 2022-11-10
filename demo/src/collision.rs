@@ -80,55 +80,35 @@ pub fn collision_point(
         // If pos or pos+dir*max_t lies beyond the chunk boundary (TODO: with a buffer for object size), repeat
         // collision checking with the neighboring chunk unless it has already been visited. We start at vertex
         // AB and the center node for simplicity even if that's not where pos is, although this should be optimized later.
+        for coord_boundary in 0..2 {
+            let klein_pos0_val = square_pos[coord_boundary] / square_pos[2];
+            let klein_pos1_val = (square_pos[coord_boundary]
+                + square_dir[coord_boundary] * collision.t)
+                / (square_pos[2] + square_dir[2] * collision.t);
 
-        // Check for neighboring nodes. TODO: The use of unwrap here will cause a crash if you arrive at an ungenerated chunk.
-        if square_pos[0] <= 0.0 || square_pos[0] + square_dir[0] * collision.t < 0.0 {
-            let side = chunk.vertex.sides()[0];
-            let next_chunk = ChunkHandle::new(
-                tessellation.get_neighbor(chunk.node, side).unwrap(),
-                chunk.vertex,
-            );
-            if visited_chunks.insert(next_chunk) {
-                // TODO: Verify that the multiplication is in the correct order
-                chunk_queue.push_back((next_chunk, side.reflection() * transform));
+            // Check for neighboring nodes. TODO: The use of unwrap here will cause a crash if you arrive at an ungenerated chunk.
+            let klein_boundary0 = 0.0;
+            if klein_pos0_val <= klein_boundary0 || klein_pos1_val <= klein_boundary0
+            {
+                let side = chunk.vertex.sides()[coord_boundary];
+                let next_chunk = ChunkHandle::new(
+                    tessellation.get_neighbor(chunk.node, side).unwrap(),
+                    chunk.vertex,
+                );
+                if visited_chunks.insert(next_chunk) {
+                    chunk_queue.push_back((next_chunk, side.reflection() * transform));
+                }
             }
-        }
 
-        if square_pos[1] <= 0.0 || square_pos[1] + square_dir[1] * collision.t < 0.0 {
-            let side = chunk.vertex.sides()[1];
-            let next_chunk = ChunkHandle::new(
-                tessellation.get_neighbor(chunk.node, side).unwrap(),
-                chunk.vertex,
-            );
-            if visited_chunks.insert(next_chunk) {
-                // TODO: Verify that the multiplication is in the correct order
-                chunk_queue.push_back((next_chunk, side.reflection() * transform));
-            }
-        }
-
-        // Check for neighboring chunks within the same node
-        let max = 1.0 * Vertex::voxel_to_square_factor();
-        if square_pos[0] / square_pos[2] >= max
-            || (square_pos[0] + square_dir[0] * collision.t)
-                / (square_pos[2] + square_dir[2] * collision.t)
-                >= max
-        {
-            let vertex = chunk.vertex.adjacent_vertices()[0];
-            let next_chunk = ChunkHandle::new(chunk.node, vertex);
-            if visited_chunks.insert(next_chunk) {
-                chunk_queue.push_back((next_chunk, transform));
-            }
-        }
-
-        if square_pos[1] / square_pos[2] >= max
-            || (square_pos[1] + square_dir[1] * collision.t)
-                / (square_pos[2] + square_dir[2] * collision.t)
-                >= max
-        {
-            let vertex = chunk.vertex.adjacent_vertices()[1];
-            let next_chunk = ChunkHandle::new(chunk.node, vertex);
-            if visited_chunks.insert(next_chunk) {
-                chunk_queue.push_back((next_chunk, transform));
+            // Check for neighboring chunks within the same node
+            let klein_boundary1 = 1.0 * Vertex::voxel_to_square_factor();
+            if klein_pos0_val >= klein_boundary1 || klein_pos1_val >= klein_boundary1
+            {
+                let vertex = chunk.vertex.adjacent_vertices()[coord_boundary];
+                let next_chunk = ChunkHandle::new(chunk.node, vertex);
+                if visited_chunks.insert(next_chunk) {
+                    chunk_queue.push_back((next_chunk, transform));
+                }
             }
         }
     }
