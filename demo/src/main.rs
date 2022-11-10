@@ -39,13 +39,15 @@ impl event::EventHandler for State {
             let seconds = 1. / (DESIRED_FPS as f64);
             self.player.step(&PlayerInput::new(ctx, &self.tessellation, seconds));
         }
+
+        self.tessellation.ensure_nearby(self.player.node(), na::Matrix3::identity(), 2);
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         let nodes =
             self.tessellation
-                .ensure_nearby(self.tessellation.root(), na::Matrix3::identity(), 2);
+                .get_nearby(self.player.node(), na::Matrix3::identity(), 2);
 
         let mut pass = draw::RenderPass::new(ctx, &self.tessellation);
         pass.push_transform(&self.player.pos().iso_inverse(), 0);

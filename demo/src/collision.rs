@@ -79,7 +79,7 @@ pub fn collision_point(
 
         // If pos or pos+dir*max_t lies beyond the chunk boundary (TODO: with a buffer for object size), repeat
         // collision checking with the neighboring chunk unless it has already been visited. We start at vertex
-        // AB and the center node for simplicity even if that's not where pos is, although this should be optimized later.
+        // AB for simplicity even if that's not where pos is, although this should be optimized later.
         for coord_boundary in 0..2 {
             let klein_pos0_val = square_pos[coord_boundary] / square_pos[2];
             let klein_pos1_val = (square_pos[coord_boundary]

@@ -1,6 +1,7 @@
 use crate::{
     collision::collision_point,
     math::{HyperboloidMatrix, HyperboloidVector},
+    penta::Side,
     tessellation::{NodeHandle, Tessellation},
 };
 
@@ -79,6 +80,7 @@ impl Player {
             }
             remaining_dt = self.apply_velocity_iteration(input.tessellation, remaining_dt);
         }
+        self.hop_node(input.tessellation);
 
         // Prevent errors from building up
         self.transform.qr_normalize();
@@ -111,7 +113,26 @@ impl Player {
         }
     }
 
+    fn hop_node(&mut self, tessellation: &Tessellation) -> bool {
+        let current_pos = self.transform * na::Vector3::z();
+        for side in Side::iter() {
+            if current_pos.mip(side.normal()) > 0.1 {
+                if let Some(node) = tessellation.get_neighbor(self.node, side) {
+                    self.transform = side.reflection() * self.transform;
+                    self.node = node;
+                }
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn pos(&self) -> &na::Matrix3<f64> {
         &self.transform
+    }
+
+    pub fn node(&self) -> NodeHandle {
+        self.node
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::HashSet;
 
 use enum_map::{enum_map, EnumMap};
 use rand::Rng;
@@ -52,14 +52,46 @@ impl Tessellation {
         self.get_node(node).neighbors[side]
     }
 
+    pub fn get_nearby(
+        &self,
+        node: NodeHandle,
+        transform: na::Matrix3<f64>,
+        distance: u32,
+    ) -> Vec<NodeHandleWithContext> {
+        let mut visited = HashSet::new();
+        let mut result = vec![NodeHandleWithContext { node, transform }];
+        let mut frontier_start: usize = 0;
+
+        for _ in 0..distance {
+            let frontier_end = result.len();
+            for i in frontier_start..frontier_end {
+                let handle_with_context = result[i];
+                for side in Side::iter() {
+                    if let Some(neighbor) = self.get_neighbor(handle_with_context.node, side) {
+                        if visited.insert(neighbor) {
+                            result.push(NodeHandleWithContext {
+                                node: neighbor,
+                                transform: handle_with_context.transform * side.reflection(),
+                            })
+                        }
+                    }
+                }
+            }
+            frontier_start = frontier_end;
+        }
+
+        result
+    }
+
+    // TODO: Can we avoid code duplication with get_nearby?
     pub fn ensure_nearby(
         &mut self,
         node: NodeHandle,
         transform: na::Matrix3<f64>,
         distance: u32,
     ) -> Vec<NodeHandleWithContext> {
-        let mut visited = HashMap::new();
-        visited.insert(node, ());
+        let mut visited = HashSet::new();
+        visited.insert(node);
 
         let mut result = vec![NodeHandleWithContext { node, transform }];
 
@@ -71,8 +103,7 @@ impl Tessellation {
                 let handle_with_context = result[i];
                 for side in Side::iter() {
                     let neighbor = self.ensure_neighbor(handle_with_context.node, side);
-                    if let hash_map::Entry::Vacant(e) = visited.entry(neighbor) {
-                        e.insert(());
+                    if visited.insert(neighbor) {
                         result.push(NodeHandleWithContext {
                             node: neighbor,
                             transform: handle_with_context.transform * side.reflection(),
@@ -173,7 +204,13 @@ impl Chunk {
     fn new(chunk_size: usize) -> Chunk {
         Chunk {
             data: (0..chunk_size * chunk_size)
-                .map(|_| if rand::thread_rng().gen::<f64>() < 0.2 { 1 } else { 0 })
+                .map(|_| {
+                    if rand::thread_rng().gen::<f64>() < 0.2 {
+                        1
+                    } else {
+                        0
+                    }
+                })
                 .collect(),
         }
     }
