@@ -131,13 +131,28 @@ fn handle_basic_collision(
         (square_dir[coord_axis] * square_pos.z - square_dir.z * square_pos[coord_axis]).signum();
     let i_offset = 0.5 - mip_dir_axis_sign * 0.5;
 
+    let mip_pos_pos = square_pos.mip(square_pos); // pos should be a "unit" vector, so this could be just set to 1.0.
+    let mip_pos_dir = square_pos.mip(square_dir);
+    let mip_dir_dir = square_dir.mip(square_dir);
+
     for i in 0..chunk_data.chunk_size() {
         // Factor a in plane equation x/z == a => x == a*z
         let a = (i as f64 + i_offset) / float_size * Vertex::voxel_to_square_factor();
-        // Solve for t: (square_pos + square_dir*t).x == a * (square_pos + square_dir*t).z
-        // square_pos.x - square_pos.z * a == -t * (square_dir.x - square_dir.z * a)
-        let t_candidate = -(square_pos[coord_axis] - square_pos.z * a)
-            / (square_dir[coord_axis] - square_dir.z * a);
+
+        // Solve quadratic equation (TODO: This doesn't work yet. It needs debugging.)
+        let mip_pos_norm = square_pos[coord_axis] - square_pos.z * a; // TODO: normalize
+        let mip_dir_norm = square_dir[coord_axis] - square_dir.z * a;
+        let sinh_dist_squared = 0.01;
+        let quadratic_term = mip_dir_norm * mip_dir_norm - mip_dir_dir * sinh_dist_squared;
+        let double_linear_term = mip_pos_norm * mip_dir_norm - mip_pos_dir * sinh_dist_squared;
+        let constant_term = mip_pos_norm * mip_pos_norm - mip_pos_pos * sinh_dist_squared;
+        let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
+
+        if discriminant < 0.0 {
+            continue;
+        }
+
+        let t_candidate = (-double_linear_term - discriminant.sqrt()) / quadratic_term;
         if t_candidate >= 0.0 && t_candidate < collision.t {
             let b = (square_pos[coord_plane0] + square_dir[coord_plane0] * t_candidate)
                 / (square_pos.z + square_dir.z * t_candidate);

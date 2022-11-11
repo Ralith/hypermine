@@ -96,6 +96,9 @@ impl Player {
             &current_pos,
             &(self.transform * candidate_displacement),
         );
+        // TODO: This version of epsilon makes the error margin highly dependent on speed,
+        // causing semi-frequent clipping through walls. A more robust and complex margin
+        // system is needed once the overall algorithm settles more.
         let t_with_epsilon = (collision.t - 1e-5).max(0.0);
 
         self.transform *= (na::Vector3::z() + candidate_displacement * t_with_epsilon)
