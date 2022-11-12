@@ -31,7 +31,7 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
     }
 
     fn translation(&self) -> na::Matrix3<f64> {
-        let f = 1.0 / self[2];
+        let f = 1.0 / (self[2] + 1.0);
         na::Matrix3::new(
             self[0] * self[0] * f + 1.0,
             self[0] * self[1] * f,

@@ -61,6 +61,7 @@ pub fn collision_point(
         normal: None,
     };
 
+    #[allow(clippy::never_loop)]
     while let Some((chunk, transform)) = chunk_queue.pop_front() {
         let chunk_data = tessellation.get_chunk_data(chunk.node, chunk.vertex);
         let square_pos = chunk.vertex.penta_to_square() * transform * pos;
@@ -111,9 +112,10 @@ pub fn collision_point(
                 }
             }
         }
+
+        break;
     }
 
-    collision.normal = collision.normal.map(|n| n.m_normalized_vector());
     collision
 }
 
@@ -130,30 +132,47 @@ fn handle_basic_collision(
     let mip_dir_axis_sign =
         (square_dir[coord_axis] * square_pos.z - square_dir.z * square_pos[coord_axis]).signum();
     let i_offset = 0.5 - mip_dir_axis_sign * 0.5;
+    let i_offset = 0.0;
 
     let mip_pos_pos = square_pos.mip(square_pos); // pos should be a "unit" vector, so this could be just set to 1.0.
     let mip_pos_dir = square_pos.mip(square_dir);
     let mip_dir_dir = square_dir.mip(square_dir);
 
+    if coord_axis != 0 {
+        return;
+    }
+
     for i in 0..chunk_data.chunk_size() {
+        if i != 9 {
+            continue;
+        }
+
         // Factor a in plane equation x/z == a => x == a*z
         let a = (i as f64 + i_offset) / float_size * Vertex::voxel_to_square_factor();
 
-        // Solve quadratic equation (TODO: This doesn't work yet. It needs debugging.)
+        // Solve quadratic equation
         let mip_pos_norm = square_pos[coord_axis] - square_pos.z * a; // TODO: normalize
         let mip_dir_norm = square_dir[coord_axis] - square_dir.z * a;
-        let sinh_dist_squared = 0.01;
-        let quadratic_term = mip_dir_norm * mip_dir_norm - mip_dir_dir * sinh_dist_squared;
-        let double_linear_term = mip_pos_norm * mip_dir_norm - mip_pos_dir * sinh_dist_squared;
-        let constant_term = mip_pos_norm * mip_pos_norm - mip_pos_pos * sinh_dist_squared;
+        let sinh_dist_squared = 1.0;
+        let quadratic_term = mip_dir_norm * mip_dir_norm + mip_dir_dir * sinh_dist_squared;
+        let double_linear_term = mip_pos_norm * mip_dir_norm + mip_pos_dir * sinh_dist_squared;
+        let constant_term = mip_pos_norm * mip_pos_norm + mip_pos_pos * sinh_dist_squared;
         let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
 
-        if discriminant < 0.0 {
+        if discriminant < 0.0 || mip_dir_norm < 0.0 {
             continue;
         }
 
         let t_candidate = (-double_linear_term - discriminant.sqrt()) / quadratic_term;
+
         if t_candidate >= 0.0 && t_candidate < collision.t {
+            collision.t = t_candidate;
+            let mut normal = na::Vector3::new(0.0, 0.0, a);
+            normal[coord_axis] = 1.0;
+            collision.normal = Some(collision_transform * normal);
+        }
+
+        /*if t_candidate >= 0.0 && t_candidate < collision.t {
             let b = (square_pos[coord_plane0] + square_dir[coord_plane0] * t_candidate)
                 / (square_pos.z + square_dir.z * t_candidate);
             let j = (b * Vertex::square_to_voxel_factor() * float_size).floor();
@@ -166,6 +185,6 @@ fn handle_basic_collision(
                     collision.normal = Some(collision_transform * normal);
                 }
             }
-        }
+        }*/
     }
 }
