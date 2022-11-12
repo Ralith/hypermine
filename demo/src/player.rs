@@ -117,8 +117,6 @@ impl Player {
     }
 
     fn hop_node(&mut self, tessellation: &Tessellation) -> bool {
-        return false;
-
         let current_pos = self.transform * na::Vector3::z();
         for side in Side::iter() {
             if current_pos.mip(side.normal()) > 0.1 {

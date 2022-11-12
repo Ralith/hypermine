@@ -23,6 +23,7 @@ impl ChunkHandle {
     }
 }
 
+// TODO: This function is outdated and is not as complete a check as collision_point.
 pub fn is_colliding(tessellation: &Tessellation, node: NodeHandle, pos: &na::Vector3<f64>) -> bool {
     for vertex in Vertex::iter() {
         let chunk_data = tessellation.get_chunk_data(node, vertex);
@@ -61,12 +62,12 @@ pub fn collision_point(
         normal: None,
     };
 
-    #[allow(clippy::never_loop)]
     while let Some((chunk, transform)) = chunk_queue.pop_front() {
         let chunk_data = tessellation.get_chunk_data(chunk.node, chunk.vertex);
         let square_pos = chunk.vertex.penta_to_square() * transform * pos;
         let square_dir = chunk.vertex.penta_to_square() * transform * dir;
 
+        // TODO: Need to check collision with vertices as well as just edges
         for coord_axis in 0..2 {
             handle_basic_collision(
                 chunk_data,
@@ -89,8 +90,7 @@ pub fn collision_point(
 
             // Check for neighboring nodes. TODO: The use of unwrap here will cause a crash if you arrive at an ungenerated chunk.
             let klein_boundary0 = 0.0;
-            if klein_pos0_val <= klein_boundary0 || klein_pos1_val <= klein_boundary0
-            {
+            if klein_pos0_val <= klein_boundary0 || klein_pos1_val <= klein_boundary0 {
                 let side = chunk.vertex.sides()[coord_boundary];
                 let next_chunk = ChunkHandle::new(
                     tessellation.get_neighbor(chunk.node, side).unwrap(),
@@ -103,8 +103,7 @@ pub fn collision_point(
 
             // Check for neighboring chunks within the same node
             let klein_boundary1 = 1.0 * Vertex::voxel_to_square_factor();
-            if klein_pos0_val >= klein_boundary1 || klein_pos1_val >= klein_boundary1
-            {
+            if klein_pos0_val >= klein_boundary1 || klein_pos1_val >= klein_boundary1 {
                 let vertex = chunk.vertex.adjacent_vertices()[coord_boundary];
                 let next_chunk = ChunkHandle::new(chunk.node, vertex);
                 if visited_chunks.insert(next_chunk) {
@@ -112,8 +111,6 @@ pub fn collision_point(
                 }
             }
         }
-
-        break;
     }
 
     collision
@@ -129,62 +126,49 @@ fn handle_basic_collision(
 ) {
     let float_size = chunk_data.chunk_size() as f64;
     let coord_plane0 = (coord_axis + 1) % 2;
-    let mip_dir_axis_sign =
-        (square_dir[coord_axis] * square_pos.z - square_dir.z * square_pos[coord_axis]).signum();
-    let i_offset = 0.5 - mip_dir_axis_sign * 0.5;
-    let i_offset = 0.0;
 
     let mip_pos_pos = square_pos.mip(square_pos); // pos should be a "unit" vector, so this could be just set to 1.0.
     let mip_pos_dir = square_pos.mip(square_dir);
     let mip_dir_dir = square_dir.mip(square_dir);
 
-    if coord_axis != 0 {
-        return;
-    }
-
-    for i in 0..chunk_data.chunk_size() {
-        if i != 9 {
-            continue;
-        }
-
+    for i in 0..=chunk_data.chunk_size() {
         // Factor a in plane equation x/z == a => x == a*z
-        let a = (i as f64 + i_offset) / float_size * Vertex::voxel_to_square_factor();
+        let a = i as f64 / float_size * Vertex::voxel_to_square_factor();
 
         // Solve quadratic equation
-        let mip_pos_norm = square_pos[coord_axis] - square_pos.z * a; // TODO: normalize
+        let mip_pos_norm = square_pos[coord_axis] - square_pos.z * a; // TODO: normalize "norm" vector used
         let mip_dir_norm = square_dir[coord_axis] - square_dir.z * a;
-        let sinh_dist_squared = 1.0;
+        let sinh_dist_squared = 0.0001;
         let quadratic_term = mip_dir_norm * mip_dir_norm + mip_dir_dir * sinh_dist_squared;
         let double_linear_term = mip_pos_norm * mip_dir_norm + mip_pos_dir * sinh_dist_squared;
         let constant_term = mip_pos_norm * mip_pos_norm + mip_pos_pos * sinh_dist_squared;
         let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
 
-        if discriminant < 0.0 || mip_dir_norm < 0.0 {
+        if discriminant < 0.0 {
             continue;
         }
 
         let t_candidate = (-double_linear_term - discriminant.sqrt()) / quadratic_term;
 
         if t_candidate >= 0.0 && t_candidate < collision.t {
-            collision.t = t_candidate;
-            let mut normal = na::Vector3::new(0.0, 0.0, a);
-            normal[coord_axis] = 1.0;
-            collision.normal = Some(collision_transform * normal);
-        }
+            let i_with_offset = if mip_dir_norm < 0.0 { i } else { i + 1 };
+            if i_with_offset > 0 && i_with_offset <= chunk_data.chunk_size() {
+                let i_with_offset = i_with_offset - 1;
 
-        /*if t_candidate >= 0.0 && t_candidate < collision.t {
-            let b = (square_pos[coord_plane0] + square_dir[coord_plane0] * t_candidate)
-                / (square_pos.z + square_dir.z * t_candidate);
-            let j = (b * Vertex::square_to_voxel_factor() * float_size).floor();
-            if j >= 0.0 && j < float_size {
-                let j = j as usize;
-                if chunk_data.get2(coord_axis, i, coord_plane0, j) != 0 {
-                    collision.t = t_candidate;
-                    let mut normal = na::Vector3::new(0.0, 0.0, a);
-                    normal[coord_axis] = 1.0;
-                    collision.normal = Some(collision_transform * normal);
+                // TODO: May need a more complicated computation of b to properly accommodate width
+                let b = (square_pos[coord_plane0] + square_dir[coord_plane0] * t_candidate)
+                    / (square_pos.z + square_dir.z * t_candidate);
+                let j = (b * Vertex::square_to_voxel_factor() * float_size).floor();
+                if j >= 0.0 && j < float_size {
+                    let j = j as usize;
+                    if chunk_data.get2(coord_axis, i_with_offset, coord_plane0, j) != 0 {
+                        collision.t = t_candidate;
+                        let mut normal = na::Vector3::new(0.0, 0.0, a);
+                        normal[coord_axis] = 1.0;
+                        collision.normal = Some(collision_transform * normal);
+                    }
                 }
             }
-        }*/
+        }
     }
 }
