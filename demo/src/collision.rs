@@ -46,6 +46,7 @@ pub fn is_colliding(tessellation: &Tessellation, node: NodeHandle, pos: &na::Vec
 // Ray-tracing version
 pub fn collision_point(
     tessellation: &Tessellation,
+    radius: f64,
     node: NodeHandle,
     pos: &na::Vector3<f64>,
     dir: &na::Vector3<f64>,
@@ -71,6 +72,7 @@ pub fn collision_point(
         for coord_axis in 0..2 {
             handle_basic_collision(
                 chunk_data,
+                radius,
                 &square_pos,
                 &square_dir,
                 &mut collision,
@@ -118,6 +120,7 @@ pub fn collision_point(
 
 fn handle_basic_collision(
     chunk_data: ChunkData,
+    radius: f64,
     square_pos: &na::Vector3<f64>,
     square_dir: &na::Vector3<f64>,
     collision: &mut Collision,
@@ -136,12 +139,15 @@ fn handle_basic_collision(
         let a = i as f64 / float_size * Vertex::voxel_to_square_factor();
 
         // Solve quadratic equation
-        let mip_pos_norm = square_pos[coord_axis] - square_pos.z * a; // TODO: normalize "norm" vector used
-        let mip_dir_norm = square_dir[coord_axis] - square_dir.z * a;
-        let sinh_dist_squared = 0.0001;
-        let quadratic_term = mip_dir_norm * mip_dir_norm + mip_dir_dir * sinh_dist_squared;
-        let double_linear_term = mip_pos_norm * mip_dir_norm + mip_pos_dir * sinh_dist_squared;
-        let constant_term = mip_pos_norm * mip_pos_norm + mip_pos_pos * sinh_dist_squared;
+        let mut normal = na::Vector3::new(0.0, 0.0, a);
+        normal[coord_axis] = 1.0;
+        let normal = normal.m_normalized_vector();
+        let mip_pos_norm = square_pos.mip(&normal);
+        let mip_dir_norm = square_dir.mip(&normal);
+        let sinh_radius_squared = (radius * radius).sinh();
+        let quadratic_term = mip_dir_norm * mip_dir_norm + mip_dir_dir * sinh_radius_squared;
+        let double_linear_term = mip_pos_norm * mip_dir_norm + mip_pos_dir * sinh_radius_squared;
+        let constant_term = mip_pos_norm * mip_pos_norm + mip_pos_pos * sinh_radius_squared;
         let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
 
         if discriminant < 0.0 {
@@ -163,8 +169,6 @@ fn handle_basic_collision(
                     let j = j as usize;
                     if chunk_data.get2(coord_axis, i_with_offset, coord_plane0, j) != 0 {
                         collision.t = t_candidate;
-                        let mut normal = na::Vector3::new(0.0, 0.0, a);
-                        normal[coord_axis] = 1.0;
                         collision.normal = Some(collision_transform * normal);
                     }
                 }

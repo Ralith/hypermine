@@ -71,7 +71,7 @@ impl event::EventHandler for State {
             pass.pop_transform();
         }
 
-        pass.draw_center()?;
+        pass.draw_player(&self.player)?;
         pass.present()
     }
 

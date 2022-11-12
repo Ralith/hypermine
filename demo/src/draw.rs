@@ -3,7 +3,7 @@ use ggez::{graphics, mint, Context, GameResult};
 use crate::{
     color::Color,
     penta::Vertex,
-    tessellation::{NodeHandle, Tessellation},
+    tessellation::{NodeHandle, Tessellation}, player::Player,
 };
 
 pub struct RenderPass<'a> {
@@ -76,12 +76,12 @@ impl<'a> RenderPass<'a> {
         Ok(())
     }
 
-    pub fn draw_center(&mut self) -> GameResult {
+    pub fn draw_player(&mut self, player: &Player) -> GameResult {
         let circle = graphics::Mesh::new_circle(
             self.ctx,
             graphics::DrawMode::fill(),
             mint::Point2 { x: 0.0, y: 0.0 },
-            0.02,
+            player.radius().tanh() as f32,
             0.1 / self.scale,
             graphics::Color::from_rgb(128, 128, 128),
         )?;

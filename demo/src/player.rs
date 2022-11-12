@@ -6,6 +6,7 @@ use crate::{
 };
 
 pub struct Player {
+    radius: f64,
     transform: na::Matrix3<f64>,
     node: NodeHandle,
     vel: na::Vector3<f64>,
@@ -44,6 +45,7 @@ impl<'a> PlayerInput<'a> {
 impl Player {
     pub fn new(node: NodeHandle) -> Player {
         Player {
+            radius: 0.02,
             transform: na::Matrix3::identity(),
             node,
             vel: na::Vector3::zeros(),
@@ -92,6 +94,7 @@ impl Player {
         let candidate_displacement = (self.vel * dt).tangent_displacement_vec();
         let collision = collision_point(
             tessellation,
+            self.radius,
             self.node,
             &current_pos,
             &(self.transform * candidate_displacement),
@@ -139,5 +142,9 @@ impl Player {
 
     pub fn node(&self) -> NodeHandle {
         self.node
+    }
+
+    pub fn radius(&self) -> f64 {
+        self.radius
     }
 }
