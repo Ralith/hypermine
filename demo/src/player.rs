@@ -90,27 +90,38 @@ impl Player {
 
     // Returns dt remaining
     fn apply_velocity_iteration(&mut self, tessellation: &Tessellation, dt: f64) -> f64 {
+        const EPSILON: f64 = 1e-5;
+        
         let current_pos = self.transform * na::Vector3::z();
-        let candidate_displacement = (self.vel * dt).tangent_displacement_vec();
+        let candidate_displacement = self.vel * dt;
+        let candidate_displacement_sqr = candidate_displacement.sqr();
+        if candidate_displacement_sqr < 1e-16 {
+            return 0.0;
+        }
+
+        let candidate_displacement_norm = candidate_displacement_sqr.sqrt();
+        let candidate_displacement_normalized = candidate_displacement / candidate_displacement_norm;
         let collision = collision_point(
             tessellation,
             self.radius,
             self.node,
             &current_pos,
-            &(self.transform * candidate_displacement),
+            &(self.transform * candidate_displacement_normalized),
+            candidate_displacement_norm.tanh() + EPSILON,
         );
-        // TODO: This version of epsilon makes the error margin highly dependent on speed,
-        // causing semi-frequent clipping through walls. A more robust and complex margin
-        // system is needed once the overall algorithm settles more.
-        let t_with_epsilon = (collision.t - 1e-5).max(0.0);
 
-        self.transform *= (na::Vector3::z() + candidate_displacement * t_with_epsilon)
+        // TODO: A more robust and complex margin system will likely be needed once the
+        // overall algorithm settles more.
+        let t_with_epsilon = (collision.t - EPSILON).max(0.0);
+
+        self.transform *= (na::Vector3::z() + candidate_displacement_normalized * t_with_epsilon)
             .m_normalized_point()
             .translation();
 
+        // TODO: Will need to allow two collision normals to act at once, especially in 3D
         if let Some(normal) = collision.normal {
             let expected_displacement_norm = self.vel.norm() * dt;
-            let actual_displacement_norm = (candidate_displacement * t_with_epsilon).norm().atanh();
+            let actual_displacement_norm = (candidate_displacement_normalized * t_with_epsilon).norm().atanh();
             let local_normal = (self.transform.iso_inverse() * normal)
                 .project_z()
                 .m_normalized_vector();

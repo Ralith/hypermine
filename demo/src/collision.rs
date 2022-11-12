@@ -50,6 +50,7 @@ pub fn collision_point(
     node: NodeHandle,
     pos: &na::Vector3<f64>,
     dir: &na::Vector3<f64>,
+    t: f64,
 ) -> Collision {
     let mut visited_chunks: HashSet<ChunkHandle> = HashSet::new();
     let mut chunk_queue: VecDeque<(ChunkHandle, na::Matrix3<f64>)> = VecDeque::new();
@@ -59,7 +60,7 @@ pub fn collision_point(
     chunk_queue.push_back((start_chunk, na::Matrix3::identity()));
 
     let mut collision = Collision {
-        t: 1.0,
+        t,
         normal: None,
     };
 
@@ -130,10 +131,6 @@ fn handle_basic_collision(
     let float_size = chunk_data.chunk_size() as f64;
     let coord_plane0 = (coord_axis + 1) % 2;
 
-    let mip_pos_pos = square_pos.mip(square_pos); // pos should be a "unit" vector, so this could be just set to 1.0.
-    let mip_pos_dir = square_pos.mip(square_dir);
-    let mip_dir_dir = square_dir.mip(square_dir);
-
     for i in 0..=chunk_data.chunk_size() {
         // Factor a in plane equation x/z == a => x == a*z
         let a = i as f64 / float_size * Vertex::voxel_to_square_factor();
@@ -145,9 +142,9 @@ fn handle_basic_collision(
         let mip_pos_norm = square_pos.mip(&normal);
         let mip_dir_norm = square_dir.mip(&normal);
         let sinh_radius_squared = (radius * radius).sinh();
-        let quadratic_term = mip_dir_norm * mip_dir_norm + mip_dir_dir * sinh_radius_squared;
-        let double_linear_term = mip_pos_norm * mip_dir_norm + mip_pos_dir * sinh_radius_squared;
-        let constant_term = mip_pos_norm * mip_pos_norm + mip_pos_pos * sinh_radius_squared;
+        let quadratic_term = mip_dir_norm * mip_dir_norm + sinh_radius_squared;
+        let double_linear_term = mip_pos_norm * mip_dir_norm;
+        let constant_term = mip_pos_norm * mip_pos_norm - sinh_radius_squared;
         let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
 
         if discriminant < 0.0 {

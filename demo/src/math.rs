@@ -14,7 +14,6 @@ pub trait HyperboloidVector: Index<usize, Output = f64> + std::ops::Mul<f64, Out
     fn m_normalized_vector(&self) -> na::Vector3<f64>;
     fn displacement(&self) -> na::Matrix3<f64>;
     fn displacement_vec(&self) -> na::Vector3<f64>;
-    fn tangent_displacement_vec(&self) -> na::Vector3<f64>;
     fn euclidean_point(&self) -> na::Vector2<f64>;
     fn project_z(&self) -> na::Vector3<f64>;
     fn project(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64>;
@@ -81,12 +80,6 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         let norm = self.norm();
         let scale_factor = norm.sinhc();
         na::Vector3::new(self[0] * scale_factor, self[1] * scale_factor, norm.cosh())
-    }
-
-    fn tangent_displacement_vec(&self) -> na::Vector3<f64> {
-        let norm = self.norm();
-        let scale_factor = norm.sinhc() / norm.cosh();
-        na::Vector3::new(self[0] * scale_factor, self[1] * scale_factor, 0.0)
     }
 
     fn euclidean_point(&self) -> na::Vector2<f64> {
