@@ -10,17 +10,21 @@ pub struct RenderPass<'a> {
     ctx: &'a mut Context,
     draw_params: graphics::DrawParam,
     scale: f32,
-    stack: Vec<(na::Matrix3<f64>, u32)>,
+    stack: Vec<na::Matrix3<f64>>,
     tessellation: &'a Tessellation,
 }
 
 impl<'a> RenderPass<'a> {
-    pub fn new(ctx: &'a mut Context, tessellation: &'a Tessellation) -> RenderPass<'a> {
+    pub fn new(
+        ctx: &'a mut Context,
+        tessellation: &'a Tessellation,
+        zoom_factor: f64,
+    ) -> RenderPass<'a> {
         let screen_coordinates = graphics::screen_coordinates(ctx);
         let width = screen_coordinates.w;
         let height = screen_coordinates.h;
 
-        let scale = (width.min(height) - 1.0) / 2.0;
+        let scale = (width.min(height) - 1.0) / 2.0 * zoom_factor as f32;
 
         let draw_params = graphics::DrawParam::default()
             .offset(mint::Point2 {
@@ -33,16 +37,13 @@ impl<'a> RenderPass<'a> {
             ctx,
             draw_params,
             scale,
-            stack: vec![(na::Matrix3::identity(), 0)],
+            stack: vec![na::Matrix3::identity()],
             tessellation,
         }
     }
 
-    pub fn push_transform(&mut self, transform: &na::Matrix3<f64>, node_parity: u32) {
-        self.stack.push((
-            self.get_transform() * transform,
-            self.get_parity() ^ node_parity,
-        ));
+    pub fn push_transform(&mut self, transform: &na::Matrix3<f64>) {
+        self.stack.push(self.get_transform() * transform);
     }
 
     pub fn pop_transform(&mut self) {
@@ -50,11 +51,7 @@ impl<'a> RenderPass<'a> {
     }
 
     fn get_transform(&self) -> &na::Matrix3<f64> {
-        &self.stack.last().expect("Transformation stack underflow").0
-    }
-
-    fn get_parity(&self) -> u32 {
-        self.stack.last().expect("Transformation stack underflow").1
+        self.stack.last().expect("Transformation stack underflow")
     }
 
     pub fn draw_background(&mut self) -> GameResult {

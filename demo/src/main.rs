@@ -1,5 +1,6 @@
 use demo::{
-    draw, math::HyperboloidMatrix,
+    draw,
+    math::HyperboloidMatrix,
     player::{Player, PlayerInput},
     tessellation::Tessellation,
 };
@@ -18,6 +19,7 @@ fn main() {
 struct State {
     player: Player,
     tessellation: Tessellation,
+    zoom_factor: f64,
 }
 
 impl State {
@@ -27,6 +29,7 @@ impl State {
         State {
             player: Player::new(tessellation.root()),
             tessellation,
+            zoom_factor: 1.0,
         }
     }
 }
@@ -37,24 +40,33 @@ impl event::EventHandler for State {
 
         while timer::check_update_time(ctx, DESIRED_FPS) {
             let seconds = 1. / (DESIRED_FPS as f64);
-            self.player.step(&PlayerInput::new(ctx, &self.tessellation, seconds));
+            self.player
+                .step(&PlayerInput::new(ctx, &self.tessellation, seconds));
+
+            if ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::R) {
+                self.zoom_factor *= seconds.exp();
+            }
+            if ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::F) {
+                self.zoom_factor /= seconds.exp();
+            }
         }
 
-        self.tessellation.ensure_nearby(self.player.node(), na::Matrix3::identity(), 2);
+        self.tessellation
+            .ensure_nearby(self.player.node(), na::Matrix3::identity(), 2);
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        let nodes =
-            self.tessellation
-                .get_nearby(self.player.node(), na::Matrix3::identity(), 2);
+        let nodes = self
+            .tessellation
+            .get_nearby(self.player.node(), na::Matrix3::identity(), 2);
 
-        let mut pass = draw::RenderPass::new(ctx, &self.tessellation);
-        pass.push_transform(&self.player.pos().iso_inverse(), 0);
+        let mut pass = draw::RenderPass::new(ctx, &self.tessellation, self.zoom_factor);
+        pass.push_transform(&self.player.pos().iso_inverse());
         pass.draw_background()?;
 
         for handle in nodes {
-            pass.push_transform(&handle.transform, 0);
+            pass.push_transform(&handle.transform);
             pass.draw_node_chunks(handle.node)?;
             pass.pop_transform();
         }

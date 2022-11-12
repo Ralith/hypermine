@@ -108,7 +108,9 @@ impl Player {
         if let Some(normal) = collision.normal {
             let expected_displacement_norm = self.vel.norm() * dt;
             let actual_displacement_norm = (candidate_displacement * t_with_epsilon).norm().atanh();
-            let local_normal = (self.transform.iso_inverse() * normal).project_z().m_normalized_vector();
+            let local_normal = (self.transform.iso_inverse() * normal)
+                .project_z()
+                .m_normalized_vector();
             self.vel = self.vel.project(&local_normal);
             dt * (1.0 - actual_displacement_norm / expected_displacement_norm)
         } else {
