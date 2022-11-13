@@ -82,6 +82,15 @@ pub fn collision_point(
             );
         }
 
+        handle_vertex_collision(
+            chunk_data,
+            radius,
+            &square_pos,
+            &square_dir,
+            &mut collision,
+            &(transform.iso_inverse() * chunk.vertex.square_to_penta()),
+        );
+
         // If pos or pos+dir*max_t lies beyond the chunk boundary, with a buffer to account for radius, repeat
         // collision checking with the neighboring chunk unless it has already been visited. We start at vertex
         // AB for simplicity even if that's not where pos is, although this should be optimized later.
@@ -139,7 +148,7 @@ fn handle_basic_collision(
         let normal = normal.m_normalized_vector();
         let mip_pos_norm = square_pos.mip(&normal);
         let mip_dir_norm = square_dir.mip(&normal);
-        let sinh_radius_squared = (radius * radius).sinh();
+        let sinh_radius_squared = radius.sinh().powi(2);
         let quadratic_term = mip_dir_norm * mip_dir_norm + sinh_radius_squared;
         let double_linear_term = mip_pos_norm * mip_dir_norm;
         let constant_term = mip_pos_norm * mip_pos_norm - sinh_radius_squared;
@@ -166,6 +175,58 @@ fn handle_basic_collision(
                         collision.normal = Some(collision_transform * normal);
                     }
                 }
+            }
+        }
+    }
+}
+
+fn handle_vertex_collision(
+    chunk_data: ChunkData,
+    radius: f64,
+    square_pos: &na::Vector3<f64>,
+    square_dir: &na::Vector3<f64>,
+    collision: &mut Collision,
+    collision_transform: &na::Matrix3<f64>,
+) {
+    let size = chunk_data.chunk_size();
+    let float_size = size as f64;
+
+    for i in 0..=chunk_data.chunk_size() {
+        for j in 0..=chunk_data.chunk_size() {
+            if (i == 0 || j == 0 || chunk_data.get(i - 1, j - 1) == 0)
+                && (i == size || j == 0 || chunk_data.get(i, j - 1) == 0)
+                && (i == 0 || j == size || chunk_data.get(i - 1, j) == 0)
+                && (i == size || j == size || chunk_data.get(i, j) == 0)
+            {
+                continue;
+            }
+
+            let vert = na::Vector3::new(
+                i as f64 / float_size * Vertex::voxel_to_square_factor(),
+                j as f64 / float_size * Vertex::voxel_to_square_factor(),
+                1.0,
+            )
+            .m_normalized_point();
+
+            let mip_pos_vert = square_pos.mip(&vert);
+            let mip_dir_vert = square_dir.mip(&vert);
+            let cosh_radius_squared = radius.cosh().powi(2);
+            let quadratic_term = mip_dir_vert * mip_dir_vert + cosh_radius_squared;
+            let double_linear_term = mip_pos_vert * mip_dir_vert;
+            let constant_term = mip_pos_vert * mip_pos_vert - cosh_radius_squared;
+            let discriminant =
+                double_linear_term * double_linear_term - quadratic_term * constant_term;
+
+            if discriminant < 0.0 {
+                continue;
+            }
+
+            let t_candidate = (-double_linear_term - discriminant.sqrt()) / quadratic_term;
+
+            if t_candidate >= 0.0 && t_candidate < collision.t {
+                let translated_square_pos = square_pos + square_dir * t_candidate;
+                collision.t = t_candidate;
+                collision.normal = Some(collision_transform * (translated_square_pos - vert));
             }
         }
     }
