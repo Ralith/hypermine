@@ -59,10 +59,7 @@ pub fn collision_point(
     visited_chunks.insert(start_chunk);
     chunk_queue.push_back((start_chunk, na::Matrix3::identity()));
 
-    let mut collision = Collision {
-        t,
-        normal: None,
-    };
+    let mut collision = Collision { t, normal: None };
 
     let klein_boundary0 = radius.tanh();
     let klein_boundary1 = (Vertex::voxel_to_square_factor().atanh() - radius).tanh();
@@ -158,10 +155,9 @@ fn handle_basic_collision(
             let i_with_offset = if mip_dir_norm < 0.0 { i } else { i + 1 };
             if i_with_offset > 0 && i_with_offset <= chunk_data.chunk_size() {
                 let i_with_offset = i_with_offset - 1;
-
-                // TODO: May need a more complicated computation of b to properly accommodate width
-                let b = (square_pos[coord_plane0] + square_dir[coord_plane0] * t_candidate)
-                    / (square_pos.z + square_dir.z * t_candidate);
+                let translated_square_pos = square_pos + square_dir * t_candidate;
+                let b = translated_square_pos[coord_plane0] * (1.0 - a * a)
+                    / (translated_square_pos.z - translated_square_pos[coord_axis] * a);
                 let j = (b * Vertex::square_to_voxel_factor() * float_size).floor();
                 if j >= 0.0 && j < float_size {
                     let j = j as usize;
