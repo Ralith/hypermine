@@ -13,8 +13,10 @@ pub struct Tessellation {
 
 impl Tessellation {
     pub fn new(chunk_size: usize) -> Self {
+        let mut root_node = Node::new(chunk_size);
+        root_node.down = *Side::A.normal();
         Tessellation {
-            nodes: vec![Node::new(chunk_size)],
+            nodes: vec![root_node],
             root: NodeHandle { index: 0 },
             chunk_size,
         }
@@ -38,6 +40,10 @@ impl Tessellation {
         } else {
             0
         }
+    }
+
+    pub fn down(&self, node: NodeHandle) -> &na::Vector3<f64> {
+        &self.get_node(node).down
     }
 
     pub fn get_chunk_data(&self, node: NodeHandle, vertex: Vertex) -> ChunkData {
@@ -144,6 +150,10 @@ impl Tessellation {
         self.get_node_mut(child).is_odd = !self.get_node(node).is_odd;
         self.link_nodes(node, child, side);
 
+        // TODO: The "down" direction can be made more stable. However, this is likely not necessary
+        // for a basic collision demo.
+        self.get_node_mut(child).down = side.reflection() * self.get_node(node).down;
+
         // Higher-priority sides and already-pruned sides need to be pruned from the child
         for candidate_side in Side::iter().filter(|&s| side.is_neighbor(s)) {
             if candidate_side < side || !self.get_node(node).is_child[candidate_side] {
@@ -182,6 +192,7 @@ struct Node {
     is_child: EnumMap<Side, bool>,
     parent: Option<Side>,
     is_odd: bool,
+    down: na::Vector3<f64>,
 }
 
 impl Node {
@@ -192,6 +203,7 @@ impl Node {
             is_child: enum_map! { _ => true },
             parent: None,
             is_odd: false,
+            down: na::Vector3::zeros(),
         }
     }
 }

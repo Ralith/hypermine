@@ -83,6 +83,7 @@ impl Player {
             remaining_dt = self.apply_velocity_iteration(input.tessellation, remaining_dt);
         }
         self.hop_node(input.tessellation);
+        self.align_with_gravity(input.tessellation);
 
         // Prevent errors from building up
         self.transform.qr_normalize();
@@ -145,6 +146,12 @@ impl Player {
         }
 
         false
+    }
+
+    fn align_with_gravity(&mut self, tessellation: &Tessellation) {
+        let relative_down = self.transform.iso_inverse() * tessellation.down(self.node);
+        let theta = relative_down[0].atan2(relative_down[1]);
+        self.transform *= na::Matrix3::new_rotation(-theta);
     }
 
     pub fn pos(&self) -> &na::Matrix3<f64> {
