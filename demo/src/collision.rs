@@ -64,6 +64,9 @@ pub fn collision_point(
         normal: None,
     };
 
+    let klein_boundary0 = radius.tanh();
+    let klein_boundary1 = (Vertex::voxel_to_square_factor().atanh() - radius).tanh();
+
     while let Some((chunk, transform)) = chunk_queue.pop_front() {
         let chunk_data = tessellation.get_chunk_data(chunk.node, chunk.vertex);
         let square_pos = chunk.vertex.penta_to_square() * transform * pos;
@@ -82,7 +85,7 @@ pub fn collision_point(
             );
         }
 
-        // If pos or pos+dir*max_t lies beyond the chunk boundary (TODO: with a buffer for object size), repeat
+        // If pos or pos+dir*max_t lies beyond the chunk boundary, with a buffer to account for radius, repeat
         // collision checking with the neighboring chunk unless it has already been visited. We start at vertex
         // AB for simplicity even if that's not where pos is, although this should be optimized later.
         for coord_boundary in 0..2 {
@@ -92,7 +95,6 @@ pub fn collision_point(
                 / (square_pos[2] + square_dir[2] * collision.t);
 
             // Check for neighboring nodes. TODO: The use of unwrap here will cause a crash if you arrive at an ungenerated chunk.
-            let klein_boundary0 = 0.0;
             if klein_pos0_val <= klein_boundary0 || klein_pos1_val <= klein_boundary0 {
                 let side = chunk.vertex.sides()[coord_boundary];
                 let next_chunk = ChunkHandle::new(
@@ -105,7 +107,6 @@ pub fn collision_point(
             }
 
             // Check for neighboring chunks within the same node
-            let klein_boundary1 = 1.0 * Vertex::voxel_to_square_factor();
             if klein_pos0_val >= klein_boundary1 || klein_pos1_val >= klein_boundary1 {
                 let vertex = chunk.vertex.adjacent_vertices()[coord_boundary];
                 let next_chunk = ChunkHandle::new(chunk.node, vertex);
