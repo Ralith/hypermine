@@ -217,7 +217,7 @@ impl Chunk {
         Chunk {
             data: (0..chunk_size * chunk_size)
                 .map(|_| {
-                    if rand::thread_rng().gen::<f64>() < 0.2 {
+                    if rand::thread_rng().gen::<f64>() < 0.02 {
                         1
                     } else {
                         0

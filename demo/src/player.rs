@@ -62,6 +62,13 @@ impl Player {
         self.transform *=
             na::Matrix3::new_rotation(input.rotation_axis * self.rotation_speed * input.dt);
 
+        // Jumping
+        if self.ground_normal.is_some() && input.y_axis > 0.0 {
+            // TODO: Use a set-speed like jumping instead of an add-speed like jumping.
+            self.vel -= self.get_relative_down(input.tessellation);
+            self.ground_normal = None;
+        }
+
         // Apply input to velocity
         if let Some(ground_normal) = self.ground_normal {
             let mut target_unit_vel =
@@ -78,7 +85,10 @@ impl Player {
                 self.vel += target_dvel;
             }
         } else {
-            self.apply_gravity(&self.get_relative_down(input.tessellation), input.dt);
+            let relative_down = self.get_relative_down(input.tessellation);
+            self.vel -=
+                na::Vector3::new(relative_down.y, -relative_down.x, 0.) * input.x_axis * input.dt;
+            self.apply_gravity(&relative_down, input.dt);
         }
 
         // Apply velocity to position
