@@ -3,7 +3,10 @@ use std::collections::HashSet;
 use enum_map::{enum_map, EnumMap};
 use rand::Rng;
 
-use crate::penta::{Side, Vertex};
+use crate::{
+    math::HyperboloidVector,
+    penta::{Side, Vertex},
+};
 
 pub struct Tessellation {
     nodes: Vec<Node>,
@@ -27,6 +30,14 @@ impl Tessellation {
             chunk_size: self.chunk_size,
             strides: [1, self.chunk_size],
             data: &self.nodes[node.index].chunks[vertex].data,
+        }
+    }
+
+    pub fn mut_chunk_data(&mut self, node: NodeHandle, vertex: Vertex) -> MutChunkData {
+        MutChunkData {
+            chunk_size: self.chunk_size,
+            strides: [1, self.chunk_size],
+            data: &mut self.nodes[node.index].chunks[vertex].data,
         }
     }
 
@@ -56,6 +67,44 @@ impl Tessellation {
 
     pub fn get_neighbor(&self, node: NodeHandle, side: Side) -> Option<NodeHandle> {
         self.get_node(node).neighbors[side]
+    }
+
+    pub fn get_voxel_at_pos(
+        &mut self,
+        node: NodeHandle,
+        pos: na::Vector3<f64>,
+    ) -> Option<(MutChunkData, [usize; 2])> {
+        let mut current_node = node;
+        let mut current_pos = pos;
+        for _ in 0..5 {
+            for vertex in Vertex::iter() {
+                let mut voxel_pos = vertex.penta_to_voxel() * current_pos;
+                voxel_pos /= voxel_pos.z;
+                let integer_voxel_pos =
+                    voxel_pos.xy().map(|x| (x * self.chunk_size as f64).floor());
+                if integer_voxel_pos
+                    .iter()
+                    .all(|&x| x >= 0.0 && (x as usize) < self.chunk_size)
+                {
+                    return Some((
+                        self.mut_chunk_data(current_node, vertex),
+                        [integer_voxel_pos.x as usize, integer_voxel_pos.y as usize],
+                    ));
+                }
+            }
+
+            for side in Side::iter() {
+                if current_pos.mip(side.normal()) > 0.0 {
+                    if let Some(new_node) = self.get_neighbor(current_node, side) {
+                        current_node = new_node;
+                        current_pos = side.reflection() * current_pos;
+                    } else {
+                        return None;
+                    }
+                }
+            }
+        }
+        None
     }
 
     pub fn get_nearby(
@@ -246,6 +295,12 @@ pub struct ChunkData<'a> {
     data: &'a Vec<u8>,
 }
 
+pub struct MutChunkData<'a> {
+    chunk_size: usize,
+    strides: [usize; 2],
+    data: &'a mut Vec<u8>,
+}
+
 impl<'a> ChunkData<'a> {
     pub fn chunk_size(&self) -> usize {
         self.chunk_size
@@ -261,6 +316,30 @@ impl<'a> ChunkData<'a> {
         assert!(pos0 < self.chunk_size);
         assert!(pos1 < self.chunk_size);
         self.data[pos0 * self.strides[coord0] + pos1 * self.strides[coord1]]
+    }
+}
+
+impl<'a> MutChunkData<'a> {
+    pub fn chunk_size(&self) -> usize {
+        self.chunk_size
+    }
+
+    pub fn get(&self, x: usize, y: usize) -> u8 {
+        assert!(x < self.chunk_size);
+        assert!(y < self.chunk_size);
+        self.data[x + y * self.chunk_size]
+    }
+
+    pub fn get2(&self, coord0: usize, pos0: usize, coord1: usize, pos1: usize) -> u8 {
+        assert!(pos0 < self.chunk_size);
+        assert!(pos1 < self.chunk_size);
+        self.data[pos0 * self.strides[coord0] + pos1 * self.strides[coord1]]
+    }
+
+    pub fn set(&mut self, x: usize, y: usize, val: u8) {
+        assert!(x < self.chunk_size);
+        assert!(y < self.chunk_size);
+        self.data[x + y * self.chunk_size] = val;
     }
 }
 
