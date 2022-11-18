@@ -50,8 +50,8 @@ impl Player {
             transform: na::Matrix3::identity(),
             node,
             vel: na::Vector3::zeros(),
-            max_ground_speed: 0.5,
-            ground_acceleration: 2.5,
+            max_ground_speed: 0.2,
+            ground_acceleration: 1.0,
             rotation_speed: 1.0,
             ground_normal: None,
         }
@@ -93,7 +93,7 @@ impl<'a> PlayerPhysicsPass<'a> {
         // Jumping
         if self.player.ground_normal.is_some() && self.input.y_axis > 0.0 {
             // TODO: Use a set-speed like jumping instead of an add-speed like jumping.
-            self.player.vel -= self.get_relative_down();
+            self.player.vel -= self.get_relative_down() * 0.4;
             self.player.ground_normal = None;
         }
 
@@ -116,7 +116,8 @@ impl<'a> PlayerPhysicsPass<'a> {
             let relative_down = self.get_relative_down();
             self.player.vel -= na::Vector3::new(relative_down.y, -relative_down.x, 0.)
                 * self.input.x_axis
-                * self.input.dt;
+                * self.input.dt
+                * 0.2;
             self.apply_gravity();
         }
 
