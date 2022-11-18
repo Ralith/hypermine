@@ -1,5 +1,5 @@
 use crate::{
-    collision::collision_point,
+    collision::{collision_point, Collision},
     math::{HyperboloidMatrix, HyperboloidVector},
     penta::Side,
     tessellation::{NodeHandle, Tessellation},
@@ -139,50 +139,22 @@ impl Player {
 
     // Returns dt remaining
     fn apply_velocity_iteration(&mut self, tessellation: &Tessellation, dt: f64) -> f64 {
-        const EPSILON: f64 = 1e-5;
+        let (collision, collision_displacement) = self.get_collision(tessellation, self.vel * dt);
 
-        let current_pos = self.transform * na::Vector3::z();
-        let candidate_displacement = self.vel * dt;
-        let candidate_displacement_sqr = candidate_displacement.sqr();
-        if candidate_displacement_sqr < 1e-16 {
-            return 0.0;
-        }
-
-        let candidate_displacement_norm = candidate_displacement_sqr.sqrt();
-        let candidate_displacement_normalized =
-            candidate_displacement / candidate_displacement_norm;
-        let collision = collision_point(
-            tessellation,
-            self.radius,
-            self.node,
-            &current_pos,
-            &(self.transform * candidate_displacement_normalized),
-            candidate_displacement_norm.tanh() + EPSILON,
-        );
-
-        // TODO: A more robust and complex margin system will likely be needed once the
-        // overall algorithm settles more.
-        let t_with_epsilon = (collision.t - EPSILON).max(0.0);
-
-        self.transform *= (na::Vector3::z() + candidate_displacement_normalized * t_with_epsilon)
+        self.transform *= (na::Vector3::z() + collision_displacement)
             .m_normalized_point()
             .translation();
 
         // TODO: Will need to allow two collision normals to act at once, especially in 3D
         if let Some(normal) = collision.normal {
             let expected_displacement_norm = self.vel.norm() * dt;
-            let actual_displacement_norm = (candidate_displacement_normalized * t_with_epsilon)
-                .norm()
-                .atanh();
-            let local_normal = (self.transform.iso_inverse() * normal)
-                .project_z()
-                .m_normalized_vector();
+            let actual_displacement_norm = collision_displacement.norm().atanh();
 
-            if local_normal.mip(&self.get_relative_down(tessellation)) < -0.5 {
-                self.update_ground_normal(&local_normal);
+            if normal.mip(&self.get_relative_down(tessellation)) < -0.5 {
+                self.update_ground_normal(&normal);
             }
 
-            self.vel = self.vel.project(&local_normal);
+            self.vel = self.vel.project(&normal);
             dt * (1.0 - actual_displacement_norm / expected_displacement_norm)
         } else {
             0.0
@@ -190,38 +162,67 @@ impl Player {
     }
 
     fn clamp_to_ground_or_leave(&mut self, tessellation: &Tessellation) {
-        const EPSILON: f64 = 1e-5;
-
-        let collision = collision_point(
-            tessellation,
-            self.radius,
-            self.node,
-            &(self.transform * na::Vector3::z()),
-            &(self.transform * -na::Vector3::y()),
-            0.01,
-        );
+        // TODO: Need to be able to slide across steep slopes to reach the ground, or player might get "stuck" in a corner unable to jump.
+        let (collision, collision_displacement) =
+            self.get_collision(tessellation, -na::Vector3::y() * 0.01);
 
         if let Some(normal) = collision.normal {
-            let t_with_epsilon = (collision.t - EPSILON).max(0.0);
-
             let potential_transform = self.transform
-                * (na::Vector3::z() - na::Vector3::y() * t_with_epsilon)
+                * (na::Vector3::z() + collision_displacement)
                     .m_normalized_point()
                     .translation();
 
-            let local_normal = (potential_transform.iso_inverse() * normal)
-                .project_z()
-                .m_normalized_vector();
-
-            if local_normal.mip(&self.get_relative_down(tessellation)) < -0.5 {
+            if normal.mip(&self.get_relative_down(tessellation)) < -0.5 {
                 self.transform = potential_transform;
-                self.update_ground_normal(&local_normal);
+                self.update_ground_normal(&normal);
             } else {
                 self.ground_normal = None;
             }
         } else {
             self.ground_normal = None;
         }
+    }
+
+    fn get_collision(
+        &self,
+        tessellation: &Tessellation,
+        relative_displacement: na::Vector3<f64>,
+    ) -> (Collision, na::Vector3<f64>) {
+        const EPSILON: f64 = 1e-5;
+
+        let displacement_sqr = relative_displacement.sqr();
+        if displacement_sqr < 1e-16 {
+            return (
+                Collision {
+                    t: 0.0,
+                    normal: None,
+                },
+                na::Vector3::zeros(),
+            );
+        }
+
+        let displacement_norm = displacement_sqr.sqrt();
+        let displacement_normalized = relative_displacement / displacement_norm;
+
+        let mut collision = collision_point(
+            tessellation,
+            self.radius,
+            self.node,
+            &(self.transform * na::Vector3::z()),
+            &(self.transform * displacement_normalized),
+            displacement_norm.tanh() + EPSILON,
+        );
+
+        // TODO: A more robust and complex margin system will likely be needed once the
+        // overall algorithm settles more.
+        let t_with_epsilon = (collision.t - EPSILON).max(0.0);
+        collision.t = t_with_epsilon;
+        collision.normal = collision.normal.map(|n| {
+            (self.transform.iso_inverse() * n)
+                .project_z()
+                .m_normalized_vector()
+        });
+        (collision, displacement_normalized * t_with_epsilon)
     }
 
     fn hop_node(&mut self, tessellation: &Tessellation) -> bool {
