@@ -92,8 +92,9 @@ impl<'a> PlayerPhysicsPass<'a> {
 
         // Jumping
         if self.player.ground_normal.is_some() && self.input.y_axis > 0.0 {
-            // TODO: Use a set-speed like jumping instead of an add-speed like jumping.
-            self.player.vel -= self.get_relative_down() * 0.4;
+            let relative_down = self.get_relative_down();
+            let horizontal_vel = self.player.vel.project(&relative_down);
+            self.player.vel = horizontal_vel - relative_down * 0.4;
             self.player.ground_normal = None;
         }
 
@@ -151,7 +152,13 @@ impl<'a> PlayerPhysicsPass<'a> {
                 mid_ground_normal * reflected_vel.mip(&mid_ground_normal) * 2.0 - reflected_vel;
             self.player.ground_normal = Some(*new_ground_normal);
         } else {
-            self.player.vel = self.player.vel.project(new_ground_normal);
+            // To avoid undesirable sliding down slopes on every jump, project to a level ground plane
+            // before projecting to the actual group plane.
+            self.player.vel = self
+                .player
+                .vel
+                //.project(&self.get_relative_down()) TODO: Uncomment
+                .project(new_ground_normal);
             self.player.ground_normal = Some(*new_ground_normal);
         }
     }
@@ -171,16 +178,14 @@ impl<'a> PlayerPhysicsPass<'a> {
 
     // Returns dt remaining
     fn apply_velocity_iteration(&mut self, dt: f64) -> f64 {
-        let (collision, collision_displacement) = self.get_collision(self.player.vel * dt);
+        let (collision, collision_transform) = self.get_collision(self.player.vel * dt);
 
-        self.player.transform *= (na::Vector3::z() + collision_displacement)
-            .m_normalized_point()
-            .translation();
+        self.player.transform *= collision_transform;
 
         // TODO: Will need to allow two collision normals to act at once, especially in 3D
         if let Some(normal) = collision.normal {
             let expected_displacement_norm = self.player.vel.norm() * dt;
-            let actual_displacement_norm = collision_displacement.norm().atanh();
+            let actual_displacement_norm = collision.t.atanh();
 
             if normal.mip(&self.get_relative_down()) < -0.5 {
                 self.update_ground_normal(&normal);
@@ -195,14 +200,10 @@ impl<'a> PlayerPhysicsPass<'a> {
 
     fn clamp_to_ground_or_leave(&mut self) {
         // TODO: Need to be able to slide across steep slopes to reach the ground, or player might get "stuck" in a corner unable to jump.
-        let (collision, collision_displacement) = self.get_collision(-na::Vector3::y() * 0.01);
+        let (collision, collision_transform) = self.get_collision(-na::Vector3::y() * 0.01);
 
         if let Some(normal) = collision.normal {
-            let potential_transform = self.player.transform
-                * (na::Vector3::z() + collision_displacement)
-                    .m_normalized_point()
-                    .translation();
-
+            let potential_transform = self.player.transform * collision_transform;
             if normal.mip(&self.get_relative_down()) < -0.5 {
                 self.player.transform = potential_transform;
                 self.update_ground_normal(&normal);
@@ -217,7 +218,7 @@ impl<'a> PlayerPhysicsPass<'a> {
     fn get_collision(
         &self,
         relative_displacement: na::Vector3<f64>,
-    ) -> (Collision, na::Vector3<f64>) {
+    ) -> (Collision, na::Matrix3<f64>) {
         const EPSILON: f64 = 1e-5;
 
         let displacement_sqr = relative_displacement.sqr();
@@ -227,7 +228,7 @@ impl<'a> PlayerPhysicsPass<'a> {
                     t: 0.0,
                     normal: None,
                 },
-                na::Vector3::zeros(),
+                na::Matrix3::identity(),
             );
         }
 
@@ -252,7 +253,12 @@ impl<'a> PlayerPhysicsPass<'a> {
                 .project_z()
                 .m_normalized_vector()
         });
-        (collision, displacement_normalized * t_with_epsilon)
+        (
+            collision,
+            (na::Vector3::z() + displacement_normalized * t_with_epsilon)
+                .m_normalized_point()
+                .translation(),
+        )
     }
 
     fn hop_node(&mut self) -> bool {
