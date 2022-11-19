@@ -178,7 +178,7 @@ impl<'a> PlayerPhysicsPass<'a> {
 
     // Returns dt remaining
     fn apply_velocity_iteration(&mut self, dt: f64) -> f64 {
-        let (collision, collision_transform) = self.get_collision(self.player.vel * dt);
+        let (collision, collision_transform) = self.get_collision(&(self.player.vel * dt));
 
         self.player.transform *= collision_transform;
 
@@ -199,25 +199,35 @@ impl<'a> PlayerPhysicsPass<'a> {
     }
 
     fn clamp_to_ground_or_leave(&mut self) {
-        // TODO: Need to be able to slide across steep slopes to reach the ground, or player might get "stuck" in a corner unable to jump.
-        let (collision, collision_transform) = self.get_collision(-na::Vector3::y() * 0.01);
+        let mut clamp_vector = -na::Vector3::y() * 0.01;
+        for _ in 0..5 {
+            let (collision, collision_transform) = self.get_collision(&clamp_vector);
 
-        if let Some(normal) = collision.normal {
-            let potential_transform = self.player.transform * collision_transform;
-            if normal.mip(&self.get_relative_down()) < -0.5 {
-                self.player.transform = potential_transform;
-                self.update_ground_normal(&normal);
+            // TODO: Will need to allow two collision normals to act at once, especially in 3D
+            if let Some(normal) = collision.normal {
+                let potential_transform = self.player.transform * collision_transform;
+                if normal.mip(&self.get_relative_down()) < -0.5 {
+                    self.player.transform = potential_transform;
+                    self.update_ground_normal(&normal);
+                    return;
+                } else {
+                    // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
+                    // More accurate shrinkage can be found at apply_velocity_iteration.
+                    clamp_vector = (clamp_vector - collision_transform.column(2)).project_z();
+                    // Adjust clamp vector to be perpendicular to the normal vector.
+                    clamp_vector = clamp_vector.project(&normal);
+                    self.player.ground_normal = None;
+                }
             } else {
-                self.player.ground_normal = None;
+                break;
             }
-        } else {
-            self.player.ground_normal = None;
         }
+        self.player.ground_normal = None;
     }
 
     fn get_collision(
         &self,
-        relative_displacement: na::Vector3<f64>,
+        relative_displacement: &na::Vector3<f64>,
     ) -> (Collision, na::Matrix3<f64>) {
         const EPSILON: f64 = 1e-5;
 
