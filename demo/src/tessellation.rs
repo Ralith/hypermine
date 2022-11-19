@@ -18,6 +18,7 @@ impl Tessellation {
     pub fn new(chunk_size: usize) -> Self {
         let mut root_node = Node::new(chunk_size);
         root_node.down = *Side::A.normal();
+        root_node.is_near_ground = true;
         Tessellation {
             nodes: vec![root_node],
             root: NodeHandle { index: 0 },
@@ -199,9 +200,14 @@ impl Tessellation {
         self.get_node_mut(child).is_odd = !self.get_node(node).is_odd;
         self.link_nodes(node, child, side);
 
-        // TODO: The "down" direction can be made more stable. However, this is likely not necessary
-        // for a basic collision demo.
-        self.get_node_mut(child).down = side.reflection() * self.get_node(node).down;
+        if self.get_node(node).is_near_ground && side.is_neighbor(Side::A) {
+            // Rather than applying an ostensibly no-op reflection, creating an unstable equilibrium, just do nothing.
+            self.get_node_mut(child).down = self.get_node(node).down;
+            self.get_node_mut(child).is_near_ground = true;
+        } else {
+            self.get_node_mut(child).down = side.reflection() * self.get_node(node).down;
+            self.get_node_mut(child).is_near_ground = self.get_node(node).is_near_ground && side == Side::A;
+        }
 
         // Higher-priority sides and already-pruned sides need to be pruned from the child
         for candidate_side in Side::iter().filter(|&s| side.is_neighbor(s)) {
@@ -242,6 +248,7 @@ struct Node {
     parent: Option<Side>,
     is_odd: bool,
     down: na::Vector3<f64>,
+    is_near_ground: bool,
 }
 
 impl Node {
@@ -253,6 +260,7 @@ impl Node {
             parent: None,
             is_odd: false,
             down: na::Vector3::zeros(),
+            is_near_ground: false,
         }
     }
 }
