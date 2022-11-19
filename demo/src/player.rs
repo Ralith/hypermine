@@ -157,7 +157,7 @@ impl<'a> PlayerPhysicsPass<'a> {
             self.player.vel = self
                 .player
                 .vel
-                //.project(&self.get_relative_down()) TODO: Uncomment
+                .project(&self.get_relative_down())
                 .project(new_ground_normal);
             self.player.ground_normal = Some(*new_ground_normal);
         }
