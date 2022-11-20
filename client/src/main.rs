@@ -19,7 +19,7 @@ fn main() {
     if config.server.is_none() {
         // spawn an in-process server
         let socket =
-            UdpSocket::bind(&"[::1]:0".parse::<SocketAddr>().unwrap()).expect("binding socket");
+            UdpSocket::bind("[::1]:0".parse::<SocketAddr>().unwrap()).expect("binding socket");
         config.server = Some(socket.local_addr().unwrap());
 
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();

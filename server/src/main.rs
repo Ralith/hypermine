@@ -66,7 +66,7 @@ pub fn run() -> Result<()> {
         server::NetParams {
             certificate_chain,
             private_key,
-            socket: UdpSocket::bind(&cfg.listen).context("binding socket")?,
+            socket: UdpSocket::bind(cfg.listen).context("binding socket")?,
         },
         SimConfig::from_raw(&cfg.simulation),
     )
