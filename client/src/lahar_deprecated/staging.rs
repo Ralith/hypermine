@@ -33,7 +33,7 @@ impl StagingBuffer {
     ) -> Self {
         let buffer = unsafe {
             DedicatedMapping::zeroed_array(
-                &*device,
+                &device,
                 props,
                 vk::BufferUsageFlags::TRANSFER_SRC,
                 capacity,
@@ -98,7 +98,7 @@ impl StagingBuffer {
 impl Drop for StagingBuffer {
     fn drop(&mut self) {
         unsafe {
-            self.buffer.destroy(&*self.device);
+            self.buffer.destroy(&self.device);
         }
     }
 }
