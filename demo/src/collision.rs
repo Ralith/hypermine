@@ -172,7 +172,8 @@ fn handle_basic_collision(
                     let j = j as usize;
                     if chunk_data.get2(coord_axis, i_with_offset, coord_plane0, j) != 0 {
                         collision.t = t_candidate;
-                        collision.normal = Some(collision_transform * normal * -mip_dir_norm.signum());
+                        collision.normal =
+                            Some(collision_transform * normal * -mip_dir_norm.signum());
                     }
                 }
             }

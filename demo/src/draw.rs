@@ -3,7 +3,8 @@ use ggez::{graphics, mint, Context, GameResult};
 use crate::{
     color::Color,
     penta::Vertex,
-    tessellation::{NodeHandle, Tessellation}, player::Player,
+    player::Player,
+    tessellation::{NodeHandle, Tessellation},
 };
 
 pub struct RenderPass<'a> {

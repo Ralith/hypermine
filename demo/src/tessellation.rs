@@ -47,11 +47,7 @@ impl Tessellation {
     }
 
     pub fn parity(&self, node: NodeHandle) -> u32 {
-        if self.get_node(node).is_odd {
-            1
-        } else {
-            0
-        }
+        self.get_node(node).is_odd as u32
     }
 
     pub fn down(&self, node: NodeHandle) -> &na::Vector3<f64> {
@@ -206,7 +202,8 @@ impl Tessellation {
             self.get_node_mut(child).is_near_ground = true;
         } else {
             self.get_node_mut(child).down = side.reflection() * self.get_node(node).down;
-            self.get_node_mut(child).is_near_ground = self.get_node(node).is_near_ground && side == Side::A;
+            self.get_node_mut(child).is_near_ground =
+                self.get_node(node).is_near_ground && side == Side::A;
         }
 
         // Higher-priority sides and already-pruned sides need to be pruned from the child
@@ -273,13 +270,7 @@ impl Chunk {
     fn new(chunk_size: usize) -> Chunk {
         Chunk {
             data: (0..chunk_size * chunk_size)
-                .map(|_| {
-                    if rand::thread_rng().gen::<f64>() < 0.02 {
-                        1
-                    } else {
-                        0
-                    }
-                })
+                .map(|_| (rand::thread_rng().gen::<f64>() < 0.02) as u8)
                 .collect(),
         }
     }

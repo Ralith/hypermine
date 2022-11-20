@@ -1,6 +1,6 @@
 //! A few simple utilities to make it easier to color entities in the demo appropriately
 
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign, Div, DivAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A color represented in linear RGB. A method exist to get its luminance, which weights red,
 /// green, and blue appropriately.

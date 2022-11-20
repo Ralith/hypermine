@@ -169,7 +169,8 @@ impl Penta {
         }
 
         for (vertex, vertex_pos) in vertices.iter_mut() {
-            *vertex_pos = normals[vertex_sides[vertex][1]].normal(&normals[vertex_sides[vertex][0]]);
+            *vertex_pos =
+                normals[vertex_sides[vertex][1]].normal(&normals[vertex_sides[vertex][0]]);
             *vertex_pos /= (-vertex_pos.sqr()).sqrt();
         }
 

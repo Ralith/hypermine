@@ -3,7 +3,9 @@ use std::ops::{DivAssign, Index, SubAssign};
 
 type GeneralVector3<S> = na::Vector<f64, U3, S>;
 
-pub trait HyperboloidVector: Index<usize, Output = f64> + std::ops::Mul<f64, Output = na::Vector3<f64>> {
+pub trait HyperboloidVector:
+    Index<usize, Output = f64> + std::ops::Mul<f64, Output = na::Vector3<f64>>
+{
     fn to_point(&self) -> [f32; 2];
     fn translation(&self) -> na::Matrix3<f64>;
     fn reflection(&self) -> na::Matrix3<f64>;
