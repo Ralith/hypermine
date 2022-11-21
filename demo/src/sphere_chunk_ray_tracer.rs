@@ -32,25 +32,30 @@ impl SphereChunkRayTracer {
             let t_candidate =
                 Self::find_intersection_one_vector(pos, dir, &normal, self.radius.sinh().powi(2));
 
-            if t_candidate >= 0.0 && t_candidate < handle.t() {
-                let mip_dir_norm = dir.mip(&normal);
-                let i_with_offset = if mip_dir_norm < 0.0 { i } else { i + 1 };
-                if i_with_offset > 0 && i_with_offset <= chunk_data.chunk_size() {
-                    let i_with_offset = i_with_offset - 1;
-                    let translated_square_pos = pos + dir * t_candidate;
-                    let b = translated_square_pos[coord_plane0] * (1.0 - a * a)
-                        / (translated_square_pos.z - translated_square_pos[coord_axis] * a);
-                    let j = (b * Vertex::square_to_voxel_factor() * float_size).floor();
-                    if j >= 0.0 && j < float_size {
-                        let j = j as usize;
-                        if chunk_data.get2(coord_axis, i_with_offset, coord_plane0, j) != 0 {
-                            handle.update(
-                                t_candidate,
-                                [0, 0], /* TODO */
-                                normal * -mip_dir_norm.signum(),
-                            );
-                        }
-                    }
+            // If t_candidate is out of range or NaN, don't continue collision checking
+            if !(t_candidate >= 0.0 && t_candidate < handle.t()) {
+                continue;
+            }
+
+            let mip_dir_norm = dir.mip(&normal);
+            let i_with_offset = if mip_dir_norm < 0.0 { i } else { i + 1 };
+            if !(i_with_offset > 0 && i_with_offset <= chunk_data.chunk_size()) {
+                continue;
+            }
+            let i_with_offset = i_with_offset - 1;
+
+            let translated_square_pos = pos + dir * t_candidate;
+            let b = translated_square_pos[coord_plane0] * (1.0 - a * a)
+                / (translated_square_pos.z - translated_square_pos[coord_axis] * a);
+            let j = (b * Vertex::square_to_voxel_factor() * float_size).floor();
+            if j >= 0.0 && j < float_size {
+                let j = j as usize;
+                if chunk_data.get2(coord_axis, i_with_offset, coord_plane0, j) != 0 {
+                    handle.update(
+                        t_candidate,
+                        [0, 0], /* TODO */
+                        normal * -mip_dir_norm.signum(),
+                    );
                 }
             }
         }
@@ -86,14 +91,17 @@ impl SphereChunkRayTracer {
                 let t_candidate =
                     Self::find_intersection_one_vector(pos, dir, &vert, self.radius.cosh().powi(2));
 
-                if t_candidate >= 0.0 && t_candidate < handle.t() {
-                    let translated_square_pos = pos + dir * t_candidate;
-                    handle.update(
-                        t_candidate,
-                        [0, 0], /* TODO */
-                        translated_square_pos - vert,
-                    );
+                // If t_candidate is out of range or NaN, don't continue collision checking
+                if !(t_candidate >= 0.0 && t_candidate < handle.t()) {
+                    continue;
                 }
+
+                let translated_square_pos = pos + dir * t_candidate;
+                handle.update(
+                    t_candidate,
+                    [0, 0], /* TODO */
+                    translated_square_pos - vert,
+                );
             }
         }
     }
