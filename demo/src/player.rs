@@ -1,7 +1,8 @@
 use crate::{
-    collision::{collision_point, Collision},
+    chunk_ray_tracer::{ChunkRayTracer, RayTracingResult, RayTracingResultHandle},
     math::{HyperboloidMatrix, HyperboloidVector},
     penta::Side,
+    sphere_chunk_ray_tracer::SphereChunkRayTracer,
     tessellation::{NodeHandle, Tessellation},
 };
 
@@ -178,20 +179,20 @@ impl<'a> PlayerPhysicsPass<'a> {
 
     // Returns dt remaining
     fn apply_velocity_iteration(&mut self, dt: f64) -> f64 {
-        let (collision, collision_transform) = self.get_collision(&(self.player.vel * dt));
+        let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&(self.player.vel * dt));
 
-        self.player.transform *= collision_transform;
+        self.player.transform *= ray_tracing_transform;
 
         // TODO: Will need to allow two collision normals to act at once, especially in 3D
-        if let Some(normal) = collision.normal {
+        if let Some(intersection) = ray_tracing_result.intersection {
             let expected_displacement_norm = self.player.vel.norm() * dt;
-            let actual_displacement_norm = collision.t.atanh();
+            let actual_displacement_norm = ray_tracing_result.t.atanh();
 
-            if normal.mip(&self.get_relative_down()) < -0.5 {
-                self.update_ground_normal(&normal);
+            if intersection.normal.mip(&self.get_relative_down()) < -0.5 {
+                self.update_ground_normal(&intersection.normal);
             }
 
-            self.player.vel = self.player.vel.project(&normal);
+            self.player.vel = self.player.vel.project(&intersection.normal);
             dt * (1.0 - actual_displacement_norm / expected_displacement_norm)
         } else {
             0.0
@@ -201,21 +202,21 @@ impl<'a> PlayerPhysicsPass<'a> {
     fn clamp_to_ground_or_leave(&mut self) {
         let mut clamp_vector = -na::Vector3::y() * 0.01;
         for _ in 0..5 {
-            let (collision, collision_transform) = self.get_collision(&clamp_vector);
+            let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&clamp_vector);
 
             // TODO: Will need to allow two collision normals to act at once, especially in 3D
-            if let Some(normal) = collision.normal {
-                let potential_transform = self.player.transform * collision_transform;
-                if normal.mip(&self.get_relative_down()) < -0.5 {
+            if let Some(intersection) = ray_tracing_result.intersection {
+                let potential_transform = self.player.transform * ray_tracing_transform;
+                if intersection.normal.mip(&self.get_relative_down()) < -0.5 {
                     self.player.transform = potential_transform;
-                    self.update_ground_normal(&normal);
+                    self.update_ground_normal(&intersection.normal);
                     return;
                 } else {
                     // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
                     // More accurate shrinkage can be found at apply_velocity_iteration.
-                    clamp_vector = (clamp_vector - collision_transform.column(2)).project_z();
+                    clamp_vector = (clamp_vector - ray_tracing_transform.column(2)).project_z();
                     // Adjust clamp vector to be perpendicular to the normal vector.
-                    clamp_vector = clamp_vector.project(&normal);
+                    clamp_vector = clamp_vector.project(&intersection.normal);
                     self.player.ground_normal = None;
                 }
             } else {
@@ -225,18 +226,18 @@ impl<'a> PlayerPhysicsPass<'a> {
         self.player.ground_normal = None;
     }
 
-    fn get_collision(
+    fn trace_ray(
         &self,
         relative_displacement: &na::Vector3<f64>,
-    ) -> (Collision, na::Matrix3<f64>) {
+    ) -> (RayTracingResult, na::Matrix3<f64>) {
         const EPSILON: f64 = 1e-5;
 
         let displacement_sqr = relative_displacement.sqr();
         if displacement_sqr < 1e-16 {
             return (
-                Collision {
+                RayTracingResult {
                     t: 0.0,
-                    normal: None,
+                    intersection: None,
                 },
                 na::Matrix3::identity(),
             );
@@ -245,26 +246,32 @@ impl<'a> PlayerPhysicsPass<'a> {
         let displacement_norm = displacement_sqr.sqrt();
         let displacement_normalized = relative_displacement / displacement_norm;
 
-        let mut collision = collision_point(
+        let mut ray_tracing_result = RayTracingResult::new(displacement_norm.tanh() + EPSILON);
+        SphereChunkRayTracer {
+            radius: self.player.radius,
+        }
+        .trace_ray_in_tessellation(
             self.input.tessellation,
-            self.player.radius,
             self.player.node,
             &(self.player.transform * na::Vector3::z()),
             &(self.player.transform * displacement_normalized),
-            displacement_norm.tanh() + EPSILON,
+            &mut RayTracingResultHandle::new(
+                &mut ray_tracing_result,
+                self.player.transform.iso_inverse(),
+            ),
         );
 
         // TODO: A more robust and complex margin system will likely be needed once the
         // overall algorithm settles more.
-        let t_with_epsilon = (collision.t - EPSILON).max(0.0);
-        collision.t = t_with_epsilon;
-        collision.normal = collision.normal.map(|n| {
-            (self.player.transform.iso_inverse() * n)
-                .project_z()
-                .m_normalized_vector()
-        });
+        let t_with_epsilon = (ray_tracing_result.t - EPSILON).max(0.0);
+
+        ray_tracing_result.t = t_with_epsilon;
+        if let Some(intersection) = ray_tracing_result.intersection.as_mut() {
+            intersection.normal = intersection.normal.project_z().m_normalized_vector();
+        }
+
         (
-            collision,
+            ray_tracing_result,
             (na::Vector3::z() + displacement_normalized * t_with_epsilon)
                 .m_normalized_point()
                 .translation(),
