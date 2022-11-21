@@ -258,16 +258,15 @@ impl ChunkParams {
     /// Performs all terrain generation that can be done one voxel at a time and with
     /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
-        let normal = Normal::new(0.0, 0.03);
+        let normal = Normal::new(0.0, 0.03).unwrap();
 
         for (x, y, z) in VoxelCoords::new(self.dimension) {
             let coords = na::Vector3::new(x, y, z);
             let center = voxel_center(self.dimension, coords);
             let trilerp_coords = center.map(|x| (1.0 - x) * 0.5);
 
-            let rain = trilerp(&self.env.rainfalls, trilerp_coords) + rng.sample(&normal.unwrap());
-            let temp =
-                trilerp(&self.env.temperatures, trilerp_coords) + rng.sample(&normal.unwrap());
+            let rain = trilerp(&self.env.rainfalls, trilerp_coords) + rng.sample(normal);
+            let temp = trilerp(&self.env.temperatures, trilerp_coords) + rng.sample(normal);
 
             // elev is calculated in multiple steps. The initial value elev_pre_terracing
             // is used to calculate elev_pre_noise which is used to calculate elev.
@@ -288,7 +287,7 @@ impl ChunkParams {
             let dist_pre_noise = elev_pre_noise / TERRAIN_SMOOTHNESS - voxel_elevation;
 
             // adding noise allows interfaces between strata to be rough
-            let elev = elev_pre_noise + TERRAIN_SMOOTHNESS * rng.sample(&normal.unwrap());
+            let elev = elev_pre_noise + TERRAIN_SMOOTHNESS * rng.sample(normal);
 
             // Final value of dist is calculated in this roundabout way for greater control
             // over how noise in elev affects dist.
@@ -483,13 +482,13 @@ impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0);
-        let max_elevation = parent.max_elevation + rng.sample(&Normal::new(0.0, 4.0).unwrap());
+        let max_elevation = parent.max_elevation + rng.sample(Normal::new(0.0, 4.0).unwrap());
 
         Self {
             max_elevation,
-            temperature: parent.temperature + rng.sample(&unif),
-            rainfall: parent.rainfall + rng.sample(&unif),
-            blockiness: parent.blockiness + rng.sample(&unif),
+            temperature: parent.temperature + rng.sample(unif),
+            rainfall: parent.rainfall + rng.sample(unif),
+            blockiness: parent.blockiness + rng.sample(unif),
         }
     }
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
