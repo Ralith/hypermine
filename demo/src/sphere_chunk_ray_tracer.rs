@@ -29,22 +29,11 @@ impl SphereChunkRayTracer {
             let mut normal = na::Vector3::new(0.0, 0.0, a);
             normal[coord_axis] = 1.0;
             let normal = normal.m_normalized_vector();
-            let mip_pos_norm = pos.mip(&normal);
-            let mip_dir_norm = dir.mip(&normal);
-            let sinh_radius_squared = self.radius.sinh().powi(2);
-            let quadratic_term = mip_dir_norm * mip_dir_norm + sinh_radius_squared;
-            let double_linear_term = mip_pos_norm * mip_dir_norm;
-            let constant_term = mip_pos_norm * mip_pos_norm - sinh_radius_squared;
-            let discriminant =
-                double_linear_term * double_linear_term - quadratic_term * constant_term;
-
-            if discriminant < 0.0 {
-                continue;
-            }
-
-            let t_candidate = (-double_linear_term - discriminant.sqrt()) / quadratic_term;
+            let t_candidate =
+                Self::find_intersection_one_vector(pos, dir, &normal, self.radius.sinh().powi(2));
 
             if t_candidate >= 0.0 && t_candidate < handle.t() {
+                let mip_dir_norm = dir.mip(&normal);
                 let i_with_offset = if mip_dir_norm < 0.0 { i } else { i + 1 };
                 if i_with_offset > 0 && i_with_offset <= chunk_data.chunk_size() {
                     let i_with_offset = i_with_offset - 1;
@@ -94,20 +83,8 @@ impl SphereChunkRayTracer {
                 )
                 .m_normalized_point();
 
-                let mip_pos_vert = pos.mip(&vert);
-                let mip_dir_vert = dir.mip(&vert);
-                let cosh_radius_squared = self.radius.cosh().powi(2);
-                let quadratic_term = mip_dir_vert * mip_dir_vert + cosh_radius_squared;
-                let double_linear_term = mip_pos_vert * mip_dir_vert;
-                let constant_term = mip_pos_vert * mip_pos_vert - cosh_radius_squared;
-                let discriminant =
-                    double_linear_term * double_linear_term - quadratic_term * constant_term;
-
-                if discriminant < 0.0 {
-                    continue;
-                }
-
-                let t_candidate = (-double_linear_term - discriminant.sqrt()) / quadratic_term;
+                let t_candidate =
+                    Self::find_intersection_one_vector(pos, dir, &vert, self.radius.cosh().powi(2));
 
                 if t_candidate >= 0.0 && t_candidate < handle.t() {
                     let translated_square_pos = pos + dir * t_candidate;
@@ -119,6 +96,68 @@ impl SphereChunkRayTracer {
                 }
             }
         }
+    }
+
+    /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
+    /// `<v,a>^2 / <v,v> == c`
+    ///
+    /// If `a` is direction-like, this finds intersections with a surface that is `sinh^2(c)` units
+    /// away from the plane whose normal is `a`.  If `a` is point-like, this finds intersections
+    /// with a sphere centered at `a` with radius `cosh^2(c)`.
+    fn find_intersection_one_vector(
+        pos: &na::Vector3<f64>,
+        dir: &na::Vector3<f64>,
+        a: &na::Vector3<f64>,
+        c: f64,
+    ) -> f64 {
+        let mip_pos_a = pos.mip(a);
+        let mip_dir_a = dir.mip(a);
+
+        // The following 3 variables are terms of the quadratic formula. We use double the linear
+        // term because it removes the annoying constants from that formula.
+        let quadratic_term = mip_dir_a.powi(2) + c;
+        let double_linear_term = mip_pos_a * mip_dir_a;
+        let constant_term = mip_pos_a.powi(2) - c;
+
+        let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
+
+        // While discriminant can be negative, NaNs propagate the way we want to, so we don't have
+        // to check for this.
+        (-double_linear_term - discriminant.sqrt()) / quadratic_term
+    }
+
+    /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
+    /// `(<v,a>^2 - <v,b>^2) / <v,v> == c`
+    ///
+    /// This finds intersections with a surface that is `cosh^2(c)` units away from the line
+    /// with a point at `a` with direction `b`, where `<a,b>==0`. This method is redundant in 2D,
+    /// but it will be needed in 3D.
+    /// 
+    /// Returns NaN if there's no such intersection
+    #[allow(dead_code)]
+    fn find_intersection_two_vectors(
+        pos: &na::Vector3<f64>,
+        dir: &na::Vector3<f64>,
+        a: &na::Vector3<f64>,
+        b: &na::Vector3<f64>,
+        c: f64,
+    ) -> f64 {
+        let mip_pos_a = pos.mip(a);
+        let mip_dir_a = dir.mip(a);
+        let mip_pos_b = pos.mip(b);
+        let mip_dir_b = dir.mip(b);
+
+        // The following 3 variables are terms of the quadratic formula. We use double the linear
+        // term because it removes the annoying constants from that formula.
+        let quadratic_term = mip_dir_a.powi(2) - mip_dir_b.powi(2) + c;
+        let double_linear_term = mip_pos_a * mip_dir_a - mip_pos_b * mip_dir_b;
+        let constant_term = mip_pos_a * mip_pos_a - mip_pos_b * mip_dir_b - c;
+
+        let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
+
+        // While discriminant can be negative, NaNs propagate the way we want to, so we don't have
+        // to check for this.
+        (-double_linear_term - discriminant.sqrt()) / quadratic_term
     }
 }
 
