@@ -234,13 +234,7 @@ impl<'a> PlayerPhysicsPass<'a> {
 
         let displacement_sqr = relative_displacement.sqr();
         if displacement_sqr < 1e-16 {
-            return (
-                RayTracingResult {
-                    t: 0.0,
-                    intersection: None,
-                },
-                na::Matrix3::identity(),
-            );
+            return (RayTracingResult::new(0.0), na::Matrix3::identity());
         }
 
         let displacement_norm = displacement_sqr.sqrt();

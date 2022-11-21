@@ -32,8 +32,10 @@ pub trait ChunkRayTracer {
         visited_chunks.insert(start_chunk);
         chunk_queue.push_back((start_chunk, na::Matrix3::identity()));
 
-        let klein_boundary0 = self.max_radius().tanh();
-        let klein_boundary1 = (Vertex::voxel_to_square_factor().atanh() - self.max_radius()).tanh();
+        const EPSILON: f64 = 1e-5;
+        let klein_boundary0 = (self.max_radius() + EPSILON).tanh();
+        let klein_boundary1 =
+            (Vertex::voxel_to_square_factor().atanh() - (self.max_radius() + EPSILON)).tanh();
 
         while let Some((chunk, transform)) = chunk_queue.pop_front() {
             let chunk_data = tessellation.get_chunk_data(chunk.node, chunk.vertex);

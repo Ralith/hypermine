@@ -138,6 +138,6 @@ impl ChunkRayTracer for SphereChunkRayTracer {
     }
 
     fn max_radius(&self) -> f64 {
-        self.radius // TODO: Consider adding epsilon to consumers of this method
+        self.radius
     }
 }
