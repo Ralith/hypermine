@@ -129,7 +129,7 @@ impl SphereChunkRayTracer {
         // term because it removes the annoying constants from that formula.
         let quadratic_term = mip_dir_a.powi(2) + c.powi(2) + 1.0;
         let double_linear_term = mip_pos_a * mip_dir_a;
-        let constant_term = mop_pos_a_sqr - c * c;
+        let constant_term = mop_pos_a_sqr - c.powi(2);
 
         let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
 
@@ -183,6 +183,7 @@ impl SphereChunkRayTracer {
         b: &na::Vector3<f32>,
         c: f32,
     ) -> f32 {
+        // TODO: Improve numerical stability
         let mip_pos_a = pos.mip(a);
         let mip_dir_a = dir.mip(a);
         let mip_pos_b = pos.mip(b);
