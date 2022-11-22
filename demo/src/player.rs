@@ -11,9 +11,12 @@ pub struct Player {
     transform: na::Matrix3<f64>,
     node: NodeHandle,
     vel: na::Vector3<f64>,
+    ground_normal: Option<na::Vector3<f64>>,
     max_ground_speed: f64,
     ground_acceleration: f64,
-    ground_normal: Option<na::Vector3<f64>>,
+    air_acceleration: f64,
+    jump_speed: f64,
+    max_cos_slope: f64,
 }
 
 pub struct PlayerInput<'a> {
@@ -45,9 +48,12 @@ impl Player {
             transform: na::Matrix3::identity(),
             node,
             vel: na::Vector3::zeros(),
+            ground_normal: None,
             max_ground_speed: 0.2,
             ground_acceleration: 1.0,
-            ground_normal: None,
+            air_acceleration: 0.2,
+            jump_speed: 0.4,
+            max_cos_slope: 0.5,
         }
     }
 
@@ -78,6 +84,8 @@ struct PlayerPhysicsPass<'a> {
 }
 
 impl<'a> PlayerPhysicsPass<'a> {
+    const MAX_COLLISION_ITERATIONS: u32 = 5;
+
     fn step(&mut self) {
         if self.input.jumping {
             self.attempt_jump();
@@ -104,7 +112,7 @@ impl<'a> PlayerPhysicsPass<'a> {
         if self.player.ground_normal.is_some() {
             let relative_down = self.get_relative_down();
             let horizontal_vel = self.player.vel.project(&relative_down);
-            self.player.vel = horizontal_vel - relative_down * 0.4;
+            self.player.vel = horizontal_vel - relative_down * self.player.jump_speed;
             self.player.ground_normal = None;
         }
     }
@@ -130,7 +138,7 @@ impl<'a> PlayerPhysicsPass<'a> {
         self.player.vel -= na::Vector3::new(relative_down.y, -relative_down.x, 0.)
             * self.input.x_axis
             * self.input.dt
-            * 0.2;
+            * self.player.air_acceleration;
     }
 
     fn apply_gravity(&mut self) {
@@ -140,7 +148,7 @@ impl<'a> PlayerPhysicsPass<'a> {
 
     fn apply_velocity(&mut self) {
         let mut remaining_dt = self.input.dt;
-        for _ in 0..5 {
+        for _ in 0..Self::MAX_COLLISION_ITERATIONS {
             let (ray_tracing_result, ray_tracing_transform) =
                 self.trace_ray(&(self.player.vel * remaining_dt));
 
@@ -151,7 +159,7 @@ impl<'a> PlayerPhysicsPass<'a> {
                 let expected_displacement_norm = self.player.vel.norm() * remaining_dt;
                 let actual_displacement_norm = ray_tracing_result.t.atanh();
 
-                if intersection.normal.mip(&self.get_relative_down()) < -0.5 {
+                if intersection.normal.mip(&self.get_relative_down()) < -self.player.max_cos_slope {
                     self.update_ground_normal(&intersection.normal);
                 }
 
@@ -176,13 +184,13 @@ impl<'a> PlayerPhysicsPass<'a> {
 
     fn clamp_to_ground_or_start_falling(&mut self) {
         let mut clamp_vector = -na::Vector3::y() * 0.01;
-        for _ in 0..5 {
+        for _ in 0..Self::MAX_COLLISION_ITERATIONS {
             let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&clamp_vector);
 
             // TODO: Will need to allow two collision normals to act at once, especially in 3D
             if let Some(intersection) = ray_tracing_result.intersection {
                 let potential_transform = self.player.transform * ray_tracing_transform;
-                if intersection.normal.mip(&self.get_relative_down()) < -0.5 {
+                if intersection.normal.mip(&self.get_relative_down()) < -self.player.max_cos_slope {
                     self.player.transform = potential_transform;
                     self.update_ground_normal(&intersection.normal);
                     return;
@@ -258,6 +266,7 @@ impl<'a> PlayerPhysicsPass<'a> {
         &self,
         relative_displacement: &na::Vector3<f64>,
     ) -> (RayTracingResult, na::Matrix3<f64>) {
+        // Corrective constant to avoid punching through walls with floating point rounding errors
         const EPSILON: f64 = 1e-5;
 
         let displacement_sqr = relative_displacement.sqr();
