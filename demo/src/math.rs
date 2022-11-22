@@ -17,8 +17,8 @@ pub trait HyperboloidVector:
     fn displacement(&self) -> na::Matrix3<f64>;
     fn displacement_vec(&self) -> na::Vector3<f64>;
     fn euclidean_point(&self) -> na::Vector2<f64>;
-    fn project_z(&self) -> na::Vector3<f64>;
-    fn project(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64>;
+    fn project_xy(&self) -> na::Vector3<f64>;
+    fn project_ortho(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64>;
 }
 
 pub trait HyperboloidMatrix {
@@ -88,11 +88,11 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         na::Vector2::new(self[0] / self[2], self[1] / self[2])
     }
 
-    fn project_z(&self) -> na::Vector3<f64> {
+    fn project_xy(&self) -> na::Vector3<f64> {
         na::Vector3::new(self[0], self[1], 0.0)
     }
 
-    fn project(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64> {
+    fn project_ortho(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64> {
         self - v * v.mip(self)
     }
 }

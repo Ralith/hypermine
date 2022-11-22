@@ -112,7 +112,7 @@ impl<'a> PlayerPhysicsPass<'a> {
     fn attempt_jump(&mut self) {
         if self.player.ground_normal.is_some() {
             let relative_down = self.get_relative_down();
-            let horizontal_vel = self.player.vel.project(&relative_down);
+            let horizontal_vel = self.player.vel.project_ortho(&relative_down);
             self.player.vel = horizontal_vel - relative_down * self.player.jump_speed;
             self.player.ground_normal = None;
         }
@@ -164,7 +164,7 @@ impl<'a> PlayerPhysicsPass<'a> {
                     self.update_ground_normal(&intersection.normal);
                 }
 
-                self.player.vel = self.player.vel.project(&intersection.normal);
+                self.player.vel = self.player.vel.project_ortho(&intersection.normal);
                 remaining_dt *= 1.0 - actual_displacement_norm / expected_displacement_norm;
             } else {
                 break;
@@ -198,9 +198,9 @@ impl<'a> PlayerPhysicsPass<'a> {
                 } else {
                     // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
                     // More accurate shrinkage can be found at apply_velocity_iteration.
-                    clamp_vector = (clamp_vector - ray_tracing_transform.column(2)).project_z();
+                    clamp_vector = (clamp_vector - ray_tracing_transform.column(2)).project_xy();
                     // Adjust clamp vector to be perpendicular to the normal vector.
-                    clamp_vector = clamp_vector.project(&intersection.normal);
+                    clamp_vector = clamp_vector.project_ortho(&intersection.normal);
                     self.player.ground_normal = None;
                 }
             } else {
@@ -245,8 +245,8 @@ impl<'a> PlayerPhysicsPass<'a> {
             self.player.vel = self
                 .player
                 .vel
-                .project(&self.get_relative_down())
-                .project(new_ground_normal);
+                .project_ortho(&self.get_relative_down())
+                .project_ortho(new_ground_normal);
             self.player.ground_normal = Some(*new_ground_normal);
         }
     }
@@ -299,7 +299,7 @@ impl<'a> PlayerPhysicsPass<'a> {
 
         ray_tracing_result.t = t_with_epsilon;
         if let Some(intersection) = ray_tracing_result.intersection.as_mut() {
-            intersection.normal = intersection.normal.project_z().m_normalized_vector();
+            intersection.normal = intersection.normal.project_xy().m_normalized_vector();
         }
 
         (
