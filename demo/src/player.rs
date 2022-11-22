@@ -1,9 +1,10 @@
 use crate::{
-    chunk_ray_tracer::{ChunkRayTracer, RayTracingResult, RayTracingResultHandle},
+    chunk_ray_tracer::{RayTracingResult, RayTracingResultHandle},
     math::{HyperboloidMatrix, HyperboloidVector},
     penta::Side,
     sphere_chunk_ray_tracer::SphereChunkRayTracer,
     tessellation::{NodeHandle, Tessellation},
+    tessellation_ray_tracer,
 };
 
 pub struct Player {
@@ -278,11 +279,11 @@ impl<'a> PlayerPhysicsPass<'a> {
         let displacement_normalized = relative_displacement / displacement_norm;
 
         let mut ray_tracing_result = RayTracingResult::new(displacement_norm.tanh() + EPSILON);
-        SphereChunkRayTracer {
-            radius: self.player.radius,
-        }
-        .trace_ray_in_tessellation(
+        tessellation_ray_tracer::trace_ray(
             self.input.tessellation,
+            &SphereChunkRayTracer {
+                radius: self.player.radius,
+            },
             self.player.node,
             &(self.player.transform * na::Vector3::z()),
             &(self.player.transform * displacement_normalized),

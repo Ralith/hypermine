@@ -6,3 +6,4 @@ pub mod penta;
 pub mod player;
 pub mod sphere_chunk_ray_tracer;
 pub mod tessellation;
+pub mod tessellation_ray_tracer;
