@@ -50,7 +50,10 @@ impl SphereChunkRayTracer {
             let j = (b * Vertex::square_to_voxel_factor() * float_size).floor();
             if j >= 0.0 && j < float_size {
                 let j = j as usize;
-                if chunk_data.get2(coord_axis, i_with_offset, coord_plane0, j) != 0 {
+                let mut coords = [0; 2];
+                coords[coord_axis] = i_with_offset;
+                coords[coord_plane0] = j;
+                if chunk_data.get(coords) != 0 {
                     handle.update(
                         t_candidate,
                         [0, 0], /* TODO */
@@ -73,10 +76,10 @@ impl SphereChunkRayTracer {
 
         for i in 0..=chunk_data.chunk_size() {
             for j in 0..=chunk_data.chunk_size() {
-                if (i == 0 || j == 0 || chunk_data.get(i - 1, j - 1) == 0)
-                    && (i == size || j == 0 || chunk_data.get(i, j - 1) == 0)
-                    && (i == 0 || j == size || chunk_data.get(i - 1, j) == 0)
-                    && (i == size || j == size || chunk_data.get(i, j) == 0)
+                if (i == 0 || j == 0 || chunk_data.get([i - 1, j - 1]) == 0)
+                    && (i == size || j == 0 || chunk_data.get([i, j - 1]) == 0)
+                    && (i == 0 || j == size || chunk_data.get([i - 1, j]) == 0)
+                    && (i == size || j == size || chunk_data.get([i, j]) == 0)
                 {
                     continue;
                 }
@@ -140,7 +143,7 @@ impl SphereChunkRayTracer {
     /// This finds intersections with a surface that is `cosh^2(c)` units away from the line
     /// with a point at `a` with direction `b`, where `<a,b>==0`. This method is redundant in 2D,
     /// but it will be needed in 3D.
-    /// 
+    ///
     /// Returns NaN if there's no such intersection
     #[allow(dead_code)]
     fn find_intersection_two_vectors(

@@ -133,7 +133,7 @@ impl<'a> RenderPass<'a> {
                     let x_max = (x + 1) as f64 / resolution as f64;
                     let y_min = y as f64 / resolution as f64;
                     let y_max = (y + 1) as f64 / resolution as f64;
-                    let voxel_type = chunk_data.get(x, y);
+                    let voxel_type = chunk_data.get([x, y]);
                     let color =
                         (if voxel_type != 0 { on_color } else { off_color })[(x + y + parity) % 2];
                     [

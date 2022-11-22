@@ -71,7 +71,7 @@ impl event::EventHandler for State {
                     .tessellation
                     .get_voxel_at_pos(self.player.node(), self.player.pos() * mouse_position)
                 {
-                    chunk_data.set(x, y, 1);
+                    chunk_data.set([x, y], 1);
                 }
             } else if ggez::input::mouse::button_pressed(ctx, ggez::event::MouseButton::Right) {
                 let mouse_position = self.get_mouse_position(ctx);
@@ -79,7 +79,7 @@ impl event::EventHandler for State {
                     .tessellation
                     .get_voxel_at_pos(self.player.node(), self.player.pos() * mouse_position)
                 {
-                    chunk_data.set(x, y, 0);
+                    chunk_data.set([x, y], 0);
                 }
             }
         }
