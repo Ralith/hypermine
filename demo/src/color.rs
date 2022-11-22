@@ -6,15 +6,15 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 /// green, and blue appropriately.
 #[derive(Clone, Copy)]
 pub struct Color {
-    red: f64,
-    green: f64,
-    blue: f64,
+    red: f32,
+    green: f32,
+    blue: f32,
 }
 
 impl Color {
-    const RED_FACTOR: f64 = 0.299;
-    const GREEN_FACTOR: f64 = 0.587;
-    const BLUE_FACTOR: f64 = 0.114;
+    const RED_FACTOR: f32 = 0.299;
+    const GREEN_FACTOR: f32 = 0.587;
+    const BLUE_FACTOR: f32 = 0.114;
 
     pub const WHITE: Color = Color {
         red: 1.0,
@@ -22,7 +22,7 @@ impl Color {
         blue: 1.0,
     };
 
-    pub fn from_hue(hue: f64) -> Color {
+    pub fn from_hue(hue: f32) -> Color {
         let hue_normalized = (hue - hue.floor()) * 6.0;
         let hue_type = hue_normalized.floor().min(5.0);
         let hue_frac = hue_normalized - hue_type;
@@ -50,13 +50,13 @@ impl Color {
         }
     }
 
-    pub fn luminance(&self) -> f64 {
+    pub fn luminance(&self) -> f32 {
         self.red * Self::RED_FACTOR
             + self.green * Self::GREEN_FACTOR
             + self.blue * Self::BLUE_FACTOR
     }
 
-    fn srgb_to_linear(srgb: f64) -> f64 {
+    fn srgb_to_linear(srgb: f32) -> f32 {
         if srgb <= 0.04045 {
             srgb / 12.92
         } else {
@@ -64,7 +64,7 @@ impl Color {
         }
     }
 
-    fn linear_to_srgb(linear: f64) -> f64 {
+    fn linear_to_srgb(linear: f32) -> f32 {
         if linear <= 0.0031308 {
             linear * 12.92
         } else {
@@ -93,10 +93,10 @@ impl AddAssign for Color {
     }
 }
 
-impl Mul<f64> for Color {
+impl Mul<f32> for Color {
     type Output = Self;
 
-    fn mul(self, rhs: f64) -> Self::Output {
+    fn mul(self, rhs: f32) -> Self::Output {
         Color {
             red: self.red * rhs,
             green: self.green * rhs,
@@ -105,18 +105,18 @@ impl Mul<f64> for Color {
     }
 }
 
-impl MulAssign<f64> for Color {
-    fn mul_assign(&mut self, rhs: f64) {
+impl MulAssign<f32> for Color {
+    fn mul_assign(&mut self, rhs: f32) {
         self.red *= rhs;
         self.green *= rhs;
         self.blue *= rhs;
     }
 }
 
-impl Div<f64> for Color {
+impl Div<f32> for Color {
     type Output = Self;
 
-    fn div(self, rhs: f64) -> Self::Output {
+    fn div(self, rhs: f32) -> Self::Output {
         Color {
             red: self.red / rhs,
             green: self.green / rhs,
@@ -125,8 +125,8 @@ impl Div<f64> for Color {
     }
 }
 
-impl DivAssign<f64> for Color {
-    fn div_assign(&mut self, rhs: f64) {
+impl DivAssign<f32> for Color {
+    fn div_assign(&mut self, rhs: f32) {
         self.red /= rhs;
         self.green /= rhs;
         self.blue /= rhs;

@@ -48,7 +48,7 @@ impl Tessellation {
         self.get_node(node).is_odd as u32
     }
 
-    pub fn down(&self, node: NodeHandle) -> &na::Vector3<f64> {
+    pub fn down(&self, node: NodeHandle) -> &na::Vector3<f32> {
         &self.get_node(node).down
     }
 
@@ -66,7 +66,7 @@ impl Tessellation {
     pub fn get_voxel_at_pos(
         &mut self,
         node: NodeHandle,
-        pos: na::Vector3<f64>,
+        pos: na::Vector3<f32>,
     ) -> Option<(MutChunkData, [usize; 2])> {
         let mut current_node = node;
         let mut current_pos = pos;
@@ -75,7 +75,7 @@ impl Tessellation {
                 let mut voxel_pos = vertex.penta_to_voxel() * current_pos;
                 voxel_pos /= voxel_pos.z;
                 let integer_voxel_pos =
-                    voxel_pos.xy().map(|x| (x * self.chunk_size as f64).floor());
+                    voxel_pos.xy().map(|x| (x * self.chunk_size as f32).floor());
                 if integer_voxel_pos
                     .iter()
                     .all(|&x| x >= 0.0 && (x as usize) < self.chunk_size)
@@ -104,7 +104,7 @@ impl Tessellation {
     pub fn get_nearby(
         &self,
         node: NodeHandle,
-        transform: na::Matrix3<f64>,
+        transform: na::Matrix3<f32>,
         distance: u32,
     ) -> Vec<NodeHandleWithContext> {
         let mut visited = HashSet::new();
@@ -136,7 +136,7 @@ impl Tessellation {
     pub fn ensure_nearby(
         &mut self,
         node: NodeHandle,
-        transform: na::Matrix3<f64>,
+        transform: na::Matrix3<f32>,
         distance: u32,
     ) -> Vec<NodeHandleWithContext> {
         let mut visited = HashSet::new();
@@ -241,7 +241,7 @@ struct Node {
     is_child: EnumMap<Side, bool>,
     parent: Option<Side>,
     is_odd: bool,
-    down: na::Vector3<f64>,
+    down: na::Vector3<f32>,
     is_near_ground: bool,
 }
 
@@ -267,7 +267,7 @@ impl Chunk {
     fn new(chunk_size: usize) -> Chunk {
         Chunk {
             data: (0..chunk_size * chunk_size)
-                .map(|_| (rand::thread_rng().gen::<f64>() < 0.02) as u8)
+                .map(|_| (rand::thread_rng().gen::<f32>() < 0.02) as u8)
                 .collect(),
         }
     }
@@ -281,7 +281,7 @@ pub struct NodeHandle {
 #[derive(Copy, Clone)]
 pub struct NodeHandleWithContext {
     pub node: NodeHandle,
-    pub transform: na::Matrix3<f64>,
+    pub transform: na::Matrix3<f32>,
 }
 
 #[derive(Copy, Clone)]

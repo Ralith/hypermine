@@ -8,27 +8,27 @@ use crate::{
 };
 
 pub struct Player {
-    radius: f64,
-    transform: na::Matrix3<f64>,
+    radius: f32,
+    transform: na::Matrix3<f32>,
     node: NodeHandle,
-    vel: na::Vector3<f64>,
-    ground_normal: Option<na::Vector3<f64>>,
-    max_ground_speed: f64,
-    ground_acceleration: f64,
-    air_acceleration: f64,
-    jump_speed: f64,
-    max_cos_slope: f64,
+    vel: na::Vector3<f32>,
+    ground_normal: Option<na::Vector3<f32>>,
+    max_ground_speed: f32,
+    ground_acceleration: f32,
+    air_acceleration: f32,
+    jump_speed: f32,
+    max_cos_slope: f32,
 }
 
 pub struct PlayerInput<'a> {
-    dt: f64,
+    dt: f32,
     tessellation: &'a Tessellation,
-    x_axis: f64,
+    x_axis: f32,
     jumping: bool,
 }
 
 impl<'a> PlayerInput<'a> {
-    pub fn new(ctx: &ggez::Context, tessellation: &'a Tessellation, dt: f64) -> PlayerInput<'a> {
+    pub fn new(ctx: &ggez::Context, tessellation: &'a Tessellation, dt: f32) -> PlayerInput<'a> {
         let left_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::A);
         let right_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::D);
         let up_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::W);
@@ -66,7 +66,7 @@ impl Player {
         .step();
     }
 
-    pub fn pos(&self) -> &na::Matrix3<f64> {
+    pub fn pos(&self) -> &na::Matrix3<f32> {
         &self.transform
     }
 
@@ -74,7 +74,7 @@ impl Player {
         self.node
     }
 
-    pub fn radius(&self) -> f64 {
+    pub fn radius(&self) -> f32 {
         self.radius
     }
 }
@@ -118,7 +118,7 @@ impl<'a> PlayerPhysicsPass<'a> {
         }
     }
 
-    fn apply_ground_controls(&mut self, ground_normal: &na::Vector3<f64>) {
+    fn apply_ground_controls(&mut self, ground_normal: &na::Vector3<f32>) {
         let mut target_unit_vel =
             na::Vector3::new(ground_normal.y, -ground_normal.x, 0.) * self.input.x_axis;
         if target_unit_vel.norm_squared() > 1. {
@@ -143,7 +143,7 @@ impl<'a> PlayerPhysicsPass<'a> {
     }
 
     fn apply_gravity(&mut self) {
-        const GRAVITY: f64 = 1.0;
+        const GRAVITY: f32 = 1.0;
         self.player.vel += self.get_relative_down() * GRAVITY * self.input.dt;
     }
 
@@ -230,7 +230,7 @@ impl<'a> PlayerPhysicsPass<'a> {
         self.player.transform.qr_normalize();
     }
 
-    fn update_ground_normal(&mut self, new_ground_normal: &na::Vector3<f64>) {
+    fn update_ground_normal(&mut self, new_ground_normal: &na::Vector3<f32>) {
         if let Some(ground_normal) = self.player.ground_normal {
             // Use two reflections to move vel from ground_normal to new_ground_normal
             let mid_ground_normal = (ground_normal + new_ground_normal).m_normalized_vector();
@@ -252,7 +252,7 @@ impl<'a> PlayerPhysicsPass<'a> {
     }
 
     /// Returns the down direction relative to the player's transform
-    fn get_relative_down(&self) -> na::Vector3<f64> {
+    fn get_relative_down(&self) -> na::Vector3<f32> {
         let mut relative_down =
             self.player.transform.iso_inverse() * self.input.tessellation.down(self.player.node);
         relative_down.z = 0.0;
@@ -265,10 +265,10 @@ impl<'a> PlayerPhysicsPass<'a> {
     /// translates the player to the location where it would meet the wall.
     fn trace_ray(
         &self,
-        relative_displacement: &na::Vector3<f64>,
-    ) -> (RayTracingResult, na::Matrix3<f64>) {
+        relative_displacement: &na::Vector3<f32>,
+    ) -> (RayTracingResult, na::Matrix3<f32>) {
         // Corrective constant to avoid punching through walls with floating point rounding errors
-        const EPSILON: f64 = 1e-5;
+        const EPSILON: f32 = 1e-5;
 
         let displacement_sqr = relative_displacement.sqr();
         if displacement_sqr < 1e-16 {

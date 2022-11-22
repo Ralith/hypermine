@@ -1,37 +1,38 @@
 use na::{ComplexField, RowVector3, U3};
 use std::ops::{DivAssign, Index, SubAssign};
 
-type GeneralVector3<S> = na::Vector<f64, U3, S>;
+type GeneralVector3<S> = na::Vector<f32, U3, S>;
 
 pub trait HyperboloidVector:
-    Index<usize, Output = f64> + std::ops::Mul<f64, Output = na::Vector3<f64>>
+    Index<usize, Output = f32> + std::ops::Mul<f32, Output = na::Vector3<f32>>
 {
     fn to_point(&self) -> [f32; 2];
-    fn translation(&self) -> na::Matrix3<f64>;
-    fn reflection(&self) -> na::Matrix3<f64>;
-    fn normal(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64>;
-    fn mip(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> f64;
-    fn sqr(&self) -> f64;
-    fn m_normalized_point(&self) -> na::Vector3<f64>;
-    fn m_normalized_vector(&self) -> na::Vector3<f64>;
-    fn displacement(&self) -> na::Matrix3<f64>;
-    fn displacement_vec(&self) -> na::Vector3<f64>;
-    fn euclidean_point(&self) -> na::Vector2<f64>;
-    fn project_xy(&self) -> na::Vector3<f64>;
-    fn project_ortho(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64>;
+    fn translation(&self) -> na::Matrix3<f32>;
+    fn reflection(&self) -> na::Matrix3<f32>;
+    fn normal(&self, v1: &GeneralVector3<impl na::Storage<f32, U3>>) -> na::Vector3<f32>;
+    fn mip(&self, v1: &GeneralVector3<impl na::Storage<f32, U3>>) -> f32;
+    fn mop_sqr(&self, v1: &GeneralVector3<impl na::Storage<f32, U3>>) -> f32;
+    fn sqr(&self) -> f32;
+    fn m_normalized_point(&self) -> na::Vector3<f32>;
+    fn m_normalized_vector(&self) -> na::Vector3<f32>;
+    fn displacement(&self) -> na::Matrix3<f32>;
+    fn displacement_vec(&self) -> na::Vector3<f32>;
+    fn euclidean_point(&self) -> na::Vector2<f32>;
+    fn project_xy(&self) -> na::Vector3<f32>;
+    fn project_ortho(&self, v: &GeneralVector3<impl na::Storage<f32, U3>>) -> na::Vector3<f32>;
 }
 
 pub trait HyperboloidMatrix {
-    fn iso_inverse(&self) -> na::Matrix3<f64>;
+    fn iso_inverse(&self) -> na::Matrix3<f32>;
     fn qr_normalize(&mut self);
 }
 
-impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
+impl<S: na::Storage<f32, U3>> HyperboloidVector for na::Vector<f32, U3, S> {
     fn to_point(&self) -> [f32; 2] {
         [(self[0] / self[2]) as f32, (self[1] / self[2]) as f32]
     }
 
-    fn translation(&self) -> na::Matrix3<f64> {
+    fn translation(&self) -> na::Matrix3<f32> {
         let f = 1.0 / (self[2] + 1.0);
         na::Matrix3::new(
             self[0] * self[0] * f + 1.0,
@@ -46,11 +47,11 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         )
     }
 
-    fn reflection(&self) -> na::Matrix3<f64> {
+    fn reflection(&self) -> na::Matrix3<f32> {
         na::Matrix3::identity() - (self * RowVector3::new(self[0], self[1], -self[2])) * 2.0
     }
 
-    fn normal(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64> {
+    fn normal(&self, v1: &GeneralVector3<impl na::Storage<f32, U3>>) -> na::Vector3<f32> {
         na::Vector3::new(
             self[1] * v1[2] - self[2] * v1[1],
             self[2] * v1[0] - self[0] * v1[2],
@@ -58,47 +59,51 @@ impl<S: na::Storage<f64, U3>> HyperboloidVector for na::Vector<f64, U3, S> {
         )
     }
 
-    fn mip(&self, v1: &GeneralVector3<impl na::Storage<f64, U3>>) -> f64 {
+    fn mip(&self, v1: &GeneralVector3<impl na::Storage<f32, U3>>) -> f32 {
         self[0] * v1[0] + self[1] * v1[1] - self[2] * v1[2]
     }
 
-    fn sqr(&self) -> f64 {
+    fn mop_sqr(&self, v1: &GeneralVector3<impl na::Storage<f32, U3>>) -> f32 {
+        self.normal(v1).sqr() // TODO: Be more direct
+    }
+
+    fn sqr(&self) -> f32 {
         self[0] * self[0] + self[1] * self[1] - self[2] * self[2]
     }
 
-    fn m_normalized_point(&self) -> na::Vector3<f64> {
+    fn m_normalized_point(&self) -> na::Vector3<f32> {
         self / (-self.sqr()).sqrt()
     }
 
-    fn m_normalized_vector(&self) -> na::Vector3<f64> {
+    fn m_normalized_vector(&self) -> na::Vector3<f32> {
         self / self.sqr().sqrt()
     }
 
-    fn displacement(&self) -> na::Matrix3<f64> {
+    fn displacement(&self) -> na::Matrix3<f32> {
         self.displacement_vec().translation()
     }
 
-    fn displacement_vec(&self) -> na::Vector3<f64> {
+    fn displacement_vec(&self) -> na::Vector3<f32> {
         let norm = self.norm();
         let scale_factor = norm.sinhc();
         na::Vector3::new(self[0] * scale_factor, self[1] * scale_factor, norm.cosh())
     }
 
-    fn euclidean_point(&self) -> na::Vector2<f64> {
+    fn euclidean_point(&self) -> na::Vector2<f32> {
         na::Vector2::new(self[0] / self[2], self[1] / self[2])
     }
 
-    fn project_xy(&self) -> na::Vector3<f64> {
+    fn project_xy(&self) -> na::Vector3<f32> {
         na::Vector3::new(self[0], self[1], 0.0)
     }
 
-    fn project_ortho(&self, v: &GeneralVector3<impl na::Storage<f64, U3>>) -> na::Vector3<f64> {
+    fn project_ortho(&self, v: &GeneralVector3<impl na::Storage<f32, U3>>) -> na::Vector3<f32> {
         self - v * v.mip(self)
     }
 }
 
-impl HyperboloidMatrix for na::Matrix3<f64> {
-    fn iso_inverse(&self) -> na::Matrix3<f64> {
+impl HyperboloidMatrix for na::Matrix3<f32> {
+    fn iso_inverse(&self) -> na::Matrix3<f32> {
         na::Matrix3::new(
             self[(0, 0)],
             self[(1, 0)],
@@ -113,12 +118,12 @@ impl HyperboloidMatrix for na::Matrix3<f64> {
     }
 
     fn qr_normalize(&mut self) {
-        fn div_assign(divisor: f64, mut slice: na::VectorSliceMut3<f64>) {
+        fn div_assign(divisor: f32, mut slice: na::VectorSliceMut3<f32>) {
             // Reorder arguments to allow for nested expressions
             slice.div_assign(divisor);
         }
 
-        fn sub_assign(subtrahend: na::Vector3<f64>, mut slice: na::VectorSliceMut3<f64>) {
+        fn sub_assign(subtrahend: na::Vector3<f32>, mut slice: na::VectorSliceMut3<f32>) {
             // Reorder arguments to allow for nested expressions
             slice.sub_assign(subtrahend);
         }

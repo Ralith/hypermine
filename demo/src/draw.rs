@@ -11,7 +11,7 @@ pub struct RenderPass<'a> {
     ctx: &'a mut Context,
     draw_params: graphics::DrawParam,
     scale: f32,
-    stack: Vec<na::Matrix3<f64>>,
+    stack: Vec<na::Matrix3<f32>>,
     tessellation: &'a Tessellation,
 }
 
@@ -19,7 +19,7 @@ impl<'a> RenderPass<'a> {
     pub fn new(
         ctx: &'a mut Context,
         tessellation: &'a Tessellation,
-        zoom_factor: f64,
+        zoom_factor: f32,
     ) -> RenderPass<'a> {
         let screen_coordinates = graphics::screen_coordinates(ctx);
         let width = screen_coordinates.w;
@@ -43,7 +43,7 @@ impl<'a> RenderPass<'a> {
         }
     }
 
-    pub fn push_transform(&mut self, transform: &na::Matrix3<f64>) {
+    pub fn push_transform(&mut self, transform: &na::Matrix3<f32>) {
         self.stack.push(self.get_transform() * transform);
     }
 
@@ -51,7 +51,7 @@ impl<'a> RenderPass<'a> {
         self.stack.pop();
     }
 
-    fn get_transform(&self) -> &na::Matrix3<f64> {
+    fn get_transform(&self) -> &na::Matrix3<f32> {
         self.stack.last().expect("Transformation stack underflow")
     }
 
@@ -129,10 +129,10 @@ impl<'a> RenderPass<'a> {
         let vertices: Vec<graphics::Vertex> = (0..resolution)
             .flat_map(|x| {
                 (0..resolution).flat_map(move |y| {
-                    let x_min = x as f64 / resolution as f64;
-                    let x_max = (x + 1) as f64 / resolution as f64;
-                    let y_min = y as f64 / resolution as f64;
-                    let y_max = (y + 1) as f64 / resolution as f64;
+                    let x_min = x as f32 / resolution as f32;
+                    let x_max = (x + 1) as f32 / resolution as f32;
+                    let y_min = y as f32 / resolution as f32;
+                    let y_max = (y + 1) as f32 / resolution as f32;
                     let voxel_type = chunk_data.get([x, y]);
                     let color =
                         (if voxel_type != 0 { on_color } else { off_color })[(x + y + parity) % 2];
@@ -171,7 +171,7 @@ impl<'a> RenderPass<'a> {
             .build(self.ctx)
     }
 
-    fn to_point(v: &na::Vector3<f64>) -> [f32; 2] {
+    fn to_point(v: &na::Vector3<f32>) -> [f32; 2] {
         [(v[0] / v[2]) as f32, (v[1] / v[2]) as f32]
     }
 }

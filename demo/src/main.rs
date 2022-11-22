@@ -19,7 +19,7 @@ fn main() {
 struct State {
     player: Player,
     tessellation: Tessellation,
-    zoom_factor: f64,
+    zoom_factor: f32,
 }
 
 impl State {
@@ -33,17 +33,17 @@ impl State {
         }
     }
 
-    fn get_mouse_position(&self, ctx: &Context) -> na::Vector3<f64> {
+    fn get_mouse_position(&self, ctx: &Context) -> na::Vector3<f32> {
         let screen_coordinates = graphics::screen_coordinates(ctx);
-        let width = screen_coordinates.w as f64;
-        let height = screen_coordinates.h as f64;
+        let width = screen_coordinates.w as f32;
+        let height = screen_coordinates.h as f32;
 
         let scale = (width.min(height) - 1.0) / 2.0 * self.zoom_factor;
 
         let window_mouse_position = ggez::input::mouse::position(ctx);
         na::Vector3::new(
-            (window_mouse_position.x as f64 + 0.5 - width / 2.0) / scale,
-            -(window_mouse_position.y as f64 + 0.5 - height / 2.0) / scale,
+            (window_mouse_position.x as f32 + 0.5 - width / 2.0) / scale,
+            -(window_mouse_position.y as f32 + 0.5 - height / 2.0) / scale,
             1.0,
         )
     }
@@ -54,7 +54,7 @@ impl event::EventHandler for State {
         const DESIRED_FPS: u32 = 60;
 
         while timer::check_update_time(ctx, DESIRED_FPS) {
-            let seconds = 1. / (DESIRED_FPS as f64);
+            let seconds = 1. / (DESIRED_FPS as f32);
             self.player
                 .step(&PlayerInput::new(ctx, &self.tessellation, seconds));
 

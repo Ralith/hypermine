@@ -1,4 +1,4 @@
-use std::f64::consts::TAU;
+use std::f32::consts::TAU;
 
 use enum_map::{enum_map, Enum, EnumMap};
 use lazy_static::lazy_static;
@@ -37,12 +37,12 @@ impl Side {
     }
 
     #[inline]
-    pub fn normal(self) -> &'static na::Vector3<f64> {
+    pub fn normal(self) -> &'static na::Vector3<f32> {
         &PENTA.normals[self]
     }
 
     #[inline]
-    pub fn reflection(self) -> &'static na::Matrix3<f64> {
+    pub fn reflection(self) -> &'static na::Matrix3<f32> {
         &PENTA.reflections[self]
     }
 }
@@ -72,37 +72,37 @@ impl Vertex {
     }
 
     #[inline]
-    pub fn pos(self) -> &'static na::Vector3<f64> {
+    pub fn pos(self) -> &'static na::Vector3<f32> {
         &PENTA.vertex_pos[self]
     }
 
     #[inline]
-    pub fn square_to_penta(self) -> &'static na::Matrix3<f64> {
+    pub fn square_to_penta(self) -> &'static na::Matrix3<f32> {
         &PENTA.square_to_penta[self]
     }
 
     #[inline]
-    pub fn penta_to_square(self) -> &'static na::Matrix3<f64> {
+    pub fn penta_to_square(self) -> &'static na::Matrix3<f32> {
         &PENTA.penta_to_square[self]
     }
 
     #[inline]
-    pub fn voxel_to_square_factor() -> f64 {
+    pub fn voxel_to_square_factor() -> f32 {
         PENTA.voxel_to_square_factor
     }
 
     #[inline]
-    pub fn square_to_voxel_factor() -> f64 {
+    pub fn square_to_voxel_factor() -> f32 {
         PENTA.square_to_voxel_factor
     }
 
     #[inline]
-    pub fn voxel_to_penta(self) -> &'static na::Matrix3<f64> {
+    pub fn voxel_to_penta(self) -> &'static na::Matrix3<f32> {
         &PENTA.voxel_to_penta[self]
     }
 
     #[inline]
-    pub fn penta_to_voxel(self) -> &'static na::Matrix3<f64> {
+    pub fn penta_to_voxel(self) -> &'static na::Matrix3<f32> {
         &PENTA.penta_to_voxel[self]
     }
 }
@@ -110,15 +110,15 @@ impl Vertex {
 struct Penta {
     vertex_sides: EnumMap<Vertex, [Side; 2]>,
     vertex_adjacent_vertices: EnumMap<Vertex, [Vertex; 2]>,
-    normals: EnumMap<Side, na::Vector3<f64>>,
-    reflections: EnumMap<Side, na::Matrix3<f64>>,
-    vertex_pos: EnumMap<Vertex, na::Vector3<f64>>,
-    square_to_penta: EnumMap<Vertex, na::Matrix3<f64>>,
-    penta_to_square: EnumMap<Vertex, na::Matrix3<f64>>,
-    voxel_to_square_factor: f64,
-    square_to_voxel_factor: f64,
-    voxel_to_penta: EnumMap<Vertex, na::Matrix3<f64>>,
-    penta_to_voxel: EnumMap<Vertex, na::Matrix3<f64>>,
+    normals: EnumMap<Side, na::Vector3<f32>>,
+    reflections: EnumMap<Side, na::Matrix3<f32>>,
+    vertex_pos: EnumMap<Vertex, na::Vector3<f32>>,
+    square_to_penta: EnumMap<Vertex, na::Matrix3<f32>>,
+    penta_to_square: EnumMap<Vertex, na::Matrix3<f32>>,
+    voxel_to_square_factor: f32,
+    square_to_voxel_factor: f32,
+    voxel_to_penta: EnumMap<Vertex, na::Matrix3<f32>>,
+    penta_to_voxel: EnumMap<Vertex, na::Matrix3<f32>>,
 }
 
 impl Penta {
@@ -129,8 +129,8 @@ impl Penta {
         const NUM_SIDES: usize = 5;
         const ORDER: usize = 4;
 
-        let side_angle = TAU / NUM_SIDES as f64;
-        let order_angle = TAU / ORDER as f64;
+        let side_angle = TAU / NUM_SIDES as f32;
+        let order_angle = TAU / ORDER as f32;
 
         let cos_side_angle = side_angle.cos();
         let cos_order_angle = order_angle.cos();
@@ -154,13 +154,13 @@ impl Penta {
             Vertex::EA => [Vertex::AB, Vertex::DE],
         };
 
-        let mut normals: EnumMap<Side, na::Vector3<f64>> = EnumMap::default();
-        let mut vertices: EnumMap<Vertex, na::Vector3<f64>> = EnumMap::default();
-        let mut square_to_penta: EnumMap<Vertex, na::Matrix3<f64>> = EnumMap::default();
-        let mut voxel_to_penta: EnumMap<Vertex, na::Matrix3<f64>> = EnumMap::default();
+        let mut normals: EnumMap<Side, na::Vector3<f32>> = EnumMap::default();
+        let mut vertices: EnumMap<Vertex, na::Vector3<f32>> = EnumMap::default();
+        let mut square_to_penta: EnumMap<Vertex, na::Matrix3<f32>> = EnumMap::default();
+        let mut voxel_to_penta: EnumMap<Vertex, na::Matrix3<f32>> = EnumMap::default();
 
         for (side, reflection) in normals.iter_mut() {
-            let theta = side_angle * (side as usize) as f64;
+            let theta = side_angle * (side as usize) as f32;
             *reflection = na::Vector3::new(
                 reflection_r * theta.cos(),
                 reflection_r * theta.sin(),
@@ -184,8 +184,8 @@ impl Penta {
 
         let penta_to_square = square_to_penta.map(|_, m| m.iso_inverse());
 
-        let voxel_to_square_factor = (5.0f64.sqrt() - 2.0).sqrt();
-        let square_to_voxel_factor = (5.0f64.sqrt() + 2.0).sqrt();
+        let voxel_to_square_factor = (5.0f32.sqrt() - 2.0).sqrt();
+        let square_to_voxel_factor = (5.0f32.sqrt() + 2.0).sqrt();
 
         for (vertex, mat) in voxel_to_penta.iter_mut() {
             let reflector0 = &normals[vertex_sides[vertex][0]];
