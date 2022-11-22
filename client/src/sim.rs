@@ -27,7 +27,8 @@ pub struct Sim {
     pub params: Option<Parameters>,
     pub local_character: Option<Entity>,
     position: Position,
-    orientation: na::UnitQuaternion<f32>,
+    yaw: f32,
+    pitch: f32,
     step: Option<Step>,
 
     // Input state
@@ -51,7 +52,8 @@ impl Sim {
             params: None,
             local_character: None,
             position: Position::origin(),
-            orientation: na::one(),
+            yaw: 0.0,
+            pitch: 0.0,
             step: None,
 
             since_input_sent: Duration::new(0, 0),
@@ -60,8 +62,27 @@ impl Sim {
         }
     }
 
-    pub fn rotate(&mut self, delta: &na::UnitQuaternion<f32>) {
-        self.orientation *= delta;
+    pub fn rotate(&mut self, yaw: f32, pitch: f32) {
+        self.yaw += yaw;
+        while self.yaw > std::f32::consts::TAU {
+            self.yaw -= std::f32::consts::TAU;
+        }
+        while self.yaw < 0.0 {
+            self.yaw += std::f32::consts::TAU;
+        }
+
+        self.pitch += pitch;
+        if self.pitch > std::f32::consts::FRAC_PI_2 {
+            self.pitch = std::f32::consts::FRAC_PI_2;
+        }
+        if self.pitch < -std::f32::consts::FRAC_PI_2 {
+            self.pitch = -std::f32::consts::FRAC_PI_2;
+        }
+    }
+
+    fn get_orientation(&self) -> na::Rotation3<f32> {
+        na::Rotation::from_axis_angle(&na::Vector3::y_axis(), -self.yaw)
+            * na::Rotation::from_axis_angle(&na::Vector3::x_axis(), -self.pitch)
     }
 
     pub fn velocity(&mut self, v: na::Vector3<f32>) {
@@ -73,8 +94,6 @@ impl Sim {
     }
 
     pub fn step(&mut self, dt: Duration) {
-        self.orientation.renormalize_fast();
-
         while let Ok(msg) = self.net.incoming.try_recv() {
             self.handle_net(msg);
         }
@@ -95,19 +114,41 @@ impl Sim {
                     self.since_input_sent = overflow;
                 }
             }
-            
+
             // Update average velocity for the time within the current step
             let movement_speed = self.params.as_ref().unwrap().movement_speed;
-            let (direction, speed) = sanitize_motion_input(self.orientation * self.instantaneous_velocity * movement_speed);
+            let (direction, speed) = sanitize_motion_input(
+                self.get_orientation() * self.instantaneous_velocity * movement_speed,
+            );
             self.position.local *= math::translate_along(&direction, speed * dt.as_secs_f32());
             self.position.local = math::renormalize_isometry(&self.position.local);
 
-            let (next_node, transition_xf) = self.graph.normalize_transform(self.position.node, &self.position.local);
+            let (next_node, transition_xf) = self
+                .graph
+                .normalize_transform(self.position.node, &self.position.local);
             if next_node != self.position.node {
                 self.position.node = next_node;
                 self.position.local = transition_xf * self.position.local;
             }
+
+            self.align_with_gravity();
         }
+    }
+
+    fn align_with_gravity(&mut self) {
+        // TODO: This is not quite precise, as it uses the sin(x) = x approximation.
+        // There is likely a mathematically nicer way to handle this.
+        let relative_down = self.get_relative_down();
+        let axisangle = relative_down
+            .xyz()
+            .normalize()
+            .cross(&(-na::Vector3::y_axis()));
+        self.position.local *= na::Rotation3::from_scaled_axis(axisangle).to_homogeneous();
+    }
+
+    fn get_relative_down(&self) -> na::Vector4<f32> {
+        let node = self.graph.get(self.position.node).as_ref().unwrap();
+        self.position.local.try_inverse().unwrap() * node.state.surface().normal().cast()
     }
 
     fn handle_net(&mut self, msg: net::Message) {
@@ -233,14 +274,14 @@ impl Sim {
         // Any failure here will be better handled in handle_net's ConnectionLost case
         let _ = self.net.outgoing.send(Command {
             generation,
-            orientation: self.orientation,
+            orientation: self.get_orientation().into(),
             position: self.position,
         });
     }
 
     pub fn view(&self) -> Position {
         let mut result = self.position;
-        result.local *= self.orientation.to_homogeneous();
+        result.local *= self.get_orientation().to_homogeneous();
         result
     }
 

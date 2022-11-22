@@ -117,8 +117,6 @@ impl Window {
         let mut right = false;
         let mut up = false;
         let mut down = false;
-        let mut clockwise = false;
-        let mut anticlockwise = false;
         let mut last_frame = Instant::now();
         let mut mouse_captured = false;
         self.event_loop
@@ -138,13 +136,6 @@ impl Window {
                         move_direction
                     });
 
-                    self.sim.rotate(&na::UnitQuaternion::from_axis_angle(
-                        &-na::Vector3::z_axis(),
-                        (clockwise as u8 as f32 - anticlockwise as u8 as f32)
-                            * 2.0
-                            * dt.as_secs_f32(),
-                    ));
-
                     let had_params = self.sim.params().is_some();
 
                     self.sim.step(dt);
@@ -161,14 +152,8 @@ impl Window {
                 Event::DeviceEvent { event, .. } => match event {
                     DeviceEvent::MouseMotion { delta } if mouse_captured => {
                         const SENSITIVITY: f32 = 2e-3;
-                        let rot = na::UnitQuaternion::from_axis_angle(
-                            &na::Vector3::y_axis(),
-                            -delta.0 as f32 * SENSITIVITY,
-                        ) * na::UnitQuaternion::from_axis_angle(
-                            &na::Vector3::x_axis(),
-                            -delta.1 as f32 * SENSITIVITY,
-                        );
-                        self.sim.rotate(&rot);
+                        self.sim
+                            .rotate(delta.0 as f32 * SENSITIVITY, delta.1 as f32 * SENSITIVITY);
                     }
                     _ => {}
                 },
@@ -216,12 +201,6 @@ impl Window {
                         }
                         VirtualKeyCode::D => {
                             right = state == ElementState::Pressed;
-                        }
-                        VirtualKeyCode::Q => {
-                            anticlockwise = state == ElementState::Pressed;
-                        }
-                        VirtualKeyCode::E => {
-                            clockwise = state == ElementState::Pressed;
                         }
                         VirtualKeyCode::R => {
                             up = state == ElementState::Pressed;

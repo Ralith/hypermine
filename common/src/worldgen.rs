@@ -128,6 +128,10 @@ impl NodeState {
             enviro,
         }
     }
+
+    pub fn surface(&self) -> Plane<f64> {
+        self.surface
+    }
 }
 
 struct VoxelCoords {
