@@ -10,7 +10,6 @@ use common::{
     graph::{Graph, NodeId},
     math,
     proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
-    sanitize_motion_input,
     traversal::ensure_nearby,
     EntityId, SimConfig, Step,
 };
@@ -56,8 +55,6 @@ impl Sim {
         };
         let character = Character {
             name: hello.name,
-            speed: 0.0,
-            direction: -na::Vector3::z_axis(),
             orientation: na::one(),
         };
         let entity = self.world.spawn((id, position, character));
@@ -72,10 +69,10 @@ impl Sim {
         command: Command,
     ) -> Result<(), hecs::ComponentError> {
         let mut ch = self.world.get::<&mut Character>(entity)?;
-        let (direction, speed) = sanitize_motion_input(command.velocity);
-        ch.direction = direction;
-        ch.speed = speed * self.cfg.movement_speed;
         ch.orientation = command.orientation;
+        let mut p = self.world.get::<&mut Position>(entity)?;
+        p.local = command.position.local;
+        p.node = command.position.node; // TODO: Consider *p = command.position
         Ok(())
     }
 
@@ -109,15 +106,7 @@ impl Sim {
         let _guard = span.enter();
 
         // Simulate
-        for (_, (ch, pos)) in self.world.query::<(&Character, &mut Position)>().iter() {
-            let next_xf =
-                pos.local * math::translate_along(&ch.direction, ch.speed / self.cfg.rate as f32);
-            pos.local = math::renormalize_isometry(&next_xf);
-            let (next_node, transition_xf) = self.graph.normalize_transform(pos.node, &pos.local);
-            if next_node != pos.node {
-                pos.node = next_node;
-                pos.local = transition_xf * pos.local;
-            }
+        for (_, (_ch, pos)) in self.world.query::<(&Character, &mut Position)>().iter() {
             ensure_nearby(&mut self.graph, pos, f64::from(self.cfg.view_distance));
         }
 
@@ -200,6 +189,4 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
 struct Character {
     name: String,
     orientation: na::UnitQuaternion<f32>,
-    direction: na::Unit<na::Vector3<f32>>,
-    speed: f32,
 }

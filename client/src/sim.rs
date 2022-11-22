@@ -26,6 +26,7 @@ pub struct Sim {
     pub world: hecs::World,
     pub params: Option<Parameters>,
     pub local_character: Option<Entity>,
+    position: Position,
     orientation: na::UnitQuaternion<f32>,
     step: Option<Step>,
 
@@ -35,11 +36,6 @@ pub struct Sim {
     ///
     /// Units are relative to movement speed.
     instantaneous_velocity: na::Vector3<f32>,
-    /// Average input over the current time step. The portion of the timestep which has not yet
-    /// elapsed is considered to have zero input.
-    ///
-    /// Units are relative to movement speed.
-    average_velocity: na::Vector3<f32>,
     prediction: PredictedMotion,
 }
 
@@ -54,16 +50,13 @@ impl Sim {
             world: hecs::World::new(),
             params: None,
             local_character: None,
+            position: Position::origin(),
             orientation: na::one(),
             step: None,
 
             since_input_sent: Duration::new(0, 0),
             instantaneous_velocity: na::zero(),
-            average_velocity: na::zero(),
-            prediction: PredictedMotion::new(proto::Position {
-                node: NodeId::ROOT,
-                local: na::one(),
-            }),
+            prediction: PredictedMotion::new(),
         }
     }
 
@@ -89,16 +82,6 @@ impl Sim {
         if let Some(step_interval) = self.params.as_ref().map(|x| x.step_interval) {
             self.since_input_sent += dt;
             if let Some(overflow) = self.since_input_sent.checked_sub(step_interval) {
-                // At least one step interval has passed since we last sent input, so it's time to
-                // send again.
-
-                // Update average velocity for the time between the last input sample and the end of
-                // the previous step. dt > overflow because we check whether a step has elapsed
-                // after each increment.
-                self.average_velocity += self.instantaneous_velocity
-                    * (dt - overflow).as_secs_f32()
-                    / step_interval.as_secs_f32();
-
                 // Send fresh input
                 self.send_input();
 
@@ -106,18 +89,23 @@ impl Sim {
                 if overflow > step_interval {
                     // If it's been more than two timesteps since we last sent input, skip ahead
                     // rather than spamming the server.
-                    self.average_velocity = na::zero();
                     self.since_input_sent = Duration::new(0, 0);
                 } else {
-                    self.average_velocity = self.instantaneous_velocity * overflow.as_secs_f32()
-                        / step_interval.as_secs_f32();
                     // Send the next input a little sooner if necessary to stay in sync
                     self.since_input_sent = overflow;
                 }
-            } else {
-                // Update average velocity for the time within the current step
-                self.average_velocity +=
-                    self.instantaneous_velocity * dt.as_secs_f32() / step_interval.as_secs_f32();
+            }
+            
+            // Update average velocity for the time within the current step
+            let movement_speed = self.params.as_ref().unwrap().movement_speed;
+            let (direction, speed) = sanitize_motion_input(self.orientation * self.instantaneous_velocity * movement_speed);
+            self.position.local *= math::translate_along(&direction, speed * dt.as_secs_f32());
+            self.position.local = math::renormalize_isometry(&self.position.local);
+
+            let (next_node, transition_xf) = self.graph.normalize_transform(self.position.node, &self.position.local);
+            if next_node != self.position.node {
+                self.position.node = next_node;
+                self.position.local = transition_xf * self.position.local;
             }
         }
     }
@@ -147,7 +135,9 @@ impl Sim {
                 }
                 self.step = Some(msg.step);
                 for &(id, new_pos) in &msg.positions {
-                    self.update_position(msg.latest_input, id, new_pos);
+                    if !self.params.as_ref().map_or(false, |x| x.character_id == id) {
+                        self.update_position(id, new_pos);
+                    }
                 }
                 for &(id, orientation) in &msg.character_orientations {
                     match self.entity_ids.get(&id) {
@@ -166,10 +156,7 @@ impl Sim {
         }
     }
 
-    fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: Position) {
-        if self.params.as_ref().map_or(false, |x| x.character_id == id) {
-            self.prediction.reconcile(latest_input, new_pos);
-        }
+    fn update_position(&mut self, id: EntityId, new_pos: Position) {
         match self.entity_ids.get(&id) {
             None => debug!(%id, "position update for unknown entity"),
             Some(&entity) => match self.world.get::<&mut Position>(entity) {
@@ -241,35 +228,19 @@ impl Sim {
     }
 
     fn send_input(&mut self) {
-        let (direction, speed) = sanitize_motion_input(self.orientation * self.average_velocity);
-        let params = self.params.as_ref().unwrap();
-        let generation = self.prediction.push(
-            &direction,
-            speed
-                * params.movement_speed
-                * self.params.as_ref().unwrap().step_interval.as_secs_f32(),
-        );
+        let generation = self.prediction.push();
 
         // Any failure here will be better handled in handle_net's ConnectionLost case
         let _ = self.net.outgoing.send(Command {
             generation,
             orientation: self.orientation,
-            velocity: direction.into_inner() * speed,
+            position: self.position,
         });
     }
 
     pub fn view(&self) -> Position {
-        let mut result = *self.prediction.predicted();
+        let mut result = self.position;
         result.local *= self.orientation.to_homogeneous();
-        if let Some(ref params) = self.params {
-            // Apply input that hasn't been sent yet
-            let (direction, speed) = sanitize_motion_input(self.average_velocity);
-            // We multiply by the entire timestep rather than the time so far because
-            // self.average_velocity is always over the entire timestep, filling in zeroes for the
-            // future.
-            let distance = speed * params.movement_speed * params.step_interval.as_secs_f32();
-            result.local *= math::translate_along(&direction, distance);
-        }
         result
     }
 

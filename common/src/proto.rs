@@ -55,8 +55,7 @@ pub struct Spawns {
 pub struct Command {
     pub generation: u16,
     pub orientation: na::UnitQuaternion<f32>,
-    /// Relative to the character's current position, excluding orientation
-    pub velocity: na::Vector3<f32>,
+    pub position: Position,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

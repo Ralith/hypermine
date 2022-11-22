@@ -84,7 +84,7 @@ pub fn sanitize_motion_input(v: na::Vector3<f32>) -> (na::Unit<na::Vector3<f32>>
         // Return an arbitrary direction rather than NaN
         (-na::Vector3::z_axis(), speed)
     } else {
-        (direction, speed.min(1.0))
+        (direction, speed)
     }
 }
 
