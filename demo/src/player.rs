@@ -13,7 +13,6 @@ pub struct Player {
     vel: na::Vector3<f64>,
     max_ground_speed: f64,
     ground_acceleration: f64,
-    rotation_speed: f64,
     ground_normal: Option<na::Vector3<f64>>,
 }
 
@@ -21,25 +20,20 @@ pub struct PlayerInput<'a> {
     dt: f64,
     tessellation: &'a Tessellation,
     x_axis: f64,
-    y_axis: f64,
-    rotation_axis: f64,
+    jumping: bool,
 }
 
 impl<'a> PlayerInput<'a> {
     pub fn new(ctx: &ggez::Context, tessellation: &'a Tessellation, dt: f64) -> PlayerInput<'a> {
         let left_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::A);
         let right_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::D);
-        let down_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::S);
         let up_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::W);
-        let cw_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::E);
-        let ccw_pressed = ggez::input::keyboard::is_key_pressed(ctx, ggez::event::KeyCode::Q);
 
         PlayerInput {
             dt,
             tessellation,
             x_axis: if left_pressed { -1. } else { 0. } + if right_pressed { 1. } else { 0. },
-            y_axis: if down_pressed { -1. } else { 0. } + if up_pressed { 1. } else { 0. },
-            rotation_axis: if cw_pressed { -1. } else { 0. } + if ccw_pressed { 1. } else { 0. },
+            jumping: up_pressed,
         }
     }
 }
@@ -53,7 +47,6 @@ impl Player {
             vel: na::Vector3::zeros(),
             max_ground_speed: 0.2,
             ground_acceleration: 1.0,
-            rotation_speed: 1.0,
             ground_normal: None,
         }
     }
@@ -86,90 +79,58 @@ struct PlayerPhysicsPass<'a> {
 
 impl<'a> PlayerPhysicsPass<'a> {
     fn step(&mut self) {
-        // Apply rotation input
-        self.player.transform *= na::Matrix3::new_rotation(
-            self.input.rotation_axis * self.player.rotation_speed * self.input.dt,
-        );
+        if self.input.jumping {
+            self.attempt_jump();
+        }
 
-        // Jumping
-        if self.player.ground_normal.is_some() && self.input.y_axis > 0.0 {
+        if let Some(ground_normal) = self.player.ground_normal {
+            self.apply_ground_controls(&ground_normal);
+        } else {
+            self.apply_air_controls();
+            self.apply_gravity();
+        }
+
+        self.apply_velocity();
+        self.align_with_gravity();
+
+        if self.player.ground_normal.is_some() {
+            self.clamp_to_ground_or_start_falling();
+        }
+
+        self.renormalize_transform();
+    }
+
+    fn attempt_jump(&mut self) {
+        if self.player.ground_normal.is_some() {
             let relative_down = self.get_relative_down();
             let horizontal_vel = self.player.vel.project(&relative_down);
             self.player.vel = horizontal_vel - relative_down * 0.4;
             self.player.ground_normal = None;
         }
-
-        // Apply input to velocity
-        if let Some(ground_normal) = self.player.ground_normal {
-            let mut target_unit_vel =
-                na::Vector3::new(ground_normal.y, -ground_normal.x, 0.) * self.input.x_axis;
-            if target_unit_vel.norm_squared() > 1. {
-                target_unit_vel.normalize_mut();
-            }
-
-            let target_dvel = target_unit_vel * self.player.max_ground_speed - self.player.vel;
-            let ground_acceleration_impulse = self.player.ground_acceleration * self.input.dt;
-            if target_dvel.norm_squared() > ground_acceleration_impulse.powi(2) {
-                self.player.vel += target_dvel.normalize() * ground_acceleration_impulse;
-            } else {
-                self.player.vel += target_dvel;
-            }
-        } else {
-            let relative_down = self.get_relative_down();
-            self.player.vel -= na::Vector3::new(relative_down.y, -relative_down.x, 0.)
-                * self.input.x_axis
-                * self.input.dt
-                * 0.2;
-            self.apply_gravity();
-        }
-
-        // Apply velocity to position
-        let mut remaining_dt = self.input.dt;
-        for _ in 0..5 {
-            if remaining_dt == 0.0 {
-                break;
-            }
-            remaining_dt = self.apply_velocity_iteration(remaining_dt);
-        }
-        self.hop_node();
-        self.align_with_gravity();
-
-        // Consider whether to stay grounded
-        if self.player.ground_normal.is_some() {
-            self.clamp_to_ground_or_leave();
-        }
-
-        // Prevent errors from building up
-        self.player.transform.qr_normalize();
     }
 
-    fn update_ground_normal(&mut self, new_ground_normal: &na::Vector3<f64>) {
-        if let Some(ground_normal) = self.player.ground_normal {
-            // Use two reflections to move vel from ground_normal to new_ground_normal
-            let mid_ground_normal = (ground_normal + new_ground_normal).m_normalized_vector();
-            let reflected_vel =
-                ground_normal * self.player.vel.mip(&ground_normal) * 2.0 - self.player.vel;
-            self.player.vel =
-                mid_ground_normal * reflected_vel.mip(&mid_ground_normal) * 2.0 - reflected_vel;
-            self.player.ground_normal = Some(*new_ground_normal);
+    fn apply_ground_controls(&mut self, ground_normal: &na::Vector3<f64>) {
+        let mut target_unit_vel =
+            na::Vector3::new(ground_normal.y, -ground_normal.x, 0.) * self.input.x_axis;
+        if target_unit_vel.norm_squared() > 1. {
+            target_unit_vel.normalize_mut();
+        }
+
+        let target_dvel = target_unit_vel * self.player.max_ground_speed - self.player.vel;
+        let ground_acceleration_impulse = self.player.ground_acceleration * self.input.dt;
+        if target_dvel.norm_squared() > ground_acceleration_impulse.powi(2) {
+            self.player.vel += target_dvel.normalize() * ground_acceleration_impulse;
         } else {
-            // To avoid undesirable sliding down slopes on every jump, project to a level ground plane
-            // before projecting to the actual group plane.
-            self.player.vel = self
-                .player
-                .vel
-                .project(&self.get_relative_down())
-                .project(new_ground_normal);
-            self.player.ground_normal = Some(*new_ground_normal);
+            self.player.vel += target_dvel;
         }
     }
 
-    fn get_relative_down(&self) -> na::Vector3<f64> {
-        let mut relative_down =
-            self.player.transform.iso_inverse() * self.input.tessellation.down(self.player.node);
-        relative_down.z = 0.0;
-        relative_down.normalize_mut();
-        relative_down
+    fn apply_air_controls(&mut self) {
+        let relative_down = self.get_relative_down();
+        self.player.vel -= na::Vector3::new(relative_down.y, -relative_down.x, 0.)
+            * self.input.x_axis
+            * self.input.dt
+            * 0.2;
     }
 
     fn apply_gravity(&mut self) {
@@ -177,29 +138,43 @@ impl<'a> PlayerPhysicsPass<'a> {
         self.player.vel += self.get_relative_down() * GRAVITY * self.input.dt;
     }
 
-    // Returns dt remaining
-    fn apply_velocity_iteration(&mut self, dt: f64) -> f64 {
-        let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&(self.player.vel * dt));
+    fn apply_velocity(&mut self) {
+        let mut remaining_dt = self.input.dt;
+        for _ in 0..5 {
+            let (ray_tracing_result, ray_tracing_transform) =
+                self.trace_ray(&(self.player.vel * remaining_dt));
 
-        self.player.transform *= ray_tracing_transform;
+            self.player.transform *= ray_tracing_transform;
 
-        // TODO: Will need to allow two collision normals to act at once, especially in 3D
-        if let Some(intersection) = ray_tracing_result.intersection {
-            let expected_displacement_norm = self.player.vel.norm() * dt;
-            let actual_displacement_norm = ray_tracing_result.t.atanh();
+            // TODO: Will need to allow two collision normals to act at once, especially in 3D
+            if let Some(intersection) = ray_tracing_result.intersection {
+                let expected_displacement_norm = self.player.vel.norm() * remaining_dt;
+                let actual_displacement_norm = ray_tracing_result.t.atanh();
 
-            if intersection.normal.mip(&self.get_relative_down()) < -0.5 {
-                self.update_ground_normal(&intersection.normal);
+                if intersection.normal.mip(&self.get_relative_down()) < -0.5 {
+                    self.update_ground_normal(&intersection.normal);
+                }
+
+                self.player.vel = self.player.vel.project(&intersection.normal);
+                remaining_dt *= 1.0 - actual_displacement_norm / expected_displacement_norm;
+            } else {
+                break;
             }
-
-            self.player.vel = self.player.vel.project(&intersection.normal);
-            dt * (1.0 - actual_displacement_norm / expected_displacement_norm)
-        } else {
-            0.0
         }
     }
 
-    fn clamp_to_ground_or_leave(&mut self) {
+    fn align_with_gravity(&mut self) {
+        let relative_down = self.get_relative_down();
+        let theta = relative_down[0].atan2(-relative_down[1]);
+        self.player.transform *= na::Matrix3::new_rotation(theta);
+        self.player.vel = na::Matrix3::new_rotation(-theta) * self.player.vel;
+        self.player.ground_normal = self
+            .player
+            .ground_normal
+            .map(|n| na::Matrix3::new_rotation(-theta) * n);
+    }
+
+    fn clamp_to_ground_or_start_falling(&mut self) {
         let mut clamp_vector = -na::Vector3::y() * 0.01;
         for _ in 0..5 {
             let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&clamp_vector);
@@ -226,6 +201,59 @@ impl<'a> PlayerPhysicsPass<'a> {
         self.player.ground_normal = None;
     }
 
+    /// This both switches the player's reference node as well as normalizing the transformation matrix
+    fn renormalize_transform(&mut self) {
+        'a: loop {
+            let current_pos = self.player.transform * na::Vector3::z();
+            for side in Side::iter() {
+                if current_pos.mip(side.normal()) > 0.1 {
+                    if let Some(node) = self.input.tessellation.get_neighbor(self.player.node, side)
+                    {
+                        self.player.node = node;
+                        self.player.transform = side.reflection() * self.player.transform;
+                    }
+                    continue 'a;
+                }
+            }
+            break;
+        }
+
+        self.player.transform.qr_normalize();
+    }
+
+    fn update_ground_normal(&mut self, new_ground_normal: &na::Vector3<f64>) {
+        if let Some(ground_normal) = self.player.ground_normal {
+            // Use two reflections to move vel from ground_normal to new_ground_normal
+            let mid_ground_normal = (ground_normal + new_ground_normal).m_normalized_vector();
+            let reflected_vel =
+                ground_normal * self.player.vel.mip(&ground_normal) * 2.0 - self.player.vel;
+            self.player.vel =
+                mid_ground_normal * reflected_vel.mip(&mid_ground_normal) * 2.0 - reflected_vel;
+            self.player.ground_normal = Some(*new_ground_normal);
+        } else {
+            // To avoid undesirable sliding down slopes on every jump, project to a level ground plane
+            // before projecting to the actual group plane.
+            self.player.vel = self
+                .player
+                .vel
+                .project(&self.get_relative_down())
+                .project(new_ground_normal);
+            self.player.ground_normal = Some(*new_ground_normal);
+        }
+    }
+
+    /// Returns the down direction relative to the player's transform
+    fn get_relative_down(&self) -> na::Vector3<f64> {
+        let mut relative_down =
+            self.player.transform.iso_inverse() * self.input.tessellation.down(self.player.node);
+        relative_down.z = 0.0;
+        relative_down.normalize_mut();
+        relative_down
+    }
+
+    /// Completes a ray-tracing collision check for the player. All arguments and returned vectors/matrices
+    /// are relative to the player's transformation matrix. Returns a `RayTracingResult` and a matrix that
+    /// translates the player to the location where it would meet the wall.
     fn trace_ray(
         &self,
         relative_displacement: &na::Vector3<f64>,
@@ -270,31 +298,5 @@ impl<'a> PlayerPhysicsPass<'a> {
                 .m_normalized_point()
                 .translation(),
         )
-    }
-
-    fn hop_node(&mut self) -> bool {
-        let current_pos = self.player.transform * na::Vector3::z();
-        for side in Side::iter() {
-            if current_pos.mip(side.normal()) > 0.1 {
-                if let Some(node) = self.input.tessellation.get_neighbor(self.player.node, side) {
-                    self.player.node = node;
-                    self.player.transform = side.reflection() * self.player.transform;
-                }
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn align_with_gravity(&mut self) {
-        let relative_down = self.get_relative_down();
-        let theta = relative_down[0].atan2(-relative_down[1]);
-        self.player.transform *= na::Matrix3::new_rotation(theta);
-        self.player.vel = na::Matrix3::new_rotation(-theta) * self.player.vel;
-        self.player.ground_normal = self
-            .player
-            .ground_normal
-            .map(|n| na::Matrix3::new_rotation(-theta) * n);
     }
 }
