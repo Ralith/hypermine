@@ -49,10 +49,10 @@ pub fn trace_ray(
         // ray tracing with the neighboring chunk unless it has already been visited. We start at vertex
         // AB for simplicity even if that's not where pos is, although this should be optimized later.
         for coord_boundary in 0..3 {
-            let klein_pos0_val = square_pos[coord_boundary] / square_pos[2];
+            let klein_pos0_val = square_pos[coord_boundary] / square_pos[3];
             let klein_pos1_val = (square_pos[coord_boundary]
                 + square_dir[coord_boundary] * handle.t())
-                / (square_pos[2] + square_dir[2] * handle.t());
+                / (square_pos[3] + square_dir[3] * handle.t());
 
             // Check for neighboring nodes. TODO: The use of unwrap here will cause a crash if you arrive at an ungenerated chunk.
             if klein_pos0_val <= klein_boundary0 || klein_pos1_val <= klein_boundary0 {

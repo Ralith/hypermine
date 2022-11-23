@@ -44,10 +44,10 @@ impl SphereChunkRayTracer {
 
             let translated_square_pos = pos + dir * t_candidate;
             let b0 = translated_square_pos[coord_plane0] * (1.0 - a * a)
-                / (translated_square_pos.z - translated_square_pos[coord_axis] * a);
+                / (translated_square_pos.w - translated_square_pos[coord_axis] * a);
             let j0 = (b0 * Vertex::dual_to_chunk_factor() * float_size).floor();
             let b1 = translated_square_pos[coord_plane1] * (1.0 - a * a)
-                / (translated_square_pos.z - translated_square_pos[coord_axis] * a);
+                / (translated_square_pos.w - translated_square_pos[coord_axis] * a);
             let j1 = (b1 * Vertex::dual_to_chunk_factor() * float_size).floor();
             if j0 >= 0.0 && j0 < float_size && j1 >= 0.0 && j1 < float_size {
                 let j0 = j0 as usize;
