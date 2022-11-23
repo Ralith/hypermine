@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use crate::{
     chunk_ray_tracer::{ChunkRayTracer, RayTracingResultHandle},
     math::{f32or64, HyperboloidVector},
@@ -39,9 +41,20 @@ impl SphereChunkRayTracer {
         coord_axis: usize,
     ) {
         let float_size = chunk_data.chunk_size() as f32or64;
+        let max_voxel_radius = self.radius * Vertex::square_to_voxel_factor() * float_size;
+        let i_range = Self::get_usize_range(
+            0,
+            chunk_data.chunk_size(),
+            (pos[coord_axis] / pos[2]) * Vertex::square_to_voxel_factor() * float_size,
+            ((pos[coord_axis] + dir[coord_axis] * handle.t()) / (pos[2] + dir[2] * handle.t()))
+                * Vertex::square_to_voxel_factor()
+                * float_size,
+            max_voxel_radius,
+        );
+
         let coord_plane0 = (coord_axis + 1) % 2;
 
-        for i in 0..=chunk_data.chunk_size() {
+        for i in i_range {
             // Factor a in plane equation x/z == a => x == a*z
             let a = i as f32or64 / float_size * Vertex::voxel_to_square_factor();
 
@@ -135,7 +148,7 @@ impl SphereChunkRayTracer {
     /// If `a` is direction-like, this finds intersections with a surface that is `sinh(c)` units
     /// away from the plane whose normal is `a`.  If `a` is point-like, this finds intersections
     /// with a sphere centered at `a` with radius `cosh(c)`.
-    /// 
+    ///
     /// Returns NaN if there's no such intersection
     fn find_intersection_one_vector(
         pos: &na::Vector3<f32or64>,
@@ -196,7 +209,7 @@ impl SphereChunkRayTracer {
 
     /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
     /// `<v,a>^2 / <v,v> == c^2 + 1`
-    /// 
+    ///
     /// This has better precision for intersections with spheres, since one can use sinh instead
     /// of cosh. It is currently unused because with 64-bit floating point, we have good enough
     /// precision anyway. However, we will likely want to use the most numerically-stable method
@@ -223,5 +236,26 @@ impl SphereChunkRayTracer {
         // While discriminant can be negative, NaNs propagate the way we want to, so we don't have
         // to check for this.
         constant_term / (-double_linear_term + discriminant.sqrt())
+    }
+
+    fn get_usize_range(
+        min: usize,
+        max: usize,
+        point0: f32or64,
+        point1: f32or64,
+        width: f32or64,
+    ) -> RangeInclusive<usize> {
+        if !point0.is_finite() || !point1.is_finite() {
+            return min..=max;
+        }
+        let result_min = (point0.min(point1) - width).max(min as f32or64);
+        let result_max = (point0.max(point1) + width).min(max as f32or64);
+
+        if result_min > result_max {
+            #[allow(clippy::reversed_empty_ranges)]
+            return 1..=0;
+        }
+
+        (result_min.ceil() as usize)..=(result_max.floor() as usize)
     }
 }
