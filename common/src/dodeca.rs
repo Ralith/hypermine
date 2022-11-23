@@ -64,7 +64,7 @@ impl Side {
 }
 
 /// Vertices of a right dodecahedron
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Vertex {
     A,
     B,
@@ -106,6 +106,11 @@ impl Vertex {
     #[inline]
     pub fn canonical_sides(self) -> [Side; 3] {
         VERTEX_SIDES[self as usize]
+    }
+
+    #[inline]
+    pub fn adjacent_vertices(self) -> [Vertex; 3] {
+        ADJACENT_VERTICES[self as usize]
     }
 
     /// For each vertex of the cube dual to this dodecahedral vertex, provides an iterator of at
@@ -156,6 +161,10 @@ impl Vertex {
     /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
     pub fn dual_to_chunk_factor() -> f64 {
         (2.0 + 5.0f64.sqrt()).sqrt()
+    }
+
+    pub fn chunk_to_dual_factor() -> f64 {
+        1.0 / Self::dual_to_chunk_factor()
     }
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
@@ -286,6 +295,26 @@ lazy_static! {
             result[v as usize] = math::parity(&v.chunk_to_node());
         }
 
+        result
+    };
+
+    static ref ADJACENT_VERTICES: [[Vertex; 3]; VERTEX_COUNT] = {
+        let mut result = [[Vertex::A; 3]; VERTEX_COUNT];
+
+        for vertex in Vertex::iter() {
+            for result_index in 0..3 {
+                let mut test_sides = vertex.canonical_sides();
+                for side in Side::iter() {
+                    if side == vertex.canonical_sides()[result_index] {
+                        continue;
+                    }
+                    test_sides[result_index] = side;
+                    if let Some(adjacent_vertex) = Vertex::from_sides(test_sides[0], test_sides[1], test_sides[2]) {
+                        result[vertex as usize][result_index] = adjacent_vertex;
+                    }
+                }
+            }
+        }
         result
     };
 }

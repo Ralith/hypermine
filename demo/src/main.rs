@@ -54,6 +54,9 @@ impl event::EventHandler for State {
         const DESIRED_FPS: u32 = 60;
 
         while timer::check_update_time(ctx, DESIRED_FPS) {
+            self.tessellation
+                .ensure_nearby(self.player.node(), na::Matrix3::identity(), 2);
+
             let seconds = 1. / (DESIRED_FPS as f32);
             self.player
                 .step(&PlayerInput::new(ctx, &self.tessellation, seconds));
@@ -83,9 +86,6 @@ impl event::EventHandler for State {
                 }
             }
         }
-
-        self.tessellation
-            .ensure_nearby(self.player.node(), na::Matrix3::identity(), 2);
         Ok(())
     }
 

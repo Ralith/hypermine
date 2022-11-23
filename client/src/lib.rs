@@ -10,7 +10,9 @@ macro_rules! cstr {
 }
 
 extern crate nalgebra as na;
+mod chunk_ray_tracer;
 mod config;
+mod graph_ray_tracer;
 pub mod graphics;
 mod lahar_deprecated;
 mod loader;

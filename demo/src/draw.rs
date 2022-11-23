@@ -125,7 +125,7 @@ impl<'a> RenderPass<'a> {
             (hue_normalized * 0.001).into(),
         ];
 
-        let resolution = 12;
+        let resolution = chunk_data.chunk_size();
         let vertices: Vec<graphics::Vertex> = (0..resolution)
             .flat_map(|x| {
                 (0..resolution).flat_map(move |y| {
