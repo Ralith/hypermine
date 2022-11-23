@@ -20,6 +20,7 @@ pub mod metrics;
 pub mod net;
 mod prediction;
 pub mod sim;
+mod sphere_chunk_ray_tracer;
 
 pub use config::Config;
 pub use sim::Sim;

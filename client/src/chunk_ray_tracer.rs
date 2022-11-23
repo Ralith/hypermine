@@ -1,5 +1,6 @@
 use common::{node::VoxelData, world::Material};
 
+#[derive(Copy, Clone)]
 pub struct VoxelDataWrapper<'a> {
     voxel_data: &'a VoxelData,
     dimension: usize,
