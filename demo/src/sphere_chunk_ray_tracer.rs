@@ -1,5 +1,3 @@
-use std::ops::RangeInclusive;
-
 use crate::{
     chunk_ray_tracer::{ChunkRayTracer, RayTracingResultHandle},
     math::{f32or64, HyperboloidVector},
@@ -34,8 +32,17 @@ struct SphereChunkRayTracingPass<'a, 'b> {
     pos: &'a na::Vector3<f32or64>,
     dir: &'a na::Vector3<f32or64>,
     handle: &'a mut RayTracingResultHandle<'b>,
+
+    // Start and end of region to check in voxel coordinates
+    // TODO: These can be used for more fine-tuned pre-collision-check filtering
+    #[allow(dead_code)]
     voxel_start: na::Vector2<f32or64>,
+    #[allow(dead_code)]
     voxel_end: na::Vector2<f32or64>,
+
+    // Bounding box of all voxels that can be collided with
+    // [[xmin, xmax], [ymin, ymax]]
+    bbox: [[usize; 2]; 2],
 }
 
 impl SphereChunkRayTracingPass<'_, '_> {
@@ -48,8 +55,25 @@ impl SphereChunkRayTracingPass<'_, '_> {
     ) -> SphereChunkRayTracingPass<'a, 'b> {
         let float_size = chunk_data.chunk_size() as f32or64;
         let voxel_start = (pos / pos[2]).xy() * Vertex::square_to_voxel_factor() * float_size;
-        let end_pos = pos + dir;
+        let end_pos = pos + dir * handle.t();
         let voxel_end = (end_pos / end_pos[2]).xy() * Vertex::square_to_voxel_factor() * float_size;
+        let max_voxel_radius = radius * Vertex::square_to_voxel_factor() * float_size;
+        let bbox = [
+            get_usize_range(
+                0,
+                chunk_data.chunk_size(),
+                voxel_start[0],
+                voxel_end[0],
+                max_voxel_radius,
+            ),
+            get_usize_range(
+                0,
+                chunk_data.chunk_size(),
+                voxel_start[1],
+                voxel_end[1],
+                max_voxel_radius,
+            ),
+        ];
 
         SphereChunkRayTracingPass {
             radius,
@@ -59,6 +83,7 @@ impl SphereChunkRayTracingPass<'_, '_> {
             handle,
             voxel_start,
             voxel_end,
+            bbox,
         }
     }
 
@@ -72,18 +97,9 @@ impl SphereChunkRayTracingPass<'_, '_> {
 
     fn trace_ray_for_sides(&mut self, coord_axis: usize) {
         let float_size = self.chunk_data.chunk_size() as f32or64;
-        let max_voxel_radius = self.radius * Vertex::square_to_voxel_factor() * float_size;
-        let i_range = get_usize_range(
-            0,
-            self.chunk_data.chunk_size(),
-            self.voxel_start[coord_axis],
-            self.voxel_end[coord_axis],
-            max_voxel_radius,
-        );
-
         let coord_plane0 = (coord_axis + 1) % 2;
 
-        for i in i_range {
+        for i in self.bbox[coord_axis][0]..=self.bbox[coord_axis][1] {
             // Factor a in plane equation x/z == a => x == a*z
             let a = i as f32or64 / float_size * Vertex::voxel_to_square_factor();
 
@@ -130,8 +146,8 @@ impl SphereChunkRayTracingPass<'_, '_> {
         let size = self.chunk_data.chunk_size();
         let float_size = size as f32or64;
 
-        for i in 0..=self.chunk_data.chunk_size() {
-            for j in 0..=self.chunk_data.chunk_size() {
+        for i in self.bbox[0][0]..=self.bbox[0][1] {
+            for j in self.bbox[1][0]..=self.bbox[1][1] {
                 if (i == 0 || j == 0 || self.chunk_data.get([i - 1, j - 1]) == 0)
                     && (i == size || j == 0 || self.chunk_data.get([i, j - 1]) == 0)
                     && (i == 0 || j == size || self.chunk_data.get([i - 1, j]) == 0)
@@ -268,17 +284,17 @@ fn get_usize_range(
     point0: f32or64,
     point1: f32or64,
     width: f32or64,
-) -> RangeInclusive<usize> {
+) -> [usize; 2] {
     if !point0.is_finite() || !point1.is_finite() {
-        return min..=max;
+        return [min, max];
     }
     let result_min = (point0.min(point1) - width).max(min as f32or64);
     let result_max = (point0.max(point1) + width).min(max as f32or64);
 
     if result_min > result_max {
-        #[allow(clippy::reversed_empty_ranges)]
-        return 1..=0;
+        // Empty range
+        return [1, 0];
     }
 
-    (result_min.ceil() as usize)..=(result_max.floor() as usize)
+    [result_min.ceil() as usize, result_max.floor() as usize]
 }
