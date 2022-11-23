@@ -57,7 +57,10 @@ impl Sim {
             world: hecs::World::new(),
             params: None,
             local_character: None,
-            position: Position::origin(),
+            position: Position {
+                local: math::translate_along(&na::Vector3::y_axis(), 1.1),
+                node: NodeId::ROOT,
+            },
             yaw: 0.0,
             pitch: 0.0,
             step: None,

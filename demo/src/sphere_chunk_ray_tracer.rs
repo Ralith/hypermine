@@ -9,6 +9,26 @@ pub struct SphereChunkRayTracer {
     pub radius: f32or64,
 }
 
+impl ChunkRayTracer for SphereChunkRayTracer {
+    fn trace_ray_in_chunk(
+        &self,
+        chunk_data: ChunkData,
+        pos: &na::Vector3<f32or64>,
+        dir: &na::Vector3<f32or64>,
+        handle: &mut RayTracingResultHandle,
+    ) {
+        for coord_axis in 0..2 {
+            self.trace_ray_for_sides(chunk_data, pos, dir, handle, coord_axis);
+        }
+
+        self.trace_ray_for_vertices(chunk_data, pos, dir, handle);
+    }
+
+    fn max_radius(&self) -> f32or64 {
+        self.radius
+    }
+}
+
 impl SphereChunkRayTracer {
     fn trace_ray_for_sides(
         &self,
@@ -30,7 +50,7 @@ impl SphereChunkRayTracer {
             normal[coord_axis] = 1.0;
             let normal = normal.m_normalized_vector();
             let t_candidate =
-                Self::find_intersection_one_vector_old(pos, dir, &normal, self.radius.sinh());
+                Self::find_intersection_one_vector(pos, dir, &normal, self.radius.sinh());
 
             // If t_candidate is out of range or NaN, don't continue collision checking
             if !(t_candidate >= 0.0 && t_candidate < handle.t()) {
@@ -92,7 +112,7 @@ impl SphereChunkRayTracer {
                 .m_normalized_point();
 
                 let t_candidate =
-                    Self::find_intersection_one_vector(pos, dir, &vert, self.radius.sinh());
+                    Self::find_intersection_one_vector(pos, dir, &vert, self.radius.cosh());
 
                 // If t_candidate is out of range or NaN, don't continue collision checking
                 if !(t_candidate >= 0.0 && t_candidate < handle.t()) {
@@ -110,42 +130,14 @@ impl SphereChunkRayTracer {
     }
 
     /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
-    /// `<v,a>^2 / <v,v> == c^2 + 1`
-    ///
-    /// If `a` is direction-like, this finds intersections with a surface that is `sinh(c)` units
-    /// away from the plane whose normal is `a`.  If `a` is point-like, this finds intersections
-    /// with a sphere centered at `a` with radius `cosh(c)`.
-    fn find_intersection_one_vector(
-        pos: &na::Vector3<f32or64>,
-        dir: &na::Vector3<f32or64>,
-        a: &na::Vector3<f32or64>,
-        c: f32or64,
-    ) -> f32or64 {
-        let mip_pos_a = pos.mip(a);
-        let mop_pos_a_sqr = pos.mop_sqr(a);
-        let mip_dir_a = dir.mip(a);
-
-        // The following 3 variables are terms of the quadratic formula. We use double the linear
-        // term because it removes the annoying constants from that formula.
-        let quadratic_term = mip_dir_a.powi(2) + c.powi(2) + 1.0;
-        let double_linear_term = mip_pos_a * mip_dir_a;
-        let constant_term = mop_pos_a_sqr - c.powi(2);
-
-        let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
-
-        // While discriminant can be negative, NaNs propagate the way we want to, so we don't have
-        // to check for this.
-        //(-double_linear_term - discriminant.sqrt()) / quadratic_term
-        constant_term / (-double_linear_term + discriminant.sqrt())
-    }
-
-    /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
     /// `<v,a>^2 / <v,v> == c^2`
     ///
     /// If `a` is direction-like, this finds intersections with a surface that is `sinh(c)` units
     /// away from the plane whose normal is `a`.  If `a` is point-like, this finds intersections
     /// with a sphere centered at `a` with radius `cosh(c)`.
-    fn find_intersection_one_vector_old(
+    /// 
+    /// Returns NaN if there's no such intersection
+    fn find_intersection_one_vector(
         pos: &na::Vector3<f32or64>,
         dir: &na::Vector3<f32or64>,
         a: &na::Vector3<f32or64>,
@@ -201,24 +193,35 @@ impl SphereChunkRayTracer {
         // to check for this.
         (-double_linear_term - discriminant.sqrt()) / quadratic_term
     }
-}
 
-impl ChunkRayTracer for SphereChunkRayTracer {
-    fn trace_ray_in_chunk(
-        &self,
-        chunk_data: ChunkData,
+    /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
+    /// `<v,a>^2 / <v,v> == c^2 + 1`
+    /// 
+    /// This has better precision for intersections with spheres, since one can use sinh instead
+    /// of cosh. It is currently unused because with 64-bit floating point, we have good enough
+    /// precision anyway. However, we will likely want to use the most numerically-stable method
+    /// before merging to master.
+    #[allow(dead_code)]
+    fn find_intersection_one_vector_alternative(
         pos: &na::Vector3<f32or64>,
         dir: &na::Vector3<f32or64>,
-        handle: &mut RayTracingResultHandle,
-    ) {
-        for coord_axis in 0..2 {
-            self.trace_ray_for_sides(chunk_data, pos, dir, handle, coord_axis);
-        }
+        a: &na::Vector3<f32or64>,
+        c: f32or64,
+    ) -> f32or64 {
+        let mip_pos_a = pos.mip(a);
+        let mop_pos_a_sqr = pos.mop_sqr(a);
+        let mip_dir_a = dir.mip(a);
 
-        self.trace_ray_for_vertices(chunk_data, pos, dir, handle);
-    }
+        // The following 3 variables are terms of the quadratic formula. We use double the linear
+        // term because it removes the annoying constants from that formula.
+        let quadratic_term = mip_dir_a.powi(2) + c.powi(2) + 1.0;
+        let double_linear_term = mip_pos_a * mip_dir_a;
+        let constant_term = mop_pos_a_sqr - c.powi(2);
 
-    fn max_radius(&self) -> f32or64 {
-        self.radius
+        let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
+
+        // While discriminant can be negative, NaNs propagate the way we want to, so we don't have
+        // to check for this.
+        constant_term / (-double_linear_term + discriminant.sqrt())
     }
 }
