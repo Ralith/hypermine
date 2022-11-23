@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::{
     chunk_ray_tracer::{ChunkRayTracer, RayTracingResultHandle},
-    math::HyperboloidMatrix,
+    math::{f32or64, HyperboloidMatrix},
     penta::Vertex,
     tessellation::{NodeHandle, Tessellation},
 };
@@ -11,18 +11,18 @@ pub fn trace_ray(
     tessellation: &Tessellation,
     chunk_ray_tracer: &impl ChunkRayTracer,
     node: NodeHandle,
-    pos: &na::Vector3<f32>,
-    dir: &na::Vector3<f32>,
+    pos: &na::Vector3<f32or64>,
+    dir: &na::Vector3<f32or64>,
     handle: &mut RayTracingResultHandle,
 ) {
     let mut visited_chunks: HashSet<ChunkHandle> = HashSet::new();
-    let mut chunk_queue: VecDeque<(ChunkHandle, na::Matrix3<f32>)> = VecDeque::new();
+    let mut chunk_queue: VecDeque<(ChunkHandle, na::Matrix3<f32or64>)> = VecDeque::new();
 
     let start_chunk = ChunkHandle::new(node, Vertex::AB);
     visited_chunks.insert(start_chunk);
     chunk_queue.push_back((start_chunk, na::Matrix3::identity()));
 
-    const EPSILON: f32 = 1e-5;
+    const EPSILON: f32or64 = 1e-5;
     let klein_boundary0 = (chunk_ray_tracer.max_radius() + EPSILON).tanh();
     let klein_boundary1 = (Vertex::voxel_to_square_factor().atanh()
         - (chunk_ray_tracer.max_radius() + EPSILON))

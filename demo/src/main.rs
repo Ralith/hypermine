@@ -1,6 +1,6 @@
 use demo::{
     draw,
-    math::HyperboloidMatrix,
+    math::{f32or64, HyperboloidMatrix},
     player::{Player, PlayerInput},
     tessellation::Tessellation,
 };
@@ -19,7 +19,7 @@ fn main() {
 struct State {
     player: Player,
     tessellation: Tessellation,
-    zoom_factor: f32,
+    zoom_factor: f32or64,
 }
 
 impl State {
@@ -33,17 +33,17 @@ impl State {
         }
     }
 
-    fn get_mouse_position(&self, ctx: &Context) -> na::Vector3<f32> {
+    fn get_mouse_position(&self, ctx: &Context) -> na::Vector3<f32or64> {
         let screen_coordinates = graphics::screen_coordinates(ctx);
-        let width = screen_coordinates.w as f32;
-        let height = screen_coordinates.h as f32;
+        let width = screen_coordinates.w as f32or64;
+        let height = screen_coordinates.h as f32or64;
 
         let scale = (width.min(height) - 1.0) / 2.0 * self.zoom_factor;
 
         let window_mouse_position = ggez::input::mouse::position(ctx);
         na::Vector3::new(
-            (window_mouse_position.x as f32 + 0.5 - width / 2.0) / scale,
-            -(window_mouse_position.y as f32 + 0.5 - height / 2.0) / scale,
+            (window_mouse_position.x as f32or64 + 0.5 - width / 2.0) / scale,
+            -(window_mouse_position.y as f32or64 + 0.5 - height / 2.0) / scale,
             1.0,
         )
     }
@@ -57,7 +57,7 @@ impl event::EventHandler for State {
             self.tessellation
                 .ensure_nearby(self.player.node(), na::Matrix3::identity(), 2);
 
-            let seconds = 1. / (DESIRED_FPS as f32);
+            let seconds = 1. / (DESIRED_FPS as f32or64);
             self.player
                 .step(&PlayerInput::new(ctx, &self.tessellation, seconds));
 

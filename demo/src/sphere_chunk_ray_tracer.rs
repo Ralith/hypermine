@@ -1,29 +1,29 @@
 use crate::{
     chunk_ray_tracer::{ChunkRayTracer, RayTracingResultHandle},
-    math::HyperboloidVector,
+    math::{f32or64, HyperboloidVector},
     penta::Vertex,
     tessellation::ChunkData,
 };
 
 pub struct SphereChunkRayTracer {
-    pub radius: f32,
+    pub radius: f32or64,
 }
 
 impl SphereChunkRayTracer {
     fn trace_ray_for_sides(
         &self,
         chunk_data: ChunkData,
-        pos: &na::Vector3<f32>,
-        dir: &na::Vector3<f32>,
+        pos: &na::Vector3<f32or64>,
+        dir: &na::Vector3<f32or64>,
         handle: &mut RayTracingResultHandle,
         coord_axis: usize,
     ) {
-        let float_size = chunk_data.chunk_size() as f32;
+        let float_size = chunk_data.chunk_size() as f32or64;
         let coord_plane0 = (coord_axis + 1) % 2;
 
         for i in 0..=chunk_data.chunk_size() {
             // Factor a in plane equation x/z == a => x == a*z
-            let a = i as f32 / float_size * Vertex::voxel_to_square_factor();
+            let a = i as f32or64 / float_size * Vertex::voxel_to_square_factor();
 
             // Solve quadratic equation
             let mut normal = na::Vector3::new(0.0, 0.0, a);
@@ -67,12 +67,12 @@ impl SphereChunkRayTracer {
     fn trace_ray_for_vertices(
         &self,
         chunk_data: ChunkData,
-        pos: &na::Vector3<f32>,
-        dir: &na::Vector3<f32>,
+        pos: &na::Vector3<f32or64>,
+        dir: &na::Vector3<f32or64>,
         handle: &mut RayTracingResultHandle,
     ) {
         let size = chunk_data.chunk_size();
-        let float_size = size as f32;
+        let float_size = size as f32or64;
 
         for i in 0..=chunk_data.chunk_size() {
             for j in 0..=chunk_data.chunk_size() {
@@ -85,8 +85,8 @@ impl SphereChunkRayTracer {
                 }
 
                 let vert = na::Vector3::new(
-                    i as f32 / float_size * Vertex::voxel_to_square_factor(),
-                    j as f32 / float_size * Vertex::voxel_to_square_factor(),
+                    i as f32or64 / float_size * Vertex::voxel_to_square_factor(),
+                    j as f32or64 / float_size * Vertex::voxel_to_square_factor(),
                     1.0,
                 )
                 .m_normalized_point();
@@ -116,11 +116,11 @@ impl SphereChunkRayTracer {
     /// away from the plane whose normal is `a`.  If `a` is point-like, this finds intersections
     /// with a sphere centered at `a` with radius `cosh(c)`.
     fn find_intersection_one_vector(
-        pos: &na::Vector3<f32>,
-        dir: &na::Vector3<f32>,
-        a: &na::Vector3<f32>,
-        c: f32,
-    ) -> f32 {
+        pos: &na::Vector3<f32or64>,
+        dir: &na::Vector3<f32or64>,
+        a: &na::Vector3<f32or64>,
+        c: f32or64,
+    ) -> f32or64 {
         let mip_pos_a = pos.mip(a);
         let mop_pos_a_sqr = pos.mop_sqr(a);
         let mip_dir_a = dir.mip(a);
@@ -146,11 +146,11 @@ impl SphereChunkRayTracer {
     /// away from the plane whose normal is `a`.  If `a` is point-like, this finds intersections
     /// with a sphere centered at `a` with radius `cosh(c)`.
     fn find_intersection_one_vector_old(
-        pos: &na::Vector3<f32>,
-        dir: &na::Vector3<f32>,
-        a: &na::Vector3<f32>,
-        c: f32,
-    ) -> f32 {
+        pos: &na::Vector3<f32or64>,
+        dir: &na::Vector3<f32or64>,
+        a: &na::Vector3<f32or64>,
+        c: f32or64,
+    ) -> f32or64 {
         let mip_pos_a = pos.mip(a);
         let mip_dir_a = dir.mip(a);
 
@@ -177,12 +177,12 @@ impl SphereChunkRayTracer {
     /// Returns NaN if there's no such intersection
     #[allow(dead_code)]
     fn find_intersection_two_vectors(
-        pos: &na::Vector3<f32>,
-        dir: &na::Vector3<f32>,
-        a: &na::Vector3<f32>,
-        b: &na::Vector3<f32>,
-        c: f32,
-    ) -> f32 {
+        pos: &na::Vector3<f32or64>,
+        dir: &na::Vector3<f32or64>,
+        a: &na::Vector3<f32or64>,
+        b: &na::Vector3<f32or64>,
+        c: f32or64,
+    ) -> f32or64 {
         // TODO: Improve numerical stability
         let mip_pos_a = pos.mip(a);
         let mip_dir_a = dir.mip(a);
@@ -207,8 +207,8 @@ impl ChunkRayTracer for SphereChunkRayTracer {
     fn trace_ray_in_chunk(
         &self,
         chunk_data: ChunkData,
-        pos: &na::Vector3<f32>,
-        dir: &na::Vector3<f32>,
+        pos: &na::Vector3<f32or64>,
+        dir: &na::Vector3<f32or64>,
         handle: &mut RayTracingResultHandle,
     ) {
         for coord_axis in 0..2 {
@@ -218,7 +218,7 @@ impl ChunkRayTracer for SphereChunkRayTracer {
         self.trace_ray_for_vertices(chunk_data, pos, dir, handle);
     }
 
-    fn max_radius(&self) -> f32 {
+    fn max_radius(&self) -> f32or64 {
         self.radius
     }
 }
