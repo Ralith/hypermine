@@ -34,6 +34,8 @@ struct SphereChunkRayTracingPass<'a, 'b> {
     pos: &'a na::Vector3<f32or64>,
     dir: &'a na::Vector3<f32or64>,
     handle: &'a mut RayTracingResultHandle<'b>,
+    voxel_start: na::Vector2<f32or64>,
+    voxel_end: na::Vector2<f32or64>,
 }
 
 impl SphereChunkRayTracingPass<'_, '_> {
@@ -44,12 +46,19 @@ impl SphereChunkRayTracingPass<'_, '_> {
         dir: &'a na::Vector3<f32or64>,
         handle: &'a mut RayTracingResultHandle<'b>,
     ) -> SphereChunkRayTracingPass<'a, 'b> {
+        let float_size = chunk_data.chunk_size() as f32or64;
+        let voxel_start = (pos / pos[2]).xy() * Vertex::square_to_voxel_factor() * float_size;
+        let end_pos = pos + dir;
+        let voxel_end = (end_pos / end_pos[2]).xy() * Vertex::square_to_voxel_factor() * float_size;
+
         SphereChunkRayTracingPass {
             radius,
             chunk_data,
             pos,
             dir,
             handle,
+            voxel_start,
+            voxel_end,
         }
     }
 
@@ -67,11 +76,8 @@ impl SphereChunkRayTracingPass<'_, '_> {
         let i_range = get_usize_range(
             0,
             self.chunk_data.chunk_size(),
-            (self.pos[coord_axis] / self.pos[2]) * Vertex::square_to_voxel_factor() * float_size,
-            ((self.pos[coord_axis] + self.dir[coord_axis] * self.handle.t())
-                / (self.pos[2] + self.dir[2] * self.handle.t()))
-                * Vertex::square_to_voxel_factor()
-                * float_size,
+            self.voxel_start[coord_axis],
+            self.voxel_end[coord_axis],
             max_voxel_radius,
         );
 
