@@ -433,20 +433,21 @@ impl PlayerPhysicsPass<'_> {
         // overall algorithm settles more.
         let t_with_epsilon = (ray_tracing_result.t - EPSILON).max(0.0);
 
+        let ray_tracing_transform = math::translate(
+            &na::Vector4::w(),
+            &math::lorentz_normalize(
+                &(na::Vector4::w() + displacement_normalized * t_with_epsilon),
+            ),
+        );
+
         ray_tracing_result.t = t_with_epsilon;
         if let Some(intersection) = ray_tracing_result.intersection.as_mut() {
+            intersection.normal =
+                ray_tracing_transform.try_inverse().unwrap() * intersection.normal;
             intersection.normal.w = 0.0;
             intersection.normal.normalize_mut();
         }
 
-        (
-            ray_tracing_result,
-            math::translate(
-                &na::Vector4::w(),
-                &math::lorentz_normalize(
-                    &(na::Vector4::w() + displacement_normalized * t_with_epsilon),
-                ),
-            ),
-        )
+        (ray_tracing_result, ray_tracing_transform)
     }
 }
