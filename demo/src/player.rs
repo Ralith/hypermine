@@ -152,6 +152,7 @@ impl<'a> PlayerPhysicsPass<'a> {
     }
 
     fn apply_velocity(&mut self) {
+        let initial_velocity_norm = self.player.vel.norm();
         let mut remaining_dt = self.input.dt;
         for _ in 0..Self::MAX_COLLISION_ITERATIONS {
             let (ray_tracing_result, ray_tracing_transform) =
@@ -161,15 +162,12 @@ impl<'a> PlayerPhysicsPass<'a> {
 
             // TODO: Will need to allow two collision normals to act at once, especially in 3D
             if let Some(intersection) = ray_tracing_result.intersection {
-                let expected_displacement_norm = self.player.vel.norm() * remaining_dt;
-                let actual_displacement_norm = ray_tracing_result.t.atanh();
-
                 if intersection.normal.mip(&self.get_relative_down()) < -self.player.max_cos_slope {
                     self.update_ground_normal(&intersection.normal);
                 }
 
                 self.player.vel = self.player.vel.project_ortho(&intersection.normal);
-                remaining_dt *= 1.0 - actual_displacement_norm / expected_displacement_norm;
+                remaining_dt -= ray_tracing_result.t.atanh() / initial_velocity_norm;
             } else {
                 break;
             }
