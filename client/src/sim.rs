@@ -31,7 +31,8 @@ pub struct Sim {
     pub world: hecs::World,
     pub params: Option<Parameters>,
     pub local_character: Option<Entity>,
-    position: Position,
+    position_local: na::Matrix4<f64>,
+    position_node: NodeId,
     yaw: f32,
     pitch: f32,
     step: Option<Step>,
@@ -60,10 +61,8 @@ impl Sim {
             world: hecs::World::new(),
             params: None,
             local_character: None,
-            position: Position {
-                local: math::translate_along(&na::Vector3::y_axis(), 1.1),
-                node: NodeId::ROOT,
-            },
+            position_local: math::translate_along(&na::Vector3::y_axis(), 1.1),
+            position_node: NodeId::ROOT,
             yaw: 0.0,
             pitch: 0.0,
             step: None,
@@ -259,14 +258,18 @@ impl Sim {
         let _ = self.net.outgoing.send(Command {
             generation,
             orientation: self.get_orientation().into(),
-            position: self.position,
+            position: Position {
+                local: self.position_local.cast(),
+                node: self.position_node,
+            },
         });
     }
 
     pub fn view(&self) -> Position {
-        let mut result = self.position;
-        result.local *= self.get_orientation().to_homogeneous();
-        result
+        Position {
+            local: self.position_local.cast::<f32>() * self.get_orientation().to_homogeneous(),
+            node: self.position_node,
+        }
     }
 
     /// Destroy all aspects of an entity
@@ -360,7 +363,7 @@ impl PlayerPhysicsPass<'_> {
             let (ray_tracing_result, ray_tracing_transform) =
                 self.trace_ray(&(self.sim.vel * remaining_dt));
 
-            self.sim.position.local *= ray_tracing_transform.cast();
+            self.sim.position_local *= ray_tracing_transform;
 
             // TODO: Will need to allow two collision normals to act at once, especially in 3D
             if let Some(intersection) = ray_tracing_result.intersection {
@@ -373,27 +376,26 @@ impl PlayerPhysicsPass<'_> {
     }
 
     fn align_with_gravity(&mut self) {
-        self.sim.position.local *=
-            math::translate2(&na::Vector4::y(), &self.get_relative_up()).cast();
+        self.sim.position_local *= math::translate2(&na::Vector4::y(), &self.get_relative_up());
     }
 
     fn renormalize_transform(&mut self) {
-        self.sim.position.local = math::renormalize_isometry(&self.sim.position.local);
+        self.sim.position_local = math::renormalize_isometry(&self.sim.position_local);
 
         let (next_node, transition_xf) = self
             .sim
             .graph
-            .normalize_transform(self.sim.position.node, &self.sim.position.local);
-        if next_node != self.sim.position.node {
-            self.sim.position.node = next_node;
-            self.sim.position.local = transition_xf * self.sim.position.local;
+            .normalize_transform(self.sim.position_node, &self.sim.position_local);
+        if next_node != self.sim.position_node {
+            self.sim.position_node = next_node;
+            self.sim.position_local = transition_xf * self.sim.position_local;
         }
     }
 
     fn get_relative_up(&self) -> na::Vector4<f64> {
-        let node = self.sim.graph.get(self.sim.position.node).as_ref().unwrap();
+        let node = self.sim.graph.get(self.sim.position_node).as_ref().unwrap();
         let mut relative_up =
-            self.sim.position.local.try_inverse().unwrap().cast() * node.state.surface().normal();
+            self.sim.position_local.try_inverse().unwrap() * node.state.surface().normal();
         relative_up.w = 0.0;
         relative_up.normalize()
     }
@@ -418,12 +420,12 @@ impl PlayerPhysicsPass<'_> {
             &self.sim.graph,
             self.sim.params.as_ref().unwrap().chunk_size as usize,
             &SphereChunkRayTracer { radius: 0.02 },
-            self.sim.position.node,
-            &(self.sim.position.local.cast() * na::Vector4::w()),
-            &(self.sim.position.local.cast() * displacement_normalized),
+            self.sim.position_node,
+            &(self.sim.position_local * na::Vector4::w()),
+            &(self.sim.position_local * displacement_normalized),
             &mut RayTracingResultHandle::new(
                 &mut ray_tracing_result,
-                self.sim.position.local.cast().try_inverse().unwrap(),
+                self.sim.position_local.try_inverse().unwrap(),
             ),
         );
 
