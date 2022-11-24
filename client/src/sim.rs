@@ -358,6 +358,8 @@ impl PlayerPhysicsPass<'_> {
 
     fn apply_velocity(&mut self) {
         let initial_velocity_norm = self.sim.vel.norm();
+
+        let mut active_normals = Vec::<na::Vector4<f64>>::with_capacity(2);
         let mut remaining_dt = self.dt.as_secs_f64();
         for _ in 0..Self::MAX_COLLISION_ITERATIONS {
             let (ray_tracing_result, ray_tracing_transform) =
@@ -365,10 +367,23 @@ impl PlayerPhysicsPass<'_> {
 
             self.sim.position_local *= ray_tracing_transform;
 
-            // TODO: Will need to allow two collision normals to act at once, especially in 3D
             if let Some(intersection) = ray_tracing_result.intersection {
-                self.sim.vel = math::project_ortho(&self.sim.vel, &intersection.normal);
+                active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
+                if active_normals.len() == 2 {
+                    // The player is completely stuck in a corner and cannot move further
+                    self.sim.vel = na::Vector4::zeros();
+                    break;
+                }
+                let effective_normal = if active_normals.is_empty() {
+                    intersection.normal
+                } else {
+                    // Ensure wall sliding doesn't push player back to already-collided wall
+                    math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
+                };
+                self.sim.vel = math::project_ortho(&self.sim.vel, &effective_normal);
                 remaining_dt -= ray_tracing_result.t.atanh() / initial_velocity_norm;
+
+                active_normals.push(intersection.normal);
             } else {
                 break;
             }
