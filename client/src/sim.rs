@@ -362,6 +362,10 @@ impl PlayerPhysicsPass<'_> {
         self.apply_velocity();
         self.align_with_gravity();
 
+        if self.sim.ground_normal.is_some() {
+            self.clamp_to_ground_or_start_falling();
+        }
+
         self.renormalize_transform();
     }
 
@@ -454,6 +458,34 @@ impl PlayerPhysicsPass<'_> {
         let transformation_inverse = transformation.try_inverse().unwrap();
         self.sim.vel = transformation_inverse * self.sim.vel;
         self.sim.ground_normal = self.sim.ground_normal.map(|n| transformation_inverse * n);
+    }
+
+    fn clamp_to_ground_or_start_falling(&mut self) {
+        let mut clamp_vector = -na::Vector4::y() * 0.01;
+        for _ in 0..Self::MAX_COLLISION_ITERATIONS {
+            let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&clamp_vector);
+
+            // TODO: Will need to allow two collision normals to act at once, especially in 3D
+            if let Some(intersection) = ray_tracing_result.intersection {
+                let potential_transform = self.sim.position_local * ray_tracing_transform;
+                if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope {
+                    self.sim.position_local = potential_transform;
+                    self.update_ground_normal(&intersection.normal);
+                    return;
+                } else {
+                    // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
+                    // More accurate shrinkage can be found at apply_velocity_iteration.
+                    clamp_vector -= ray_tracing_transform.column(3);
+                    clamp_vector.w = 0.0;
+                    // Adjust clamp vector to be perpendicular to the normal vector.
+                    clamp_vector = math::project_ortho(&clamp_vector, &intersection.normal);
+                    self.sim.ground_normal = None;
+                }
+            } else {
+                break;
+            }
+        }
+        self.sim.ground_normal = None;
     }
 
     fn renormalize_transform(&mut self) {
