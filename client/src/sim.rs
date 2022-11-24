@@ -124,91 +124,8 @@ impl Sim {
                 }
             }
 
-            // Update average velocity for the time within the current step
-            let movement_speed = self.params.as_ref().unwrap().movement_speed;
-            let (direction, distance) = sanitize_motion_input(
-                self.get_orientation()
-                    * self.instantaneous_velocity
-                    * movement_speed
-                    * dt.as_secs_f32(),
-            );
-            let (_ray_tracing_result, ray_tracing_transform) =
-                self.trace_ray(&(direction.to_homogeneous() * distance.tanh()).cast());
-            self.position.local *= ray_tracing_transform.cast();
-            self.position.local = math::renormalize_isometry(&self.position.local);
-
-            let (next_node, transition_xf) = self
-                .graph
-                .normalize_transform(self.position.node, &self.position.local);
-            if next_node != self.position.node {
-                self.position.node = next_node;
-                self.position.local = transition_xf * self.position.local;
-            }
-
-            self.align_with_gravity();
+            PlayerPhysicsPass { sim: self, dt }.step();
         }
-    }
-
-    fn align_with_gravity(&mut self) {
-        self.position.local *= math::translate2(&na::Vector4::y(), &self.get_relative_up());
-    }
-
-    fn get_relative_up(&self) -> na::Vector4<f32> {
-        let node = self.graph.get(self.position.node).as_ref().unwrap();
-        let mut relative_up =
-            self.position.local.try_inverse().unwrap() * node.state.surface().normal().cast();
-        relative_up.w = 0.0;
-        math::lorentz_normalize(&relative_up)
-    }
-
-    fn trace_ray(
-        &self,
-        relative_displacement: &na::Vector4<f64>,
-    ) -> (RayTracingResult, na::Matrix4<f64>) {
-        // Corrective constant to avoid punching through walls with floating point rounding errors
-        const EPSILON: f64 = 1e-5;
-
-        let displacement_sqr = math::mip(relative_displacement, relative_displacement);
-        if displacement_sqr < 1e-16 {
-            return (RayTracingResult::new(0.0), na::Matrix4::identity());
-        }
-
-        let displacement_norm = displacement_sqr.sqrt();
-        let displacement_normalized = relative_displacement / displacement_norm;
-
-        let mut ray_tracing_result = RayTracingResult::new(displacement_norm.tanh() + EPSILON);
-        graph_ray_tracer::trace_ray(
-            &self.graph,
-            self.params.as_ref().unwrap().chunk_size as usize,
-            &SphereChunkRayTracer { radius: 0.02 },
-            self.position.node,
-            &(self.position.local.cast() * na::Vector4::w()),
-            &(self.position.local.cast() * displacement_normalized),
-            &mut RayTracingResultHandle::new(
-                &mut ray_tracing_result,
-                self.position.local.cast().try_inverse().unwrap(),
-            ),
-        );
-
-        // TODO: A more robust and complex margin system will likely be needed once the
-        // overall algorithm settles more.
-        let t_with_epsilon = (ray_tracing_result.t - EPSILON).max(0.0);
-
-        ray_tracing_result.t = t_with_epsilon;
-        if let Some(intersection) = ray_tracing_result.intersection.as_mut() {
-            intersection.normal.w = 0.0;
-            intersection.normal.normalize_mut();
-        }
-
-        (
-            ray_tracing_result,
-            math::translate(
-                &na::Vector4::w(),
-                &math::lorentz_normalize(
-                    &(na::Vector4::w() + displacement_normalized * t_with_epsilon),
-                ),
-            ),
-        )
     }
 
     fn handle_net(&mut self, msg: net::Message) {
@@ -395,4 +312,105 @@ fn populate_node(graph: &mut DualGraph, node: NodeId) {
             .unwrap_or_else(NodeState::root),
         chunks: Chunks::default(),
     });
+}
+
+struct PlayerPhysicsPass<'a> {
+    sim: &'a mut Sim,
+    dt: Duration,
+}
+
+impl PlayerPhysicsPass<'_> {
+    fn step(&mut self) {
+        self.apply_velocity();
+        self.align_with_gravity();
+        self.renormalize_transform();
+    }
+
+    fn apply_velocity(&mut self) {
+        let movement_speed = self.sim.params.as_ref().unwrap().movement_speed;
+        let (direction, distance) = sanitize_motion_input(
+            self.sim.get_orientation()
+                * self.sim.instantaneous_velocity
+                * movement_speed
+                * self.dt.as_secs_f32(),
+        );
+        let (_ray_tracing_result, ray_tracing_transform) =
+            self.trace_ray(&(direction.to_homogeneous() * distance.tanh()).cast());
+        self.sim.position.local *= ray_tracing_transform.cast();
+    }
+
+    fn align_with_gravity(&mut self) {
+        self.sim.position.local *= math::translate2(&na::Vector4::y(), &self.get_relative_up());
+    }
+
+    fn renormalize_transform(&mut self) {
+        self.sim.position.local = math::renormalize_isometry(&self.sim.position.local);
+
+        let (next_node, transition_xf) = self
+            .sim
+            .graph
+            .normalize_transform(self.sim.position.node, &self.sim.position.local);
+        if next_node != self.sim.position.node {
+            self.sim.position.node = next_node;
+            self.sim.position.local = transition_xf * self.sim.position.local;
+        }
+    }
+
+    fn get_relative_up(&self) -> na::Vector4<f32> {
+        let node = self.sim.graph.get(self.sim.position.node).as_ref().unwrap();
+        let mut relative_up =
+            self.sim.position.local.try_inverse().unwrap() * node.state.surface().normal().cast();
+        relative_up.w = 0.0;
+        relative_up.normalize()
+    }
+
+    fn trace_ray(
+        &self,
+        relative_displacement: &na::Vector4<f64>,
+    ) -> (RayTracingResult, na::Matrix4<f64>) {
+        // Corrective constant to avoid punching through walls with floating point rounding errors
+        const EPSILON: f64 = 1e-5;
+
+        let displacement_sqr = math::mip(relative_displacement, relative_displacement);
+        if displacement_sqr < 1e-16 {
+            return (RayTracingResult::new(0.0), na::Matrix4::identity());
+        }
+
+        let displacement_norm = displacement_sqr.sqrt();
+        let displacement_normalized = relative_displacement / displacement_norm;
+
+        let mut ray_tracing_result = RayTracingResult::new(displacement_norm.tanh() + EPSILON);
+        graph_ray_tracer::trace_ray(
+            &self.sim.graph,
+            self.sim.params.as_ref().unwrap().chunk_size as usize,
+            &SphereChunkRayTracer { radius: 0.02 },
+            self.sim.position.node,
+            &(self.sim.position.local.cast() * na::Vector4::w()),
+            &(self.sim.position.local.cast() * displacement_normalized),
+            &mut RayTracingResultHandle::new(
+                &mut ray_tracing_result,
+                self.sim.position.local.cast().try_inverse().unwrap(),
+            ),
+        );
+
+        // TODO: A more robust and complex margin system will likely be needed once the
+        // overall algorithm settles more.
+        let t_with_epsilon = (ray_tracing_result.t - EPSILON).max(0.0);
+
+        ray_tracing_result.t = t_with_epsilon;
+        if let Some(intersection) = ray_tracing_result.intersection.as_mut() {
+            intersection.normal.w = 0.0;
+            intersection.normal.normalize_mut();
+        }
+
+        (
+            ray_tracing_result,
+            math::translate(
+                &na::Vector4::w(),
+                &math::lorentz_normalize(
+                    &(na::Vector4::w() + displacement_normalized * t_with_epsilon),
+                ),
+            ),
+        )
+    }
 }
