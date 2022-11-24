@@ -47,6 +47,11 @@ pub fn translate<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) ->
     reflect(&midpoint(a, b)) * reflect(a)
 }
 
+/// Like `translate` but requires (lorentz) unit vectors and allows rotations
+pub fn translate2<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Matrix4<N> {
+    reflect(&(a + b)) * reflect(a)
+}
+
 #[rustfmt::skip]
 pub fn translate_along<N: RealField + Copy>(v: &na::Unit<na::Vector3<N>>, distance: N) -> na::Matrix4<N> {
     if distance == na::zero() {

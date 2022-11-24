@@ -150,19 +150,15 @@ impl Sim {
     }
 
     fn align_with_gravity(&mut self) {
-        // TODO: This is not quite precise, as it uses the sin(x) = x approximation.
-        // There is likely a mathematically nicer way to handle this.
-        let relative_down = self.get_relative_down();
-        let axisangle = relative_down
-            .xyz()
-            .normalize()
-            .cross(&(-na::Vector3::y_axis()));
-        self.position.local *= na::Rotation3::from_scaled_axis(axisangle).to_homogeneous();
+        self.position.local *= math::translate2(&na::Vector4::y(), &self.get_relative_up());
     }
 
-    fn get_relative_down(&self) -> na::Vector4<f32> {
+    fn get_relative_up(&self) -> na::Vector4<f32> {
         let node = self.graph.get(self.position.node).as_ref().unwrap();
-        self.position.local.try_inverse().unwrap() * node.state.surface().normal().cast()
+        let mut relative_up =
+            self.position.local.try_inverse().unwrap() * node.state.surface().normal().cast();
+        relative_up.w = 0.0;
+        math::lorentz_normalize(&relative_up)
     }
 
     fn trace_ray(
