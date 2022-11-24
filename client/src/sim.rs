@@ -16,7 +16,6 @@ use common::{
     math,
     node::{DualGraph, Node},
     proto::{self, Character, Command, Component, Position},
-    sanitize_motion_input,
     worldgen::NodeState,
     Chunks, EntityId, GraphEntities, Step,
 };
