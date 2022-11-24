@@ -43,7 +43,11 @@ pub struct Sim {
     ///
     /// Units are relative to movement speed.
     instantaneous_velocity: na::Vector3<f32>,
+    vel: na::Vector4<f64>,
     prediction: PredictedMotion,
+
+    max_ground_speed: f64,
+    ground_acceleration: f64,
 }
 
 impl Sim {
@@ -67,7 +71,11 @@ impl Sim {
 
             since_input_sent: Duration::new(0, 0),
             instantaneous_velocity: na::zero(),
+            vel: na::zero(),
             prediction: PredictedMotion::new(),
+
+            max_ground_speed: 0.2,
+            ground_acceleration: 1.0,
         }
     }
 
@@ -321,26 +329,38 @@ struct PlayerPhysicsPass<'a> {
 
 impl PlayerPhysicsPass<'_> {
     fn step(&mut self) {
+        self.apply_ground_controls();
         self.apply_velocity();
         self.align_with_gravity();
         self.renormalize_transform();
     }
 
+    fn apply_ground_controls(&mut self) {
+        let mut target_unit_vel = (self.sim.get_orientation() * self.sim.instantaneous_velocity)
+            .to_homogeneous()
+            .cast();
+        if target_unit_vel.norm_squared() > 1. {
+            target_unit_vel.normalize_mut();
+        }
+
+        let target_dvel = target_unit_vel * self.sim.max_ground_speed - self.sim.vel;
+        let ground_acceleration_impulse = self.sim.ground_acceleration * self.dt.as_secs_f64();
+        if target_dvel.norm_squared() > ground_acceleration_impulse.powi(2) {
+            self.sim.vel += target_dvel.normalize() * ground_acceleration_impulse;
+        } else {
+            self.sim.vel += target_dvel;
+        }
+    }
+
     fn apply_velocity(&mut self) {
-        let movement_speed = self.sim.params.as_ref().unwrap().movement_speed;
-        let (direction, distance) = sanitize_motion_input(
-            self.sim.get_orientation()
-                * self.sim.instantaneous_velocity
-                * movement_speed
-                * self.dt.as_secs_f32(),
-        );
         let (_ray_tracing_result, ray_tracing_transform) =
-            self.trace_ray(&(direction.to_homogeneous() * distance.tanh()).cast());
+            self.trace_ray(&(self.sim.vel * self.dt.as_secs_f64()));
         self.sim.position.local *= ray_tracing_transform.cast();
     }
 
     fn align_with_gravity(&mut self) {
-        self.sim.position.local *= math::translate2(&na::Vector4::y(), &self.get_relative_up());
+        self.sim.position.local *=
+            math::translate2(&na::Vector4::y(), &self.get_relative_up()).cast();
     }
 
     fn renormalize_transform(&mut self) {
@@ -356,10 +376,10 @@ impl PlayerPhysicsPass<'_> {
         }
     }
 
-    fn get_relative_up(&self) -> na::Vector4<f32> {
+    fn get_relative_up(&self) -> na::Vector4<f64> {
         let node = self.sim.graph.get(self.sim.position.node).as_ref().unwrap();
         let mut relative_up =
-            self.sim.position.local.try_inverse().unwrap() * node.state.surface().normal().cast();
+            self.sim.position.local.try_inverse().unwrap().cast() * node.state.surface().normal();
         relative_up.w = 0.0;
         relative_up.normalize()
     }
