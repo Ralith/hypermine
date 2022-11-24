@@ -36,6 +36,11 @@ impl<N: RealField + Copy> HPoint<N> {
     }
 }
 
+/// Project `v` to be orthogonal to `n`
+pub fn project_ortho<N: RealField + Copy>(v: &na::Vector4<N>, n: &na::Vector4<N>) -> na::Vector4<N> {
+    v - n * mip(n, v)
+}
+
 /// Point reflection around `p`
 pub fn reflect<N: RealField + Copy>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()

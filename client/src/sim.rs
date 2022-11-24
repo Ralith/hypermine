@@ -327,6 +327,8 @@ struct PlayerPhysicsPass<'a> {
 }
 
 impl PlayerPhysicsPass<'_> {
+    const MAX_COLLISION_ITERATIONS: u32 = 5;
+
     fn step(&mut self) {
         self.apply_ground_controls();
         self.apply_velocity();
@@ -352,9 +354,22 @@ impl PlayerPhysicsPass<'_> {
     }
 
     fn apply_velocity(&mut self) {
-        let (_ray_tracing_result, ray_tracing_transform) =
-            self.trace_ray(&(self.sim.vel * self.dt.as_secs_f64()));
-        self.sim.position.local *= ray_tracing_transform.cast();
+        let initial_velocity_norm = self.sim.vel.norm();
+        let mut remaining_dt = self.dt.as_secs_f64();
+        for _ in 0..Self::MAX_COLLISION_ITERATIONS {
+            let (ray_tracing_result, ray_tracing_transform) =
+                self.trace_ray(&(self.sim.vel * remaining_dt));
+
+            self.sim.position.local *= ray_tracing_transform.cast();
+
+            // TODO: Will need to allow two collision normals to act at once, especially in 3D
+            if let Some(intersection) = ray_tracing_result.intersection {
+                self.sim.vel = math::project_ortho(&self.sim.vel, &intersection.normal);
+                remaining_dt -= ray_tracing_result.t.atanh() / initial_velocity_norm;
+            } else {
+                break;
+            }
+        }
     }
 
     fn align_with_gravity(&mut self) {
