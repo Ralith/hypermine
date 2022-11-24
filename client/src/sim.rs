@@ -43,11 +43,16 @@ pub struct Sim {
     ///
     /// Units are relative to movement speed.
     instantaneous_velocity: na::Vector3<f32>,
-    vel: na::Vector4<f64>,
+    jumping: bool,
     prediction: PredictedMotion,
+    vel: na::Vector4<f64>,
+    ground_normal: Option<na::Vector4<f64>>,
 
     max_ground_speed: f64,
     ground_acceleration: f64,
+    air_acceleration: f64,
+    jump_speed: f64,
+    max_cos_slope: f64,
 }
 
 impl Sim {
@@ -69,11 +74,16 @@ impl Sim {
 
             since_input_sent: Duration::new(0, 0),
             instantaneous_velocity: na::zero(),
-            vel: na::zero(),
+            jumping: false,
             prediction: PredictedMotion::new(),
+            vel: na::zero(),
+            ground_normal: None,
 
             max_ground_speed: 0.2,
             ground_acceleration: 1.0,
+            air_acceleration: 0.2,
+            jump_speed: 0.4,
+            max_cos_slope: 0.5,
         }
     }
 
@@ -104,6 +114,10 @@ impl Sim {
         self.instantaneous_velocity = v;
     }
 
+    pub fn jump(&mut self) {
+        self.jumping = true;
+    }
+
     pub fn params(&self) -> Option<&Parameters> {
         self.params.as_ref()
     }
@@ -131,6 +145,7 @@ impl Sim {
             }
 
             PlayerPhysicsPass { sim: self, dt }.step();
+            self.jumping = false;
         }
     }
 
@@ -333,19 +348,42 @@ impl PlayerPhysicsPass<'_> {
     const MAX_COLLISION_ITERATIONS: u32 = 5;
 
     fn step(&mut self) {
-        self.apply_ground_controls();
+        if self.sim.jumping {
+            self.attempt_jump();
+        }
+
+        if let Some(ground_normal) = self.sim.ground_normal {
+            self.apply_ground_controls(&ground_normal);
+        } else {
+            self.apply_air_controls();
+            self.apply_gravity();
+        }
+
         self.apply_velocity();
         self.align_with_gravity();
+
         self.renormalize_transform();
     }
 
-    fn apply_ground_controls(&mut self) {
-        let mut target_unit_vel = (self.sim.get_orientation() * self.sim.instantaneous_velocity)
-            .to_homogeneous()
-            .cast();
+    fn attempt_jump(&mut self) {
+        if self.sim.ground_normal.is_some() {
+            let relative_up = self.get_relative_up();
+            let horizontal_vel = math::project_ortho(&self.sim.vel, &relative_up);
+            self.sim.vel = horizontal_vel + relative_up * self.sim.jump_speed;
+            self.sim.ground_normal = None;
+        }
+    }
+
+    fn apply_ground_controls(&mut self, ground_normal: &na::Vector4<f64>) {
+        let mut target_unit_vel =
+            (na::Rotation::from_axis_angle(&na::Vector3::y_axis(), -self.sim.yaw)
+                * self.sim.instantaneous_velocity)
+                .to_homogeneous()
+                .cast();
         if target_unit_vel.norm_squared() > 1. {
             target_unit_vel.normalize_mut();
         }
+        target_unit_vel = math::translate2(&na::Vector4::y(), ground_normal) * target_unit_vel;
 
         let target_dvel = target_unit_vel * self.sim.max_ground_speed - self.sim.vel;
         let ground_acceleration_impulse = self.sim.ground_acceleration * self.dt.as_secs_f64();
@@ -354,6 +392,20 @@ impl PlayerPhysicsPass<'_> {
         } else {
             self.sim.vel += target_dvel;
         }
+    }
+
+    fn apply_air_controls(&mut self) {
+        self.sim.vel += (na::Rotation::from_axis_angle(&na::Vector3::y_axis(), -self.sim.yaw)
+            * self.sim.instantaneous_velocity)
+            .to_homogeneous()
+            .cast()
+            * self.dt.as_secs_f64()
+            * self.sim.air_acceleration;
+    }
+
+    fn apply_gravity(&mut self) {
+        const GRAVITY: f64 = 1.0;
+        self.sim.vel -= self.get_relative_up() * GRAVITY * self.dt.as_secs_f64();
     }
 
     fn apply_velocity(&mut self) {
@@ -380,6 +432,12 @@ impl PlayerPhysicsPass<'_> {
                     // Ensure wall sliding doesn't push player back to already-collided wall
                     math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
                 };
+
+                if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope
+                {
+                    self.update_ground_normal(&intersection.normal);
+                }
+
                 self.sim.vel = math::project_ortho(&self.sim.vel, &effective_normal);
                 remaining_dt -= ray_tracing_result.t.atanh() / initial_velocity_norm;
 
@@ -391,7 +449,11 @@ impl PlayerPhysicsPass<'_> {
     }
 
     fn align_with_gravity(&mut self) {
-        self.sim.position_local *= math::translate2(&na::Vector4::y(), &self.get_relative_up());
+        let transformation = math::translate2(&na::Vector4::y(), &self.get_relative_up());
+        self.sim.position_local *= transformation;
+        let transformation_inverse = transformation.try_inverse().unwrap();
+        self.sim.vel = transformation_inverse * self.sim.vel;
+        self.sim.ground_normal = self.sim.ground_normal.map(|n| transformation_inverse * n);
     }
 
     fn renormalize_transform(&mut self) {
@@ -405,6 +467,21 @@ impl PlayerPhysicsPass<'_> {
             self.sim.position_node = next_node;
             self.sim.position_local = transition_xf * self.sim.position_local;
         }
+    }
+
+    fn update_ground_normal(&mut self, new_ground_normal: &na::Vector4<f64>) {
+        if let Some(ground_normal) = self.sim.ground_normal {
+            // Move vel from ground_normal to new_ground_normal
+            self.sim.vel = math::translate2(&ground_normal, new_ground_normal) * self.sim.vel;
+        } else {
+            // To avoid undesirable sliding down slopes on every jump, project to a level ground plane
+            // before projecting to the actual group plane.
+            self.sim.vel = math::project_ortho(
+                &math::project_ortho(&self.sim.vel, &self.get_relative_up()),
+                new_ground_normal,
+            );
+        }
+        self.sim.ground_normal = Some(*new_ground_normal);
     }
 
     fn get_relative_up(&self) -> na::Vector4<f64> {
@@ -431,7 +508,7 @@ impl PlayerPhysicsPass<'_> {
         let displacement_normalized = relative_displacement / displacement_norm;
 
         let mut ray_tracing_result = RayTracingResult::new(displacement_norm.tanh() + EPSILON);
-        graph_ray_tracer::trace_ray(
+        if !graph_ray_tracer::trace_ray(
             &self.sim.graph,
             self.sim.params.as_ref().unwrap().chunk_size as usize,
             &SphereChunkRayTracer { radius: 0.02 },
@@ -442,7 +519,9 @@ impl PlayerPhysicsPass<'_> {
                 &mut ray_tracing_result,
                 self.sim.position_local.try_inverse().unwrap(),
             ),
-        );
+        ) {
+            return (RayTracingResult::new(0.0), na::Matrix4::identity());
+        }
 
         // TODO: A more robust and complex margin system will likely be needed once the
         // overall algorithm settles more.

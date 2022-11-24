@@ -6,6 +6,7 @@ use common::node::{Chunk, Node};
 
 use crate::chunk_ray_tracer::{ChunkRayTracer, RayTracingResultHandle, VoxelDataWrapper};
 
+// Returns whether a definitive answer was found
 pub fn trace_ray(
     graph: &Graph<Node>,
     dimension: usize,
@@ -14,7 +15,7 @@ pub fn trace_ray(
     pos: &na::Vector4<f64>,
     dir: &na::Vector4<f64>,
     handle: &mut RayTracingResultHandle,
-) {
+) -> bool {
     let mut visited_chunks: HashSet<ChunkHandle> = HashSet::new();
     let mut chunk_queue: VecDeque<(ChunkHandle, na::Matrix4<f64>)> = VecDeque::new();
 
@@ -32,7 +33,8 @@ pub fn trace_ray(
             voxels: ref voxel_data,
             ..
         } = graph.get(chunk.node).as_ref().unwrap().chunks[chunk.vertex] else {
-            panic!("Collision checking on unpopulated chunk");
+            // Collision checking on unpopulated chunk
+            return false;
         };
         let square_pos = chunk.vertex.node_to_dual() * transform * pos;
         let square_dir = chunk.vertex.node_to_dual() * transform * dir;
@@ -74,6 +76,8 @@ pub fn trace_ray(
             }
         }
     }
+
+    true
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

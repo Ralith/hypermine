@@ -115,8 +115,7 @@ impl Window {
         let mut back = false;
         let mut left = false;
         let mut right = false;
-        let mut up = false;
-        let mut down = false;
+        let mut jump = false;
         let mut last_frame = Instant::now();
         let mut mouse_captured = false;
         self.event_loop
@@ -128,13 +127,16 @@ impl Window {
                     let dt = this_frame - last_frame;
                     let move_direction: na::Vector3<f32> = na::Vector3::x()
                         * (right as u8 as f32 - left as u8 as f32)
-                        + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
                         + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
                     self.sim.velocity(if move_direction.norm_squared() > 1.0 {
                         move_direction.normalize()
                     } else {
                         move_direction
                     });
+                    if jump {
+                        self.sim.jump();
+                        jump = false;
+                    }
 
                     let had_params = self.sim.params().is_some();
 
@@ -202,11 +204,8 @@ impl Window {
                         VirtualKeyCode::D => {
                             right = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::R => {
-                            up = state == ElementState::Pressed;
-                        }
-                        VirtualKeyCode::F => {
-                            down = state == ElementState::Pressed;
+                        VirtualKeyCode::Space => {
+                            jump = jump || state == ElementState::Pressed;
                         }
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
