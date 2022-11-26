@@ -20,11 +20,12 @@ impl SphereChunkRayTracer {
         let coord_plane1 = (coord_axis + 2) % 3;
 
         for i in 0..=voxel_data.dimension() {
-            // Factor a in plane equation x/z == a => x == a*z
-            let a = i as f64 / float_size * Vertex::chunk_to_dual_factor();
-
-            // Solve quadratic equation
-            let mut normal = na::Vector4::new(0.0, 0.0, 0.0, a);
+            let mut normal = na::Vector4::new(
+                0.0,
+                0.0,
+                0.0,
+                i as f64 / float_size * Vertex::chunk_to_dual_factor(),
+            );
             normal[coord_axis] = 1.0;
             let normal = math::lorentz_normalize(&normal);
             let t_candidate =
@@ -43,12 +44,12 @@ impl SphereChunkRayTracer {
             let i_with_offset = i_with_offset - 1;
 
             let translated_square_pos = pos + dir * t_candidate;
-            let b0 = translated_square_pos[coord_plane0] * (1.0 - a * a)
-                / (translated_square_pos.w - translated_square_pos[coord_axis] * a);
-            let j0 = (b0 * Vertex::dual_to_chunk_factor() * float_size).floor();
-            let b1 = translated_square_pos[coord_plane1] * (1.0 - a * a)
-                / (translated_square_pos.w - translated_square_pos[coord_axis] * a);
-            let j1 = (b1 * Vertex::dual_to_chunk_factor() * float_size).floor();
+            let projected_pos = math::project_ortho(&translated_square_pos, &normal);
+            let projected_pos = projected_pos.xyz() / projected_pos.w;
+            let j0 =
+                (projected_pos[coord_plane0] * Vertex::dual_to_chunk_factor() * float_size).floor();
+            let j1 =
+                (projected_pos[coord_plane1] * Vertex::dual_to_chunk_factor() * float_size).floor();
             if j0 >= 0.0 && j0 < float_size && j1 >= 0.0 && j1 < float_size {
                 let j0 = j0 as usize;
                 let j1 = j1 as usize;
