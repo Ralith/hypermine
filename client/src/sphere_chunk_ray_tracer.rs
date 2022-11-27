@@ -149,8 +149,9 @@ impl SphereChunkRayTracingPass<'_, '_> {
                 let mut edge_pos = na::Vector4::zeros();
                 let mut edge_dir = na::Vector4::zeros();
                 edge_pos[coord_plane0] = i as f64 / float_size * Vertex::chunk_to_dual_factor();
-                edge_pos[coord_plane1] = i as f64 / float_size * Vertex::chunk_to_dual_factor();
+                edge_pos[coord_plane1] = j as f64 / float_size * Vertex::chunk_to_dual_factor();
                 edge_pos[3] = 1.0;
+                edge_pos = math::lorentz_normalize(&edge_pos);
                 edge_dir[coord_axis] = 1.0;
 
                 let t_candidate = find_intersection_two_vectors(
@@ -169,6 +170,7 @@ impl SphereChunkRayTracingPass<'_, '_> {
                 let translated_square_pos = self.pos + self.dir * t_candidate;
                 let projected_pos =
                     edge_pos + edge_dir * math::mip(&translated_square_pos, &edge_dir);
+                let projected_pos = projected_pos / projected_pos.w;
                 let k = (projected_pos[coord_axis] * Vertex::dual_to_chunk_factor() * float_size)
                     .floor();
 
