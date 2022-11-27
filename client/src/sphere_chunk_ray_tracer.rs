@@ -78,13 +78,13 @@ impl SphereChunkRayTracingPass<'_, '_> {
     }
 
     fn trace_ray_in_chunk(&mut self) {
-        for coord_axis in 0..2 {
+        for coord_axis in 0..3 {
             self.trace_ray_for_sides(coord_axis);
         }
 
-        //for coord_axis in 0..2 {
-        //    self.trace_ray_for_edges(coord_axis);
-        //}
+        for coord_axis in 0..3 {
+            self.trace_ray_for_edges(coord_axis);
+        }
 
         //self.trace_ray_for_vertices();
     }
@@ -138,6 +138,63 @@ impl SphereChunkRayTracingPass<'_, '_> {
             }
         }
     }
+
+    fn trace_ray_for_edges(&mut self, coord_axis: usize) {
+        let float_size = self.voxel_data.dimension() as f64;
+        let coord_plane0 = (coord_axis + 1) % 3;
+        let coord_plane1 = (coord_axis + 2) % 3;
+
+        for i in self.bbox[coord_plane0][0]..=self.bbox[coord_plane0][1] {
+            'main_loop: for j in self.bbox[coord_plane1][0]..=self.bbox[coord_plane1][1] {
+                let mut edge_pos = na::Vector4::zeros();
+                let mut edge_dir = na::Vector4::zeros();
+                edge_pos[coord_plane0] = i as f64 / float_size * Vertex::chunk_to_dual_factor();
+                edge_pos[coord_plane1] = i as f64 / float_size * Vertex::chunk_to_dual_factor();
+                edge_pos[3] = 1.0;
+                edge_dir[coord_axis] = 1.0;
+
+                let t_candidate = find_intersection_two_vectors(
+                    self.pos,
+                    self.dir,
+                    &edge_pos,
+                    &edge_dir,
+                    self.radius.cosh(),
+                );
+
+                // If t_candidate is out of range or NaN, don't continue collision checking
+                if !(t_candidate >= 0.0 && t_candidate < self.handle.t()) {
+                    continue;
+                }
+
+                let translated_square_pos = self.pos + self.dir * t_candidate;
+                let projected_pos =
+                    edge_pos + edge_dir * math::mip(&translated_square_pos, &edge_dir);
+                let k = (projected_pos[coord_axis] * Vertex::dual_to_chunk_factor() * float_size)
+                    .floor();
+
+                if k >= 0.0 && k < float_size {
+                    let k = k as usize;
+
+                    for i_with_offset in (i.saturating_sub(1))..=(i.min(self.voxel_data.dimension() - 1)) {
+                        for j_with_offset in (j.saturating_sub(1))..=(j.min(self.voxel_data.dimension() - 1)) {
+                            let mut coords = [0; 3];
+                            coords[coord_axis] = k;
+                            coords[coord_plane0] = i_with_offset;
+                            coords[coord_plane1] = j_with_offset;
+                            if self.voxel_data.get(coords) != Material::Void {
+                                self.handle.update(
+                                    t_candidate,
+                                    [0, 0, 0], /* TODO */
+                                    translated_square_pos - projected_pos,
+                                );
+                                continue 'main_loop;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
@@ -171,9 +228,9 @@ fn find_intersection_one_vector(
 }
 
 /// Find the smallest value of `t` where the point in the pos-dir line (v=pos+dir*t) satisfies
-/// `(<v,a>^2 - <v,b>^2) / <v,v> == c`
+/// `(<v,a>^2 - <v,b>^2) / <v,v> == c^2`
 ///
-/// This finds intersections with a surface that is `cosh^2(c)` units away from the line
+/// This finds intersections with a surface that is `cosh(c)` units away from the line
 /// with a point at `a` with direction `b`, where `<a,b>==0`.
 ///
 /// Returns NaN if there's no such intersection
@@ -193,9 +250,9 @@ fn find_intersection_two_vectors(
 
     // The following 3 variables are terms of the quadratic formula. We use double the linear
     // term because it removes the annoying constants from that formula.
-    let quadratic_term = mip_dir_a.powi(2) - mip_dir_b.powi(2) + c;
+    let quadratic_term = mip_dir_a.powi(2) - mip_dir_b.powi(2) + c.powi(2);
     let double_linear_term = mip_pos_a * mip_dir_a - mip_pos_b * mip_dir_b;
-    let constant_term = mip_pos_a.powi(2) - mip_pos_b.powi(2) - c;
+    let constant_term = mip_pos_a.powi(2) - mip_pos_b.powi(2) - c.powi(2);
 
     let discriminant = double_linear_term * double_linear_term - quadratic_term * constant_term;
 
