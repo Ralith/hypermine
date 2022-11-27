@@ -168,8 +168,8 @@ impl SphereChunkRayTracingPass<'_, '_> {
                 }
 
                 let translated_square_pos = self.pos + self.dir * t_candidate;
-                let projected_pos =
-                    edge_pos + edge_dir * math::mip(&translated_square_pos, &edge_dir);
+                let projected_pos = -edge_pos * math::mip(&translated_square_pos, &edge_pos)
+                    + edge_dir * math::mip(&translated_square_pos, &edge_dir);
                 let projected_pos = projected_pos / projected_pos.w;
                 let k = (projected_pos[coord_axis] * Vertex::dual_to_chunk_factor() * float_size)
                     .floor();
@@ -177,8 +177,12 @@ impl SphereChunkRayTracingPass<'_, '_> {
                 if k >= 0.0 && k < float_size {
                     let k = k as usize;
 
-                    for i_with_offset in (i.saturating_sub(1))..=(i.min(self.voxel_data.dimension() - 1)) {
-                        for j_with_offset in (j.saturating_sub(1))..=(j.min(self.voxel_data.dimension() - 1)) {
+                    for i_with_offset in
+                        (i.saturating_sub(1))..=(i.min(self.voxel_data.dimension() - 1))
+                    {
+                        for j_with_offset in
+                            (j.saturating_sub(1))..=(j.min(self.voxel_data.dimension() - 1))
+                        {
                             let mut coords = [0; 3];
                             coords[coord_axis] = k;
                             coords[coord_plane0] = i_with_offset;
