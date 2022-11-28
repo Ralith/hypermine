@@ -18,6 +18,7 @@ mod lahar_deprecated;
 mod loader;
 pub mod metrics;
 pub mod net;
+mod point_chunk_ray_tracer;
 mod prediction;
 pub mod sim;
 mod sphere_chunk_ray_tracer;

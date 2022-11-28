@@ -286,7 +286,6 @@ fn find_intersection_one_vector(
 /// with a point at `a` with direction `b`, where `<a,b>==0`.
 ///
 /// Returns NaN if there's no such intersection
-#[allow(dead_code)]
 fn find_intersection_two_vectors(
     pos: &na::Vector4<f64>,
     dir: &na::Vector4<f64>,
