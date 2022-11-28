@@ -178,7 +178,7 @@ impl Sim {
 
         if let Some(intersection) = ray_tracing_result.intersection {
             if let Some(node) = self.graph.get_mut(intersection.node) {
-                if let Chunk::Populated { voxels, surface: _ } =
+                if let Chunk::Populated { voxels, surface } =
                     &mut node.chunks[intersection.vertex]
                 {
                     let data = voxels.data_mut(dimension);
@@ -186,6 +186,8 @@ impl Sim {
                     data[(intersection.voxel_coords[0] + 1)
                         + (intersection.voxel_coords[1] + 1) * lwm
                         + (intersection.voxel_coords[2] + 1) * lwm * lwm] = Material::Void;
+
+                    *surface = None;
                     println!("Broke a block");
                 }
             }
