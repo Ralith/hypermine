@@ -21,6 +21,7 @@ pub enum Chunk {
     Populated {
         voxels: VoxelData,
         surface: Option<SlotId>,
+        old_surface: Option<SlotId>,
     },
 }
 

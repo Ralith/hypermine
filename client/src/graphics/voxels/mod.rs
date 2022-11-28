@@ -103,6 +103,7 @@ impl Voxels {
             sim.graph.get_mut(chunk.node).as_mut().unwrap().chunks[chunk.chunk] =
                 Chunk::Populated {
                     surface: None,
+                    old_surface: None,
                     voxels: chunk.voxels,
                 };
         }
@@ -173,6 +174,7 @@ impl Voxels {
                     }
                     Populated {
                         ref mut surface,
+                        ref old_surface,
                         ref voxels,
                     } => match (surface, voxels) {
                         (&mut Some(slot), _) => {
@@ -184,6 +186,15 @@ impl Voxels {
                                 node_transform * chunk.chunk_to_node().map(|x| x as f32);
                         }
                         (&mut ref mut surface @ None, &VoxelData::Dense(ref data)) => {
+                            // Render the previous surface
+                            if let Some(old_slot) = old_surface {
+                                self.states.get_mut(*old_slot).refcount += 1;
+                                frame.drawn.push(*old_slot);
+                                // Transfer transform
+                                frame.surface.transforms_mut()[old_slot.0 as usize] =
+                                    node_transform * chunk.chunk_to_node().map(|x| x as f32);
+                            }
+
                             // Extract a surface so it can be drawn in future frames
                             if frame.extracted.len() == self.config.chunk_load_parallelism as usize
                             {
