@@ -43,6 +43,8 @@ pub fn trace_ray(
             &square_pos,
             &square_dir,
             &mut handle.dependent_handle(
+                chunk.node,
+                chunk.vertex,
                 transform.try_inverse().unwrap() * chunk.vertex.dual_to_node().cast(),
             ),
         );

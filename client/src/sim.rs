@@ -7,6 +7,7 @@ use tracing::{debug, error, trace};
 use crate::{
     chunk_ray_tracer::{RayTracingResult, RayTracingResultHandle},
     graph_ray_tracer, net,
+    point_chunk_ray_tracer::PointChunkRayTracer,
     prediction::PredictedMotion,
     sphere_chunk_ray_tracer::SphereChunkRayTracer,
     Net,
@@ -14,8 +15,9 @@ use crate::{
 use common::{
     graph::{Graph, NodeId},
     math,
-    node::{DualGraph, Node},
+    node::{Chunk, DualGraph, Node},
     proto::{self, Character, Command, Component, Position},
+    world::Material,
     worldgen::NodeState,
     Chunks, EntityId, GraphEntities, Step,
 };
@@ -146,6 +148,47 @@ impl Sim {
 
             PlayerPhysicsPass { sim: self, dt }.step();
             self.jumping = false;
+
+            self.handle_breaking_blocks();
+        }
+    }
+
+    fn handle_breaking_blocks(&mut self) {
+        let dimension = self.params.as_ref().unwrap().chunk_size;
+
+        let mut ray_tracing_result = RayTracingResult::new(0.5);
+        if !graph_ray_tracer::trace_ray(
+            &self.graph,
+            self.params.as_ref().unwrap().chunk_size as usize,
+            &PointChunkRayTracer {},
+            self.position_node,
+            &(self.position_local * na::Vector4::w()),
+            &(self.position_local
+                * self.get_orientation().cast().to_homogeneous()
+                * -na::Vector4::z()),
+            &mut RayTracingResultHandle::new(
+                &mut ray_tracing_result,
+                self.position_node,
+                common::dodeca::Vertex::A,
+                self.position_local.try_inverse().unwrap(),
+            ),
+        ) {
+            return;
+        }
+
+        if let Some(intersection) = ray_tracing_result.intersection {
+            if let Some(node) = self.graph.get_mut(intersection.node) {
+                if let Chunk::Populated { voxels, surface: _ } =
+                    &mut node.chunks[intersection.vertex]
+                {
+                    let data = voxels.data_mut(dimension);
+                    let lwm = dimension as usize + 2;
+                    data[(intersection.voxel_coords[0] + 1)
+                        + (intersection.voxel_coords[1] + 1) * lwm
+                        + (intersection.voxel_coords[2] + 1) * lwm * lwm] = Material::Void;
+                    println!("Broke a block");
+                }
+            }
         }
     }
 
@@ -468,7 +511,8 @@ impl PlayerPhysicsPass<'_> {
             // TODO: Will need to allow two collision normals to act at once, especially in 3D
             if let Some(intersection) = ray_tracing_result.intersection {
                 let potential_transform = self.sim.position_local * ray_tracing_transform;
-                if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope {
+                if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope
+                {
                     self.sim.position_local = potential_transform;
                     self.update_ground_normal(&intersection.normal);
                     return;
@@ -549,6 +593,8 @@ impl PlayerPhysicsPass<'_> {
             &(self.sim.position_local * displacement_normalized),
             &mut RayTracingResultHandle::new(
                 &mut ray_tracing_result,
+                self.sim.position_node,
+                common::dodeca::Vertex::A,
                 self.sim.position_local.try_inverse().unwrap(),
             ),
         ) {

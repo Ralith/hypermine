@@ -1,4 +1,4 @@
-use common::{node::VoxelData, world::Material};
+use common::{node::VoxelData, world::Material, graph::NodeId, dodeca::Vertex};
 
 #[derive(Copy, Clone)]
 pub struct VoxelDataWrapper<'a> {
@@ -58,12 +58,16 @@ impl RayTracingResult {
 }
 
 pub struct RayTracingIntersection {
+    pub node: NodeId,
+    pub vertex: Vertex,
     pub voxel_coords: [usize; 3],
     pub normal: na::Vector4<f64>,
 }
 
 pub struct RayTracingResultHandle<'a> {
     result: &'a mut RayTracingResult,
+    node: NodeId,
+    vertex: Vertex,
     transform: na::Matrix4<f64>,
 }
 
@@ -72,21 +76,25 @@ impl<'a> RayTracingResultHandle<'a> {
         self.result.t
     }
 
-    pub fn new(result: &'a mut RayTracingResult, transform: na::Matrix4<f64>) -> Self {
-        RayTracingResultHandle { result, transform }
+    pub fn new(result: &'a mut RayTracingResult, node: NodeId, vertex: Vertex, transform: na::Matrix4<f64>) -> Self {
+        RayTracingResultHandle { result, node, vertex, transform }
     }
 
     pub fn update(&mut self, t: f64, voxel_coords: [usize; 3], normal: na::Vector4<f64>) {
         self.result.t = t;
         self.result.intersection = Some(RayTracingIntersection {
+            node: self.node,
+            vertex: self.vertex,
             voxel_coords,
             normal: self.transform * normal,
         });
     }
 
-    pub fn dependent_handle(&mut self, transform: na::Matrix4<f64>) -> RayTracingResultHandle {
+    pub fn dependent_handle(&mut self, node: NodeId, vertex: Vertex, transform: na::Matrix4<f64>) -> RayTracingResultHandle {
         RayTracingResultHandle {
             result: self.result,
+            node,
+            vertex,
             transform: self.transform * transform,
         }
     }
