@@ -86,7 +86,7 @@ impl SphereChunkRayTracingPass<'_, '_> {
             self.trace_ray_for_edges(coord_axis);
         }
 
-        //self.trace_ray_for_vertices();
+        self.trace_ray_for_vertices();
     }
 
     fn trace_ray_for_sides(&mut self, coord_axis: usize) {
@@ -197,6 +197,52 @@ impl SphereChunkRayTracingPass<'_, '_> {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    #[rustfmt::skip]
+    fn trace_ray_for_vertices(&mut self) {
+        let size = self.voxel_data.dimension();
+        let float_size = size as f64;
+
+        for i in self.bbox[0][0]..=self.bbox[0][1] {
+            for j in self.bbox[1][0]..=self.bbox[1][1] {
+                for k in self.bbox[2][0]..=self.bbox[2][1] {
+                    if (i == 0 || j == 0 || k == 0 || self.voxel_data.get([i - 1, j - 1, k - 1]) == Material::Void)
+                        && (i == size || j == 0 || k == 0 || self.voxel_data.get([i, j - 1, k - 1]) == Material::Void)
+                        && (i == 0 || j == size || k == 0 || self.voxel_data.get([i - 1, j, k - 1]) == Material::Void)
+                        && (i == size || j == size || k == 0 || self.voxel_data.get([i, j, k - 1]) == Material::Void)
+                        && (i == 0 || j == 0 || k == size || self.voxel_data.get([i - 1, j - 1, k]) == Material::Void)
+                        && (i == size || j == 0 || k == size || self.voxel_data.get([i, j - 1, k]) == Material::Void)
+                        && (i == 0 || j == size || k == size || self.voxel_data.get([i - 1, j, k]) == Material::Void)
+                        && (i == size || j == size || k == size || self.voxel_data.get([i, j, k]) == Material::Void)
+                    {
+                        continue;
+                    }
+
+                    let vert = math::lorentz_normalize(&na::Vector4::new(
+                        i as f64 / float_size * Vertex::chunk_to_dual_factor(),
+                        j as f64 / float_size * Vertex::chunk_to_dual_factor(),
+                        k as f64 / float_size * Vertex::chunk_to_dual_factor(),
+                        1.0,
+                    ));
+
+                    let t_candidate =
+                        find_intersection_one_vector(self.pos, self.dir, &vert, self.radius.cosh());
+
+                    // If t_candidate is out of range or NaN, don't continue collision checking
+                    if !(t_candidate >= 0.0 && t_candidate < self.handle.t()) {
+                        continue;
+                    }
+
+                    let translated_square_pos = self.pos + self.dir * t_candidate;
+                    self.handle.update(
+                        t_candidate,
+                        [0, 0, 0], /* TODO */
+                        translated_square_pos - vert,
+                    );
                 }
             }
         }
