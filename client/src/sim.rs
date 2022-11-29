@@ -13,6 +13,7 @@ use crate::{
     Net,
 };
 use common::{
+    dodeca::Vertex,
     graph::{Graph, NodeId},
     math,
     node::{Chunk, DualGraph, Node},
@@ -197,15 +198,24 @@ impl Sim {
                 }
             }
 
-            self.handle_breaking_blocks();
+            self.handle_breaking_or_placing_blocks(false);
+            self.handle_breaking_or_placing_blocks(true);
         }
     }
 
-    fn handle_breaking_blocks(&mut self) {
-        if self.breaking_block {
-            self.breaking_block = false;
-        } else {
-            return;
+    fn handle_breaking_or_placing_blocks(&mut self, placing: bool) {
+        if placing {
+            if self.placing_block {
+                self.placing_block = false;
+            } else {
+                return;
+            }
+        } else if !placing {
+            if self.breaking_block {
+                self.breaking_block = false;
+            } else {
+                return;
+            }
         }
 
         let dimension = self.params.as_ref().unwrap().chunk_size;
@@ -231,21 +241,69 @@ impl Sim {
         }
 
         if let Some(intersection) = ray_tracing_result.intersection {
-            if let Some(node) = self.graph.get_mut(intersection.node) {
-                if let Chunk::Populated { voxels, surface, old_surface } =
-                    &mut node.chunks[intersection.vertex]
+            let Some(block_pos) = (if placing {
+                self.get_block_neighbor(
+                    intersection.node,
+                    intersection.vertex,
+                    intersection.voxel_coords,
+                    intersection.coord_axis,
+                    intersection.coord_direction,
+                )
+            } else {
+                Some((
+                    intersection.node,
+                    intersection.vertex,
+                    intersection.voxel_coords,
+                ))
+            }) else {
+                return;
+            };
+
+            if let Some(node) = self.graph.get_mut(block_pos.0) {
+                if let Chunk::Populated {
+                    voxels,
+                    surface,
+                    old_surface,
+                } = &mut node.chunks[block_pos.1]
                 {
                     let data = voxels.data_mut(dimension);
                     let lwm = dimension as usize + 2;
-                    data[(intersection.voxel_coords[0] + 1)
-                        + (intersection.voxel_coords[1] + 1) * lwm
-                        + (intersection.voxel_coords[2] + 1) * lwm * lwm] = Material::Void;
+                    let array_entry = (block_pos.2[0] + 1)
+                        + (block_pos.2[1] + 1) * lwm
+                        + (block_pos.2[2] + 1) * lwm * lwm;
+                    if placing {
+                        if data[array_entry] == Material::Void {
+                            data[array_entry] = Material::WoodPlanks;
+                        }
+                    } else {
+                        data[array_entry] = Material::Void;
+                    }
 
                     *old_surface = *surface;
                     *surface = None;
                 }
             }
         }
+    }
+
+    fn get_block_neighbor(
+        &self,
+        node: NodeId,
+        vertex: Vertex,
+        mut coords: [usize; 3],
+        coord_axis: usize,
+        coord_direction: isize,
+    ) -> Option<(NodeId, Vertex, [usize; 3])> {
+        let dimension = self.params.as_ref().unwrap().chunk_size as usize;
+        if coords[coord_axis] == dimension - 1 && coord_direction == 1 {
+            coords[coord_axis] = 0;
+        } else if coords[coord_axis] == 0 && coord_direction == -1 {
+            coords[coord_axis] = dimension - 1;
+        } else {
+            coords[coord_axis] = (coords[coord_axis] as isize + coord_direction) as usize;
+        }
+
+        Some((node, vertex, coords))
     }
 
     fn handle_net(&mut self, msg: net::Message) {

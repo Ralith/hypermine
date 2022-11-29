@@ -116,8 +116,13 @@ impl PointChunkRayTracingPass<'_, '_> {
                 coords[coord_plane0] = j0;
                 coords[coord_plane1] = j1;
                 if self.voxel_data.get(coords) != Material::Void {
-                    self.handle
-                        .update(t_candidate, coords, normal * -mip_dir_norm.signum());
+                    self.handle.update(
+                        t_candidate,
+                        coords,
+                        coord_axis,
+                        -mip_dir_norm.signum() as isize,
+                        normal * -mip_dir_norm.signum(),
+                    );
                 }
             }
         }

@@ -132,6 +132,8 @@ impl SphereChunkRayTracingPass<'_, '_> {
                     self.handle.update(
                         t_candidate,
                         [0, 0, 0], /* TODO */
+                        0, /* TODO */
+                        0, /* TODO */
                         normal * -mip_dir_norm.signum(),
                     );
                 }
@@ -191,6 +193,8 @@ impl SphereChunkRayTracingPass<'_, '_> {
                                 self.handle.update(
                                     t_candidate,
                                     [0, 0, 0], /* TODO */
+                                    0, /* TODO */
+                                    0, /* TODO */
                                     translated_square_pos - projected_pos,
                                 );
                                 continue 'main_loop;
@@ -241,6 +245,8 @@ impl SphereChunkRayTracingPass<'_, '_> {
                     self.handle.update(
                         t_candidate,
                         [0, 0, 0], /* TODO */
+                        0, /* TODO */
+                        0, /* TODO */
                         translated_square_pos - vert,
                     );
                 }
