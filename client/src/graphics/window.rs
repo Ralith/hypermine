@@ -116,6 +116,8 @@ impl Window {
         let mut left = false;
         let mut right = false;
         let mut jump = false;
+        let mut break_blocks = false;
+        let mut place_blocks = false;
         let mut last_frame = Instant::now();
         let mut mouse_captured = false;
         self.event_loop
@@ -137,6 +139,9 @@ impl Window {
                         self.sim.jump();
                         jump = false;
                     }
+
+                    self.sim.keep_breaking_blocks(break_blocks);
+                    self.sim.keep_placing_blocks(place_blocks);
 
                     let had_params = self.sim.params().is_some();
 
@@ -176,12 +181,25 @@ impl Window {
                         state: ElementState::Pressed,
                         ..
                     } => {
+                        if mouse_captured {
+                            self.sim.break_block();
+                            break_blocks = true;
+                        }
                         let _ = self
                             .window
                             .set_cursor_grab(CursorGrabMode::Confined)
                             .or_else(|_e| self.window.set_cursor_grab(CursorGrabMode::Locked));
                         self.window.set_cursor_visible(false);
                         mouse_captured = true;
+                    }
+                    WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+                        break_blocks = state == ElementState::Pressed;
+                    }
+                    WindowEvent::MouseInput { button: MouseButton::Right, state, .. } => {
+                        place_blocks = state == ElementState::Pressed;
+                        if state == ElementState::Pressed {
+                            self.sim.place_block();
+                        }
                     }
                     WindowEvent::KeyboardInput {
                         input:

@@ -46,7 +46,13 @@ pub struct Sim {
     /// Units are relative to movement speed.
     instantaneous_velocity: na::Vector3<f32>,
     jumping: bool,
+    breaking_block: bool,
+    placing_block: bool,
+    break_block_timer: Option<f64>,
+    place_block_timer: Option<f64>,
+
     prediction: PredictedMotion,
+
     vel: na::Vector4<f64>,
     ground_normal: Option<na::Vector4<f64>>,
 
@@ -77,7 +83,13 @@ impl Sim {
             since_input_sent: Duration::new(0, 0),
             instantaneous_velocity: na::zero(),
             jumping: false,
+            breaking_block: false,
+            placing_block: false,
+            break_block_timer: None,
+            place_block_timer: None,
+
             prediction: PredictedMotion::new(),
+
             vel: na::zero(),
             ground_normal: None,
 
@@ -120,6 +132,28 @@ impl Sim {
         self.jumping = true;
     }
 
+    pub fn break_block(&mut self) {
+        self.breaking_block = true;
+        self.break_block_timer = Some(0.2);
+    }
+
+    pub fn place_block(&mut self) {
+        self.placing_block = true;
+        self.place_block_timer = Some(0.2);
+    }
+
+    pub fn keep_breaking_blocks(&mut self, keep_breaking_blocks: bool) {
+        if !keep_breaking_blocks {
+            self.break_block_timer = None;
+        }
+    }
+
+    pub fn keep_placing_blocks(&mut self, keep_placing_blocks: bool) {
+        if !keep_placing_blocks {
+            self.place_block_timer = None;
+        }
+    }
+
     pub fn params(&self) -> Option<&Parameters> {
         self.params.as_ref()
     }
@@ -149,11 +183,31 @@ impl Sim {
             PlayerPhysicsPass { sim: self, dt }.step();
             self.jumping = false;
 
+            if let Some(ref mut break_block_timer) = self.break_block_timer {
+                *break_block_timer -= dt.as_secs_f64();
+                if *break_block_timer <= 0.0 {
+                    self.break_block();
+                }
+            }
+
+            if let Some(ref mut place_block_timer) = self.place_block_timer {
+                *place_block_timer -= dt.as_secs_f64();
+                if *place_block_timer <= 0.0 {
+                    self.place_block();
+                }
+            }
+
             self.handle_breaking_blocks();
         }
     }
 
     fn handle_breaking_blocks(&mut self) {
+        if self.breaking_block {
+            self.breaking_block = false;
+        } else {
+            return;
+        }
+
         let dimension = self.params.as_ref().unwrap().chunk_size;
 
         let mut ray_tracing_result = RayTracingResult::new(0.5);
@@ -189,7 +243,6 @@ impl Sim {
 
                     *old_surface = *surface;
                     *surface = None;
-                    println!("Broke a block");
                 }
             }
         }
