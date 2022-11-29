@@ -101,6 +101,7 @@ impl PointChunkRayTracingPass<'_, '_> {
             let i_with_offset = i_with_offset - 1;
 
             let translated_square_pos = self.pos + self.dir * t_candidate;
+            let translated_square_pos = translated_square_pos.xyz() / translated_square_pos.w;
             let j0 =
                 (translated_square_pos[coord_plane0] * Vertex::dual_to_chunk_factor() * float_size)
                     .floor();
