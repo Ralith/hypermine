@@ -21,6 +21,7 @@ pub mod net;
 mod point_chunk_ray_tracer;
 mod prediction;
 pub mod sim;
+mod single_block_sphere_collision_checker;
 mod sphere_chunk_ray_tracer;
 
 pub use config::Config;

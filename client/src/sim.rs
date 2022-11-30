@@ -9,6 +9,7 @@ use crate::{
     graph_ray_tracer, net,
     point_chunk_ray_tracer::PointChunkRayTracer,
     prediction::PredictedMotion,
+    single_block_sphere_collision_checker::SingleBlockSphereCollisionChecker,
     sphere_chunk_ray_tracer::SphereChunkRayTracer,
     Net,
 };
@@ -62,6 +63,7 @@ pub struct Sim {
     air_acceleration: f64,
     jump_speed: f64,
     max_cos_slope: f64,
+    radius: f64,
 }
 
 impl Sim {
@@ -99,6 +101,7 @@ impl Sim {
             air_acceleration: 0.2,
             jump_speed: 0.4,
             max_cos_slope: 0.5,
+            radius: 0.02,
         }
     }
 
@@ -259,6 +262,8 @@ impl Sim {
                 return;
             };
 
+            let conflict = placing && self.placing_has_conflict(block_pos.0, block_pos.1, block_pos.2);
+
             if let Some(node) = self.graph.get_mut(block_pos.0) {
                 if let Chunk::Populated {
                     voxels,
@@ -272,7 +277,7 @@ impl Sim {
                         + (block_pos.2[1] + 1) * lwm
                         + (block_pos.2[2] + 1) * lwm * lwm;
                     if placing {
-                        if data[array_entry] == Material::Void {
+                        if data[array_entry] == Material::Void && !conflict {
                             data[array_entry] = Material::WoodPlanks;
                         }
                     } else {
@@ -321,6 +326,35 @@ impl Sim {
         }
 
         Some((node, vertex, coords))
+    }
+
+    fn placing_has_conflict(&self, node: NodeId, vertex: Vertex, coords: [usize; 3]) -> bool {
+        let mut ray_tracing_result = RayTracingResult::new(0.0);
+        if !graph_ray_tracer::trace_ray(
+            &self.graph,
+            self.params.as_ref().unwrap().chunk_size as usize,
+            &SingleBlockSphereCollisionChecker {
+                node,
+                vertex,
+                coords,
+                radius: self.radius,
+            },
+            self.position_node,
+            &(self.position_local * na::Vector4::w()),
+            &(self.position_local
+                * self.get_orientation().cast().to_homogeneous()
+                * -na::Vector4::z()),
+            &mut RayTracingResultHandle::new(
+                &mut ray_tracing_result,
+                self.position_node,
+                common::dodeca::Vertex::A,
+                self.position_local.try_inverse().unwrap(),
+            ),
+        ) {
+            return true; // Unsafe to place blocks when collision check is inconclusive
+        };
+
+        ray_tracing_result.intersection.is_some()
     }
 
     fn handle_net(&mut self, msg: net::Message) {
@@ -718,7 +752,9 @@ impl PlayerPhysicsPass<'_> {
         if !graph_ray_tracer::trace_ray(
             &self.sim.graph,
             self.sim.params.as_ref().unwrap().chunk_size as usize,
-            &SphereChunkRayTracer { radius: 0.02 },
+            &SphereChunkRayTracer {
+                radius: self.sim.radius,
+            },
             self.sim.position_node,
             &(self.sim.position_local * na::Vector4::w()),
             &(self.sim.position_local * displacement_normalized),

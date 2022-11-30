@@ -82,6 +82,14 @@ impl<'a> RayTracingResultHandle<'a> {
         RayTracingResultHandle { result, node, vertex, transform }
     }
 
+    pub fn node(&self) -> NodeId {
+        self.node
+    }
+
+    pub fn vertex(&self) -> Vertex {
+        self.vertex
+    }
+
     pub fn update(&mut self, t: f64, voxel_coords: [usize; 3], coord_axis: usize, coord_direction: isize, normal: na::Vector4<f64>) {
         self.result.t = t;
         self.result.intersection = Some(RayTracingIntersection {
