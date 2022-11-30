@@ -288,17 +288,34 @@ impl Sim {
 
     fn get_block_neighbor(
         &self,
-        node: NodeId,
-        vertex: Vertex,
+        mut node: NodeId,
+        mut vertex: Vertex,
         mut coords: [usize; 3],
         coord_axis: usize,
         coord_direction: isize,
     ) -> Option<(NodeId, Vertex, [usize; 3])> {
         let dimension = self.params.as_ref().unwrap().chunk_size as usize;
         if coords[coord_axis] == dimension - 1 && coord_direction == 1 {
-            coords[coord_axis] = 0;
+            let new_vertex = vertex.adjacent_vertices()[coord_axis];
+            let coord_plane0 = (coord_axis + 1) % 3;
+            let coord_plane1 = (coord_axis + 2) % 3;
+            let mut new_coords: [usize; 3] = [0; 3];
+            for (i, new_coord) in new_coords.iter_mut().enumerate() {
+                if new_vertex.canonical_sides()[i] == vertex.canonical_sides()[coord_plane0] {
+                    *new_coord = coords[coord_plane0];
+                } else if new_vertex.canonical_sides()[i] == vertex.canonical_sides()[coord_plane1]
+                {
+                    *new_coord = coords[coord_plane1];
+                } else {
+                    *new_coord = coords[coord_axis];
+                }
+            }
+            coords = new_coords;
+            vertex = new_vertex;
         } else if coords[coord_axis] == 0 && coord_direction == -1 {
-            coords[coord_axis] = dimension - 1;
+            node = self
+                .graph
+                .neighbor(node, vertex.canonical_sides()[coord_axis])?;
         } else {
             coords[coord_axis] = (coords[coord_axis] as isize + coord_direction) as usize;
         }
