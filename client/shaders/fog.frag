@@ -17,5 +17,9 @@ void main() {
     // Convert to true hyperbolic distance, taking care to respect atanh's domain
     float dist = view_length >= 1.0 ? INFINITY : atanh(view_length);
     // Exponential^k fog
-    fog = vec4(0.5, 0.65, 0.9, dist < 0.02 ? 0.5 : exp(-pow(dist * fog_density, 5)));
+    if (length(scaled_view_pos.xy) < 0.01) {
+        fog = vec4(0.0, 0.0, 0.0, 0.3);
+    } else {
+        fog = vec4(0.5, 0.65, 0.9, dist < 0.02 ? 0.5 : exp(-pow(dist * fog_density, 5)));
+    }
 }
