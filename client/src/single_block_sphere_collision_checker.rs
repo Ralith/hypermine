@@ -66,9 +66,13 @@ impl SingleBlockSphereCollisionCheckingPass<'_> {
         }
 
         for i in 0..3 {
-            if self.side_intersection(i, self.coords[i])
-                || self.side_intersection(i, self.coords[i] + 1)
-            {
+            if self.side_intersection(i) {
+                return true;
+            }
+        }
+
+        for i in 0..3 {
+            if self.edge_intersection(i) {
                 return true;
             }
         }
@@ -85,30 +89,71 @@ impl SingleBlockSphereCollisionCheckingPass<'_> {
         })
     }
 
-    fn side_intersection(&mut self, coord_axis: usize, coord_value: usize) -> bool {
+    fn side_intersection(&mut self, coord_axis: usize) -> bool {
         let float_size = self.dimension as f64;
-
         let coord_plane0 = (coord_axis + 1) % 3;
         let coord_plane1 = (coord_axis + 2) % 3;
-        let mut normal = na::Vector4::zeros();
-        normal[coord_axis] = 1.0;
-        normal[3] = coord_value as f64 / float_size * Vertex::chunk_to_dual_factor();
-        let normal = math::lorentz_normalize(&normal);
 
-        let sinh_distance = math::mip(self.pos, &normal);
+        for i in self.coords[coord_axis]..=self.coords[coord_axis] + 1 {
+            let mut normal = na::Vector4::zeros();
+            normal[coord_axis] = 1.0;
+            normal[3] = i as f64 / float_size * Vertex::chunk_to_dual_factor();
+            let normal = math::lorentz_normalize(&normal);
 
-        if sinh_distance.powi(2) <= self.radius.sinh().powi(2) {
-            let projected_pos = math::project_ortho(self.pos, &normal);
-            let projected_pos = projected_pos.xyz() / projected_pos.w;
-            let j0 = projected_pos[coord_plane0] * Vertex::dual_to_chunk_factor() * float_size;
-            let j1 = projected_pos[coord_plane1] * Vertex::dual_to_chunk_factor() * float_size;
+            let sinh_distance = math::mip(self.pos, &normal);
 
-            j0 >= self.coords[coord_plane0] as f64
-                && j0 <= self.coords[coord_plane0] as f64 + 1.0
-                && j1 >= self.coords[coord_plane1] as f64
-                && j1 <= self.coords[coord_plane1] as f64 + 1.0
-        } else {
-            false
+            if sinh_distance.powi(2) <= self.radius.sinh().powi(2) {
+                let projected_pos = math::project_ortho(self.pos, &normal);
+                let projected_pos = projected_pos.xyz() / projected_pos.w;
+                let j0 = projected_pos[coord_plane0] * Vertex::dual_to_chunk_factor() * float_size;
+                let j1 = projected_pos[coord_plane1] * Vertex::dual_to_chunk_factor() * float_size;
+
+                if j0 >= self.coords[coord_plane0] as f64
+                    && j0 <= self.coords[coord_plane0] as f64 + 1.0
+                    && j1 >= self.coords[coord_plane1] as f64
+                    && j1 <= self.coords[coord_plane1] as f64 + 1.0
+                {
+                    return true;
+                }
+            }
         }
+
+        false
+    }
+
+    fn edge_intersection(&mut self, coord_axis: usize) -> bool {
+        let float_size = self.dimension as f64;
+        let coord_plane0 = (coord_axis + 1) % 3;
+        let coord_plane1 = (coord_axis + 2) % 3;
+
+        for i in self.coords[coord_plane0]..=self.coords[coord_plane0] + 1 {
+            for j in self.coords[coord_plane1]..=self.coords[coord_plane1] + 1 {
+                let mut edge_pos = na::Vector4::zeros();
+                let mut edge_dir = na::Vector4::zeros();
+                edge_pos[coord_plane0] = i as f64 / float_size * Vertex::chunk_to_dual_factor();
+                edge_pos[coord_plane1] = j as f64 / float_size * Vertex::chunk_to_dual_factor();
+                edge_pos[3] = 1.0;
+                edge_pos = math::lorentz_normalize(&edge_pos);
+                edge_dir[coord_axis] = 1.0;
+
+                let cosh_distance_squared =
+                    math::mip(self.pos, &edge_pos).powi(2) - math::mip(self.pos, &edge_dir).powi(2);
+
+                if cosh_distance_squared <= self.radius.cosh().powi(2) {
+                    let projected_pos = -edge_pos * math::mip(self.pos, &edge_pos)
+                        + edge_dir * math::mip(self.pos, &edge_dir);
+                    let projected_pos = projected_pos / projected_pos.w;
+
+                    let k = projected_pos[coord_axis] * Vertex::dual_to_chunk_factor() * float_size;
+                    if k >= self.coords[coord_axis] as f64
+                        && k <= self.coords[coord_axis] as f64 + 1.0
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 }

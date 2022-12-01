@@ -329,7 +329,7 @@ impl Sim {
     }
 
     fn placing_has_conflict(&self, node: NodeId, vertex: Vertex, coords: [usize; 3]) -> bool {
-        const EPSILON: f64 = 1e-5;
+        const EPSILON: f64 = 1e-7;
 
         let mut ray_tracing_result = RayTracingResult::new(0.0);
         if !graph_ray_tracer::trace_ray(
