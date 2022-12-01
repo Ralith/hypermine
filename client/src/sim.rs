@@ -329,6 +329,8 @@ impl Sim {
     }
 
     fn placing_has_conflict(&self, node: NodeId, vertex: Vertex, coords: [usize; 3]) -> bool {
+        const EPSILON: f64 = 1e-5;
+
         let mut ray_tracing_result = RayTracingResult::new(0.0);
         if !graph_ray_tracer::trace_ray(
             &self.graph,
@@ -337,7 +339,7 @@ impl Sim {
                 node,
                 vertex,
                 coords,
-                radius: self.radius,
+                radius: self.radius + EPSILON,
             },
             self.position_node,
             &(self.position_local * na::Vector4::w()),

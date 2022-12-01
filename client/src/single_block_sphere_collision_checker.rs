@@ -1,4 +1,4 @@
-use common::{dodeca::Vertex, graph::NodeId};
+use common::{dodeca::Vertex, graph::NodeId, math};
 
 use crate::chunk_ray_tracer::{ChunkRayTracer, RayTracingResultHandle, VoxelDataWrapper};
 
@@ -19,14 +19,17 @@ impl ChunkRayTracer for SingleBlockSphereCollisionChecker {
         _dir: &na::Vector4<f64>,
         handle: &mut RayTracingResultHandle,
     ) {
-        if handle.node() == self.node && handle.vertex() == self.vertex {
-            SingleBlockSphereCollisionCheckingPass::new(
+        if handle.node() == self.node
+            && handle.vertex() == self.vertex
+            && SingleBlockSphereCollisionCheckingPass::new(
                 pos,
-                handle,
+                self.radius,
                 self.coords,
                 voxel_data.dimension(),
             )
-            .trace_ray_in_chunk();
+            .any_intersection()
+        {
+            handle.update(0.0, self.coords, 0, 0, na::Vector4::zeros());
         }
     }
 
@@ -35,38 +38,77 @@ impl ChunkRayTracer for SingleBlockSphereCollisionChecker {
     }
 }
 
-struct SingleBlockSphereCollisionCheckingPass<'a, 'b> {
+struct SingleBlockSphereCollisionCheckingPass<'a> {
     pos: &'a na::Vector4<f64>,
-    handle: &'a mut RayTracingResultHandle<'b>,
+    radius: f64,
     coords: [usize; 3],
     dimension: usize,
 }
 
-impl SingleBlockSphereCollisionCheckingPass<'_, '_> {
-    fn new<'a, 'b>(
-        pos: &'a na::Vector4<f64>,
-        handle: &'a mut RayTracingResultHandle<'b>,
+impl SingleBlockSphereCollisionCheckingPass<'_> {
+    fn new(
+        pos: &na::Vector4<f64>,
+        radius: f64,
         coords: [usize; 3],
         dimension: usize,
-    ) -> SingleBlockSphereCollisionCheckingPass<'a, 'b> {
+    ) -> SingleBlockSphereCollisionCheckingPass<'_> {
         SingleBlockSphereCollisionCheckingPass {
             pos,
-            handle,
+            radius,
             coords,
             dimension,
         }
     }
 
-    fn trace_ray_in_chunk(&mut self) {
-        // TODO: Check for sphere intersection instead of point intersection
+    fn any_intersection(&mut self) -> bool {
+        if self.volume_intersection() {
+            return true;
+        }
+
+        for i in 0..3 {
+            if self.side_intersection(i, self.coords[i])
+                || self.side_intersection(i, self.coords[i] + 1)
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn volume_intersection(&mut self) -> bool {
         let chunk_coords =
             self.pos.xyz() / self.pos.w * Vertex::dual_to_chunk_factor() * self.dimension as f64;
-        if (0..3).all(|coord| {
+        (0..3).all(|coord| {
             chunk_coords[coord] > self.coords[coord] as f64
                 && chunk_coords[coord] < self.coords[coord] as f64 + 1.0
-        }) {
-            self.handle
-                .update(0.0, self.coords, 0, 0, na::Vector4::zeros());
+        })
+    }
+
+    fn side_intersection(&mut self, coord_axis: usize, coord_value: usize) -> bool {
+        let float_size = self.dimension as f64;
+
+        let coord_plane0 = (coord_axis + 1) % 3;
+        let coord_plane1 = (coord_axis + 2) % 3;
+        let mut normal = na::Vector4::zeros();
+        normal[coord_axis] = 1.0;
+        normal[3] = coord_value as f64 / float_size * Vertex::chunk_to_dual_factor();
+        let normal = math::lorentz_normalize(&normal);
+
+        let sinh_distance = math::mip(self.pos, &normal);
+
+        if sinh_distance.powi(2) <= self.radius.sinh().powi(2) {
+            let projected_pos = math::project_ortho(self.pos, &normal);
+            let projected_pos = projected_pos.xyz() / projected_pos.w;
+            let j0 = projected_pos[coord_plane0] * Vertex::dual_to_chunk_factor() * float_size;
+            let j1 = projected_pos[coord_plane1] * Vertex::dual_to_chunk_factor() * float_size;
+
+            j0 >= self.coords[coord_plane0] as f64
+                && j0 <= self.coords[coord_plane0] as f64 + 1.0
+                && j1 >= self.coords[coord_plane1] as f64
+                && j1 <= self.coords[coord_plane1] as f64 + 1.0
+        } else {
+            false
         }
     }
 }
