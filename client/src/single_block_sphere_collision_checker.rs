@@ -77,6 +77,10 @@ impl SingleBlockSphereCollisionCheckingPass<'_> {
             }
         }
 
+        if self.vertex_intersection() {
+            return true;
+        }
+
         false
     }
 
@@ -148,6 +152,31 @@ impl SingleBlockSphereCollisionCheckingPass<'_> {
                     if k >= self.coords[coord_axis] as f64
                         && k <= self.coords[coord_axis] as f64 + 1.0
                     {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    fn vertex_intersection(&mut self) -> bool {
+        let float_size = self.dimension as f64;
+
+        for i in self.coords[0]..=self.coords[0] + 1 {
+            for j in self.coords[1]..=self.coords[1] + 1 {
+                for k in self.coords[2]..=self.coords[2] + 1 {
+                    let vertex_pos = math::lorentz_normalize(&na::Vector4::new(
+                        i as f64 / float_size * Vertex::chunk_to_dual_factor(),
+                        j as f64 / float_size * Vertex::chunk_to_dual_factor(),
+                        k as f64 / float_size * Vertex::chunk_to_dual_factor(),
+                        1.0,
+                    ));
+
+                    let cosh_distance_squared = math::mip(self.pos, &vertex_pos).powi(2);
+
+                    if cosh_distance_squared <= self.radius.cosh().powi(2) {
                         return true;
                     }
                 }
