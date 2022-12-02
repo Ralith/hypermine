@@ -17,7 +17,7 @@ use common::{
     dodeca::Vertex,
     graph::{Graph, NodeId},
     math,
-    node::{Chunk, DualGraph, Node},
+    node::{Chunk, DualGraph, Node, VoxelData},
     proto::{self, Character, Command, Component, Position},
     world::Material,
     worldgen::NodeState,
@@ -262,7 +262,10 @@ impl Sim {
                 return;
             };
 
-            let conflict = placing && self.placing_has_conflict(block_pos.0, block_pos.1, block_pos.2);
+            let conflict =
+                placing && self.placing_has_conflict(block_pos.0, block_pos.1, block_pos.2);
+            
+            let mut must_fix_neighboring_chunks = false;
 
             if let Some(node) = self.graph.get_mut(block_pos.0) {
                 if let Chunk::Populated {
@@ -279,13 +282,56 @@ impl Sim {
                     if placing {
                         if data[array_entry] == Material::Void && !conflict {
                             data[array_entry] = Material::WoodPlanks;
+                            must_fix_neighboring_chunks = true;
                         }
                     } else {
                         data[array_entry] = Material::Void;
+                        must_fix_neighboring_chunks = true;
                     }
 
                     *old_surface = *surface;
                     *surface = None;
+                }
+            }
+
+            if must_fix_neighboring_chunks {
+                self.turn_neighboring_solid_to_dense(block_pos.0, block_pos.1, block_pos.2, 0, 1);
+                self.turn_neighboring_solid_to_dense(block_pos.0, block_pos.1, block_pos.2, 0, -1);
+                self.turn_neighboring_solid_to_dense(block_pos.0, block_pos.1, block_pos.2, 1, 1);
+                self.turn_neighboring_solid_to_dense(block_pos.0, block_pos.1, block_pos.2, 1, -1);
+                self.turn_neighboring_solid_to_dense(block_pos.0, block_pos.1, block_pos.2, 2, 1);
+                self.turn_neighboring_solid_to_dense(block_pos.0, block_pos.1, block_pos.2, 2, -1);
+            }
+        }
+    }
+
+    fn turn_neighboring_solid_to_dense(
+        &mut self,
+        node: NodeId,
+        vertex: Vertex,
+        coords: [usize; 3],
+        coord_axis: usize,
+        coord_direction: isize,
+    ) {
+        let dimension = self.params.as_ref().unwrap().chunk_size;
+
+        if let Some((neighbor_node, neighbor_vertex, _neighbor_coords)) =
+            self.get_block_neighbor(node, vertex, coords, coord_axis, coord_direction)
+        {
+            if let Some(neighbor_node_data) = self.graph.get_mut(neighbor_node) {
+                if let Chunk::Populated {
+                    voxels,
+                    surface,
+                    old_surface,
+                } = &mut neighbor_node_data.chunks[neighbor_vertex]
+                {
+                    if matches!(voxels, VoxelData::Solid(..)) {
+                        // This function has the side effect of turning solid chunks into dense chunks,
+                        // which is what we want for them to render properly.
+                        voxels.data_mut(dimension);
+                        *old_surface = *surface;
+                        *surface = None;
+                    }
                 }
             }
         }
