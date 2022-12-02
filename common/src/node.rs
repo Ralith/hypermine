@@ -41,7 +41,16 @@ impl VoxelData {
         match *self {
             VoxelData::Dense(ref mut d) => d,
             VoxelData::Solid(mat) => {
-                *self = VoxelData::Dense(vec![mat; (usize::from(dimension) + 2).pow(3)].into());
+                let lwm = usize::from(dimension) + 2;
+                let mut data = vec![Material::Void; lwm.pow(3)];
+                for i in 1..(lwm - 1) {
+                    for j in 1..(lwm - 1) {
+                        for k in 1..(lwm - 1) {
+                            data[i + j * lwm + k * lwm.pow(2)] = mat;
+                        }
+                    }
+                }
+                *self = VoxelData::Dense(data.into());
                 self.data_mut(dimension)
             }
         }
