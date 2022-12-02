@@ -116,6 +116,7 @@ impl Window {
         let mut left = false;
         let mut right = false;
         let mut jump = false;
+        let mut jump_queued = false;
         let mut break_blocks = false;
         let mut place_blocks = false;
         let mut last_frame = Instant::now();
@@ -135,9 +136,9 @@ impl Window {
                     } else {
                         move_direction
                     });
-                    if jump {
+                    if jump_queued {
                         self.sim.jump();
-                        jump = false;
+                        jump_queued = false;
                     }
 
                     self.sim.keep_breaking_blocks(break_blocks);
@@ -223,7 +224,10 @@ impl Window {
                             right = state == ElementState::Pressed;
                         }
                         VirtualKeyCode::Space => {
-                            jump = jump || state == ElementState::Pressed;
+                            if !jump && state == ElementState::Pressed {
+                                jump_queued = true;
+                            }
+                            jump = state == ElementState::Pressed;
                         }
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);

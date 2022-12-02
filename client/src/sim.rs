@@ -754,7 +754,6 @@ impl PlayerPhysicsPass<'_> {
                 break;
             }
         }
-        println!("air");
         self.sim.ground_normal = None;
     }
 
