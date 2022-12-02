@@ -19,6 +19,7 @@ use common::{
     math,
     node::{Chunk, DualGraph, Node, VoxelData},
     proto::{self, Character, Command, Component, Position},
+    sanitize_motion_input,
     world::Material,
     worldgen::NodeState,
     Chunks, EntityId, GraphEntities, Step,
@@ -39,6 +40,7 @@ pub struct Sim {
     position_node: NodeId,
     yaw: f32,
     pitch: f32,
+    noclip: bool,
     step: Option<Step>,
 
     // Input state
@@ -81,6 +83,7 @@ impl Sim {
             position_node: NodeId::ROOT,
             yaw: 0.0,
             pitch: 0.0,
+            noclip: false,
             step: None,
 
             since_input_sent: Duration::new(0, 0),
@@ -136,6 +139,10 @@ impl Sim {
         self.jumping = true;
     }
 
+    pub fn set_noclip(&mut self, noclip: bool) {
+        self.noclip = noclip;
+    }
+
     pub fn break_block(&mut self) {
         self.breaking_block = true;
         self.break_block_timer = Some(0.2);
@@ -184,7 +191,18 @@ impl Sim {
                 }
             }
 
-            PlayerPhysicsPass { sim: self, dt }.step();
+            if self.noclip {
+                self.vel = na::Vector4::zeros();
+                let movement_speed = self.params.as_ref().unwrap().movement_speed;
+                let (direction, speed) = sanitize_motion_input(
+                    self.get_orientation() * self.instantaneous_velocity * movement_speed,
+                );
+                self.position_local *=
+                    math::translate_along(&direction.cast(), speed as f64 * dt.as_secs_f64());
+                PlayerPhysicsPass { sim: self, dt }.align_with_gravity();
+            } else {
+                PlayerPhysicsPass { sim: self, dt }.step();
+            }
             self.jumping = false;
 
             if let Some(ref mut break_block_timer) = self.break_block_timer {
@@ -264,7 +282,7 @@ impl Sim {
 
             let conflict =
                 placing && self.placing_has_conflict(block_pos.0, block_pos.1, block_pos.2);
-            
+
             let mut must_fix_neighboring_chunks = false;
 
             if let Some(node) = self.graph.get_mut(block_pos.0) {
@@ -741,7 +759,7 @@ impl PlayerPhysicsPass<'_> {
                         // Ensure wall sliding doesn't push player back to already-collided wall
                         math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
                     };
-    
+
                     // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
                     // More accurate shrinkage can be found at apply_velocity_iteration.
                     clamp_vector -= ray_tracing_transform.column(3);

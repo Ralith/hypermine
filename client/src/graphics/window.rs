@@ -115,8 +115,11 @@ impl Window {
         let mut back = false;
         let mut left = false;
         let mut right = false;
+        let mut up = false;
+        let mut down = false;
         let mut jump = false;
         let mut jump_queued = false;
+        let mut noclip = false;
         let mut break_blocks = false;
         let mut place_blocks = false;
         let mut last_frame = Instant::now();
@@ -128,9 +131,14 @@ impl Window {
                 Event::MainEventsCleared => {
                     let this_frame = Instant::now();
                     let dt = this_frame - last_frame;
-                    let move_direction: na::Vector3<f32> = na::Vector3::x()
-                        * (right as u8 as f32 - left as u8 as f32)
-                        + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
+                    let move_direction: na::Vector3<f32> = if noclip {
+                        na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
+                            + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
+                            + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32)
+                    } else {
+                        na::Vector3::x() * (right as u8 as f32 - left as u8 as f32)
+                            + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32)
+                    };
                     self.sim.velocity(if move_direction.norm_squared() > 1.0 {
                         move_direction.normalize()
                     } else {
@@ -140,6 +148,8 @@ impl Window {
                         self.sim.jump();
                         jump_queued = false;
                     }
+
+                    self.sim.set_noclip(noclip);
 
                     self.sim.keep_breaking_blocks(break_blocks);
                     self.sim.keep_placing_blocks(place_blocks);
@@ -193,10 +203,18 @@ impl Window {
                         self.window.set_cursor_visible(false);
                         mouse_captured = true;
                     }
-                    WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+                    WindowEvent::MouseInput {
+                        button: MouseButton::Left,
+                        state,
+                        ..
+                    } => {
                         break_blocks = state == ElementState::Pressed;
                     }
-                    WindowEvent::MouseInput { button: MouseButton::Right, state, .. } => {
+                    WindowEvent::MouseInput {
+                        button: MouseButton::Right,
+                        state,
+                        ..
+                    } => {
                         place_blocks = state == ElementState::Pressed;
                         if state == ElementState::Pressed {
                             self.sim.place_block();
@@ -223,11 +241,22 @@ impl Window {
                         VirtualKeyCode::D => {
                             right = state == ElementState::Pressed;
                         }
+                        VirtualKeyCode::R => {
+                            up = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::F => {
+                            down = state == ElementState::Pressed;
+                        }
                         VirtualKeyCode::Space => {
                             if !jump && state == ElementState::Pressed {
                                 jump_queued = true;
                             }
                             jump = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::V => {
+                            if state == ElementState::Pressed {
+                                noclip = !noclip;
+                            }
                         }
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
