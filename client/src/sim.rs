@@ -718,11 +718,24 @@ impl PlayerPhysicsPass<'_> {
 
     fn clamp_to_ground_or_start_falling(&mut self) {
         let mut clamp_vector = -na::Vector4::y() * 0.01;
+        let mut active_normals = Vec::<na::Vector4<f64>>::with_capacity(2);
         for _ in 0..Self::MAX_COLLISION_ITERATIONS {
             let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&clamp_vector);
 
-            // TODO: Will need to allow two collision normals to act at once, especially in 3D
             if let Some(intersection) = ray_tracing_result.intersection {
+                active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
+                if active_normals.len() == 2 {
+                    // The player is completely stuck in a corner and cannot move further
+                    self.sim.vel = na::Vector4::zeros();
+                    break;
+                }
+                let effective_normal = if active_normals.is_empty() {
+                    intersection.normal
+                } else {
+                    // Ensure wall sliding doesn't push player back to already-collided wall
+                    math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
+                };
+
                 let potential_transform = self.sim.position_local * ray_tracing_transform;
                 if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope
                 {
@@ -735,7 +748,7 @@ impl PlayerPhysicsPass<'_> {
                     clamp_vector -= ray_tracing_transform.column(3);
                     clamp_vector.w = 0.0;
                     // Adjust clamp vector to be perpendicular to the normal vector.
-                    clamp_vector = math::project_ortho(&clamp_vector, &intersection.normal);
+                    clamp_vector = math::project_ortho(&clamp_vector, &effective_normal);
                     self.sim.ground_normal = None;
                 }
             } else {
