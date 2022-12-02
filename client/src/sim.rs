@@ -680,6 +680,11 @@ impl PlayerPhysicsPass<'_> {
             self.sim.position_local *= ray_tracing_transform;
 
             if let Some(intersection) = ray_tracing_result.intersection {
+                if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope
+                {
+                    self.update_ground_normal(&intersection.normal);
+                }
+
                 active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
                 if active_normals.len() == 2 {
                     // The player is completely stuck in a corner and cannot move further
@@ -692,11 +697,6 @@ impl PlayerPhysicsPass<'_> {
                     // Ensure wall sliding doesn't push player back to already-collided wall
                     math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
                 };
-
-                if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope
-                {
-                    self.update_ground_normal(&intersection.normal);
-                }
 
                 self.sim.vel = math::project_ortho(&self.sim.vel, &effective_normal);
                 remaining_dt -= ray_tracing_result.t.atanh() / initial_velocity_norm;
@@ -723,19 +723,6 @@ impl PlayerPhysicsPass<'_> {
             let (ray_tracing_result, ray_tracing_transform) = self.trace_ray(&clamp_vector);
 
             if let Some(intersection) = ray_tracing_result.intersection {
-                active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
-                if active_normals.len() == 2 {
-                    // The player is completely stuck in a corner and cannot move further
-                    self.sim.vel = na::Vector4::zeros();
-                    break;
-                }
-                let effective_normal = if active_normals.is_empty() {
-                    intersection.normal
-                } else {
-                    // Ensure wall sliding doesn't push player back to already-collided wall
-                    math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
-                };
-
                 let potential_transform = self.sim.position_local * ray_tracing_transform;
                 if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope
                 {
@@ -743,6 +730,18 @@ impl PlayerPhysicsPass<'_> {
                     self.update_ground_normal(&intersection.normal);
                     return;
                 } else {
+                    active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
+                    if active_normals.len() == 2 {
+                        // The player is completely stuck in a corner and cannot move further
+                        break;
+                    }
+                    let effective_normal = if active_normals.is_empty() {
+                        intersection.normal
+                    } else {
+                        // Ensure wall sliding doesn't push player back to already-collided wall
+                        math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
+                    };
+    
                     // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
                     // More accurate shrinkage can be found at apply_velocity_iteration.
                     clamp_vector -= ray_tracing_transform.column(3);
@@ -755,6 +754,7 @@ impl PlayerPhysicsPass<'_> {
                 break;
             }
         }
+        println!("air");
         self.sim.ground_normal = None;
     }
 
