@@ -305,7 +305,7 @@ impl Base {
             Some(x) => x,
             None => return,
         };
-        ex.debug_utils_set_object_name(
+        ex.set_debug_utils_object_name(
             self.device.handle(),
             &vk::DebugUtilsObjectNameInfoEXT::builder()
                 .object_type(T::TYPE)

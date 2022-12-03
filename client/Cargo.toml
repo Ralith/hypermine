@@ -12,7 +12,7 @@ license = "Apache-2.0 OR Zlib"
 common = { path = "../common" }
 server = { path = "../server" }
 tracing = "0.1.10"
-ash = { version = "0.37.0", features = ["loaded"] }
+ash = { version = "0.37.1", features = ["loaded"] }
 lahar = { git = "https://github.com/Ralith/lahar", rev = "88abd75e41d04c3a4199d95f581cb135f5962844" }
 winit = "0.27.2"
 ash-window = "0.12.0"
