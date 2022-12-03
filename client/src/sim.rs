@@ -200,6 +200,7 @@ impl Sim {
                 self.position_local *=
                     math::translate_along(&direction.cast(), speed as f64 * dt.as_secs_f64());
                 PlayerPhysicsPass { sim: self, dt }.align_with_gravity();
+                PlayerPhysicsPass { sim: self, dt }.renormalize_transform();
             } else {
                 PlayerPhysicsPass { sim: self, dt }.step();
             }
