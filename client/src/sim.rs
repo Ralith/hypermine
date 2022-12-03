@@ -702,6 +702,11 @@ impl PlayerPhysicsPass<'_> {
                 if math::mip(&intersection.normal, &self.get_relative_up()) > self.sim.max_cos_slope
                 {
                     self.update_ground_normal(&intersection.normal);
+
+                    // The update of the ground normal is not a simple projection, so some normals
+                    // will need to be deactivate to avoid the player getting stuck in certain edge
+                    // cases. For this, we only retain normals the player is moving towards.
+                    active_normals.retain(|n| n.dot(&self.sim.vel) < 0.0);
                 }
 
                 active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
