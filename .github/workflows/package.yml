@@ -1,0 +1,100 @@
+name: Package
+
+on:
+  push:
+    branches: ['master']
+  pull_request:
+
+jobs:
+  package-windows:
+    name: Windows
+    runs-on: windows-latest
+    env:
+      VULKAN_VERSION: "1.3.231.1"
+      VULKAN_SDK: "C:/VulkanSDK/1.3.231.1"
+    steps:
+      - uses: actions/checkout@v3
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.VULKAN_SDK }}
+          key: vulkan-${{ env.VULKAN_VERSION }}
+      - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
+        run: |
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/VulkanSDK-${{ env.VULKAN_VERSION }}-Installer.exe" -OutFile vulkan.exe
+          7z x -aoa vulkan.exe "-o$env:VULKAN_SDK" Lib
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Build Server
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --package server --release
+
+      - name: Build Client
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --package client --release --no-default-features
+
+      - name: Package Artifacts
+        run: |
+          mkdir artifacts
+          Move-Item -Path assets/* -Destination artifacts/
+          Move-Item -Path target/release/*.exe -Destination artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: windows
+          path: "artifacts/*"
+
+  package-linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux2014_x86_64
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          yum install -y alsa-lib-devel vulkan-devel python3 fontconfig-devel
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build Server
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --package server --release
+
+      - name: Build Client
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --package client --release
+
+      - name: Strip
+        run: |
+          strip target/release/server target/release/client
+
+      - name: Package Artifacts
+        run: |
+          mkdir artifacts
+          mv assets/* artifacts/
+          mv target/release/server artifacts/
+          mv target/release/client artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: linux
+          path: "artifacts/*"
