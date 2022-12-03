@@ -1,5 +1,5 @@
 use std::{
-    fs, io,
+    env, fs, io,
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
@@ -12,7 +12,7 @@ use common::{SimConfig, SimConfigRaw};
 
 pub struct Config {
     pub name: Arc<str>,
-    pub data_dir: PathBuf,
+    pub data_dirs: Vec<PathBuf>,
     pub chunk_load_parallelism: u32,
     pub server: Option<SocketAddr>,
     pub local_simulation: SimConfig,
@@ -49,10 +49,29 @@ impl Config {
                 RawConfig::default()
             }
         };
+        let mut data_dirs = Vec::new();
+        if let Some(dir) = data_dir {
+            data_dirs.push(dir);
+        }
+        data_dirs.push(dirs.data_dir().into());
+        if let Ok(path) = env::current_exe() {
+            if let Some(dir) = path.parent() {
+                data_dirs.push(dir.into());
+            }
+        }
+        #[cfg(feature = "use-repo-assets")]
+        {
+            data_dirs.push(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .unwrap()
+                    .join("assets"),
+            );
+        }
         // Massage into final form
         Config {
             name: name.unwrap_or_else(|| whoami::username().into()),
-            data_dir: data_dir.unwrap_or_else(|| dirs.data_dir().into()),
+            data_dirs,
             chunk_load_parallelism: chunk_load_parallelism.unwrap_or(256),
             server,
             local_simulation: SimConfig::from_raw(&local_simulation),
@@ -60,22 +79,12 @@ impl Config {
     }
 
     pub fn find_asset(&self, path: &Path) -> Option<PathBuf> {
-        #[cfg(feature = "use-repo-assets")]
-        {
-            let repo_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .unwrap()
-                .join("assets")
-                .join(path);
-            if repo_path.exists() {
-                return Some(repo_path);
-            } else {
-                debug!(path = %repo_path.display(), "asset not in repo");
+        for dir in &self.data_dirs {
+            let full_path = dir.join(path);
+            if full_path.exists() {
+                debug!(path = ?path.display(), dir = ?dir.display(), "found asset");
+                return Some(full_path);
             }
-        }
-        let user_path = self.data_dir.join(path);
-        if user_path.exists() {
-            return Some(user_path);
         }
         None
     }
