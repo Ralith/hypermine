@@ -704,20 +704,22 @@ impl PlayerPhysicsPass<'_> {
                     self.update_ground_normal(&intersection.normal);
 
                     // The update of the ground normal is not a simple projection, so some normals
-                    // will need to be deactivate to avoid the player getting stuck in certain edge
+                    // will need to be deactivated to avoid the player getting stuck in certain edge
                     // cases. For this, we only retain normals the player is moving towards.
                     active_normals.retain(|n| n.dot(&self.sim.vel) < 0.0);
+                } else {
+                    active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
+                    active_normals.push(intersection.normal);
                 }
 
-                active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
-                active_normals.push(intersection.normal);
-                if active_normals.len() == 3 {
-                    // The player is completely stuck in a corner and cannot move further
-                    self.sim.vel = na::Vector4::zeros();
-                    break;
-                }
-
-                self.sim.vel = self.apply_normals(active_normals.clone(), self.sim.vel);
+                self.sim.vel = self.apply_normals(
+                    active_normals
+                        .clone()
+                        .into_iter()
+                        .chain(self.sim.ground_normal)
+                        .collect(),
+                    self.sim.vel,
+                );
 
                 remaining_dt -= ray_tracing_result.t.atanh() / initial_velocity_norm;
             } else {
@@ -731,6 +733,14 @@ impl PlayerPhysicsPass<'_> {
         mut normals: Vec<na::Vector4<f64>>,
         mut subject: na::Vector4<f64>,
     ) -> na::Vector4<f64> {
+        // In this method, the w-coordinate is assumed to be 0 for all vectors passed in.
+
+        if normals.len() >= 3 {
+            // The normals are assumed to be linearly independent with w coordinate 0,
+            // so applying all of them will zero out the subject.
+            return na::Vector4::zeros();
+        }
+
         for i in 0..normals.len() {
             for j in i + 1..normals.len() {
                 normals[j] = math::project_ortho(&normals[j], &normals[i]).normalize();
@@ -764,10 +774,6 @@ impl PlayerPhysicsPass<'_> {
                 } else {
                     active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
                     active_normals.push(intersection.normal);
-                    if active_normals.len() == 3 {
-                        // The player is completely stuck in a corner and cannot move further
-                        break;
-                    }
 
                     // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
                     // More accurate shrinkage can be found at apply_velocity_iteration.
