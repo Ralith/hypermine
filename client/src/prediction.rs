@@ -21,4 +21,3 @@ impl PredictedMotion {
         self.generation
     }
 }
-
