@@ -782,7 +782,6 @@ impl PlayerPhysicsPass<'_> {
 
                     // Adjust clamp vector to be perpendicular to the normal vector.
                     clamp_vector = self.apply_normals(active_normals.clone(), clamp_vector);
-                    self.sim.ground_normal = None;
                 }
             } else {
                 break;
