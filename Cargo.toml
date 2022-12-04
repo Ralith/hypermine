@@ -1,5 +1,5 @@
 [workspace]
-members = ["client", "server", "common", "demo"]
+members = ["client", "server", "common"]
 
 [profile.dev]
 opt-level = 1
