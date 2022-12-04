@@ -710,26 +710,34 @@ impl PlayerPhysicsPass<'_> {
                 }
 
                 active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
-                if active_normals.len() == 2 {
+                active_normals.push(intersection.normal);
+                if active_normals.len() == 3 {
                     // The player is completely stuck in a corner and cannot move further
                     self.sim.vel = na::Vector4::zeros();
                     break;
                 }
-                let effective_normal = if active_normals.is_empty() {
-                    intersection.normal
-                } else {
-                    // Ensure wall sliding doesn't push player back to already-collided wall
-                    math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
-                };
 
-                self.sim.vel = math::project_ortho(&self.sim.vel, &effective_normal);
+                self.sim.vel = self.apply_normals(active_normals.clone(), self.sim.vel);
+
                 remaining_dt -= ray_tracing_result.t.atanh() / initial_velocity_norm;
-
-                active_normals.push(intersection.normal);
             } else {
                 break;
             }
         }
+    }
+
+    fn apply_normals(
+        &self,
+        mut normals: Vec<na::Vector4<f64>>,
+        mut subject: na::Vector4<f64>,
+    ) -> na::Vector4<f64> {
+        for i in 0..normals.len() {
+            for j in i + 1..normals.len() {
+                normals[j] = math::project_ortho(&normals[j], &normals[i]).normalize();
+            }
+            subject = math::project_ortho(&subject, &normals[i]);
+        }
+        subject
     }
 
     fn align_with_gravity(&mut self) {
@@ -755,23 +763,19 @@ impl PlayerPhysicsPass<'_> {
                     return;
                 } else {
                     active_normals.retain(|n| n.dot(&intersection.normal) < 0.0);
-                    if active_normals.len() == 2 {
+                    active_normals.push(intersection.normal);
+                    if active_normals.len() == 3 {
                         // The player is completely stuck in a corner and cannot move further
                         break;
                     }
-                    let effective_normal = if active_normals.is_empty() {
-                        intersection.normal
-                    } else {
-                        // Ensure wall sliding doesn't push player back to already-collided wall
-                        math::project_ortho(&intersection.normal, &active_normals[0]).normalize()
-                    };
 
                     // Shrink clamp vector based on travel distance. This is an approximation based on clamp_vector being small.
                     // More accurate shrinkage can be found at apply_velocity_iteration.
                     clamp_vector -= ray_tracing_transform.column(3);
                     clamp_vector.w = 0.0;
+
                     // Adjust clamp vector to be perpendicular to the normal vector.
-                    clamp_vector = math::project_ortho(&clamp_vector, &effective_normal);
+                    clamp_vector = self.apply_normals(active_normals.clone(), clamp_vector);
                     self.sim.ground_normal = None;
                 }
             } else {
