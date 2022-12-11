@@ -268,7 +268,7 @@ impl Sim {
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
             // future.
             let distance = speed * params.movement_speed * params.step_interval.as_secs_f32();
-            result.local *= math::translate_along(&direction, distance);
+            result.local *= math::translate_along(&(direction.as_ref() * distance));
         }
         result
     }
