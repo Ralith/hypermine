@@ -247,7 +247,7 @@ lazy_static! {
 
     /// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
     static ref NODE_TO_DUAL: [na::Matrix4<f64>; VERTEX_COUNT] = {
-        DUAL_TO_NODE.map(|m| m.try_inverse().unwrap())
+        DUAL_TO_NODE.map(|m| math::mtranspose(&m))
     };
 
     /// Vertex shared by 3 sides
