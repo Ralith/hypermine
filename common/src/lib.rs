@@ -94,8 +94,14 @@ pub fn init_tracing() {
 fn tracing_subscriber() -> impl tracing::Subscriber {
     use tracing_subscriber::{filter, fmt, layer::SubscriberExt, registry};
 
-    registry().with(fmt::layer().with_target(false)).with(
-        filter::EnvFilter::from_default_env()
-            .add_directive(tracing_subscriber::filter::LevelFilter::INFO.into()),
-    )
+    registry()
+        .with(
+            fmt::layer()
+                .with_target(false)
+                .with_ansi(cfg!(not(windows))),
+        )
+        .with(
+            filter::EnvFilter::from_default_env()
+                .add_directive(tracing_subscriber::filter::LevelFilter::INFO.into()),
+        )
 }
