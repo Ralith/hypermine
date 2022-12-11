@@ -192,11 +192,11 @@ mod tests {
     fn translate_equivalence() {
         let a = lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0));
         let o = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-        let direction = na::Unit::new_normalize(a.xyz());
+        let direction = a.xyz().normalize();
         let distance = dbg!(distance(&o, &a));
         assert_abs_diff_eq!(
             translate(&o, &a),
-            translate_along(&(direction.as_ref() * distance)),
+            translate_along(&(direction * distance)),
             epsilon = 1e-5
         );
     }

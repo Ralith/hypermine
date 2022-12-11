@@ -26,8 +26,8 @@ impl PredictedMotion {
 
     /// Update for input about to be sent to the server, returning the generation it should be
     /// tagged with
-    pub fn push(&mut self, direction: &na::Unit<na::Vector3<f32>>, distance: f32) -> u16 {
-        let transform = math::translate_along(&(direction.as_ref() * distance));
+    pub fn push(&mut self, velocity: &na::Vector3<f32>) -> u16 {
+        let transform = math::translate_along(velocity);
         self.predicted.local *= transform;
         self.log.push_back(Input { transform });
         self.generation = self.generation.wrapping_add(1);
@@ -76,8 +76,8 @@ mod tests {
     fn wraparound() {
         let mut pred = PredictedMotion::new(pos());
         pred.generation = u16::max_value() - 1;
-        assert_eq!(pred.push(&na::Vector3::x_axis(), 1.0), u16::max_value());
-        assert_eq!(pred.push(&na::Vector3::x_axis(), 1.0), 0);
+        assert_eq!(pred.push(&na::Vector3::x()), u16::max_value());
+        assert_eq!(pred.push(&na::Vector3::x()), 0);
         assert_eq!(pred.log.len(), 2);
 
         pred.reconcile(u16::max_value() - 1, pos());

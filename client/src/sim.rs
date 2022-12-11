@@ -241,20 +241,19 @@ impl Sim {
     }
 
     fn send_input(&mut self) {
-        let (direction, speed) = sanitize_motion_input(self.orientation * self.average_velocity);
+        let velocity = sanitize_motion_input(self.orientation * self.average_velocity);
         let params = self.params.as_ref().unwrap();
         let generation = self.prediction.push(
-            &direction,
-            speed
+            &(velocity
                 * params.movement_speed
-                * self.params.as_ref().unwrap().step_interval.as_secs_f32(),
+                * self.params.as_ref().unwrap().step_interval.as_secs_f32()),
         );
 
         // Any failure here will be better handled in handle_net's ConnectionLost case
         let _ = self.net.outgoing.send(Command {
             generation,
             orientation: self.orientation,
-            velocity: direction.into_inner() * speed,
+            velocity,
         });
     }
 
@@ -263,12 +262,13 @@ impl Sim {
         result.local *= self.orientation.to_homogeneous();
         if let Some(ref params) = self.params {
             // Apply input that hasn't been sent yet
-            let (direction, speed) = sanitize_motion_input(self.average_velocity);
+            let velocity = sanitize_motion_input(self.average_velocity);
             // We multiply by the entire timestep rather than the time so far because
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
             // future.
-            let distance = speed * params.movement_speed * params.step_interval.as_secs_f32();
-            result.local *= math::translate_along(&(direction.as_ref() * distance));
+            result.local *= math::translate_along(
+                &(velocity * params.movement_speed * params.step_interval.as_secs_f32()),
+            );
         }
         result
     }

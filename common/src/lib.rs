@@ -73,19 +73,12 @@ impl<F: FnOnce()> Drop for Defer<F> {
     }
 }
 
-/// Convert a motion input into direction + speed, with speed clamped to 1.0 and graceful zero
-/// handling
-pub fn sanitize_motion_input(v: na::Vector3<f32>) -> (na::Unit<na::Vector3<f32>>, f32) {
+/// Clamp speed to to 1.0 and graceful NaN handling
+pub fn sanitize_motion_input(v: na::Vector3<f32>) -> na::Vector3<f32> {
     if !v.iter().all(|x| x.is_finite()) {
-        return (-na::Vector3::z_axis(), 0.0);
+        return na::Vector3::zeros();
     }
-    let (direction, speed) = na::Unit::new_and_get(v);
-    if speed == 0.0 {
-        // Return an arbitrary direction rather than NaN
-        (-na::Vector3::z_axis(), speed)
-    } else {
-        (direction, speed.min(1.0))
-    }
+    v / v.norm().max(1.0)
 }
 
 pub fn tracing_guard() -> tracing::dispatcher::DefaultGuard {
