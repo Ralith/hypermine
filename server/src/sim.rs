@@ -56,8 +56,7 @@ impl Sim {
         };
         let character = Character {
             name: hello.name,
-            speed: 0.0,
-            direction: -na::Vector3::z_axis(),
+            velocity: na::Vector3::zeros(),
             orientation: na::one(),
         };
         let entity = self.world.spawn((id, position, character));
@@ -72,9 +71,8 @@ impl Sim {
         command: Command,
     ) -> Result<(), hecs::ComponentError> {
         let mut ch = self.world.get::<&mut Character>(entity)?;
-        let (direction, speed) = sanitize_motion_input(command.velocity);
-        ch.direction = direction;
-        ch.speed = speed * self.cfg.movement_speed;
+        let velocity = sanitize_motion_input(command.velocity);
+        ch.velocity = velocity * self.cfg.movement_speed;
         ch.orientation = command.orientation;
         Ok(())
     }
@@ -110,10 +108,7 @@ impl Sim {
 
         // Simulate
         for (_, (ch, pos)) in self.world.query::<(&Character, &mut Position)>().iter() {
-            let next_xf = pos.local
-                * math::translate_along(
-                    &(ch.direction.as_ref() * (ch.speed / self.cfg.rate as f32)),
-                );
+            let next_xf = pos.local * math::translate_along(&(ch.velocity / self.cfg.rate as f32));
             pos.local = math::renormalize_isometry(&next_xf);
             let (next_node, transition_xf) = self.graph.normalize_transform(pos.node, &pos.local);
             if next_node != pos.node {
@@ -202,6 +197,5 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
 struct Character {
     name: String,
     orientation: na::UnitQuaternion<f32>,
-    direction: na::Unit<na::Vector3<f32>>,
-    speed: f32,
+    velocity: na::Vector3<f32>,
 }
