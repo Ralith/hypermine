@@ -36,33 +36,29 @@ impl<N: RealField + Copy> HPoint<N> {
     }
 }
 
-/// Point reflection around `p`
+/// Point or plane reflection around point or normal `p`
 pub fn reflect<N: RealField + Copy>(p: &na::Vector4<N>) -> na::Matrix4<N> {
     na::Matrix4::<N>::identity()
-        - (*p * p.transpose() * i31::<N>()) * na::convert::<_, N>(2.0) / mip(p, p)
+        - minkowski_outer_product(p, p) * na::convert::<_, N>(2.0) / mip(p, p)
 }
 
-/// Transform that translates `a` to `b`
+/// Transform that translates `a` to `b` given that `a` and `b` are Lorentz normalized pointlike vectors
 pub fn translate<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Matrix4<N> {
-    reflect(&midpoint(a, b)) * reflect(a)
+    let a_plus_b = a + b;
+    na::Matrix4::<N>::identity() - minkowski_outer_product(b, a) * na::convert::<_, N>(2.0)
+        + minkowski_outer_product(&a_plus_b, &a_plus_b) / (N::one() - mip(a, b))
 }
 
-#[rustfmt::skip]
-pub fn translate_along<N: RealField + Copy>(v: &na::Unit<na::Vector3<N>>, distance: N) -> na::Matrix4<N> {
-    if distance == na::zero() {
+/// Transform that translates the origin in the direction of the given vector with distance equal to its magnitude
+pub fn translate_along<N: RealField + Copy>(v: &na::Vector3<N>) -> na::Matrix4<N> {
+    let norm = v.norm();
+    if norm == na::zero() {
         return na::Matrix4::identity();
     }
     // g = Lorentz gamma factor
-    let g = distance.cosh();
-    let one = na::one::<N>();
-    let gm = g - one;
-    let bg = distance.sinh();
-    // TODO: Make this more elegant
-    na::Matrix4::new(
-        one + gm * v.x * v.x,       gm * v.x * v.y,       gm * v.x * v.z, bg * v.x,
-              gm * v.y * v.x, one + gm * v.y * v.y,       gm * v.y * v.z, bg * v.y,
-              gm * v.z * v.x,       gm * v.z * v.y, one + gm * v.z * v.z, bg * v.z,
-              bg * v.x,                   bg * v.y,             bg * v.z,        g)
+    let g = norm.cosh();
+    let bgc = norm.sinhc();
+    translate(&origin(), &(v * bgc).insert_row(3, g))
 }
 
 /// 4D reflection around a normal vector; length is not significant (so long as it's nonzero)
@@ -92,15 +88,12 @@ pub fn lorentz_normalize<N: RealField + Copy>(v: &na::Vector4<N>) -> na::Vector4
 }
 
 pub fn renormalize_isometry<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
-    let dest = m.index((.., 3));
-    let norm = dest.xyz().norm();
-    let boost_length = (dest.w + norm).ln();
-    let direction = na::Unit::new_unchecked(dest.xyz() / norm);
-    let inverse_boost = translate_along(&direction, -boost_length);
+    let boost = translate(&origin(), &m.index((.., 3)).into());
+    let inverse_boost = mtranspose(&boost);
     let rotation = renormalize_rotation_reflection(
         &(inverse_boost * m).fixed_slice::<3, 3>(0, 0).clone_owned(),
     );
-    translate_along(&direction, boost_length) * rotation.to_homogeneous()
+    boost * rotation.to_homogeneous()
 }
 
 #[rustfmt::skip]
@@ -127,14 +120,22 @@ pub fn mip<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     a.x * b.x + a.y * b.y + a.z * b.z - a.w * b.w
 }
 
+/// Minkowski transpose. Inverse for hyperbolic isometries
 #[rustfmt::skip]
-fn i31<N: RealField + Copy>() -> na::Matrix4<N> {
-    na::convert::<_, na::Matrix4<N>>(na::Matrix4::<f64>::new(
-        1.0, 0.0, 0.0,  0.0,
-        0.0, 1.0, 0.0,  0.0,
-        0.0, 0.0, 1.0,  0.0,
-        0.0, 0.0, 0.0, -1.0
-    ))
+pub fn mtranspose<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
+    na::Matrix4::new(
+         m.m11,  m.m21,  m.m31, -m.m41,
+         m.m12,  m.m22,  m.m32, -m.m42,
+         m.m13,  m.m23,  m.m33, -m.m43,
+        -m.m14, -m.m24, -m.m34,  m.m44,
+    )
+}
+
+fn minkowski_outer_product<N: RealField + Copy>(
+    a: &na::Vector4<N>,
+    b: &na::Vector4<N>,
+) -> na::Matrix4<N> {
+    *a * na::RowVector4::new(b.x, b.y, b.z, -b.w)
 }
 
 #[cfg(test)]
@@ -146,7 +147,7 @@ mod tests {
     #[rustfmt::skip]
     fn reflect_example() {
         assert_abs_diff_eq!(
-            reflect(&na::Vector4::new(0.5, 0.0, 0.0, 1.0)),
+            reflect(&lorentz_normalize(&na::Vector4::new(0.5, 0.0, 0.0, 1.0))),
             na::Matrix4::new(
                 1.666, 0.0, 0.0, -1.333,
                 0.0  , 1.0, 0.0,  0.0,
@@ -161,7 +162,10 @@ mod tests {
     #[rustfmt::skip]
     fn translate_example() {
         assert_abs_diff_eq!(
-            translate(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0), &na::Vector4::new(0.3, -0.7, 0.0, 1.0)),
+            translate(
+                &lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0)),
+                &lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0))
+            ),
             na::Matrix4::new(
                  1.676, 0.814, 0.0,  1.572,
                 -1.369, 0.636, 0.0, -1.130,
@@ -174,8 +178,8 @@ mod tests {
 
     #[test]
     fn translate_identity() {
-        let a = na::Vector4::new(-0.5, -0.5, 0.0, 1.0);
-        let b = na::Vector4::new(0.3, -0.7, 0.0, 1.0);
+        let a = lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0));
+        let b = lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0));
         let o = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(
             translate(&a, &b),
@@ -186,13 +190,13 @@ mod tests {
 
     #[test]
     fn translate_equivalence() {
-        let a = na::Vector4::new(-0.5, -0.5, 0.0, 1.0);
+        let a = lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0));
         let o = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
         let direction = na::Unit::new_normalize(a.xyz());
         let distance = dbg!(distance(&o, &a));
         assert_abs_diff_eq!(
             translate(&o, &a),
-            translate_along(&direction, distance),
+            translate_along(&(direction.as_ref() * distance)),
             epsilon = 1e-5
         );
     }
@@ -200,7 +204,7 @@ mod tests {
     #[test]
     fn translate_distance() {
         let dx = 2.3;
-        let xf = translate_along(&na::Vector3::x_axis(), dx);
+        let xf = translate_along(&(na::Vector3::x() * dx));
         assert_abs_diff_eq!(dx, distance(&origin(), &(xf * origin())));
     }
 
@@ -231,8 +235,8 @@ mod tests {
     #[test]
     fn renormalize_translation() {
         let mat = translate(
-            &na::Vector4::new(-0.5, -0.5, 0.0, 1.0),
-            &na::Vector4::new(0.3, -0.7, 0.0, 1.0),
+            &lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0)),
+            &lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0)),
         );
         assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
     }

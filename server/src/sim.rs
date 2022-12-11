@@ -52,7 +52,7 @@ impl Sim {
         info!(%id, name = %hello.name, "spawning character");
         let position = Position {
             node: NodeId::ROOT,
-            local: math::translate_along(&na::Vector3::y_axis(), 0.9),
+            local: math::translate_along(&(na::Vector3::y() * 0.9)),
         };
         let character = Character {
             name: hello.name,
@@ -110,8 +110,10 @@ impl Sim {
 
         // Simulate
         for (_, (ch, pos)) in self.world.query::<(&Character, &mut Position)>().iter() {
-            let next_xf =
-                pos.local * math::translate_along(&ch.direction, ch.speed / self.cfg.rate as f32);
+            let next_xf = pos.local
+                * math::translate_along(
+                    &(ch.direction.as_ref() * (ch.speed / self.cfg.rate as f32)),
+                );
             pos.local = math::renormalize_isometry(&next_xf);
             let (next_node, transition_xf) = self.graph.normalize_transform(pos.node, &pos.local);
             if next_node != pos.node {

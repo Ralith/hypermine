@@ -99,30 +99,12 @@ mod tests {
         // 90 degree square
         let planes = Frustum::from_vfov(f32::consts::FRAC_PI_4, 1.0).planes();
         assert!(planes.contain(&origin(), 0.1));
-        assert!(planes.contain(
-            &(translate_along(&na::Vector3::z_axis(), -1.0) * origin()),
-            0.0
-        ));
-        assert!(!planes.contain(
-            &(translate_along(&na::Vector3::z_axis(), 1.0) * origin()),
-            0.0
-        ));
+        assert!(planes.contain(&(translate_along(&-na::Vector3::z()) * origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&na::Vector3::z()) * origin()), 0.0));
 
-        assert!(!planes.contain(
-            &(translate_along(&na::Vector3::x_axis(), 1.0) * origin()),
-            0.0
-        ));
-        assert!(!planes.contain(
-            &(translate_along(&na::Vector3::y_axis(), 1.0) * origin()),
-            0.0
-        ));
-        assert!(!planes.contain(
-            &(translate_along(&na::Vector3::x_axis(), -1.0) * origin()),
-            0.0
-        ));
-        assert!(!planes.contain(
-            &(translate_along(&na::Vector3::y_axis(), -1.0) * origin()),
-            0.0
-        ));
+        assert!(!planes.contain(&(translate_along(&na::Vector3::x()) * origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&na::Vector3::y()) * origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&-na::Vector3::x()) * origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&-na::Vector3::y()) * origin()), 0.0));
     }
 }

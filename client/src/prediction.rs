@@ -27,7 +27,7 @@ impl PredictedMotion {
     /// Update for input about to be sent to the server, returning the generation it should be
     /// tagged with
     pub fn push(&mut self, direction: &na::Unit<na::Vector3<f32>>, distance: f32) -> u16 {
-        let transform = math::translate_along(direction, distance);
+        let transform = math::translate_along(&(direction.as_ref() * distance));
         self.predicted.local *= transform;
         self.log.push_back(Input { transform });
         self.generation = self.generation.wrapping_add(1);

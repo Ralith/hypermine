@@ -93,7 +93,9 @@ mod tests {
             for &distance in &[-1.5, 0.0, 1.5] {
                 let plane = Plane::from(axis);
                 assert_abs_diff_eq!(
-                    plane.distance_to(&(translate_along(&axis, distance) * origin())),
+                    plane.distance_to(
+                        &(translate_along(&(axis.into_inner() * distance)) * origin())
+                    ),
                     distance
                 );
             }
