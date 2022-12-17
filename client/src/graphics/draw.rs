@@ -418,8 +418,8 @@ impl Draw {
         let scissors = [vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: vk::Extent2D {
-                width: extent.width as u32,
-                height: extent.height as u32,
+                width: extent.width,
+                height: extent.height,
             },
         }];
         device.cmd_set_viewport(cmd, 0, &viewports);
