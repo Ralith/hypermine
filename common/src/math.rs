@@ -88,7 +88,7 @@ pub fn lorentz_normalize<N: RealField + Copy>(v: &na::Vector4<N>) -> na::Vector4
 }
 
 pub fn renormalize_isometry<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
-    let boost = translate(&origin(), &m.index((.., 3)).into());
+    let boost = translate(&origin(), &lorentz_normalize(&m.index((.., 3)).into()));
     let inverse_boost = mtranspose(&boost);
     let rotation = renormalize_rotation_reflection(
         &(inverse_boost * m).fixed_slice::<3, 3>(0, 0).clone_owned(),
@@ -249,5 +249,31 @@ mod tests {
                                    0.0, 0.0, 1.0, 0.0,
                                    0.0, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn renormalize_normalizes_matrix() {
+        // Matrix chosen with random entries between -1 and 1
+        let error = na::Matrix4::new(
+            -0.77, -0.21,  0.57, -0.59,
+             0.49, -0.68,  0.36,  0.68,
+            -0.75, -0.54, -0.13, -0.59,
+            -0.57, -0.80,  0.00, -0.53);
+
+        // translation with some error
+        let mat = translate(
+            &lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0)),
+            &lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0)),
+        ) + error * 0.05;
+
+        let normalized_mat = renormalize_isometry(&mat);
+
+        // Check that the matrix is actually normalized
+        assert_abs_diff_eq!(
+            mtranspose(&normalized_mat) * normalized_mat,
+            na::Matrix4::identity(),
+            epsilon = 1e-5
+        );
     }
 }
