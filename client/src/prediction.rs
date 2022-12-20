@@ -12,23 +12,23 @@ use common::{math, proto::Position};
 pub struct PredictedMotion {
     log: VecDeque<Input>,
     generation: u16,
-    predicted: Position,
+    predicted_position: Position,
 }
 
 impl PredictedMotion {
-    pub fn new(initial: Position) -> Self {
+    pub fn new(initial_position: Position) -> Self {
         Self {
             log: VecDeque::new(),
             generation: 0,
-            predicted: initial,
+            predicted_position: initial_position,
         }
     }
 
     /// Update for input about to be sent to the server, returning the generation it should be
     /// tagged with
-    pub fn push(&mut self, velocity: &na::Vector3<f32>) -> u16 {
-        let transform = math::translate_along(velocity);
-        self.predicted.local *= transform;
+    pub fn push(&mut self, movement: &na::Vector3<f32>) -> u16 {
+        let transform = math::translate_along(movement);
+        self.predicted_position.local *= transform;
         self.log.push_back(Input { transform });
         self.generation = self.generation.wrapping_add(1);
         self.generation
@@ -43,16 +43,16 @@ impl PredictedMotion {
             return;
         }
         self.log.drain(..obsolete);
-        self.predicted.node = position.node;
-        self.predicted.local = self
+        self.predicted_position.node = position.node;
+        self.predicted_position.local = self
             .log
             .iter()
             .fold(position.local, |acc, x| acc * x.transform);
     }
 
     /// Latest estimate of the server's state after receiving all `push`ed inputs.
-    pub fn predicted(&self) -> &Position {
-        &self.predicted
+    pub fn predicted_position(&self) -> &Position {
+        &self.predicted_position
     }
 }
 

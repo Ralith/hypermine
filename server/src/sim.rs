@@ -64,7 +64,7 @@ impl Sim {
             },
         };
         let initial_input = CharacterInput {
-            velocity: na::Vector3::zeros(),
+            movement: na::Vector3::zeros(),
         };
         let entity = self.world.spawn((id, position, character, initial_input));
         self.entity_ids.insert(id, entity);
@@ -119,7 +119,7 @@ impl Sim {
         {
             let next_xf = pos.local
                 * math::translate_along(
-                    &(sanitize_motion_input(input.velocity)
+                    &(sanitize_motion_input(input.movement)
                         * self.cfg.movement_speed
                         * self.cfg.step_interval.as_secs_f32()),
                 );

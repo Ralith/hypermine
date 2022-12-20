@@ -60,7 +60,7 @@ pub struct Command {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterInput {
     /// Relative to the character's current position, excluding orientation
-    pub velocity: na::Vector3<f32>,
+    pub movement: na::Vector3<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
