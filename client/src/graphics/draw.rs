@@ -222,7 +222,7 @@ impl Draw {
             &self.gfx,
             self.cfg.clone(),
             &mut self.loader,
-            u32::from(params.chunk_size),
+            u32::from(params.cfg.chunk_size),
             PIPELINE_DEPTH,
         );
         for state in &mut self.states {
@@ -455,7 +455,7 @@ impl Draw {
                         if let Ok(ch) = sim.world.get::<&Character>(entity) {
                             let transform = transform
                                 * pos.local
-                                * na::Matrix4::new_scaling(params.meters_to_absolute)
+                                * na::Matrix4::new_scaling(params.cfg.meters_to_absolute)
                                 * ch.orientation.to_homogeneous();
                             for mesh in &character_model.0 {
                                 self.meshes

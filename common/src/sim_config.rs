@@ -8,10 +8,12 @@ use crate::{dodeca, math};
 #[derive(Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct SimConfigRaw {
+    /// Number of steps per second
     pub rate: Option<u16>,
     /// Maximum distance at which anything can be seen in meters
     pub view_distance: Option<f32>,
     pub input_queue_size_ms: Option<u16>,
+    /// Number of voxels along the edge of a chunk
     pub chunk_size: Option<u8>,
     /// Approximate length of the edge of a voxel in meters
     ///
@@ -27,9 +29,10 @@ pub struct SimConfigRaw {
 }
 
 /// Complete simulation config parameters
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SimConfig {
-    pub rate: u16,
+    /// Amount of time between each step. Inverse of the rate
+    pub step_interval: Duration,
     pub view_distance: f32,
     pub input_queue_size: Duration,
     pub chunk_size: u8,
@@ -44,7 +47,7 @@ impl SimConfig {
         let voxel_size = x.voxel_size.unwrap_or(1.0);
         let meters_to_absolute = meters_to_absolute(chunk_size, voxel_size);
         SimConfig {
-            rate: x.rate.unwrap_or(10),
+            step_interval: Duration::from_secs(1) / x.rate.unwrap_or(10) as u32,
             view_distance: x.view_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
             chunk_size,

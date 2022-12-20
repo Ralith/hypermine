@@ -12,7 +12,7 @@ use common::{
     proto::{self, Character, Command, Component, Position},
     sanitize_motion_input,
     worldgen::NodeState,
-    Chunks, EntityId, GraphEntities, Step,
+    Chunks, EntityId, GraphEntities, SimConfig, Step,
 };
 
 /// Game state
@@ -86,7 +86,7 @@ impl Sim {
             self.handle_net(msg);
         }
 
-        if let Some(step_interval) = self.params.as_ref().map(|x| x.step_interval) {
+        if let Some(step_interval) = self.params.as_ref().map(|x| x.cfg.step_interval) {
             self.since_input_sent += dt;
             if let Some(overflow) = self.since_input_sent.checked_sub(step_interval) {
                 // At least one step interval has passed since we last sent input, so it's time to
@@ -131,10 +131,7 @@ impl Sim {
             Hello(msg) => {
                 self.params = Some(Parameters {
                     character_id: msg.character,
-                    step_interval: Duration::from_secs(1) / u32::from(msg.rate),
-                    chunk_size: msg.chunk_size,
-                    meters_to_absolute: msg.meters_to_absolute,
-                    movement_speed: msg.movement_speed,
+                    cfg: msg.sim_config,
                 });
                 // Populate the root node
                 populate_fresh_nodes(&mut self.graph);
@@ -243,11 +240,9 @@ impl Sim {
     fn send_input(&mut self) {
         let velocity = sanitize_motion_input(self.orientation * self.average_velocity);
         let params = self.params.as_ref().unwrap();
-        let generation = self.prediction.push(
-            &(velocity
-                * params.movement_speed
-                * self.params.as_ref().unwrap().step_interval.as_secs_f32()),
-        );
+        let generation = self
+            .prediction
+            .push(&(velocity * params.cfg.movement_speed * params.cfg.step_interval.as_secs_f32()));
 
         // Any failure here will be better handled in handle_net's ConnectionLost case
         let _ = self.net.outgoing.send(Command {
@@ -267,7 +262,7 @@ impl Sim {
             // self.average_velocity is always over the entire timestep, filling in zeroes for the
             // future.
             result.local *= math::translate_along(
-                &(velocity * params.movement_speed * params.step_interval.as_secs_f32()),
+                &(velocity * params.cfg.movement_speed * params.cfg.step_interval.as_secs_f32()),
             );
         }
         result
@@ -296,11 +291,7 @@ impl Sim {
 
 /// Simulation details received on connect
 pub struct Parameters {
-    pub step_interval: Duration,
-    pub chunk_size: u8,
-    pub meters_to_absolute: f32,
-    /// Absolute units
-    pub movement_speed: f32,
+    pub cfg: SimConfig,
     pub character_id: EntityId,
 }
 

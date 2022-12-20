@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{dodeca, graph::NodeId, EntityId, Step};
+use crate::{dodeca, graph::NodeId, EntityId, SimConfig, Step};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientHello {
@@ -10,13 +10,7 @@ pub struct ClientHello {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerHello {
     pub character: EntityId,
-    pub rate: u16,
-    /// Number of voxels along the edge of a chunk
-    pub chunk_size: u8,
-    /// Maximum movement speed in absolute units
-    pub movement_speed: f32,
-    /// Unit conversion factor
-    pub meters_to_absolute: f32,
+    pub sim_config: SimConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
