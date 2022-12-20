@@ -10,8 +10,8 @@ use common::{
     graph::{Graph, NodeId},
     math,
     proto::{
-        self, CharacterState, ClientHello, Command, Component, FreshNode, Position, Spawns,
-        StateDelta,
+        Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
+        Position, Spawns, StateDelta,
     },
     sanitize_motion_input,
     traversal::ensure_nearby,
@@ -59,12 +59,14 @@ impl Sim {
         };
         let character = Character {
             name: hello.name,
-            velocity: na::Vector3::zeros(),
             state: CharacterState {
                 orientation: na::one(),
             },
         };
-        let entity = self.world.spawn((id, position, character));
+        let initial_input = CharacterInput {
+            velocity: na::Vector3::zeros(),
+        };
+        let entity = self.world.spawn((id, position, character, initial_input));
         self.entity_ids.insert(id, entity);
         self.spawns.push(entity);
         (id, entity)
@@ -75,10 +77,8 @@ impl Sim {
         entity: Entity,
         command: Command,
     ) -> Result<(), hecs::ComponentError> {
-        let mut ch = self.world.get::<&mut Character>(entity)?;
-        let velocity = sanitize_motion_input(command.velocity);
-        ch.velocity = velocity * self.cfg.movement_speed;
-        ch.state.orientation = command.orientation;
+        let mut input = self.world.get::<&mut CharacterInput>(entity)?;
+        *input = command.character_input;
         Ok(())
     }
 
@@ -112,9 +112,17 @@ impl Sim {
         let _guard = span.enter();
 
         // Simulate
-        for (_, (ch, pos)) in self.world.query::<(&Character, &mut Position)>().iter() {
+        for (_, (pos, input)) in self
+            .world
+            .query::<(&mut Position, &CharacterInput)>()
+            .iter()
+        {
             let next_xf = pos.local
-                * math::translate_along(&(ch.velocity * self.cfg.step_interval.as_secs_f32()));
+                * math::translate_along(
+                    &(sanitize_motion_input(input.velocity)
+                        * self.cfg.movement_speed
+                        * self.cfg.step_interval.as_secs_f32()),
+                );
             pos.local = math::renormalize_isometry(&next_xf);
             let (next_node, transition_xf) = self.graph.normalize_transform(pos.node, &pos.local);
             if next_node != pos.node {
@@ -192,16 +200,7 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
         components.push(Component::Position(*x));
     }
     if let Ok(x) = world.get::<&Character>(entity) {
-        components.push(Component::Character(proto::Character {
-            name: x.name.clone(),
-            state: x.state.clone(),
-        }));
+        components.push(Component::Character((*x).clone()));
     }
     components
-}
-
-struct Character {
-    name: String,
-    state: CharacterState,
-    velocity: na::Vector3<f32>,
 }
