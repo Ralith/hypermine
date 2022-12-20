@@ -61,6 +61,7 @@ impl Sim {
             name: hello.name,
             state: CharacterState {
                 orientation: na::one(),
+                velocity: na::Vector3::zeros(),
             },
         };
         let initial_input = CharacterInput {
@@ -113,15 +114,16 @@ impl Sim {
         let _guard = span.enter();
 
         // Simulate
-        for (_, (position, input)) in self
+        for (_, (position, character, input)) in self
             .world
-            .query::<(&mut Position, &CharacterInput)>()
+            .query::<(&mut Position, &mut Character, &CharacterInput)>()
             .iter()
         {
             character_controller::run_character_step(
                 &self.cfg,
                 &self.graph,
                 position,
+                &mut character.state.velocity,
                 input,
                 self.cfg.step_interval.as_secs_f32(),
             );

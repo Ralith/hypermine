@@ -39,6 +39,7 @@ pub struct StateDelta {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterState {
+    pub velocity: na::Vector3<f32>,
     pub orientation: na::UnitQuaternion<f32>,
 }
 

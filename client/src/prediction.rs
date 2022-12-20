@@ -18,6 +18,7 @@ pub struct PredictedMotion {
     log: VecDeque<CharacterInput>,
     generation: u16,
     predicted_position: Position,
+    predicted_velocity: na::Vector3<f32>,
 }
 
 impl PredictedMotion {
@@ -26,6 +27,7 @@ impl PredictedMotion {
             log: VecDeque::new(),
             generation: 0,
             predicted_position: initial_position,
+            predicted_velocity: na::Vector3::zeros(),
         }
     }
 
@@ -36,6 +38,7 @@ impl PredictedMotion {
             cfg,
             graph,
             &mut self.predicted_position,
+            &mut self.predicted_velocity,
             input,
             cfg.step_interval.as_secs_f32(),
         );
@@ -51,6 +54,7 @@ impl PredictedMotion {
         graph: &DualGraph,
         generation: u16,
         position: Position,
+        velocity: na::Vector3<f32>,
     ) {
         let first_gen = self.generation.wrapping_sub(self.log.len() as u16);
         let obsolete = usize::from(generation.wrapping_sub(first_gen));
@@ -60,12 +64,14 @@ impl PredictedMotion {
         }
         self.log.drain(..obsolete);
         self.predicted_position = position;
+        self.predicted_velocity = velocity;
 
         for input in self.log.iter() {
             character_controller::run_character_step(
                 cfg,
                 graph,
                 &mut self.predicted_position,
+                &mut self.predicted_velocity,
                 input,
                 cfg.step_interval.as_secs_f32(),
             );
@@ -75,6 +81,10 @@ impl PredictedMotion {
     /// Latest estimate of the server's state after receiving all `push`ed inputs.
     pub fn predicted_position(&self) -> &Position {
         &self.predicted_position
+    }
+
+    pub fn predicted_velocity(&self) -> &na::Vector3<f32> {
+        &self.predicted_velocity
     }
 }
 
@@ -105,7 +115,13 @@ mod tests {
         let push =
             |pred: &mut PredictedMotion| pred.push(&mock_cfg, &mock_graph, &mock_character_input);
         let reconcile = |pred: &mut PredictedMotion, generation| {
-            pred.reconcile(&mock_cfg, &mock_graph, generation, pos())
+            pred.reconcile(
+                &mock_cfg,
+                &mock_graph,
+                generation,
+                pos(),
+                na::Vector3::zeros(),
+            )
         };
 
         pred.generation = u16::max_value() - 1;

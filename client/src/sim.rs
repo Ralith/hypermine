@@ -217,8 +217,20 @@ impl Sim {
                 return;
             }
         };
-        self.prediction
-            .reconcile(&params.cfg, &self.graph, latest_input, *pos);
+        let ch = match self.world.get::<&Character>(entity) {
+            Ok(ch) => ch,
+            Err(e) => {
+                error!(%id, "reconciliation error: {}", e);
+                return;
+            }
+        };
+        self.prediction.reconcile(
+            &params.cfg,
+            &self.graph,
+            latest_input,
+            *pos,
+            ch.state.velocity,
+        );
     }
 
     fn handle_spawns(&mut self, msg: proto::Spawns) {
@@ -296,6 +308,7 @@ impl Sim {
 
     pub fn view(&self) -> Position {
         let mut result = *self.prediction.predicted_position();
+        let mut predicted_velocity = *self.prediction.predicted_velocity();
         if let Some(ref params) = self.params {
             // Apply input that hasn't been sent yet
             let predicted_input = CharacterInput {
@@ -312,6 +325,7 @@ impl Sim {
                 &params.cfg,
                 &self.graph,
                 &mut result,
+                &mut predicted_velocity,
                 &predicted_input,
                 self.since_input_sent.as_secs_f32(),
             );
