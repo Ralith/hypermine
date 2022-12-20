@@ -9,7 +9,7 @@ use common::{
     graph::{Graph, NodeId},
     math,
     node::{DualGraph, Node},
-    proto::{self, Character, Command, Component, Position},
+    proto::{self, Character, CharacterState, Command, Component, Position},
     sanitize_motion_input,
     worldgen::NodeState,
     Chunks, EntityId, GraphEntities, SimConfig, Step,
@@ -143,29 +143,19 @@ impl Sim {
                     return;
                 }
                 self.step = Some(msg.step);
-                for &(id, new_pos) in &msg.positions {
+                for &(id, ref new_pos) in &msg.positions {
                     self.update_position(msg.latest_input, id, new_pos);
                 }
-                for &(id, orientation) in &msg.character_orientations {
-                    match self.entity_ids.get(&id) {
-                        None => debug!(%id, "character orientation update for unknown entity"),
-                        Some(&entity) => match self.world.get::<&mut Character>(entity) {
-                            Ok(mut ch) => {
-                                ch.orientation = orientation;
-                            }
-                            Err(e) => {
-                                error!(%id, "character orientation update for non-character entity {}", e)
-                            }
-                        },
-                    }
+                for &(id, ref new_state) in &msg.character_states {
+                    self.update_character_state(id, new_state);
                 }
             }
         }
     }
 
-    fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: Position) {
+    fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: &Position) {
         if self.params.as_ref().map_or(false, |x| x.character_id == id) {
-            self.prediction.reconcile(latest_input, new_pos);
+            self.prediction.reconcile(latest_input, *new_pos);
         }
         match self.entity_ids.get(&id) {
             None => debug!(%id, "position update for unknown entity"),
@@ -175,9 +165,23 @@ impl Sim {
                         self.graph_entities.remove(pos.node, entity);
                         self.graph_entities.insert(new_pos.node, entity);
                     }
-                    *pos = new_pos;
+                    *pos = *new_pos;
                 }
-                Err(e) => error!(%id, "position update for unpositioned entity {}", e),
+                Err(e) => error!(%id, "position update error: {}", e),
+            },
+        }
+    }
+
+    fn update_character_state(&mut self, id: EntityId, new_character_state: &CharacterState) {
+        match self.entity_ids.get(&id) {
+            None => debug!(%id, "character state update for unknown entity"),
+            Some(&entity) => match self.world.get::<&mut Character>(entity) {
+                Ok(mut ch) => {
+                    ch.state = new_character_state.clone();
+                }
+                Err(e) => {
+                    error!(%id, "character state update error: {}", e)
+                }
             },
         }
     }

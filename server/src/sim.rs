@@ -9,7 +9,10 @@ use tracing::{error_span, info, trace};
 use common::{
     graph::{Graph, NodeId},
     math,
-    proto::{self, ClientHello, Command, Component, FreshNode, Position, Spawns, StateDelta},
+    proto::{
+        self, CharacterState, ClientHello, Command, Component, FreshNode, Position, Spawns,
+        StateDelta,
+    },
     sanitize_motion_input,
     traversal::ensure_nearby,
     EntityId, SimConfig, Step,
@@ -57,7 +60,9 @@ impl Sim {
         let character = Character {
             name: hello.name,
             velocity: na::Vector3::zeros(),
-            orientation: na::one(),
+            state: CharacterState {
+                orientation: na::one(),
+            },
         };
         let entity = self.world.spawn((id, position, character));
         self.entity_ids.insert(id, entity);
@@ -73,7 +78,7 @@ impl Sim {
         let mut ch = self.world.get::<&mut Character>(entity)?;
         let velocity = sanitize_motion_input(command.velocity);
         ch.velocity = velocity * self.cfg.movement_speed;
-        ch.orientation = command.orientation;
+        ch.state.orientation = command.orientation;
         Ok(())
     }
 
@@ -157,11 +162,11 @@ impl Sim {
                 .iter()
                 .map(|(_, (&id, &position))| (id, position))
                 .collect(),
-            character_orientations: self
+            character_states: self
                 .world
                 .query::<(&EntityId, &Character)>()
                 .iter()
-                .map(|(_, (&id, ch))| (id, ch.orientation))
+                .map(|(_, (&id, ch))| (id, ch.state.clone()))
                 .collect(),
         };
 
@@ -189,7 +194,7 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     if let Ok(x) = world.get::<&Character>(entity) {
         components.push(Component::Character(proto::Character {
             name: x.name.clone(),
-            orientation: x.orientation,
+            state: x.state.clone(),
         }));
     }
     components
@@ -197,6 +202,6 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
 
 struct Character {
     name: String,
-    orientation: na::UnitQuaternion<f32>,
+    state: CharacterState,
     velocity: na::Vector3<f32>,
 }
