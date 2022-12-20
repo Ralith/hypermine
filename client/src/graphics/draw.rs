@@ -456,7 +456,7 @@ impl Draw {
                             let transform = transform
                                 * pos.local
                                 * na::Matrix4::new_scaling(params.cfg.meters_to_absolute)
-                                * ch.orientation.to_homogeneous();
+                                * ch.state.orientation.to_homogeneous();
                             for mesh in &character_model.0 {
                                 self.meshes
                                     .draw(device, state.common_ds, cmd, mesh, &transform);
