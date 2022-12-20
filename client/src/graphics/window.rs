@@ -230,6 +230,9 @@ impl Window {
                         VirtualKeyCode::F => {
                             down = state == ElementState::Pressed;
                         }
+                        VirtualKeyCode::V if state == ElementState::Pressed => {
+                            self.sim.toggle_no_clip();
+                        }
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);

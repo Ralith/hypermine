@@ -24,8 +24,8 @@ pub struct SimConfigRaw {
     /// Note that exact voxel size varies within each chunk. We reference the mean width of the voxels
     /// along the X axis through the center of a chunk.
     pub voxel_size: Option<f32>,
-    /// Character movement speed in m/s
-    pub movement_speed: Option<f32>,
+    /// Character movement speed in m/s during no-clip
+    pub no_clip_movement_speed: Option<f32>,
 }
 
 /// Complete simulation config parameters
@@ -36,7 +36,7 @@ pub struct SimConfig {
     pub view_distance: f32,
     pub input_queue_size: Duration,
     pub chunk_size: u8,
-    pub movement_speed: f32,
+    pub no_clip_movement_speed: f32,
     /// Scaling factor converting meters to absolute units
     pub meters_to_absolute: f32,
 }
@@ -51,7 +51,7 @@ impl SimConfig {
             view_distance: x.view_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
             chunk_size,
-            movement_speed: x.movement_speed.unwrap_or(12.0) * meters_to_absolute,
+            no_clip_movement_speed: x.no_clip_movement_speed.unwrap_or(12.0) * meters_to_absolute,
             meters_to_absolute,
         }
     }

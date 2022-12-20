@@ -34,9 +34,13 @@ impl<T> CharacterControllerPass<'_, T> {
     fn step(&mut self) {
         let movement = sanitize_motion_input(self.input.movement);
 
-        self.position.local *= math::translate_along(
-            &(movement * self.cfg.movement_speed * self.dt_seconds),
-        );
+        if self.input.no_clip {
+            self.position.local *= math::translate_along(
+                &(movement * self.cfg.no_clip_movement_speed * self.dt_seconds),
+            );
+        } else {
+            // Placeholder: If no-clip is off, the character cannot move.
+        }
 
         // Renormalize
         self.position.local = math::renormalize_isometry(&self.position.local);

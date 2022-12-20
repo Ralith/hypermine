@@ -40,6 +40,9 @@ pub struct Sim {
     ///
     /// Units are relative to movement speed.
     average_movement_input: na::Vector3<f32>,
+    no_clip: bool,
+    /// Whether no_clip will be toggled next step
+    toggle_no_clip: bool,
     prediction: PredictedMotion,
 }
 
@@ -60,6 +63,8 @@ impl Sim {
             since_input_sent: Duration::new(0, 0),
             movement_input: na::zero(),
             average_movement_input: na::zero(),
+            no_clip: true,
+            toggle_no_clip: false,
             prediction: PredictedMotion::new(proto::Position {
                 node: NodeId::ROOT,
                 local: na::one(),
@@ -73,6 +78,13 @@ impl Sim {
 
     pub fn set_movement_input(&mut self, movement_input: na::Vector3<f32>) {
         self.movement_input = movement_input;
+    }
+
+    pub fn toggle_no_clip(&mut self) {
+        // We prepare to toggle no_clip after the next step instead of immediately, as otherwise,
+        // there would be a discontinuity when predicting the player's position within a given step,
+        // causing an undesirable jolt.
+        self.toggle_no_clip = true;
     }
 
     pub fn params(&self) -> Option<&Parameters> {
@@ -100,6 +112,12 @@ impl Sim {
 
                 // Send fresh input
                 self.send_input();
+
+                // Toggle no clip at the start of a new step
+                if self.toggle_no_clip {
+                    self.no_clip = !self.no_clip;
+                    self.toggle_no_clip = false;
+                }
 
                 // Reset state for the next step
                 if overflow > step_interval {
@@ -262,6 +280,7 @@ impl Sim {
         let params = self.params.as_ref().unwrap();
         let character_input = CharacterInput {
             movement: sanitize_motion_input(self.orientation * self.average_movement_input),
+            no_clip: self.no_clip,
         };
         let generation = self
             .prediction
@@ -287,6 +306,7 @@ impl Sim {
                 movement: self.orientation * self.average_movement_input
                     / (self.since_input_sent.as_secs_f32()
                         / params.cfg.step_interval.as_secs_f32()),
+                no_clip: self.no_clip,
             };
             character_controller::run_character_step(
                 &params.cfg,
