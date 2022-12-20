@@ -6,8 +6,8 @@ use tracing::{debug, error, trace};
 
 use crate::{net, prediction::PredictedMotion, Net};
 use common::{
+    character_controller,
     graph::{Graph, NodeId},
-    math,
     node::{DualGraph, Node},
     proto::{self, Character, CharacterInput, CharacterState, Command, Component, Position},
     sanitize_motion_input,
@@ -199,7 +199,8 @@ impl Sim {
                 return;
             }
         };
-        self.prediction.reconcile(latest_input, *pos);
+        self.prediction
+            .reconcile(&params.cfg, &self.graph, latest_input, *pos);
     }
 
     fn handle_spawns(&mut self, msg: proto::Spawns) {
@@ -262,11 +263,9 @@ impl Sim {
         let character_input = CharacterInput {
             movement: sanitize_motion_input(self.orientation * self.average_movement_input),
         };
-        let generation = self.prediction.push(
-            &(character_input.movement
-                * params.cfg.movement_speed
-                * params.cfg.step_interval.as_secs_f32()),
-        );
+        let generation = self
+            .prediction
+            .push(&params.cfg, &self.graph, &character_input);
 
         // Any failure here will be better handled in handle_net's ConnectionLost case
         let _ = self.net.outgoing.send(Command {
@@ -278,17 +277,26 @@ impl Sim {
 
     pub fn view(&self) -> Position {
         let mut result = *self.prediction.predicted_position();
-        result.local *= self.orientation.to_homogeneous();
         if let Some(ref params) = self.params {
             // Apply input that hasn't been sent yet
-            let movement = sanitize_motion_input(self.average_movement_input);
-            // We multiply by the entire timestep rather than the time so far because
-            // self.average_movement_input is always over the entire timestep, filling in zeroes for the
-            // future.
-            result.local *= math::translate_along(
-                &(movement * params.cfg.movement_speed * params.cfg.step_interval.as_secs_f32()),
+            let predicted_input = CharacterInput {
+                // We divide by how far we are through the timestep because self.average_movement_input
+                // is always over the entire timestep, filling in zeroes for the future, and we
+                // want to use the average over what we have so far. Dividing by zero is handled
+                // by the character_controller sanitizing this input.
+                movement: self.orientation * self.average_movement_input
+                    / (self.since_input_sent.as_secs_f32()
+                        / params.cfg.step_interval.as_secs_f32()),
+            };
+            character_controller::run_character_step(
+                &params.cfg,
+                &self.graph,
+                &mut result,
+                &predicted_input,
+                self.since_input_sent.as_secs_f32(),
             );
         }
+        result.local *= self.orientation.to_homogeneous();
         result
     }
 

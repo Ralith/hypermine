@@ -7,13 +7,13 @@ use rand::{Rng, SeedableRng};
 use tracing::{error_span, info, trace};
 
 use common::{
+    character_controller,
     graph::{Graph, NodeId},
     math,
     proto::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
     },
-    sanitize_motion_input,
     traversal::ensure_nearby,
     EntityId, SimConfig, Step,
 };
@@ -112,24 +112,19 @@ impl Sim {
         let _guard = span.enter();
 
         // Simulate
-        for (_, (pos, input)) in self
+        for (_, (position, input)) in self
             .world
             .query::<(&mut Position, &CharacterInput)>()
             .iter()
         {
-            let next_xf = pos.local
-                * math::translate_along(
-                    &(sanitize_motion_input(input.movement)
-                        * self.cfg.movement_speed
-                        * self.cfg.step_interval.as_secs_f32()),
-                );
-            pos.local = math::renormalize_isometry(&next_xf);
-            let (next_node, transition_xf) = self.graph.normalize_transform(pos.node, &pos.local);
-            if next_node != pos.node {
-                pos.node = next_node;
-                pos.local = transition_xf * pos.local;
-            }
-            ensure_nearby(&mut self.graph, pos, f64::from(self.cfg.view_distance));
+            character_controller::run_character_step(
+                &self.cfg,
+                &self.graph,
+                position,
+                input,
+                self.cfg.step_interval.as_secs_f32(),
+            );
+            ensure_nearby(&mut self.graph, position, f64::from(self.cfg.view_distance));
         }
 
         // Capture state changes for broadcast to clients

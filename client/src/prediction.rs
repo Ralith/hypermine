@@ -1,6 +1,11 @@
 use std::collections::VecDeque;
 
-use common::{math, proto::Position};
+use common::{
+    character_controller,
+    node::DualGraph,
+    proto::{CharacterInput, Position},
+    SimConfig,
+};
 
 /// Predicts the result of motion inputs in-flight to the server
 ///
@@ -10,7 +15,7 @@ use common::{math, proto::Position};
 /// determine which inputs have been integrated into the server's state and no longer need to be
 /// predicted.
 pub struct PredictedMotion {
-    log: VecDeque<Input>,
+    log: VecDeque<CharacterInput>,
     generation: u16,
     predicted_position: Position,
 }
@@ -26,16 +31,27 @@ impl PredictedMotion {
 
     /// Update for input about to be sent to the server, returning the generation it should be
     /// tagged with
-    pub fn push(&mut self, movement: &na::Vector3<f32>) -> u16 {
-        let transform = math::translate_along(movement);
-        self.predicted_position.local *= transform;
-        self.log.push_back(Input { transform });
+    pub fn push(&mut self, cfg: &SimConfig, graph: &DualGraph, input: &CharacterInput) -> u16 {
+        character_controller::run_character_step(
+            cfg,
+            graph,
+            &mut self.predicted_position,
+            input,
+            cfg.step_interval.as_secs_f32(),
+        );
+        self.log.push_back(input.clone());
         self.generation = self.generation.wrapping_add(1);
         self.generation
     }
 
     /// Update with the latest state received from the server and the generation it was based on
-    pub fn reconcile(&mut self, generation: u16, position: Position) {
+    pub fn reconcile(
+        &mut self,
+        cfg: &SimConfig,
+        graph: &DualGraph,
+        generation: u16,
+        position: Position,
+    ) {
         let first_gen = self.generation.wrapping_sub(self.log.len() as u16);
         let obsolete = usize::from(generation.wrapping_sub(first_gen));
         if obsolete > self.log.len() || obsolete == 0 {
@@ -43,21 +59,23 @@ impl PredictedMotion {
             return;
         }
         self.log.drain(..obsolete);
-        self.predicted_position.node = position.node;
-        self.predicted_position.local = self
-            .log
-            .iter()
-            .fold(position.local, |acc, x| acc * x.transform);
+        self.predicted_position = position;
+
+        for input in self.log.iter() {
+            character_controller::run_character_step(
+                cfg,
+                graph,
+                &mut self.predicted_position,
+                input,
+                cfg.step_interval.as_secs_f32(),
+            );
+        }
     }
 
     /// Latest estimate of the server's state after receiving all `push`ed inputs.
     pub fn predicted_position(&self) -> &Position {
         &self.predicted_position
     }
-}
-
-struct Input {
-    transform: na::Matrix4<f32>,
 }
 
 #[cfg(test)]
@@ -74,17 +92,32 @@ mod tests {
 
     #[test]
     fn wraparound() {
+        let mock_cfg = SimConfig::from_raw(&common::SimConfigRaw::default());
+        let mock_graph = DualGraph::new();
+        let mock_character_input = CharacterInput {
+            movement: na::Vector3::x(),
+        };
+
         let mut pred = PredictedMotion::new(pos());
+
+        // Helper functions to make test more readable
+        let push =
+            |pred: &mut PredictedMotion| pred.push(&mock_cfg, &mock_graph, &mock_character_input);
+        let reconcile = |pred: &mut PredictedMotion, generation| {
+            pred.reconcile(&mock_cfg, &mock_graph, generation, pos())
+        };
+
         pred.generation = u16::max_value() - 1;
-        assert_eq!(pred.push(&na::Vector3::x()), u16::max_value());
-        assert_eq!(pred.push(&na::Vector3::x()), 0);
+
+        assert_eq!(push(&mut pred), u16::max_value());
+        assert_eq!(push(&mut pred), 0);
         assert_eq!(pred.log.len(), 2);
 
-        pred.reconcile(u16::max_value() - 1, pos());
+        reconcile(&mut pred, u16::max_value() - 1);
         assert_eq!(pred.log.len(), 2);
-        pred.reconcile(u16::max_value(), pos());
+        reconcile(&mut pred, u16::max_value());
         assert_eq!(pred.log.len(), 1);
-        pred.reconcile(0, pos());
+        reconcile(&mut pred, 0);
         assert_eq!(pred.log.len(), 0);
     }
 }
