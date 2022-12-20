@@ -2,11 +2,7 @@ extern crate nalgebra as na;
 mod input_queue;
 mod sim;
 
-use std::{
-    net::UdpSocket,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{net::UdpSocket, sync::Arc, time::Instant};
 
 use anyhow::{Context, Error, Result};
 use futures::{select, StreamExt, TryStreamExt};
@@ -60,10 +56,7 @@ impl Server {
     }
 
     async fn run(mut self, incoming: quinn::Incoming) {
-        let mut ticks = IntervalStream::new(tokio::time::interval(
-            Duration::from_secs(1) / self.cfg.rate as u32,
-        ))
-        .fuse();
+        let mut ticks = IntervalStream::new(tokio::time::interval(self.cfg.step_interval)).fuse();
         let mut incoming = incoming
             .inspect(|x| trace!(address = %x.remote_address(), "connection incoming"))
             .buffer_unordered(16);
@@ -147,10 +140,7 @@ impl Server {
                 let connection = client.conn.clone();
                 let server_hello = proto::ServerHello {
                     character: id,
-                    rate: self.cfg.rate,
-                    chunk_size: self.cfg.chunk_size,
-                    meters_to_absolute: self.cfg.meters_to_absolute,
-                    movement_speed: self.cfg.movement_speed,
+                    sim_config: (*self.cfg).clone(),
                 };
                 tokio::spawn(async move {
                     // Errors will be handled by recv task
