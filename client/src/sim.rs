@@ -9,7 +9,7 @@ use common::{
     graph::{Graph, NodeId},
     math,
     node::{DualGraph, Node},
-    proto::{self, Character, CharacterState, Command, Component, Position},
+    proto::{self, Character, CharacterInput, CharacterState, Command, Component, Position},
     sanitize_motion_input,
     worldgen::NodeState,
     Chunks, EntityId, GraphEntities, SimConfig, Step,
@@ -242,17 +242,21 @@ impl Sim {
     }
 
     fn send_input(&mut self) {
-        let velocity = sanitize_motion_input(self.orientation * self.average_velocity);
         let params = self.params.as_ref().unwrap();
-        let generation = self
-            .prediction
-            .push(&(velocity * params.cfg.movement_speed * params.cfg.step_interval.as_secs_f32()));
+        let character_input = CharacterInput {
+            velocity: sanitize_motion_input(self.orientation * self.average_velocity),
+        };
+        let generation = self.prediction.push(
+            &(character_input.velocity
+                * params.cfg.movement_speed
+                * params.cfg.step_interval.as_secs_f32()),
+        );
 
         // Any failure here will be better handled in handle_net's ConnectionLost case
         let _ = self.net.outgoing.send(Command {
             generation,
+            character_input,
             orientation: self.orientation,
-            velocity,
         });
     }
 
