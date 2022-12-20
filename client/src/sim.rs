@@ -143,19 +143,17 @@ impl Sim {
                 }
                 self.step = Some(msg.step);
                 for &(id, ref new_pos) in &msg.positions {
-                    self.update_position(msg.latest_input, id, new_pos);
+                    self.update_position(id, new_pos);
                 }
                 for &(id, ref new_state) in &msg.character_states {
                     self.update_character_state(id, new_state);
                 }
+                self.reconcile_prediction(msg.latest_input);
             }
         }
     }
 
-    fn update_position(&mut self, latest_input: u16, id: EntityId, new_pos: &Position) {
-        if self.params.as_ref().map_or(false, |x| x.character_id == id) {
-            self.prediction.reconcile(latest_input, *new_pos);
-        }
+    fn update_position(&mut self, id: EntityId, new_pos: &Position) {
         match self.entity_ids.get(&id) {
             None => debug!(%id, "position update for unknown entity"),
             Some(&entity) => match self.world.get::<&mut Position>(entity) {
@@ -183,6 +181,25 @@ impl Sim {
                 }
             },
         }
+    }
+
+    fn reconcile_prediction(&mut self, latest_input: u16) {
+        let Some(params) = self.params.as_ref() else {
+            return;
+        };
+        let id = params.character_id;
+        let Some(&entity) = self.entity_ids.get(&id) else {
+            debug!(%id, "reconciliation attempted for unknown entity");
+            return;
+        };
+        let pos = match self.world.get::<&Position>(entity) {
+            Ok(pos) => pos,
+            Err(e) => {
+                error!(%id, "reconciliation error: {}", e);
+                return;
+            }
+        };
+        self.prediction.reconcile(latest_input, *pos);
     }
 
     fn handle_spawns(&mut self, msg: proto::Spawns) {
