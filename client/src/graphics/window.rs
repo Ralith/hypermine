@@ -132,11 +132,12 @@ impl Window {
                         * (right as u8 as f32 - left as u8 as f32)
                         + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
                         + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
-                    self.sim.velocity(if move_direction.norm_squared() > 1.0 {
-                        move_direction.normalize()
-                    } else {
-                        move_direction
-                    });
+                    self.sim
+                        .set_movement_input(if move_direction.norm_squared() > 1.0 {
+                            move_direction.normalize()
+                        } else {
+                            move_direction
+                        });
 
                     self.sim.rotate(&na::UnitQuaternion::from_axis_angle(
                         &-na::Vector3::z_axis(),
