@@ -10,11 +10,12 @@ license = "Apache-2.0 OR Zlib"
 
 [dependencies]
 serde = { version = "1.0.104", features = ["derive"] }
-nalgebra = { version = "0.31.2", features = ["rand", "serde-serialize"] }
+nalgebra = { version = "0.31.2", features = ["libm-force", "rand", "serde-serialize"] }
 bincode = "1.2.1"
 anyhow = "1.0.26"
 quinn = "0.8.3"
 lazy_static = "1.4.0"
+libm = "0.2.6"
 fxhash = "0.2.1"
 tracing = "0.1.10"
 hecs = "0.9.0"

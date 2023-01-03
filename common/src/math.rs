@@ -31,7 +31,7 @@ impl<N: RealField + Copy> HPoint<N> {
     pub fn to_homogeneous(self) -> na::Vector4<N> {
         // x^2 + y^2 + z^2 - w^2 = -1
         // sqrt(x^2 + y^2 + z^2 + 1) = w
-        let w = (self.0.x.powi(2) + self.0.y.powi(2) + self.0.z.powi(2) + na::one()).sqrt();
+        let w = (sqr(self.0.x) + sqr(self.0.y) + sqr(self.0.z) + na::one()).sqrt();
         na::Vector4::new(self.0.x, self.0.y, self.0.z, w)
     }
 }
@@ -71,7 +71,7 @@ pub fn midpoint<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> 
 }
 
 pub fn distance<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
-    (mip(a, b).powi(2) / (mip(a, a) * mip(b, b))).sqrt().acosh()
+    (sqr(mip(a, b)) / (mip(a, a) * mip(b, b))).sqrt().acosh()
 }
 
 pub fn origin<N: RealField + Copy>() -> na::Vector4<N> {
@@ -118,6 +118,11 @@ pub fn parity<N: RealField + Copy>(m: &na::Matrix4<N>) -> bool {
 /// Minkowski inner product, aka <a, b>_h
 pub fn mip<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
     a.x * b.x + a.y * b.y + a.z * b.z - a.w * b.w
+}
+
+#[inline]
+pub fn sqr<N: RealField + Copy>(x: N) -> N {
+    x * x
 }
 
 /// Minkowski transpose. Inverse for hyperbolic isometries

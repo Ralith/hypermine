@@ -50,7 +50,7 @@ impl<T> CharacterControllerPass<'_, T> {
             // Update velocity
             let current_to_target_velocity = movement * self.cfg.max_ground_speed - *self.velocity;
             let max_delta_velocity = self.cfg.ground_acceleration * self.dt_seconds;
-            if current_to_target_velocity.norm_squared() > max_delta_velocity.powi(2) {
+            if current_to_target_velocity.norm_squared() > math::sqr(max_delta_velocity) {
                 *self.velocity += current_to_target_velocity.normalize() * max_delta_velocity;
             } else {
                 *self.velocity += current_to_target_velocity;

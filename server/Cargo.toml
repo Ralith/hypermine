@@ -21,9 +21,10 @@ rcgen = { version = "0.10.0", default-features = false }
 hostname = "0.3.0"
 futures = "0.3.1"
 hecs = "0.9.0"
-rand = { version = "0.8.5", features = [ "small_rng" ] }
+rand = { version = "0.8.5", features = ["small_rng"] }
 fxhash = "0.2.1"
-nalgebra = "0.31.2"
+nalgebra = { version = "0.31.2", features = ["libm-force"] }
+libm = "0.2.6"
 slotmap = "1.0.6"
 rustls = "0.20.6"
 rustls-pemfile = "1.0.0"
