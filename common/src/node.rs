@@ -1,6 +1,6 @@
 /*the name of this module is pretty arbitrary at the moment*/
 
-use crate::graph::Graph;
+use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
 use crate::world::Material;
 use crate::worldgen::NodeState;
@@ -52,4 +52,27 @@ impl VoxelData {
             VoxelData::Solid(mat) => mat,
         }
     }
+}
+
+/// Ensures that every new node of the given DualGraph is populated with a [Node] and is
+/// ready for world generation.
+pub fn populate_fresh_nodes(graph: &mut DualGraph) {
+    let fresh = graph.fresh().to_vec();
+    graph.clear_fresh();
+    for &node in &fresh {
+        populate_node(graph, node);
+    }
+}
+
+fn populate_node(graph: &mut DualGraph, node: NodeId) {
+    *graph.get_mut(node) = Some(Node {
+        state: graph
+            .parent(node)
+            .and_then(|i| {
+                let parent_state = &graph.get(graph.neighbor(node, i)?).as_ref()?.state;
+                Some(parent_state.child(graph, node, i))
+            })
+            .unwrap_or_else(NodeState::root),
+        chunks: Chunks::default(),
+    });
 }
