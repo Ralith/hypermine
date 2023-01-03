@@ -155,7 +155,7 @@ impl Vertex {
     /// Scaling the x, y, and z components of a vector in cube-centric coordinates by this value
     /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
     pub fn dual_to_chunk_factor() -> f64 {
-        (2.0 + 5.0f64.sqrt()).sqrt()
+        2.0581710272714924 // sqrt(2 + sqrt(5))
     }
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
@@ -186,8 +186,8 @@ lazy_static! {
 
     /// Vector corresponding to the outer normal of each side
     static ref SIDE_NORMALS: [na::Vector4<f64>; SIDE_COUNT] = {
-        let phi = 1.25f64.sqrt() + 0.5; // golden ratio
-        let f = math::lorentz_normalize(&na::Vector4::new(1.0, phi, 0.0, phi.sqrt()));
+        let phi = libm::sqrt(1.25) + 0.5; // golden ratio
+        let f = math::lorentz_normalize(&na::Vector4::new(1.0, phi, 0.0, libm::sqrt(phi)));
 
         let mut result: [na::Vector4<f64>; SIDE_COUNT] = [na::zero(); SIDE_COUNT];
         let mut i = 0;

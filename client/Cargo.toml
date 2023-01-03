@@ -19,7 +19,8 @@ ash-window = "0.12.0"
 raw-window-handle = "0.5.0"
 directories = "4.0.1"
 vk-shader-macros = "0.2.5"
-nalgebra = "0.31.2"
+nalgebra = { version = "0.31.2", features = ["libm-force"] }
+libm = "0.2.6"
 tokio = { version = "1.18.2", features = ["rt-multi-thread", "sync", "macros"] }
 png = "0.17.5"
 anyhow = "1.0.26"

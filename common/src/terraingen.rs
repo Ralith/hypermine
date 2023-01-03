@@ -1,4 +1,4 @@
-use crate::world::Material;
+use crate::{math, world::Material};
 
 const GENERAL_HIGH: [VoronoiInfo; 113] = [
     VoronoiInfo::new(Material::ClayLoam, 10.50, -10.50),
@@ -974,11 +974,11 @@ impl VoronoiInfo {
         };
 
         let y: [f32; 2] = [rain as f32, temp as f32];
-        let mut dist_squared = (voronoi_choices[0].location[0] - y[0]).powi(2)
-            + (voronoi_choices[0].location[1] - y[1]).powi(2);
+        let mut dist_squared = math::sqr(voronoi_choices[0].location[0] - y[0])
+            + math::sqr(voronoi_choices[0].location[1] - y[1]);
         let mut voxel_mat = voronoi_choices[0].material;
         for vc in voronoi_choices.iter().skip(1) {
-            let d_squared = (vc.location[0] - y[0]).powi(2) + (vc.location[1] - y[1]).powi(2);
+            let d_squared = math::sqr(vc.location[0] - y[0]) + math::sqr(vc.location[1] - y[1]);
             if d_squared <= dist_squared {
                 dist_squared = d_squared;
                 voxel_mat = vc.material;

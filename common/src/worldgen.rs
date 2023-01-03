@@ -1,10 +1,11 @@
 use rand::{distributions::Uniform, Rng, SeedableRng};
 use rand_distr::Normal;
 
-use crate::node::{DualGraph, VoxelData};
 use crate::{
     dodeca::{Side, Vertex},
     graph::NodeId,
+    math,
+    node::{DualGraph, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,
     Plane,
@@ -273,7 +274,7 @@ impl ChunkParams {
             let elev_pre_terracing = trilerp(&self.env.max_elevations, trilerp_coords);
             let block = trilerp(&self.env.blockinesses, trilerp_coords);
             let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
-            let strength = 0.4 / (1.0 + voxel_elevation.powi(2));
+            let strength = 0.4 / (1.0 + math::sqr(voxel_elevation));
             let terracing_small = terracing_diff(elev_pre_terracing, block, 5.0, strength, 2.0);
             let terracing_big = terracing_diff(elev_pre_terracing, block, 15.0, strength, -1.0);
             // Small and big terracing effects must not sum to more than 1,
@@ -590,8 +591,8 @@ fn serp<N: na::RealField + Copy>(v0: N, v1: N, t: N, threshold: N) -> N {
 /// strength represents extremity of terracing effect. Sensible values are in (0, 0.5).
 /// The greater the value of limiter, the stronger the bias of threshold towards 0.
 fn terracing_diff(elev_raw: f64, block: f64, scale: f64, strength: f64, limiter: f64) -> f64 {
-    let threshold: f64 = strength / (1.0 + 2.0f64.powf(limiter - block));
-    let elev_floor = (elev_raw / scale).floor();
+    let threshold: f64 = strength / (1.0 + libm::pow(2.0, limiter - block));
+    let elev_floor = libm::floor(elev_raw / scale);
     let elev_rem = elev_raw / scale - elev_floor;
     scale * elev_floor + serp(0.0, scale, elev_rem, threshold) - elev_raw
 }
