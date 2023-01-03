@@ -1,13 +1,13 @@
 use crate::{
-    graph::Graph,
     math,
+    node::DualGraph,
     proto::{CharacterInput, Position},
     sanitize_motion_input, SimConfig,
 };
 
-pub fn run_character_step<T>(
+pub fn run_character_step(
     cfg: &SimConfig,
-    graph: &Graph<T>,
+    graph: &DualGraph,
     position: &mut Position,
     velocity: &mut na::Vector3<f32>,
     input: &CharacterInput,
@@ -24,16 +24,16 @@ pub fn run_character_step<T>(
     .step();
 }
 
-struct CharacterControllerPass<'a, T> {
+struct CharacterControllerPass<'a> {
     cfg: &'a SimConfig,
-    graph: &'a Graph<T>,
+    graph: &'a DualGraph,
     position: &'a mut Position,
     velocity: &'a mut na::Vector3<f32>,
     input: &'a CharacterInput,
     dt_seconds: f32,
 }
 
-impl<T> CharacterControllerPass<'_, T> {
+impl CharacterControllerPass<'_> {
     fn step(&mut self) {
         let movement = sanitize_motion_input(self.input.movement);
 
