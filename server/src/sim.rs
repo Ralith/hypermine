@@ -7,15 +7,16 @@ use rand::{Rng, SeedableRng};
 use tracing::{error_span, info, trace};
 
 use common::{
-    character_controller,
+    character_controller, dodeca,
     graph::{Graph, NodeId},
     math,
-    node::DualGraph,
+    node::{populate_fresh_nodes, Chunk, DualGraph},
     proto::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
     },
-    traversal::ensure_nearby,
+    traversal::{ensure_nearby, nearby_nodes},
+    worldgen::ChunkParams,
     EntityId, SimConfig, Step,
 };
 
@@ -157,7 +158,42 @@ impl Sim {
                 })
                 .collect(),
         };
-        self.graph.clear_fresh();
+        populate_fresh_nodes(&mut self.graph);
+
+        // We want to load all chunks that a player can interact with in a single step, so chunk_generation_distance
+        // is set up to cover that distance.
+        // TODO: Use actual max speed instead of max ground speed.
+        // TODO: Account for the radius of the player's collision sphere
+        let chunk_generation_distance = dodeca::BOUNDING_SPHERE_RADIUS
+            + self.cfg.max_ground_speed as f64 * self.cfg.step_interval.as_secs_f64()
+            + 0.001;
+
+        // Load all chunks around entities corresponding to clients, which correspond to entities
+        // with a "Character" component.
+        for (_, (position, _)) in self.world.query::<(&Position, &Character)>().iter() {
+            let nodes = nearby_nodes(&self.graph, position, chunk_generation_distance);
+            for &(node, _) in &nodes {
+                for chunk in dodeca::Vertex::iter() {
+                    if let Chunk::Fresh = self
+                        .graph
+                        .get(node)
+                        .as_ref()
+                        .expect("all nodes must be populated before loading their chunks")
+                        .chunks[chunk]
+                    {
+                        if let Some(params) =
+                            ChunkParams::new(self.cfg.chunk_size, &self.graph, node, chunk)
+                        {
+                            self.graph.get_mut(node).as_mut().unwrap().chunks[chunk] =
+                                Chunk::Populated {
+                                    voxels: params.generate_voxels(),
+                                    surface: None,
+                                };
+                        }
+                    }
+                }
+            }
+        }
 
         // TODO: Omit unchanged (e.g. freshly spawned) entities (dirty flag?)
         let delta = StateDelta {
