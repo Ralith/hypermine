@@ -10,7 +10,6 @@ use ash::{vk, Device};
 use metrics::histogram;
 use tracing::warn;
 
-use super::draw::nearby_nodes;
 use crate::{
     graphics::{Base, Frustum},
     loader::{Cleanup, LoadCtx, LoadFuture, Loadable, WorkQueue},
@@ -23,6 +22,7 @@ use common::{
     lru_slab::SlotId,
     math,
     node::{Chunk, VoxelData},
+    traversal::nearby_nodes,
     LruSlab,
 };
 

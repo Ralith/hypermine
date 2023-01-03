@@ -32,3 +32,52 @@ pub fn ensure_nearby<N>(graph: &mut Graph<N>, start: &Position, distance: f64) {
         }
     }
 }
+
+/// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
+/// `start`
+pub fn nearby_nodes<N>(
+    graph: &Graph<N>,
+    start: &Position,
+    distance: f64,
+) -> Vec<(NodeId, na::Matrix4<f32>)> {
+    struct PendingNode {
+        id: NodeId,
+        transform: na::Matrix4<f64>,
+    }
+
+    let mut result = Vec::new();
+    let mut pending = Vec::<PendingNode>::new();
+    let mut visited = FxHashSet::<NodeId>::default();
+    let start_p = start.local.map(|x| x as f64) * math::origin();
+
+    pending.push(PendingNode {
+        id: start.node,
+        transform: na::Matrix4::identity(),
+    });
+    visited.insert(start.node);
+
+    while let Some(current) = pending.pop() {
+        let current_p = current.transform * math::origin();
+        if math::distance(&start_p, &current_p) > distance {
+            continue;
+        }
+        result.push((current.id, na::convert(current.transform)));
+
+        for side in Side::iter() {
+            let neighbor = match graph.neighbor(current.id, side) {
+                None => continue,
+                Some(x) => x,
+            };
+            if visited.contains(&neighbor) {
+                continue;
+            }
+            pending.push(PendingNode {
+                id: neighbor,
+                transform: current.transform * side.reflection(),
+            });
+            visited.insert(neighbor);
+        }
+    }
+
+    result
+}

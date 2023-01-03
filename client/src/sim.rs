@@ -8,11 +8,9 @@ use crate::{net, prediction::PredictedMotion, Net};
 use common::{
     character_controller,
     graph::{Graph, NodeId},
-    node::{DualGraph, Node},
+    node::{populate_fresh_nodes, DualGraph},
     proto::{self, Character, CharacterInput, CharacterState, Command, Component, Position},
-    sanitize_motion_input,
-    worldgen::NodeState,
-    Chunks, EntityId, GraphEntities, SimConfig, Step,
+    sanitize_motion_input, EntityId, GraphEntities, SimConfig, Step,
 };
 
 /// Game state
@@ -359,25 +357,4 @@ impl Sim {
 pub struct Parameters {
     pub cfg: SimConfig,
     pub character_id: EntityId,
-}
-
-fn populate_fresh_nodes(graph: &mut DualGraph) {
-    let fresh = graph.fresh().to_vec();
-    graph.clear_fresh();
-    for &node in &fresh {
-        populate_node(graph, node);
-    }
-}
-
-fn populate_node(graph: &mut DualGraph, node: NodeId) {
-    *graph.get_mut(node) = Some(Node {
-        state: graph
-            .parent(node)
-            .and_then(|i| {
-                let parent_state = &graph.get(graph.neighbor(node, i)?).as_ref()?.state;
-                Some(parent_state.child(graph, node, i))
-            })
-            .unwrap_or_else(NodeState::root),
-        chunks: Chunks::default(),
-    });
 }
