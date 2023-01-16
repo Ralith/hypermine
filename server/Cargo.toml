@@ -23,7 +23,7 @@ futures = "0.3.1"
 hecs = "0.9.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 fxhash = "0.2.1"
-nalgebra = { version = "0.31.2", features = ["libm-force"] }
+nalgebra = { version = "0.32.1", features = ["libm-force"] }
 libm = "0.2.6"
 slotmap = "1.0.6"
 rustls = "0.20.6"
