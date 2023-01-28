@@ -700,7 +700,7 @@ mod test {
 
         let enviros = chunk_incident_enviro_factors(&g, NodeId::ROOT, Vertex::A).unwrap();
         for (i, max_elevation) in enviros.max_elevations.iter().cloned().enumerate() {
-            println!("{}, {}", i, max_elevation);
+            println!("{i}, {max_elevation}");
             assert_abs_diff_eq!(max_elevation, (i + 1) as f64, epsilon = 1e-8);
         }
 

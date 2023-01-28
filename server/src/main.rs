@@ -1,3 +1,5 @@
+#![allow(clippy::needless_borrowed_reference)]
+
 mod config;
 
 use std::{fs, net::UdpSocket, path::Path};
@@ -13,7 +15,7 @@ fn main() {
     common::init_tracing();
 
     if let Err(e) = run() {
-        eprintln!("{:#}", e);
+        eprintln!("{e:#}");
         std::process::exit(1);
     }
 }

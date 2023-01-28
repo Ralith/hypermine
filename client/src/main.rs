@@ -38,7 +38,7 @@ fn main() {
                 },
                 sim_cfg,
             ) {
-                eprintln!("{:#}", e);
+                eprintln!("{e:#}");
                 std::process::exit(1);
             }
         });

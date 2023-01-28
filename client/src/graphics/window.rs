@@ -282,7 +282,7 @@ impl Window {
                         self.swapchain_needs_update = true;
                     }
                     Err(e) => {
-                        panic!("acquire_next_image: {}", e);
+                        panic!("acquire_next_image: {e}");
                     }
                 }
             };
@@ -305,7 +305,7 @@ impl Window {
                 Ok(true) | Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                     self.swapchain_needs_update = true;
                 }
-                Err(e) => panic!("queue_present: {}", e),
+                Err(e) => panic!("queue_present: {e}"),
             };
         }
     }
@@ -351,7 +351,7 @@ impl SwapchainMgr {
                 || surface_formats[0].color_space != desired_format.color_space))
             && !surface_formats.iter().any(desirable_format)
         {
-            panic!("no suitable surface format: {:?}", surface_formats);
+            panic!("no suitable surface format: {surface_formats:?}");
         }
 
         Self {

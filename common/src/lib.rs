@@ -1,3 +1,5 @@
+#![allow(clippy::needless_borrowed_reference)]
+
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
