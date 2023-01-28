@@ -1,3 +1,5 @@
+#![allow(clippy::needless_borrowed_reference)]
+
 extern crate nalgebra as na;
 mod input_queue;
 mod sim;

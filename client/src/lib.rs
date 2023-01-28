@@ -1,4 +1,5 @@
 #![allow(clippy::new_without_default)]
+#![allow(clippy::needless_borrowed_reference)]
 
 macro_rules! cstr {
     ($x:literal) => {{
