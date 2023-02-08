@@ -26,7 +26,7 @@ png = "0.17.5"
 anyhow = "1.0.26"
 whoami = "1.2.1"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
-toml = "0.5.5"
+toml = "0.7.2"
 fxhash = "0.2.1"
 downcast-rs = "1.1.1"
 quinn = "0.8.3"
