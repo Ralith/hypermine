@@ -1,5 +1,6 @@
 use crate::dodeca::{Side, Vertex, SIDE_COUNT};
 use crate::graph::{Graph, NodeId};
+use crate::node::ChunkId;
 
 use lazy_static::lazy_static;
 
@@ -49,11 +50,11 @@ impl Cursor {
     }
 
     /// Node and dodecahedral vertex that contains the representation for this cube in the graph
-    pub fn canonicalize<N>(self, graph: &Graph<N>) -> Option<(NodeId, Vertex)> {
-        graph.canonicalize(
+    pub fn canonicalize<N>(self, graph: &Graph<N>) -> Option<ChunkId> {
+        graph.canonicalize(ChunkId::new(
             self.node,
             Vertex::from_sides(self.a, self.b, self.c).unwrap(),
-        )
+        ))
     }
 }
 
@@ -177,7 +178,7 @@ mod tests {
                 .expect("positive");
             assert_eq!(
                 looped.canonicalize(&graph).unwrap(),
-                (NodeId::ROOT, Vertex::A),
+                ChunkId::new(NodeId::ROOT, Vertex::A),
             );
         };
         vcycle(Dir::Left);

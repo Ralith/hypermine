@@ -5,7 +5,7 @@ use crate::{
     dodeca::{Side, Vertex},
     graph::NodeId,
     math,
-    node::{DualGraph, VoxelData},
+    node::{ChunkId, DualGraph, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,
     Plane,
@@ -188,12 +188,12 @@ impl ChunkParams {
     /// Extract data necessary to generate a chunk
     ///
     /// Returns `None` if an unpopulated node is needed.
-    pub fn new(dimension: u8, graph: &DualGraph, node: NodeId, chunk: Vertex) -> Option<Self> {
-        let state = &graph.get(node).as_ref()?.state;
+    pub fn new(dimension: u8, graph: &DualGraph, chunk: ChunkId) -> Option<Self> {
+        let state = &graph.get(chunk.node).as_ref()?.state;
         Some(Self {
             dimension,
-            chunk,
-            env: chunk_incident_enviro_factors(graph, node, chunk)?,
+            chunk: chunk.vertex,
+            env: chunk_incident_enviro_factors(graph, chunk)?,
             surface: state.surface,
             is_road: state.kind == Sky
                 && ((state.road_state == East) || (state.road_state == West)),
@@ -524,12 +524,12 @@ struct ChunkIncidentEnviroFactors {
 /// Returns `None` if not all incident nodes are populated.
 fn chunk_incident_enviro_factors(
     graph: &DualGraph,
-    node: NodeId,
-    cube: Vertex,
+    chunk: ChunkId,
 ) -> Option<ChunkIncidentEnviroFactors> {
-    let mut i = cube
+    let mut i = chunk
+        .vertex
         .dual_vertices()
-        .map(|(_, mut path)| path.try_fold(node, |node, side| graph.neighbor(node, side)))
+        .map(|(_, mut path)| path.try_fold(chunk.node, |node, side| graph.neighbor(node, side)))
         .filter_map(|node| Some(graph.get(node?).as_ref()?.state.enviro));
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
@@ -698,7 +698,8 @@ mod test {
             });
         }
 
-        let enviros = chunk_incident_enviro_factors(&g, NodeId::ROOT, Vertex::A).unwrap();
+        let enviros =
+            chunk_incident_enviro_factors(&g, ChunkId::new(NodeId::ROOT, Vertex::A)).unwrap();
         for (i, max_elevation) in enviros.max_elevations.iter().cloned().enumerate() {
             println!("{i}, {max_elevation}");
             assert_abs_diff_eq!(max_elevation, (i + 1) as f64, epsilon = 1e-8);
