@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use common::node::ChunkId;
 use fxhash::FxHashMap;
 use hecs::Entity;
 use rand::rngs::SmallRng;
@@ -173,22 +174,20 @@ impl Sim {
         for (_, (position, _)) in self.world.query::<(&Position, &Character)>().iter() {
             let nodes = nearby_nodes(&self.graph, position, chunk_generation_distance);
             for &(node, _) in &nodes {
-                for chunk in dodeca::Vertex::iter() {
+                for vertex in dodeca::Vertex::iter() {
+                    let chunk = ChunkId::new(node, vertex);
                     if let Chunk::Fresh = self
                         .graph
-                        .get(node)
-                        .as_ref()
+                        .get_chunk(chunk)
                         .expect("all nodes must be populated before loading their chunks")
-                        .chunks[chunk]
                     {
                         if let Some(params) =
-                            ChunkParams::new(self.cfg.chunk_size, &self.graph, node, chunk)
+                            ChunkParams::new(self.cfg.chunk_size, &self.graph, chunk)
                         {
-                            self.graph.get_mut(node).as_mut().unwrap().chunks[chunk] =
-                                Chunk::Populated {
-                                    voxels: params.generate_voxels(),
-                                    surface: None,
-                                };
+                            self.graph[chunk] = Chunk::Populated {
+                                voxels: params.generate_voxels(),
+                                surface: None,
+                            };
                         }
                     }
                 }

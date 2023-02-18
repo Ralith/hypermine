@@ -7,8 +7,9 @@ use std::num::NonZeroU32;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dodeca::{Side, Vertex, SIDE_COUNT},
+    dodeca::{Side, SIDE_COUNT},
     math,
+    node::ChunkId,
 };
 
 /// Graph of the right dodecahedral tiling of H^3
@@ -54,16 +55,16 @@ impl<N> Graph<N> {
     /// Each cube is said to be canonically assigned to the shortest of the nodes it touches.
     ///
     /// A node's length is defined as a its distance from the root node.
-    pub fn canonicalize(&self, mut node: NodeId, vertex: Vertex) -> Option<(NodeId, Vertex)> {
-        for side in vertex.canonical_sides().iter().cloned() {
+    pub fn canonicalize(&self, mut chunk: ChunkId) -> Option<ChunkId> {
+        for side in chunk.vertex.canonical_sides().iter().cloned() {
             // missing neighbors are always longer
-            if let Some(neighbor) = self.neighbor(node, side) {
-                if self.length(neighbor) < self.length(node) {
-                    node = neighbor;
+            if let Some(neighbor) = self.neighbor(chunk.node, side) {
+                if self.length(neighbor) < self.length(chunk.node) {
+                    chunk.node = neighbor;
                 }
             }
         }
-        Some((node, vertex))
+        Some(chunk)
     }
 
     /// Returns all of the sides between the provided node and its shorter neighbors.

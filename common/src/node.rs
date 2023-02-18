@@ -1,5 +1,8 @@
 /*the name of this module is pretty arbitrary at the moment*/
 
+use std::ops::{Index, IndexMut};
+
+use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
 use crate::world::Material;
@@ -7,6 +10,42 @@ use crate::worldgen::NodeState;
 use crate::Chunks;
 
 pub type DualGraph = Graph<Node>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ChunkId {
+    pub node: NodeId,
+    pub vertex: Vertex,
+}
+
+impl ChunkId {
+    pub fn new(node: NodeId, vertex: Vertex) -> Self {
+        ChunkId { node, vertex }
+    }
+}
+
+impl DualGraph {
+    pub fn get_chunk_mut(&mut self, chunk: ChunkId) -> Option<&mut Chunk> {
+        Some(&mut self.get_mut(chunk.node).as_mut()?.chunks[chunk.vertex])
+    }
+
+    pub fn get_chunk(&self, chunk: ChunkId) -> Option<&Chunk> {
+        Some(&self.get(chunk.node).as_ref()?.chunks[chunk.vertex])
+    }
+}
+
+impl Index<ChunkId> for DualGraph {
+    type Output = Chunk;
+
+    fn index(&self, chunk: ChunkId) -> &Chunk {
+        self.get_chunk(chunk).unwrap()
+    }
+}
+
+impl IndexMut<ChunkId> for DualGraph {
+    fn index_mut(&mut self, chunk: ChunkId) -> &mut Chunk {
+        self.get_chunk_mut(chunk).unwrap()
+    }
+}
 
 pub struct Node {
     pub state: NodeState,
