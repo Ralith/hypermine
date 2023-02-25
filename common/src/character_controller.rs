@@ -1,5 +1,7 @@
+use tracing::info;
+
 use crate::{
-    math,
+    graph_collision, math,
     node::DualGraph,
     proto::{CharacterInput, Position},
     sanitize_motion_input, SimConfig,
@@ -56,15 +58,25 @@ impl CharacterControllerPass<'_> {
                 *self.velocity += current_to_target_velocity;
             }
 
-            // Update position by using the average of the old velocity and new velocity, which has
-            // the effect of modeling a velocity that changes linearly over the timestep. This is
-            // necessary to avoid the following two issues:
+            // Set expected displacement by using the average of the old velocity and new velocity,
+            // which has the effect of modeling a velocity that changes linearly over the timestep.
+            // This is necessary to avoid the following two issues:
             // 1. Input lag, which would occur if only the old velocity was used
             // 2. Movement artifacts, which would occur if only the new velocity was used. One
-            //    example of such an artifact is the player moving backwards slightly when they
+            //    example of such an artifact is the character moving backwards slightly when they
             //    stop moving after releasing a direction key.
-            self.position.local *=
-                math::translate_along(&((*self.velocity + old_velocity) * 0.5 * self.dt_seconds));
+            let expected_displacement = (*self.velocity + old_velocity) * 0.5 * self.dt_seconds;
+
+            // Update position with collision checking
+            let collision_checking_result = self.check_collision(&expected_displacement);
+            self.position.local *= collision_checking_result.allowed_displacement;
+            if let Some(collision) = collision_checking_result.collision {
+                *self.velocity = na::Vector3::zeros();
+                // We are not using collision normals yet, so print them to the console to allow
+                // sanity checking. Note that the "orientation" quaternion is not used here, so the
+                // numbers will only make sense if the character doesn't look around.
+                info!("Collision: normal = {:?}", collision.normal);
+            }
         }
 
         // Renormalize
@@ -75,6 +87,75 @@ impl CharacterControllerPass<'_> {
         if next_node != self.position.node {
             self.position.node = next_node;
             self.position.local = transition_xf * self.position.local;
+        }
+    }
+
+    /// Checks for collisions when a character moves with a character-relative displacement vector of `relative_displacement`.
+    fn check_collision(&self, relative_displacement: &na::Vector3<f32>) -> CollisionCheckingResult {
+        // Split relative_displacement into its norm and a unit vector
+        let relative_displacement = relative_displacement.to_homogeneous();
+        let displacement_sqr = relative_displacement.norm_squared();
+        if displacement_sqr < 1e-16 {
+            // Fallback for if the displacement vector isn't large enough to reliably be normalized.
+            // Any value that is sufficiently large compared to f32::MIN_POSITIVE should work as the cutoff.
+            return CollisionCheckingResult::stationary();
+        }
+
+        let displacement_norm = displacement_sqr.sqrt();
+        let displacement_normalized = relative_displacement / displacement_norm;
+
+        let ray = graph_collision::Ray::new(math::origin(), displacement_normalized);
+        let tanh_distance = displacement_norm.tanh();
+
+        let cast_hit = graph_collision::sphere_cast(self.position, &ray, tanh_distance);
+
+        let allowed_displacement = math::translate(
+            &ray.position,
+            &math::lorentz_normalize(
+                &ray.ray_point(
+                    cast_hit
+                        .as_ref()
+                        .map_or(tanh_distance, |hit| hit.tanh_distance),
+                ),
+            ),
+        );
+
+        CollisionCheckingResult {
+            allowed_displacement,
+            collision: cast_hit.map(|hit| Collision {
+                // `CastEndpoint` has its `normal` given relative to the character's original position,
+                // but we want the normal relative to the character after the character moves to meet the wall.
+                // This normal now represents a contact point at the origin, so we omit the w-coordinate
+                // to ensure that it's orthogonal to the origin.
+                normal: na::UnitVector3::new_normalize(
+                    (math::mtranspose(&allowed_displacement) * hit.normal).xyz(),
+                ),
+            }),
+        }
+    }
+}
+
+struct CollisionCheckingResult {
+    /// Multiplying the character's position by this matrix will move the character as far as it can up to its intended
+    /// displacement until it hits the wall.
+    allowed_displacement: na::Matrix4<f32>,
+    collision: Option<Collision>,
+}
+
+struct Collision {
+    /// This collision normal faces away from the collision surface and is given in the perspective of the character
+    /// _after_ it is transformed by `allowed_displacement`. The 4th coordinate of this normal vector is assumed to be
+    /// 0.0 and is therefore omitted.
+    normal: na::UnitVector3<f32>,
+}
+
+impl CollisionCheckingResult {
+    /// Return a CollisionCheckingResult with no movement and no collision; useful if the character is not moving
+    /// and has nothing to check collision against. Also useful as a last resort fallback if an unexpected error occurs.
+    fn stationary() -> CollisionCheckingResult {
+        CollisionCheckingResult {
+            allowed_displacement: na::Matrix4::identity(),
+            collision: None,
         }
     }
 }
