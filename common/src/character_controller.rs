@@ -1,4 +1,4 @@
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{
     graph_collision, math,
@@ -115,6 +115,14 @@ impl CharacterControllerPass<'_> {
             &ray,
             tanh_distance,
         );
+
+        let cast_hit = match cast_hit {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Collision checking returned {:?}", e);
+                return CollisionCheckingResult::stationary();
+            }
+        };
 
         let allowed_displacement = math::translate(
             &ray.position,
