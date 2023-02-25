@@ -108,6 +108,12 @@ impl Vertex {
         VERTEX_SIDES[self as usize]
     }
 
+    /// Vertices adjacent to this vertex, opposite the sides in canonical order
+    #[inline]
+    pub fn adjacent_vertices(self) -> [Vertex; 3] {
+        ADJACENT_VERTICES[self as usize]
+    }
+
     /// For each vertex of the cube dual to this dodecahedral vertex, provides an iterator of at
     /// most 3 steps to reach the corresponding graph node, and binary coordinates of the vertex in
     /// question with respect to the origin vertex of the cube.
@@ -155,7 +161,14 @@ impl Vertex {
     /// Scaling the x, y, and z components of a vector in cube-centric coordinates by this value
     /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
     pub fn dual_to_chunk_factor() -> f64 {
-        2.0581710272714924 // sqrt(2 + sqrt(5))
+        *DUAL_TO_CHUNK_FACTOR
+    }
+
+    /// Scale factor used in conversion from euclidean chunk coordinates to cube-centric coordinates.
+    /// Scaling the x, y, and z components of a vector in homogeneous euclidean chunk coordinates by this value
+    /// and lorentz-normalizing the result will yield cube-centric coordinates.
+    pub fn chunk_to_dual_factor() -> f64 {
+        *CHUNK_TO_DUAL_FACTOR
     }
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
@@ -166,7 +179,6 @@ impl Vertex {
 
 pub const VERTEX_COUNT: usize = 20;
 pub const SIDE_COUNT: usize = 12;
-#[allow(clippy::unreadable_literal)]
 pub const BOUNDING_SPHERE_RADIUS: f64 = 1.2264568712514068;
 
 lazy_static! {
@@ -231,6 +243,29 @@ lazy_static! {
         result
     };
 
+    // Which vertices are adjacent to other vertices and opposite the canonical sides
+    static ref ADJACENT_VERTICES: [[Vertex; 3]; VERTEX_COUNT] = {
+        let mut result = [[Vertex::A; 3]; VERTEX_COUNT];
+
+        for vertex in 0..VERTEX_COUNT {
+            for result_index in 0..3 {
+                let mut test_sides = VERTEX_SIDES[vertex];
+                // Keep modifying the result_index'th element of test_sides until its three elements are all
+                // adjacent to a single vertex. That vertex is the vertex we're looking for.
+                for side in Side::iter() {
+                    if side == VERTEX_SIDES[vertex][result_index] {
+                        continue;
+                    }
+                    test_sides[result_index] = side;
+                    if let Some(adjacent_vertex) = Vertex::from_sides(test_sides[0], test_sides[1], test_sides[2]) {
+                        result[vertex][result_index] = adjacent_vertex;
+                    }
+                }
+            }
+        }
+        result
+    };
+
     /// Transform that converts from cube-centric coordinates to dodeca-centric coordinates
     static ref DUAL_TO_NODE: [na::Matrix4<f64>; VERTEX_COUNT] = {
         let mip_origin_normal = math::mip(&math::origin(), &SIDE_NORMALS[0]); // This value is the same for every side
@@ -249,6 +284,9 @@ lazy_static! {
     static ref NODE_TO_DUAL: [na::Matrix4<f64>; VERTEX_COUNT] = {
         DUAL_TO_NODE.map(|m| math::mtranspose(&m))
     };
+
+    static ref DUAL_TO_CHUNK_FACTOR: f64 = (2.0 + 5.0f64.sqrt()).sqrt();
+    static ref CHUNK_TO_DUAL_FACTOR: f64 = 1.0 / *DUAL_TO_CHUNK_FACTOR;
 
     /// Vertex shared by 3 sides
     static ref SIDES_TO_VERTEX: [[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT] = {
