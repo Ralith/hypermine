@@ -10,6 +10,7 @@ mod id;
 
 extern crate nalgebra as na;
 pub mod character_controller;
+pub mod chunk_collision;
 mod chunks;
 pub mod codec;
 pub mod cursor;
