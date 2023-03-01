@@ -58,18 +58,19 @@ impl CharacterControllerPass<'_> {
                 *self.velocity += current_to_target_velocity;
             }
 
-            // Set expected displacement by using the average of the old velocity and new velocity,
+            // Estimate the average velocity by using the average of the old velocity and new velocity,
             // which has the effect of modeling a velocity that changes linearly over the timestep.
             // This is necessary to avoid the following two issues:
             // 1. Input lag, which would occur if only the old velocity was used
             // 2. Movement artifacts, which would occur if only the new velocity was used. One
             //    example of such an artifact is the character moving backwards slightly when they
             //    stop moving after releasing a direction key.
-            let expected_displacement = (*self.velocity + old_velocity) * 0.5 * self.dt_seconds;
+            let estimated_average_velocity = (*self.velocity + old_velocity) * 0.5;
 
             // Update position with collision checking
+            let expected_displacement = estimated_average_velocity * self.dt_seconds;
             let collision_checking_result = self.check_collision(&expected_displacement);
-            self.position.local *= collision_checking_result.allowed_displacement;
+            self.position.local *= collision_checking_result.displacement_transform;
             if let Some(collision) = collision_checking_result.collision {
                 *self.velocity = na::Vector3::zeros();
                 // We are not using collision normals yet, so print them to the console to allow
@@ -124,26 +125,24 @@ impl CharacterControllerPass<'_> {
             }
         };
 
-        let allowed_displacement = math::translate(
-            &ray.position,
-            &math::lorentz_normalize(
-                &ray.ray_point(
-                    cast_hit
-                        .as_ref()
-                        .map_or(tanh_distance, |hit| hit.tanh_distance),
-                ),
-            ),
-        );
+        let distance = cast_hit
+            .as_ref()
+            .map_or(tanh_distance, |hit| hit.tanh_distance)
+            .atanh();
+
+        let displacement_vector = displacement_normalized.xyz() * distance;
+        let displacement_transform = math::translate_along(&displacement_vector);
 
         CollisionCheckingResult {
-            allowed_displacement,
+            displacement_vector,
+            displacement_transform,
             collision: cast_hit.map(|hit| Collision {
                 // `CastEndpoint` has its `normal` given relative to the character's original position,
                 // but we want the normal relative to the character after the character moves to meet the wall.
                 // This normal now represents a contact point at the origin, so we omit the w-coordinate
                 // to ensure that it's orthogonal to the origin.
                 normal: na::UnitVector3::new_normalize(
-                    (math::mtranspose(&allowed_displacement) * hit.normal).xyz(),
+                    (math::mtranspose(&displacement_transform) * hit.normal).xyz(),
                 ),
             }),
         }
@@ -151,9 +150,15 @@ impl CharacterControllerPass<'_> {
 }
 
 struct CollisionCheckingResult {
+    ///The displacement allowed by the character before hitting a wall. The result of
+    /// `math::translate_along(&displacement_vector)` is `displacement_transform`.
+    #[allow(dead_code)]
+    displacement_vector: na::Vector3<f32>,
+
     /// Multiplying the character's position by this matrix will move the character as far as it can up to its intended
     /// displacement until it hits the wall.
-    allowed_displacement: na::Matrix4<f32>,
+    displacement_transform: na::Matrix4<f32>,
+
     collision: Option<Collision>,
 }
 
@@ -169,7 +174,8 @@ impl CollisionCheckingResult {
     /// and has nothing to check collision against. Also useful as a last resort fallback if an unexpected error occurs.
     fn stationary() -> CollisionCheckingResult {
         CollisionCheckingResult {
-            allowed_displacement: na::Matrix4::identity(),
+            displacement_vector: na::Vector3::zeros(),
+            displacement_transform: na::Matrix4::identity(),
             collision: None,
         }
     }
