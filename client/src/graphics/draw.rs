@@ -265,7 +265,7 @@ impl Draw {
     ) {
         let draw_started = Instant::now();
         let view = sim.view();
-        let projection = frustum.projection(0.01);
+        let projection = frustum.projection(1.0e-4);
         let view_projection = projection.matrix() * math::mtranspose(&view.local);
         self.loader.drive();
 
