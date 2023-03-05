@@ -1,5 +1,5 @@
 [workspace]
-members = ["client", "server", "common"]
+members = ["client", "server", "common", "save", "save/gen-protos"]
 
 [profile.dev]
 opt-level = 1

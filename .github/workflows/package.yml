@@ -71,7 +71,7 @@ jobs:
           lfs: true
       - name: Install dependencies
         run: |
-          yum install -y alsa-lib-devel vulkan-devel python3 fontconfig-devel 
+          yum install -y alsa-lib-devel vulkan-devel python3 fontconfig-devel
 
       - uses: actions-rs/toolchain@v1
         with:
