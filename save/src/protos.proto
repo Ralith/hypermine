@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package protos;
+
+message Meta {
+    // Number of voxels along the edge of a chunk
+    uint32 chunk_size = 1;
+}
+
+message Node {
+    // Entities whose origins lie within this node
+    repeated Archetype archetypes = 1;
+
+    // Voxel data for each modified chunk
+    repeated Chunk chunks = 2;
+}
+
+// A set of entities, all of which have the same components
+message Archetype {
+    // Entity IDs
+    repeated fixed64 entities = 1;
+
+    // Type of components stored in each column
+    repeated ComponentType component_types = 2;
+
+    // Each data represents a dense column of component values of the type identified by the
+    // component_type at the same index as the column
+    repeated bytes component_data = 3;
+}
+
+message Chunk {
+    // Which dodecahedron vertex is associated with this chunk
+    uint32 vertex = 1;
+
+    // Dense 3D array of 16-bit material tags for all voxels in this chunk
+    bytes voxels = 2;
+}
+
+enum ComponentType {
+    POSITION = 0;
+}

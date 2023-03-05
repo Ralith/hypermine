@@ -58,3 +58,18 @@ jobs:
         with:
           command: clippy
           args: --workspace --all-targets -- -D warnings
+
+  check-protos:
+    name: Check protos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - run: sudo apt update && sudo apt-get -y install protobuf-compiler
+      - name: Generate Rust code from .proto files
+        run: cargo run -p gen-protos
+      - name: Check for uncommitted changes
+        run: git diff --exit-code
