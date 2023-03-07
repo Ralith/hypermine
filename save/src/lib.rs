@@ -21,7 +21,11 @@ impl Save {
             match tx.open_table(META_TABLE) {
                 Ok(meta) => {
                     let Some(value) = meta.get(&[][..])? else { return Err(OpenError::MissingMeta); };
-                    Meta::decode(value.value())?
+                    let mut dctx = dctx();
+                    let mut buffer = Vec::new();
+                    decompress(&mut dctx, value.value(), &mut buffer)
+                        .map_err(OpenError::DecompressionFailed)?;
+                    Meta::decode(&*buffer)?
                 }
                 Err(redb::Error::TableDoesNotExist(_)) => {
                     let defaults = Meta {
@@ -29,7 +33,11 @@ impl Save {
                     };
                     let tx = db.begin_write()?;
                     let mut meta = tx.open_table(META_TABLE)?;
-                    meta.insert(&[][..], &*defaults.encode_to_vec())?;
+                    let mut cctx = cctx();
+                    let mut plain = Vec::new();
+                    let mut compressed = Vec::new();
+                    prepare(&mut cctx, &mut plain, &mut compressed, &defaults);
+                    meta.insert(&[][..], &*compressed)?;
                     drop(meta);
                     // Create the node table so `read` doesn't have to handle its possible absence
                     tx.open_table(NODE_TABLE)?;
@@ -65,18 +73,56 @@ pub struct ReaderGuard<'a> {
 impl ReaderGuard<'_> {
     pub fn get(&self) -> Result<Reader<'_>, redb::Error> {
         let table = self.tx.open_table(NODE_TABLE)?;
-        Ok(Reader { table })
+        Ok(Reader {
+            table,
+            dctx: dctx(),
+            accum: Vec::new(),
+        })
     }
+}
+
+fn dctx() -> zstd::DCtx<'static> {
+    let mut dctx = zstd::DCtx::create();
+    dctx.set_parameter(zstd::DParameter::Format(zstd::FrameFormat::Magicless))
+        .unwrap();
+    dctx
 }
 
 pub struct Reader<'a> {
     table: redb::ReadOnlyTable<'a, u128, &'static [u8]>,
+    dctx: zstd::DCtx<'static>,
+    accum: Vec<u8>,
 }
 
 impl Reader<'_> {
     pub fn get(&mut self, node_id: u128) -> Result<Option<Node>, GetError> {
         let Some(node) = self.table.get(&node_id)? else { return Ok(None); };
-        Ok(Some(Node::decode(node.value())?))
+        self.accum.clear();
+        decompress(&mut self.dctx, node.value(), &mut self.accum)
+            .map_err(GetError::DecompressionFailed)?;
+        Ok(Some(Node::decode(&*self.accum)?))
+    }
+}
+
+fn decompress(
+    dctx: &mut zstd::DCtx<'_>,
+    compressed: &[u8],
+    out: &mut Vec<u8>,
+) -> Result<(), &'static str> {
+    dctx.init().map_err(zstd::get_error_name)?;
+    let mut input = zstd::InBuffer::around(compressed);
+    let mut out = zstd::OutBuffer::around(out);
+    let out_size = zstd::DCtx::out_size();
+    loop {
+        if out.dst.len() + out_size > out.dst.capacity() {
+            out.dst.reserve(out_size);
+        }
+        let n = dctx
+            .decompress_stream(&mut out, &mut input)
+            .map_err(zstd::get_error_name)?;
+        if n == 0 {
+            return Ok(());
+        }
     }
 }
 
@@ -88,7 +134,9 @@ impl<'a> WriterGuard<'a> {
     pub fn get(&mut self) -> Result<Writer<'a, '_>, redb::Error> {
         Ok(Writer {
             table: self.tx.open_table(NODE_TABLE)?,
+            cctx: cctx(),
             plain: Vec::new(),
+            compressed: Vec::new(),
         })
     }
 
@@ -97,18 +145,44 @@ impl<'a> WriterGuard<'a> {
     }
 }
 
+fn cctx() -> zstd::CCtx<'static> {
+    let mut cctx = zstd::CCtx::create();
+    cctx.set_parameter(zstd::CParameter::Format(zstd::FrameFormat::Magicless))
+        .unwrap();
+    cctx.set_parameter(zstd::CParameter::CompressionLevel(2))
+        .unwrap();
+    cctx
+}
+
 pub struct Writer<'save, 'guard> {
     table: redb::Table<'save, 'guard, u128, &'static [u8]>,
+    cctx: zstd::CCtx<'static>,
     plain: Vec<u8>,
+    compressed: Vec<u8>,
 }
 
 impl Writer<'_, '_> {
     pub fn put(&mut self, node_id: u128, state: &Node) -> Result<(), redb::Error> {
-        self.plain.clear();
-        state.encode(&mut self.plain).unwrap();
-        self.table.insert(node_id, &*self.plain)?;
+        prepare(&mut self.cctx, &mut self.plain, &mut self.compressed, state);
+        self.table.insert(node_id, &*self.compressed)?;
         Ok(())
     }
+}
+
+/// Buffer the compressed, encoded form of `msg` in `compressed`
+fn prepare<T: prost::Message>(
+    cctx: &mut zstd::CCtx<'_>,
+    plain: &mut Vec<u8>,
+    compressed: &mut Vec<u8>,
+    msg: &T,
+) {
+    plain.clear();
+    msg.encode(plain).unwrap();
+    compressed.clear();
+    compressed.reserve(zstd::compress_bound(plain.len()));
+    cctx.compress2(compressed, plain)
+        .map_err(zstd::get_error_name)
+        .unwrap();
 }
 
 const META_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("meta");
@@ -120,6 +194,8 @@ pub enum OpenError {
     Db(#[from] redb::Error),
     #[error("missing metadata")]
     MissingMeta,
+    #[error("decompression failed: {0}")]
+    DecompressionFailed(&'static str),
     #[error(transparent)]
     Corrupt(#[from] prost::DecodeError),
 }
@@ -128,6 +204,8 @@ pub enum OpenError {
 pub enum GetError {
     #[error(transparent)]
     Db(#[from] redb::Error),
+    #[error("decompression failed: {0}")]
+    DecompressionFailed(&'static str),
     #[error(transparent)]
     Corrupt(#[from] prost::DecodeError),
 }
