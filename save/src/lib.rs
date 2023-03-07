@@ -14,13 +14,30 @@ pub struct Save {
 }
 
 impl Save {
-    pub fn open(path: &Path) -> Result<Self, OpenError> {
-        let db = Database::open(path)?;
+    pub fn open(path: &Path, default_chunk_size: u8) -> Result<Self, OpenError> {
+        let db = Database::create(path)?;
         let meta = {
             let tx = db.begin_read()?;
-            let meta = tx.open_table(META_TABLE)?;
-            let Some(value) = meta.get(&[][..])? else { return Err(OpenError::MissingMeta); };
-            proto::Meta::decode(value.value())?
+            match tx.open_table(META_TABLE) {
+                Ok(meta) => {
+                    let Some(value) = meta.get(&[][..])? else { return Err(OpenError::MissingMeta); };
+                    Meta::decode(value.value())?
+                }
+                Err(redb::Error::TableDoesNotExist(_)) => {
+                    let defaults = Meta {
+                        chunk_size: default_chunk_size.into(),
+                    };
+                    let tx = db.begin_write()?;
+                    let mut meta = tx.open_table(META_TABLE)?;
+                    meta.insert(&[][..], &*defaults.encode_to_vec())?;
+                    drop(meta);
+                    // Create the node table so `read` doesn't have to handle its possible absence
+                    tx.open_table(NODE_TABLE)?;
+                    tx.commit()?;
+                    defaults.clone()
+                }
+                Err(e) => return Err(e.into()),
+            }
         };
         Ok(Self { meta, db })
     }
