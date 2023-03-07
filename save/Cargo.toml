@@ -9,6 +9,7 @@ edition = "2021"
 prost = "0.11.8"
 redb = "0.13"
 thiserror = "1.0.38"
+zstd = { package = "zstd-safe", version = "6.0.4", features = ["std", "experimental"] }
 
 [dev-dependencies]
 tempfile = "3.4"
