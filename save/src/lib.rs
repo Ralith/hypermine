@@ -28,6 +28,7 @@ impl Save {
                     Meta::decode(&*buffer)?
                 }
                 Err(redb::Error::TableDoesNotExist(_)) => {
+                    // Must be an empty save file. Initialize the meta record and create the other tables.
                     let defaults = Meta {
                         chunk_size: default_chunk_size.into(),
                     };
@@ -39,8 +40,9 @@ impl Save {
                     prepare(&mut cctx, &mut plain, &mut compressed, &defaults);
                     meta.insert(&[][..], &*compressed)?;
                     drop(meta);
-                    // Create the node table so `read` doesn't have to handle its possible absence
+
                     tx.open_table(NODE_TABLE)?;
+                    tx.open_table(CHARACTERS_BY_NAME_TABLE)?;
                     tx.commit()?;
                     defaults.clone()
                 }
@@ -72,9 +74,9 @@ pub struct ReaderGuard<'a> {
 
 impl ReaderGuard<'_> {
     pub fn get(&self) -> Result<Reader<'_>, redb::Error> {
-        let table = self.tx.open_table(NODE_TABLE)?;
         Ok(Reader {
-            table,
+            nodes: self.tx.open_table(NODE_TABLE)?,
+            characters: self.tx.open_table(CHARACTERS_BY_NAME_TABLE)?,
             dctx: dctx(),
             accum: Vec::new(),
         })
@@ -89,18 +91,27 @@ fn dctx() -> zstd::DCtx<'static> {
 }
 
 pub struct Reader<'a> {
-    table: redb::ReadOnlyTable<'a, u128, &'static [u8]>,
+    nodes: redb::ReadOnlyTable<'a, u128, &'static [u8]>,
+    characters: redb::ReadOnlyTable<'a, &'static str, &'static [u8]>,
     dctx: zstd::DCtx<'static>,
     accum: Vec<u8>,
 }
 
 impl Reader<'_> {
-    pub fn get(&mut self, node_id: u128) -> Result<Option<Node>, GetError> {
-        let Some(node) = self.table.get(&node_id)? else { return Ok(None); };
+    pub fn get_node(&mut self, node_id: u128) -> Result<Option<Node>, GetError> {
+        let Some(node) = self.nodes.get(&node_id)? else { return Ok(None); };
         self.accum.clear();
         decompress(&mut self.dctx, node.value(), &mut self.accum)
             .map_err(GetError::DecompressionFailed)?;
         Ok(Some(Node::decode(&*self.accum)?))
+    }
+
+    pub fn get_character(&mut self, name: &str) -> Result<Option<Character>, GetError> {
+        let Some(node) = self.characters.get(name)? else { return Ok(None); };
+        self.accum.clear();
+        decompress(&mut self.dctx, node.value(), &mut self.accum)
+            .map_err(GetError::DecompressionFailed)?;
+        Ok(Some(Character::decode(&*self.accum)?))
     }
 }
 
@@ -133,7 +144,8 @@ pub struct WriterGuard<'a> {
 impl<'a> WriterGuard<'a> {
     pub fn get(&mut self) -> Result<Writer<'a, '_>, redb::Error> {
         Ok(Writer {
-            table: self.tx.open_table(NODE_TABLE)?,
+            nodes: self.tx.open_table(NODE_TABLE)?,
+            characters: self.tx.open_table(CHARACTERS_BY_NAME_TABLE)?,
             cctx: cctx(),
             plain: Vec::new(),
             compressed: Vec::new(),
@@ -155,16 +167,28 @@ fn cctx() -> zstd::CCtx<'static> {
 }
 
 pub struct Writer<'save, 'guard> {
-    table: redb::Table<'save, 'guard, u128, &'static [u8]>,
+    nodes: redb::Table<'save, 'guard, u128, &'static [u8]>,
+    characters: redb::Table<'save, 'guard, &'static str, &'static [u8]>,
     cctx: zstd::CCtx<'static>,
     plain: Vec<u8>,
     compressed: Vec<u8>,
 }
 
 impl Writer<'_, '_> {
-    pub fn put(&mut self, node_id: u128, state: &Node) -> Result<(), redb::Error> {
+    pub fn put_node(&mut self, node_id: u128, state: &Node) -> Result<(), redb::Error> {
         prepare(&mut self.cctx, &mut self.plain, &mut self.compressed, state);
-        self.table.insert(node_id, &*self.compressed)?;
+        self.nodes.insert(node_id, &*self.compressed)?;
+        Ok(())
+    }
+
+    pub fn put_character(&mut self, name: &str, character: &Character) -> Result<(), redb::Error> {
+        prepare(
+            &mut self.cctx,
+            &mut self.plain,
+            &mut self.compressed,
+            character,
+        );
+        self.characters.insert(name, &*self.compressed)?;
         Ok(())
     }
 }
@@ -187,6 +211,8 @@ fn prepare<T: prost::Message>(
 
 const META_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("meta");
 const NODE_TABLE: TableDefinition<u128, &[u8]> = TableDefinition::new("nodes");
+const CHARACTERS_BY_NAME_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("characters by name");
 
 #[derive(Debug, Error)]
 pub enum OpenError {

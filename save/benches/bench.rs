@@ -36,7 +36,7 @@ fn save(c: &mut Criterion) {
                     let mut tx = save.write().unwrap();
                     let mut writer = tx.get().unwrap();
                     for i in node_ids {
-                        writer.put(i, &node).unwrap();
+                        writer.put_node(i, &node).unwrap();
                     }
                     drop(writer);
                     tx.commit().unwrap();
@@ -63,7 +63,7 @@ fn save(c: &mut Criterion) {
                     let mut tx = save.write().unwrap();
                     let mut writer = tx.get().unwrap();
                     for &i in &node_ids {
-                        writer.put(i, &node).unwrap();
+                        writer.put_node(i, &node).unwrap();
                     }
                     drop(writer);
                     tx.commit().unwrap();
@@ -74,7 +74,7 @@ fn save(c: &mut Criterion) {
                     let read = save.read().unwrap();
                     let mut read = read.get().unwrap();
                     for i in node_ids {
-                        black_box(read.get(i).unwrap().unwrap());
+                        black_box(read.get_node(i).unwrap().unwrap());
                     }
                 },
                 BatchSize::SmallInput,

@@ -28,7 +28,7 @@ fn write() {
         let mut writer_guard = save.write().unwrap();
         let mut writer = writer_guard.get().unwrap();
         for _ in 0..NODES {
-            writer.put(rng.gen(), &node).unwrap();
+            writer.put_node(rng.gen(), &node).unwrap();
         }
         drop(writer);
         writer_guard.commit().unwrap();

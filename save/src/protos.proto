@@ -7,6 +7,11 @@ message Meta {
     uint32 chunk_size = 1;
 }
 
+message Character {
+    // Graph edges to traverse from the origin to find the node containing the character's entity
+    repeated uint32 path = 1;
+}
+
 message Node {
     // Entities whose origins lie within this node
     repeated Archetype archetypes = 1;
