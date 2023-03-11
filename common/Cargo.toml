@@ -27,3 +27,9 @@ rand_distr = "0.4.3"
 
 [dev-dependencies]
 approx = "0.5.1"
+criterion = "0.4"
+
+
+[[bench]]
+name = "bench"
+harness = false
