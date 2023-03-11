@@ -12,12 +12,9 @@ message Character {
     repeated uint32 path = 1;
 }
 
-message Node {
+message EntityNode {
     // Entities whose origins lie within this node
     repeated Archetype archetypes = 1;
-
-    // Voxel data for each modified chunk
-    repeated Chunk chunks = 2;
 }
 
 // A set of entities, all of which have the same components
@@ -31,6 +28,11 @@ message Archetype {
     // Each data represents a dense column of component values of the type identified by the
     // component_type at the same index as the column
     repeated bytes component_data = 3;
+}
+
+message VoxelNode {
+    // Voxel data for each modified chunk
+    repeated Chunk chunks = 1;
 }
 
 message Chunk {
