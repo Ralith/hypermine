@@ -46,7 +46,7 @@ impl Save {
                     tx.commit()?;
                     defaults.clone()
                 }
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(OpenError::Db(DbError(e))),
             }
         };
         Ok(Self { meta, db })
@@ -57,12 +57,12 @@ impl Save {
         &self.meta
     }
 
-    pub fn read(&self) -> Result<ReaderGuard<'_>, redb::Error> {
+    pub fn read(&self) -> Result<ReaderGuard<'_>, DbError> {
         let tx = self.db.begin_read()?;
         Ok(ReaderGuard { tx })
     }
 
-    pub fn write(&mut self) -> Result<WriterGuard<'_>, redb::Error> {
+    pub fn write(&mut self) -> Result<WriterGuard<'_>, DbError> {
         let tx = self.db.begin_write()?;
         Ok(WriterGuard { tx })
     }
@@ -73,7 +73,7 @@ pub struct ReaderGuard<'a> {
 }
 
 impl ReaderGuard<'_> {
-    pub fn get(&self) -> Result<Reader<'_>, redb::Error> {
+    pub fn get(&self) -> Result<Reader<'_>, DbError> {
         Ok(Reader {
             nodes: self.tx.open_table(NODE_TABLE)?,
             characters: self.tx.open_table(CHARACTERS_BY_NAME_TABLE)?,
@@ -142,7 +142,7 @@ pub struct WriterGuard<'a> {
 }
 
 impl<'a> WriterGuard<'a> {
-    pub fn get(&mut self) -> Result<Writer<'a, '_>, redb::Error> {
+    pub fn get(&mut self) -> Result<Writer<'a, '_>, DbError> {
         Ok(Writer {
             nodes: self.tx.open_table(NODE_TABLE)?,
             characters: self.tx.open_table(CHARACTERS_BY_NAME_TABLE)?,
@@ -152,8 +152,9 @@ impl<'a> WriterGuard<'a> {
         })
     }
 
-    pub fn commit(self) -> Result<(), redb::Error> {
-        self.tx.commit()
+    pub fn commit(self) -> Result<(), DbError> {
+        self.tx.commit()?;
+        Ok(())
     }
 }
 
@@ -175,13 +176,13 @@ pub struct Writer<'save, 'guard> {
 }
 
 impl Writer<'_, '_> {
-    pub fn put_node(&mut self, node_id: u128, state: &Node) -> Result<(), redb::Error> {
+    pub fn put_node(&mut self, node_id: u128, state: &Node) -> Result<(), DbError> {
         prepare(&mut self.cctx, &mut self.plain, &mut self.compressed, state);
         self.nodes.insert(node_id, &*self.compressed)?;
         Ok(())
     }
 
-    pub fn put_character(&mut self, name: &str, character: &Character) -> Result<(), redb::Error> {
+    pub fn put_character(&mut self, name: &str, character: &Character) -> Result<(), DbError> {
         prepare(
             &mut self.cctx,
             &mut self.plain,
@@ -217,7 +218,7 @@ const CHARACTERS_BY_NAME_TABLE: TableDefinition<&str, &[u8]> =
 #[derive(Debug, Error)]
 pub enum OpenError {
     #[error(transparent)]
-    Db(#[from] redb::Error),
+    Db(#[from] DbError),
     #[error("missing metadata")]
     MissingMeta,
     #[error("decompression failed: {0}")]
@@ -226,12 +227,28 @@ pub enum OpenError {
     Corrupt(#[from] prost::DecodeError),
 }
 
+impl From<redb::Error> for OpenError {
+    fn from(x: redb::Error) -> Self {
+        OpenError::Db(DbError(x))
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum GetError {
     #[error(transparent)]
-    Db(#[from] redb::Error),
+    Db(#[from] DbError),
     #[error("decompression failed: {0}")]
     DecompressionFailed(&'static str),
     #[error(transparent)]
     Corrupt(#[from] prost::DecodeError),
 }
+
+impl From<redb::Error> for GetError {
+    fn from(x: redb::Error) -> Self {
+        GetError::Db(DbError(x))
+    }
+}
+
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct DbError(#[from] redb::Error);
