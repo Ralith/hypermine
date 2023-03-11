@@ -16,6 +16,7 @@ use tracing::{debug, error, error_span, info, trace};
 
 use common::{codec, proto, SimConfig};
 use input_queue::InputQueue;
+use save::Save;
 use sim::Sim;
 
 pub struct NetParams {
@@ -25,7 +26,8 @@ pub struct NetParams {
 }
 
 #[tokio::main]
-pub async fn run(net: NetParams, sim: SimConfig) -> Result<()> {
+pub async fn run(net: NetParams, mut sim: SimConfig, save: Save) -> Result<()> {
+    sim.chunk_size = save.meta().chunk_size as u8;
     let server_config =
         quinn::ServerConfig::with_single_cert(net.certificate_chain, net.private_key)
             .context("parsing certificate")?;
@@ -36,7 +38,7 @@ pub async fn run(net: NetParams, sim: SimConfig) -> Result<()> {
     )?;
     info!(address = %endpoint.local_addr().unwrap(), "listening");
 
-    let server = Server::new(sim);
+    let server = Server::new(sim, save);
     server.run(incoming).await;
     Ok(())
 }
@@ -45,15 +47,17 @@ struct Server {
     cfg: Arc<SimConfig>,
     sim: Sim,
     clients: DenseSlotMap<ClientId, Client>,
+    save: Save,
 }
 
 impl Server {
-    fn new(params: SimConfig) -> Self {
+    fn new(params: SimConfig, save: Save) -> Self {
         let cfg = Arc::new(params);
         Self {
             sim: Sim::new(cfg.clone()),
             cfg,
             clients: DenseSlotMap::default(),
+            save,
         }
     }
 
@@ -119,6 +123,11 @@ impl Server {
                 .conn
                 .close(1u32.into(), b"client reading too slowly");
             self.cleanup_client(client_id);
+        }
+
+        // Save the world. Could be less frequent if it becomes a bottleneck.
+        if let Err(e) = self.sim.save(&mut self.save) {
+            error!("couldn't save: {}", e);
         }
     }
 

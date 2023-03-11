@@ -15,6 +15,7 @@ pub struct Config {
     pub server_name: Option<String>,
     pub certificate_chain: Option<PathBuf>,
     pub private_key: Option<PathBuf>,
+    pub save: Option<PathBuf>,
     pub listen: SocketAddr,
     #[serde(default)]
     pub simulation: SimConfigRaw,
@@ -33,6 +34,7 @@ impl Default for Config {
             server_name: None,
             certificate_chain: None,
             private_key: None,
+            save: None,
             listen: SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 1234),
             simulation: SimConfigRaw::default(),
         }

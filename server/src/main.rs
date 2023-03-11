@@ -5,10 +5,11 @@ mod config;
 use std::{fs, net::UdpSocket, path::Path};
 
 use anyhow::{anyhow, Context, Result};
-use tracing::warn;
+use tracing::{info, warn};
 
 use common::SimConfig;
 use config::Config;
+use save::Save;
 
 fn main() {
     // Set up logging
@@ -64,12 +65,19 @@ pub fn run() -> Result<()> {
         }
     };
 
+    let sim_cfg = SimConfig::from_raw(&cfg.simulation);
+
+    let save = cfg.save.unwrap_or_else(|| "hypermine.save".into());
+    info!("using save file {}", save.display());
+    let save = Save::open(&save, sim_cfg.chunk_size)?;
+
     server::run(
         server::NetParams {
             certificate_chain,
             private_key,
             socket: UdpSocket::bind(cfg.listen).context("binding socket")?,
         },
-        SimConfig::from_raw(&cfg.simulation),
+        sim_cfg,
+        save,
     )
 }
