@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use common::node::ChunkId;
+use common::{node::ChunkId, GraphEntities};
 use fxhash::FxHashMap;
 use hecs::Entity;
 use rand::rngs::SmallRng;
@@ -30,6 +30,7 @@ pub struct Sim {
     graph: DualGraph,
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
+    graph_entities: GraphEntities,
 }
 
 impl Sim {
@@ -43,6 +44,7 @@ impl Sim {
             graph: Graph::new(),
             spawns: Vec::new(),
             despawns: Vec::new(),
+            graph_entities: GraphEntities::new(),
         };
 
         ensure_nearby(
@@ -98,6 +100,7 @@ impl Sim {
             no_clip: true,
         };
         let entity = self.world.spawn((id, position, character, initial_input));
+        self.graph_entities.insert(position.node, entity);
         self.entity_ids.insert(id, entity);
         self.spawns.push(entity);
         (id, entity)
@@ -143,11 +146,12 @@ impl Sim {
         let _guard = span.enter();
 
         // Simulate
-        for (_, (position, character, input)) in self
+        for (entity, (position, character, input)) in self
             .world
             .query::<(&mut Position, &mut Character, &CharacterInput)>()
             .iter()
         {
+            let prev_node = position.node;
             character_controller::run_character_step(
                 &self.cfg,
                 &self.graph,
@@ -156,6 +160,10 @@ impl Sim {
                 input,
                 self.cfg.step_interval.as_secs_f32(),
             );
+            if prev_node != position.node {
+                self.graph_entities.remove(prev_node, entity);
+                self.graph_entities.insert(position.node, entity);
+            }
             ensure_nearby(&mut self.graph, position, f64::from(self.cfg.view_distance));
         }
 
