@@ -4,9 +4,10 @@ use std::{
 };
 
 use client::{graphics, metrics, net, Config, Sim};
+use save::Save;
 
 use ash::extensions::khr;
-use tracing::error_span;
+use tracing::{error_span, info};
 
 fn main() {
     // Set up logging
@@ -27,6 +28,11 @@ fn main() {
         let cert = cert.serialize_der().unwrap();
         let sim_cfg = config.local_simulation.clone();
 
+        let save = dirs.data_local_dir().join("default.save");
+        info!("using save file {}", save.display());
+        std::fs::create_dir_all(save.parent().unwrap()).unwrap();
+        let save = Save::open(&save, config.local_simulation.chunk_size).unwrap();
+
         std::thread::spawn(move || {
             let span = error_span!("server");
             let _guard = span.enter();
@@ -37,6 +43,7 @@ fn main() {
                     socket,
                 },
                 sim_cfg,
+                save,
             ) {
                 eprintln!("{e:#}");
                 std::process::exit(1);

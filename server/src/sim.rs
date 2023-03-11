@@ -53,6 +53,32 @@ impl Sim {
         result
     }
 
+    pub fn save(&self, save: &mut save::Save) -> Result<(), save::DbError> {
+        fn path_from_origin(graph: &DualGraph, mut node: NodeId) -> Vec<u32> {
+            let mut result = Vec::new();
+            while let Some(parent) = graph.parent(node) {
+                result.push(parent as u32);
+                node = graph.neighbor(node, parent).unwrap();
+            }
+            result.reverse();
+            result
+        }
+
+        let mut tx = save.write()?;
+        let mut writer = tx.get()?;
+        for (_, (pos, ch)) in self.world.query::<(&Position, &Character)>().iter() {
+            writer.put_character(
+                &ch.name,
+                &save::Character {
+                    path: path_from_origin(&self.graph, pos.node),
+                },
+            )?;
+        }
+        drop(writer);
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
         let id = self.new_id();
         info!(%id, name = %hello.name, "spawning character");

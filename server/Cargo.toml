@@ -28,3 +28,4 @@ libm = "0.2.6"
 slotmap = "1.0.6"
 rustls = "0.20.6"
 rustls-pemfile = "1.0.0"
+save = { path = "../save" }

@@ -39,6 +39,7 @@ memoffset = "0.8"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
 metrics = { version = "0.20.1" }
 hdrhistogram = { version = "7", default-features = false }
+save = { path = "../save" }
 
 [features]
 default = ["use-repo-assets"]
