@@ -54,19 +54,15 @@ pub struct Node {
     pub chunks: Chunks<Chunk>,
 }
 
+#[derive(Default)]
 pub enum Chunk {
+    #[default]
     Fresh,
     Generating,
     Populated {
         voxels: VoxelData,
         surface: Option<SlotId>,
     },
-}
-
-impl Default for Chunk {
-    fn default() -> Self {
-        Chunk::Fresh
-    }
 }
 
 pub enum VoxelData {

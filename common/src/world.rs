@@ -1,6 +1,7 @@
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(u16)]
 pub enum Material {
+    #[default]
     Void = 0,
     Dirt = 1,
     Sand = 2,
@@ -45,10 +46,4 @@ pub enum Material {
 
 impl Material {
     pub const COUNT: usize = 40;
-}
-
-impl Default for Material {
-    fn default() -> Self {
-        Material::Void
-    }
 }
