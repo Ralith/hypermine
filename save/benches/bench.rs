@@ -7,12 +7,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 fn save(c: &mut Criterion) {
     let mut write = c.benchmark_group("write");
-    let node = save::Node {
-        archetypes: vec![save::Archetype {
-            entities: vec![1, 2, 3],
-            component_types: vec![4, 5, 6],
-            component_data: vec![Vec::new(), Vec::new(), Vec::new()],
-        }],
+    let node = save::VoxelNode {
         chunks: vec![save::Chunk {
             vertex: 0,
             voxels: vec![0; 12 * 12 * 12 * 2],
@@ -36,7 +31,7 @@ fn save(c: &mut Criterion) {
                     let mut tx = save.write().unwrap();
                     let mut writer = tx.get().unwrap();
                     for i in node_ids {
-                        writer.put_node(i, &node).unwrap();
+                        writer.put_voxel_node(i, &node).unwrap();
                     }
                     drop(writer);
                     tx.commit().unwrap();
@@ -63,7 +58,7 @@ fn save(c: &mut Criterion) {
                     let mut tx = save.write().unwrap();
                     let mut writer = tx.get().unwrap();
                     for &i in &node_ids {
-                        writer.put_node(i, &node).unwrap();
+                        writer.put_voxel_node(i, &node).unwrap();
                     }
                     drop(writer);
                     tx.commit().unwrap();
@@ -74,7 +69,7 @@ fn save(c: &mut Criterion) {
                     let read = save.read().unwrap();
                     let mut read = read.get().unwrap();
                     for i in node_ids {
-                        black_box(read.get_node(i).unwrap().unwrap());
+                        black_box(read.get_voxel_node(i).unwrap().unwrap());
                     }
                 },
                 BatchSize::SmallInput,

@@ -9,12 +9,7 @@ fn write() {
     let mut rng = SmallRng::from_entropy();
     let file = tempfile::NamedTempFile::new().unwrap();
     let mut save = Save::open(file.path(), 12).unwrap();
-    let node = save::Node {
-        archetypes: vec![save::Archetype {
-            entities: vec![1, 2, 3],
-            component_types: vec![4, 5, 6],
-            component_data: vec![Vec::new(), Vec::new(), Vec::new()],
-        }],
+    let node = save::VoxelNode {
         chunks: vec![save::Chunk {
             vertex: 0,
             voxels: vec![0; 12 * 12 * 12 * 2],
@@ -28,7 +23,7 @@ fn write() {
         let mut writer_guard = save.write().unwrap();
         let mut writer = writer_guard.get().unwrap();
         for _ in 0..NODES {
-            writer.put_node(rng.gen(), &node).unwrap();
+            writer.put_voxel_node(rng.gen(), &node).unwrap();
         }
         drop(writer);
         writer_guard.commit().unwrap();

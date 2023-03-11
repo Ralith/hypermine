@@ -14,13 +14,10 @@ pub struct Character {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Node {
+pub struct EntityNode {
     /// Entities whose origins lie within this node
     #[prost(message, repeated, tag = "1")]
     pub archetypes: ::prost::alloc::vec::Vec<Archetype>,
-    /// Voxel data for each modified chunk
-    #[prost(message, repeated, tag = "2")]
-    pub chunks: ::prost::alloc::vec::Vec<Chunk>,
 }
 /// A set of entities, all of which have the same components
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -36,6 +33,13 @@ pub struct Archetype {
     /// component_type at the same index as the column
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub component_data: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VoxelNode {
+    /// Voxel data for each modified chunk
+    #[prost(message, repeated, tag = "1")]
+    pub chunks: ::prost::alloc::vec::Vec<Chunk>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
