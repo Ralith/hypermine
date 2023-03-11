@@ -4,6 +4,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::num::NonZeroU32;
 
+use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -24,7 +25,7 @@ pub struct Graph<N> {
 impl<N> Graph<N> {
     pub fn new() -> Self {
         Self {
-            nodes: vec![Node::new(None, 0)],
+            nodes: vec![Node::new(None, 0, 0)],
             fresh: vec![NodeId::ROOT],
         }
     }
@@ -189,9 +190,25 @@ impl<N> Graph<N> {
         // Always create shorter nodes first so that self.nodes always puts parent nodes before their child nodes, enabling
         // graceful synchronization of the graph
         let shorter_neighbors = self.populate_shorter_neighbors_of_child(parent, side);
+
+        // Select the side along the canonical path from the origin to this node. Future work: make
+        // this the parent to reduce the number of concepts.
+        let (path_side, predecessor) = shorter_neighbors
+            .clone()
+            .chain(Some((side, parent)))
+            .min_by_key(|&(side, _)| side)
+            .unwrap();
+        let mut hasher = Hasher::new();
+        hasher.update(&self.nodes[predecessor.idx()].hash.to_le_bytes());
+        hasher.update(&[path_side as u8]);
+        let mut xof = hasher.finalize_xof();
+        let mut hash = [0; 16];
+        xof.fill(&mut hash);
+        let hash = u128::from_le_bytes(hash);
+
         let id = NodeId::from_idx(self.nodes.len());
         let length = self.nodes[parent.idx()].length + 1;
-        self.nodes.push(Node::new(Some(side), length));
+        self.nodes.push(Node::new(Some(side), length, hash));
         self.link_neighbors(id, parent, side);
         for (side, neighbor) in shorter_neighbors {
             self.link_neighbors(id, neighbor, side);
@@ -200,12 +217,17 @@ impl<N> Graph<N> {
         id
     }
 
+    #[inline]
+    pub fn hash_of(&self, node: NodeId) -> u128 {
+        self.nodes[node.idx()].hash
+    }
+
     /// Ensure all shorter neighbors of a not-yet-created child node exist and return them, excluding the given parent node
     fn populate_shorter_neighbors_of_child(
         &mut self,
         parent: NodeId,
         parent_side: Side,
-    ) -> impl Iterator<Item = (Side, NodeId)> {
+    ) -> impl Iterator<Item = (Side, NodeId)> + Clone {
         let mut neighbors = [None; 2]; // Maximum number of shorter neighbors other than the given parent is 2
         let mut count = 0;
         for neighbor_side in Side::iter() {
@@ -274,15 +296,17 @@ struct Node<N> {
     /// Distance to origin via parents
     length: u32,
     neighbors: [Option<NodeId>; SIDE_COUNT],
+    hash: u128,
 }
 
 impl<N> Node<N> {
-    fn new(parent_side: Option<Side>, length: u32) -> Self {
+    fn new(parent_side: Option<Side>, length: u32, hash: u128) -> Self {
         Self {
             value: None,
             parent_side,
             length,
             neighbors: [None; SIDE_COUNT],
+            hash,
         }
     }
 
@@ -391,5 +415,27 @@ mod tests {
             assert_eq!(c.0, d.0);
             assert_eq!(a.neighbor(c.1, c.0), b.neighbor(c.1, c.0));
         }
+    }
+
+    #[test]
+    fn hash_consistency() {
+        let h1 = {
+            let mut g = Graph::<()>::new();
+            let n1 = g.ensure_neighbor(NodeId::ROOT, Side::A);
+            let n2 = g.ensure_neighbor(n1, Side::B);
+            let n3 = g.ensure_neighbor(n2, Side::C);
+            let n4 = g.ensure_neighbor(n3, Side::D);
+            g.hash_of(n4)
+        };
+        let h2 = {
+            let mut g = Graph::<()>::new();
+            let n1 = g.ensure_neighbor(NodeId::ROOT, Side::C);
+            let n2 = g.ensure_neighbor(n1, Side::A);
+            let n3 = g.ensure_neighbor(n2, Side::B);
+            let n4 = g.ensure_neighbor(n3, Side::D);
+            g.hash_of(n4)
+        };
+
+        assert_eq!(h1, h2);
     }
 }
