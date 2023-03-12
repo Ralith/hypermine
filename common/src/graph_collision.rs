@@ -31,12 +31,24 @@ pub fn sphere_cast(
     // This `hit` variable gets updated over time before being returned.
     let mut hit: Option<GraphCastHit> = None;
 
+    // Pick the vertex closest to position.local as the vertex of the chunk to use to start collision checking
+    let start_vertex = Vertex::iter()
+        .map(|v| {
+            (
+                v,
+                (v.node_to_dual().cast::<f32>() * position.local * math::origin()).w,
+            )
+        })
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .unwrap()
+        .0;
+
     // Start a breadth-first search of the graph's chunks, performing collision checks in each relevant chunk.
     // The `chunk_queue` contains ordered pairs containing the `ChunkId` and the transformation needed to switch
     // from the original node coordinates to the current chunk's node coordinates.
     let mut visited_chunks = FxHashSet::<ChunkId>::default();
     let mut chunk_queue: VecDeque<(ChunkId, na::Matrix4<f32>)> = VecDeque::new();
-    chunk_queue.push_back((ChunkId::new(position.node, Vertex::A), position.local));
+    chunk_queue.push_back((ChunkId::new(position.node, start_vertex), position.local));
 
     // Precalculate the chunk boundaries for collision purposes. If the collider goes outside these bounds,
     // the corresponding neighboring chunk will also be used for collision checking.
