@@ -65,7 +65,6 @@ pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane<f64>,
     road_state: NodeStateRoad,
-    spice: u64,
     enviro: EnviroFactors,
 }
 impl NodeState {
@@ -74,7 +73,6 @@ impl NodeState {
             kind: NodeStateKind::ROOT,
             surface: Plane::from(Side::A),
             road_state: NodeStateRoad::ROOT,
-            spice: 0,
             enviro: EnviroFactors {
                 max_elevation: 0.0,
                 temperature: 0.0,
@@ -85,15 +83,6 @@ impl NodeState {
     }
 
     pub fn child(&self, graph: &DualGraph, node: NodeId, side: Side) -> Self {
-        let spice = graph
-            .descenders(node)
-            // you have to factor in the side representations so that nodes
-            // with length 1 still get interesting hashes
-            .map(|(s, n)| hash(graph.get(n).as_ref().unwrap().state.spice, s as u64))
-            // now we mix together all the local hashes of the neighbors for this new node's
-            // unique hash.
-            .fold(0, hash);
-
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
@@ -102,6 +91,7 @@ impl NodeState {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = &graph.get(parent_node).as_ref().unwrap().state;
+                let spice = graph.hash_of(node) as u64;
                 EnviroFactors::varied_from(parent_state.enviro, spice)
             }
             (Some((a_side, a_state)), Some((b_side, b_state))) => {
@@ -125,7 +115,6 @@ impl NodeState {
                 _ => side * self.surface,
             },
             road_state: child_road,
-            spice,
             enviro,
         }
     }
@@ -199,7 +188,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            node_spice: state.spice,
+            node_spice: graph.hash_of(chunk.node) as u64,
         })
     }
 

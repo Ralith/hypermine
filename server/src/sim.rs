@@ -86,7 +86,7 @@ impl Sim {
         info!(%id, name = %hello.name, "spawning character");
         let position = Position {
             node: NodeId::ROOT,
-            local: math::translate_along(&(na::Vector3::y() * 1.1)),
+            local: math::translate_along(&(na::Vector3::y() * 1.4)),
         };
         let character = Character {
             name: hello.name,
