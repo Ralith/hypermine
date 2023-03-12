@@ -32,7 +32,10 @@ impl Config {
         } = match fs::read(&path) {
             Ok(data) => {
                 info!("found config at {}", path.display());
-                match toml::from_slice(&data) {
+                match std::str::from_utf8(&data)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|s| toml::from_str(s).map_err(anyhow::Error::from))
+                {
                     Ok(x) => x,
                     Err(e) => {
                         error!("failed to parse config: {}", e);
