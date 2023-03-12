@@ -91,7 +91,7 @@ pub fn renormalize_isometry<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matr
     let boost = translate(&origin(), &lorentz_normalize(&m.index((.., 3)).into()));
     let inverse_boost = mtranspose(&boost);
     let rotation = renormalize_rotation_reflection(
-        &(inverse_boost * m).fixed_slice::<3, 3>(0, 0).clone_owned(),
+        &(inverse_boost * m).fixed_view::<3, 3>(0, 0).clone_owned(),
     );
     boost * rotation.to_homogeneous()
 }
@@ -112,7 +112,7 @@ fn renormalize_rotation_reflection<N: RealField + Copy>(m: &na::Matrix3<N>) -> n
 
 /// Whether an isometry reverses winding with respect to the norm
 pub fn parity<N: RealField + Copy>(m: &na::Matrix4<N>) -> bool {
-    m.fixed_slice::<3, 3>(0, 0).determinant() < na::zero::<N>()
+    m.fixed_view::<3, 3>(0, 0).determinant() < na::zero::<N>()
 }
 
 /// Minkowski inner product, aka <a, b>_h
