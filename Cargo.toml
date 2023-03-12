@@ -1,6 +1,12 @@
 [workspace]
 members = ["client", "server", "common", "save", "save/gen-protos"]
 
+[workspace.dependencies]
+hecs = "0.9.0"
+nalgebra = { version = "0.31.2", features = ["libm-force"] }
+quinn = "0.8.3"
+toml = "0.5.5"
+
 [profile.dev]
 opt-level = 1
 debug-assertions = true
