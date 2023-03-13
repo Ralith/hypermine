@@ -5,7 +5,7 @@ members = ["client", "server", "common", "save", "save/gen-protos"]
 [workspace.dependencies]
 hecs = "0.10.0"
 nalgebra = { version = "0.32.1", features = ["libm-force"] }
-quinn = "0.8.3"
+quinn = "0.9.3"
 toml = { version = "0.7.2", default-features = false, features = ["parse"] }
 
 [profile.dev]
