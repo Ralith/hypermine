@@ -44,5 +44,8 @@ message Chunk {
 }
 
 enum ComponentType {
+    // 4x4 matrix of f32s
     POSITION = 0;
+    // Varint length tag followed by UTF-8 text
+    NAME = 1;
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use common::{node::ChunkId, GraphEntities};
-use fxhash::FxHashMap;
+use fxhash::{FxHashMap, FxHashSet};
 use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -21,6 +21,8 @@ use common::{
     EntityId, SimConfig, Step,
 };
 
+use crate::postcard_helpers;
+
 pub struct Sim {
     cfg: Arc<SimConfig>,
     rng: SmallRng,
@@ -31,6 +33,7 @@ pub struct Sim {
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
     graph_entities: GraphEntities,
+    dirty_nodes: FxHashSet<NodeId>,
 }
 
 impl Sim {
@@ -45,6 +48,7 @@ impl Sim {
             spawns: Vec::new(),
             despawns: Vec::new(),
             graph_entities: GraphEntities::new(),
+            dirty_nodes: FxHashSet::default(),
         };
 
         ensure_nearby(
@@ -55,7 +59,7 @@ impl Sim {
         result
     }
 
-    pub fn save(&self, save: &mut save::Save) -> Result<(), save::DbError> {
+    pub fn save(&mut self, save: &mut save::Save) -> Result<(), save::DbError> {
         fn path_from_origin(graph: &DualGraph, mut node: NodeId) -> Vec<u32> {
             let mut result = Vec::new();
             while let Some(parent) = graph.parent(node) {
@@ -76,9 +80,48 @@ impl Sim {
                 },
             )?;
         }
+
+        let dirty_nodes = self.dirty_nodes.drain().collect::<Vec<_>>();
+        for node in dirty_nodes {
+            let entities = self.snapshot_node(node);
+            writer.put_entity_node(self.graph.hash_of(node), &entities)?;
+        }
+
         drop(writer);
         tx.commit()?;
         Ok(())
+    }
+
+    fn snapshot_node(&self, node: NodeId) -> save::EntityNode {
+        let mut ids = Vec::new();
+        let mut character_transforms = Vec::new();
+        let mut character_names = Vec::new();
+        let entities = self.graph_entities.get(node);
+
+        for &entity in entities {
+            // TODO: Handle entities other than characters
+            let mut q = self
+                .world
+                .query_one::<(&EntityId, &Position, &Character)>(entity)
+                .unwrap();
+            let Some((id, pos, ch)) = q.get() else { continue; };
+            ids.push(id.to_bits());
+            let prev = character_transforms.len();
+            postcard_helpers::serialize(pos.local.as_ref(), &mut character_transforms).unwrap();
+            assert_eq!(character_transforms.len(), prev + 4 * 4 * 4);
+            postcard_helpers::serialize(&ch.name, &mut character_names).unwrap();
+        }
+
+        save::EntityNode {
+            archetypes: vec![save::Archetype {
+                entities: ids,
+                component_types: vec![
+                    save::ComponentType::Position.into(),
+                    save::ComponentType::Name.into(),
+                ],
+                component_data: vec![character_transforms, character_names],
+            }],
+        }
     }
 
     pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
@@ -103,6 +146,7 @@ impl Sim {
         self.graph_entities.insert(position.node, entity);
         self.entity_ids.insert(id, entity);
         self.spawns.push(entity);
+        self.dirty_nodes.insert(position.node);
         (id, entity)
     }
 
@@ -161,9 +205,11 @@ impl Sim {
                 self.cfg.step_interval.as_secs_f32(),
             );
             if prev_node != position.node {
+                self.dirty_nodes.insert(prev_node);
                 self.graph_entities.remove(prev_node, entity);
                 self.graph_entities.insert(position.node, entity);
             }
+            self.dirty_nodes.insert(position.node);
             ensure_nearby(&mut self.graph, position, f64::from(self.cfg.view_distance));
         }
 

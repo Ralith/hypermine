@@ -4,6 +4,17 @@ macro_rules! mkid {
         #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash)]
         pub struct $name($ty);
 
+        impl $name {
+            #[inline]
+            pub fn to_bits(self) -> u64 {
+                self.0
+            }
+
+            pub fn from_bits(x: u64) -> Self {
+                Self(x)
+            }
+        }
+
         impl From<$ty> for $name {
             fn from(x: $ty) -> $name {
                 $name(x)
