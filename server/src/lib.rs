@@ -2,6 +2,7 @@
 
 extern crate nalgebra as na;
 mod input_queue;
+mod postcard_helpers;
 mod sim;
 
 use std::{net::UdpSocket, sync::Arc, time::Instant};
