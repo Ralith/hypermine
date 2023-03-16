@@ -106,9 +106,7 @@ impl Sim {
                 .unwrap();
             let Some((id, pos, ch)) = q.get() else { continue; };
             ids.push(id.to_bits());
-            let prev = character_transforms.len();
             postcard_helpers::serialize(pos.local.as_ref(), &mut character_transforms).unwrap();
-            assert_eq!(character_transforms.len(), prev + 4 * 4 * 4);
             postcard_helpers::serialize(&ch.name, &mut character_names).unwrap();
         }
 
