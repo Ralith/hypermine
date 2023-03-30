@@ -27,6 +27,6 @@ fxhash = "0.2.1"
 nalgebra = { workspace = true }
 libm = "0.2.6"
 slotmap = "1.0.6"
-rustls = "0.20.6"
+rustls = "0.21.0"
 rustls-pemfile = "1.0.0"
 save = { path = "../save" }
