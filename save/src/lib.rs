@@ -18,7 +18,8 @@ impl Save {
         let db = Database::create(path)?;
         let meta = {
             let tx = db.begin_read()?;
-            match tx.open_table(META_TABLE) {
+            // Intermediate variable to make borrowck happy
+            let meta = match tx.open_table(META_TABLE) {
                 Ok(meta) => {
                     let Some(value) = meta.get(&[][..])? else { return Err(OpenError::MissingMeta); };
                     let mut dctx = dctx();
@@ -48,7 +49,8 @@ impl Save {
                     defaults.clone()
                 }
                 Err(e) => return Err(OpenError::Db(DbError(e))),
-            }
+            };
+            meta
         };
         Ok(Self { meta, db })
     }
