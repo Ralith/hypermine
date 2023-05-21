@@ -136,6 +136,22 @@ pub fn mtranspose<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
     )
 }
 
+/// Updates `subject` by moving it along the line determined by `projection_direction` so that
+/// its dot product with `normal` is `distance`. This effectively projects vectors onto the plane
+/// `distance` units away from the origin with normal `normal`. The projection is non-orthogonal in
+/// general, only orthogonal when `normal` is equal to `projection_direction`.
+///
+/// Precondition: For this to be possible, `projection_direction` cannot be orthogonal to `normal`.
+pub fn project_to_plane<N: RealField + Copy>(
+    subject: &mut na::Vector3<N>,
+    normal: &na::UnitVector3<N>,
+    projection_direction: &na::UnitVector3<N>,
+    distance: N,
+) {
+    *subject += projection_direction.as_ref()
+        * ((distance - subject.dot(normal)) / projection_direction.dot(normal));
+}
+
 fn minkowski_outer_product<N: RealField + Copy>(
     a: &na::Vector4<N>,
     b: &na::Vector4<N>,
@@ -280,5 +296,17 @@ mod tests {
             na::Matrix4::identity(),
             epsilon = 1e-5
         );
+    }
+
+    #[test]
+    fn project_to_plane_example() {
+        let distance = 4.0;
+        let projection_direction: na::UnitVector3<f32> =
+            na::UnitVector3::new_normalize(na::Vector3::new(3.0, -2.0, 7.0));
+        let normal: na::UnitVector3<f32> =
+            na::UnitVector3::new_normalize(na::Vector3::new(3.0, -2.0, 7.0));
+        let mut subject = na::Vector3::new(-6.0, -3.0, 4.0);
+        project_to_plane(&mut subject, &normal, &projection_direction, distance);
+        assert_abs_diff_eq!(normal.dot(&subject), distance, epsilon = 1.0e-5);
     }
 }
