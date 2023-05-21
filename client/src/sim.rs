@@ -41,6 +41,12 @@ pub struct Sim {
     no_clip: bool,
     /// Whether no_clip will be toggled next step
     toggle_no_clip: bool,
+    /// Whether the current step starts with a jump
+    is_jumping: bool,
+    /// Whether the jump button has been pressed since the last step
+    jump_pressed: bool,
+    /// Whether the jump button is currently held down
+    jump_held: bool,
     prediction: PredictedMotion,
     local_character_controller: LocalCharacterController,
 }
@@ -64,6 +70,9 @@ impl Sim {
             average_movement_input: na::zero(),
             no_clip: true,
             toggle_no_clip: false,
+            is_jumping: false,
+            jump_pressed: false,
+            jump_held: false,
             prediction: PredictedMotion::new(proto::Position {
                 node: NodeId::ROOT,
                 local: na::one(),
@@ -102,6 +111,15 @@ impl Sim {
         self.toggle_no_clip = true;
     }
 
+    pub fn set_jump_held(&mut self, jump_held: bool) {
+        self.jump_held = jump_held;
+        self.jump_pressed = jump_held || self.jump_pressed;
+    }
+
+    pub fn set_jump_pressed_true(&mut self) {
+        self.jump_pressed = true;
+    }
+
     pub fn cfg(&self) -> &SimConfig {
         &self.cfg
     }
@@ -129,6 +147,9 @@ impl Sim {
                 self.no_clip = !self.no_clip;
                 self.toggle_no_clip = false;
             }
+
+            self.is_jumping = self.jump_held || self.jump_pressed;
+            self.jump_pressed = false;
 
             // Reset state for the next step
             if overflow > step_interval {
@@ -233,6 +254,7 @@ impl Sim {
             latest_input,
             *pos,
             ch.state.velocity,
+            ch.state.on_ground,
         );
     }
 
@@ -292,10 +314,14 @@ impl Sim {
     }
 
     fn send_input(&mut self, net: &mut Net) {
+        let orientation = if self.no_clip {
+            self.local_character_controller.orientation()
+        } else {
+            self.local_character_controller.horizontal_orientation()
+        };
         let character_input = CharacterInput {
-            movement: sanitize_motion_input(
-                self.local_character_controller.orientation() * self.average_movement_input,
-            ),
+            movement: sanitize_motion_input(orientation * self.average_movement_input),
+            jump: self.is_jumping,
             no_clip: self.no_clip,
         };
         let generation = self
@@ -313,14 +339,21 @@ impl Sim {
     fn update_view_position(&mut self) {
         let mut view_position = *self.prediction.predicted_position();
         let mut view_velocity = *self.prediction.predicted_velocity();
+        let mut view_on_ground = *self.prediction.predicted_on_ground();
+        let orientation = if self.no_clip {
+            self.local_character_controller.orientation()
+        } else {
+            self.local_character_controller.horizontal_orientation()
+        };
         // Apply input that hasn't been sent yet
         let predicted_input = CharacterInput {
             // We divide by how far we are through the timestep because self.average_movement_input
             // is always over the entire timestep, filling in zeroes for the future, and we
             // want to use the average over what we have so far. Dividing by zero is handled
             // by the character_controller sanitizing this input.
-            movement: self.local_character_controller.orientation() * self.average_movement_input
+            movement: orientation * self.average_movement_input
                 / (self.since_input_sent.as_secs_f32() / self.cfg.step_interval.as_secs_f32()),
+            jump: self.is_jumping,
             no_clip: self.no_clip,
         };
         character_controller::run_character_step(
@@ -328,6 +361,7 @@ impl Sim {
             &self.graph,
             &mut view_position,
             &mut view_velocity,
+            &mut view_on_ground,
             &predicted_input,
             self.since_input_sent.as_secs_f32(),
         );

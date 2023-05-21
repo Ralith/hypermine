@@ -122,6 +122,24 @@ impl LocalCharacterController {
         }
     }
 
+    /// Returns an orientation quaternion that is as faithful as possible to the current orientation quaternion
+    /// while being restricted to ensuring the view is level and does not look up or down. This function's main
+    /// purpose is to figure out what direction the character should go when a movement key is pressed.
+    pub fn horizontal_orientation(&mut self) -> na::UnitQuaternion<f32> {
+        // Get orientation-relative up
+        let up = self.orientation.inverse() * self.up;
+
+        let forward = if up.x.abs() < 0.9 {
+            // Rotate the local forward vector about the locally horizontal axis until it is horizontal
+            na::Vector3::new(0.0, -up.z, up.y)
+        } else {
+            // Project the local forward vector to the level plane
+            na::Vector3::z() - up.into_inner() * up.z
+        };
+
+        self.orientation * na::UnitQuaternion::face_towards(&forward, &up)
+    }
+
     pub fn renormalize_orientation(&mut self) {
         self.orientation.renormalize_fast();
     }
@@ -156,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn look_level_examples() {
+    fn look_level_and_horizontal_orientation_examples() {
         let mut subject = LocalCharacterController::new();
 
         // Pick an arbitrary orientation
@@ -172,6 +190,7 @@ mod tests {
         // Sanity check that the setup makes sense
         assert_aligned_to_gravity(&subject);
         assert_yaw_and_pitch_correct(base_orientation, yaw, pitch, subject.orientation);
+        assert_yaw_and_pitch_correct(base_orientation, yaw, 0.0, subject.horizontal_orientation());
 
         // Standard look_level expression
         subject.look_level(0.5, -0.4);
@@ -179,6 +198,7 @@ mod tests {
         pitch -= 0.4;
         assert_aligned_to_gravity(&subject);
         assert_yaw_and_pitch_correct(base_orientation, yaw, pitch, subject.orientation);
+        assert_yaw_and_pitch_correct(base_orientation, yaw, 0.0, subject.horizontal_orientation());
 
         // Look up past the cap
         subject.look_level(-0.2, 3.0);
@@ -186,6 +206,7 @@ mod tests {
         pitch = std::f32::consts::FRAC_PI_2;
         assert_aligned_to_gravity(&subject);
         assert_yaw_and_pitch_correct(base_orientation, yaw, pitch, subject.orientation);
+        assert_yaw_and_pitch_correct(base_orientation, yaw, 0.0, subject.horizontal_orientation());
 
         // Look down past the cap
         subject.look_level(6.2, -7.2);
@@ -193,6 +214,7 @@ mod tests {
         pitch = -std::f32::consts::FRAC_PI_2;
         assert_aligned_to_gravity(&subject);
         assert_yaw_and_pitch_correct(base_orientation, yaw, pitch, subject.orientation);
+        assert_yaw_and_pitch_correct(base_orientation, yaw, 0.0, subject.horizontal_orientation());
 
         // Go back to a less unusual orientation
         subject.look_level(-1.2, 0.8);
@@ -200,6 +222,7 @@ mod tests {
         pitch += 0.8;
         assert_aligned_to_gravity(&subject);
         assert_yaw_and_pitch_correct(base_orientation, yaw, pitch, subject.orientation);
+        assert_yaw_and_pitch_correct(base_orientation, yaw, 0.0, subject.horizontal_orientation());
     }
 
     #[test]
