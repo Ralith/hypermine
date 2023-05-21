@@ -19,6 +19,7 @@ pub struct PredictedMotion {
     generation: u16,
     predicted_position: Position,
     predicted_velocity: na::Vector3<f32>,
+    predicted_on_ground: bool,
 }
 
 impl PredictedMotion {
@@ -28,6 +29,7 @@ impl PredictedMotion {
             generation: 0,
             predicted_position: initial_position,
             predicted_velocity: na::Vector3::zeros(),
+            predicted_on_ground: false,
         }
     }
 
@@ -39,6 +41,7 @@ impl PredictedMotion {
             graph,
             &mut self.predicted_position,
             &mut self.predicted_velocity,
+            &mut self.predicted_on_ground,
             input,
             cfg.step_interval.as_secs_f32(),
         );
@@ -55,6 +58,7 @@ impl PredictedMotion {
         generation: u16,
         position: Position,
         velocity: na::Vector3<f32>,
+        on_ground: bool,
     ) {
         let first_gen = self.generation.wrapping_sub(self.log.len() as u16);
         let obsolete = usize::from(generation.wrapping_sub(first_gen));
@@ -65,6 +69,7 @@ impl PredictedMotion {
         self.log.drain(..obsolete);
         self.predicted_position = position;
         self.predicted_velocity = velocity;
+        self.predicted_on_ground = on_ground;
 
         for input in self.log.iter() {
             character_controller::run_character_step(
@@ -72,6 +77,7 @@ impl PredictedMotion {
                 graph,
                 &mut self.predicted_position,
                 &mut self.predicted_velocity,
+                &mut self.predicted_on_ground,
                 input,
                 cfg.step_interval.as_secs_f32(),
             );
@@ -85,6 +91,10 @@ impl PredictedMotion {
 
     pub fn predicted_velocity(&self) -> &na::Vector3<f32> {
         &self.predicted_velocity
+    }
+
+    pub fn predicted_on_ground(&self) -> &bool {
+        &self.predicted_on_ground
     }
 }
 
@@ -103,9 +113,11 @@ mod tests {
     #[test]
     fn wraparound() {
         let mock_cfg = SimConfig::from_raw(&common::SimConfigRaw::default());
-        let mock_graph = DualGraph::new();
+        let mut mock_graph = DualGraph::new();
+        common::node::populate_fresh_nodes(&mut mock_graph);
         let mock_character_input = CharacterInput {
             movement: na::Vector3::x(),
+            jump: false,
             no_clip: true,
         };
 
@@ -121,6 +133,7 @@ mod tests {
                 generation,
                 pos(),
                 na::Vector3::zeros(),
+                false,
             )
         };
 

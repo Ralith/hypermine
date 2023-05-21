@@ -120,6 +120,7 @@ impl Window {
         let mut right = false;
         let mut up = false;
         let mut down = false;
+        let mut jump = false;
         let mut clockwise = false;
         let mut anticlockwise = false;
         let mut last_frame = Instant::now();
@@ -141,6 +142,7 @@ impl Window {
                             up as u8 as f32 - down as u8 as f32,
                             back as u8 as f32 - forward as u8 as f32,
                         ));
+                        sim.set_jump_held(jump);
 
                         sim.look(
                             0.0,
@@ -224,6 +226,14 @@ impl Window {
                         }
                         VirtualKeyCode::F => {
                             down = state == ElementState::Pressed;
+                        }
+                        VirtualKeyCode::Space => {
+                            if let Some(sim) = self.sim.as_mut() {
+                                if !jump && state == ElementState::Pressed {
+                                    sim.set_jump_pressed_true();
+                                }
+                                jump = state == ElementState::Pressed;
+                            }
                         }
                         VirtualKeyCode::V if state == ElementState::Pressed => {
                             if let Some(sim) = self.sim.as_mut() {
