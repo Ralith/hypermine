@@ -89,12 +89,8 @@ fn run_no_clip_character_step(
     position: &mut Position,
     velocity: &mut na::Vector3<f32>,
 ) {
-    // If no-clip is on, the velocity field is useless, and we don't want to accidentally
-    // save velocity from when no-clip was off.
-    *velocity = na::Vector3::zeros();
-    position.local *= math::translate_along(
-        &(ctx.movement_input * ctx.cfg.no_clip_movement_speed * ctx.dt_seconds),
-    );
+    *velocity = ctx.movement_input * ctx.cfg.no_clip_movement_speed;
+    position.local *= math::translate_along(&(*velocity * ctx.dt_seconds));
 }
 
 /// Updates the character's position based on the given average velocity while handling collisions.

@@ -118,6 +118,10 @@ impl NodeState {
             enviro,
         }
     }
+
+    pub fn up_direction(&self) -> na::Vector4<f32> {
+        self.surface.normal().cast()
+    }
 }
 
 struct VoxelCoords {
