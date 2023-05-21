@@ -4,7 +4,9 @@ use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
 
-use crate::{net, prediction::PredictedMotion, Net};
+use crate::{
+    local_character_controller::LocalCharacterController, net, prediction::PredictedMotion, Net,
+};
 use common::{
     character_controller,
     graph::NodeId,
@@ -23,7 +25,6 @@ pub struct Sim {
     pub cfg: SimConfig,
     pub local_character_id: EntityId,
     pub local_character: Option<Entity>,
-    orientation: na::UnitQuaternion<f32>,
     step: Option<Step>,
 
     // Input state
@@ -41,6 +42,7 @@ pub struct Sim {
     /// Whether no_clip will be toggled next step
     toggle_no_clip: bool,
     prediction: PredictedMotion,
+    local_character_controller: LocalCharacterController,
 }
 
 impl Sim {
@@ -55,7 +57,6 @@ impl Sim {
             cfg,
             local_character_id,
             local_character: None,
-            orientation: na::one(),
             step: None,
 
             since_input_sent: Duration::new(0, 0),
@@ -67,15 +68,31 @@ impl Sim {
                 node: NodeId::ROOT,
                 local: na::one(),
             }),
+            local_character_controller: LocalCharacterController::new(),
         }
     }
 
-    pub fn rotate(&mut self, delta: &na::UnitQuaternion<f32>) {
-        self.orientation *= delta;
+    /// Rotates the camera's view in a context-dependent manner based on the desired yaw and pitch angles.
+    pub fn look(&mut self, delta_yaw: f32, delta_pitch: f32, delta_roll: f32) {
+        if self.no_clip {
+            self.local_character_controller
+                .look_free(delta_yaw, delta_pitch, delta_roll);
+        } else {
+            self.local_character_controller
+                .look_level(delta_yaw, delta_pitch);
+        }
     }
 
-    pub fn set_movement_input(&mut self, movement_input: na::Vector3<f32>) {
-        self.movement_input = movement_input;
+    pub fn set_movement_input(&mut self, mut raw_movement_input: na::Vector3<f32>) {
+        if !self.no_clip {
+            // Vertical movement keys shouldn't do anything unless no-clip is on.
+            raw_movement_input.y = 0.0;
+        }
+        if raw_movement_input.norm_squared() >= 1.0 {
+            // Cap movement input at 1
+            raw_movement_input.normalize_mut();
+        }
+        self.movement_input = raw_movement_input;
     }
 
     pub fn toggle_no_clip(&mut self) {
@@ -90,7 +107,7 @@ impl Sim {
     }
 
     pub fn step(&mut self, dt: Duration, net: &mut Net) {
-        self.orientation.renormalize_fast();
+        self.local_character_controller.renormalize_orientation();
 
         let step_interval = self.cfg.step_interval;
         self.since_input_sent += dt;
@@ -129,6 +146,10 @@ impl Sim {
             // Update average movement input for the time within the current step
             self.average_movement_input +=
                 self.movement_input * dt.as_secs_f32() / step_interval.as_secs_f32();
+        }
+        self.update_view_position();
+        if !self.no_clip {
+            self.local_character_controller.align_to_gravity();
         }
     }
 
@@ -272,7 +293,9 @@ impl Sim {
 
     fn send_input(&mut self, net: &mut Net) {
         let character_input = CharacterInput {
-            movement: sanitize_motion_input(self.orientation * self.average_movement_input),
+            movement: sanitize_motion_input(
+                self.local_character_controller.orientation() * self.average_movement_input,
+            ),
             no_clip: self.no_clip,
         };
         let generation = self
@@ -283,33 +306,41 @@ impl Sim {
         let _ = net.outgoing.send(Command {
             generation,
             character_input,
-            orientation: self.orientation,
+            orientation: self.local_character_controller.orientation(),
         });
     }
 
-    pub fn view(&self) -> Position {
-        let mut result = *self.prediction.predicted_position();
-        let mut predicted_velocity = *self.prediction.predicted_velocity();
+    fn update_view_position(&mut self) {
+        let mut view_position = *self.prediction.predicted_position();
+        let mut view_velocity = *self.prediction.predicted_velocity();
         // Apply input that hasn't been sent yet
         let predicted_input = CharacterInput {
             // We divide by how far we are through the timestep because self.average_movement_input
             // is always over the entire timestep, filling in zeroes for the future, and we
             // want to use the average over what we have so far. Dividing by zero is handled
             // by the character_controller sanitizing this input.
-            movement: self.orientation * self.average_movement_input
+            movement: self.local_character_controller.orientation() * self.average_movement_input
                 / (self.since_input_sent.as_secs_f32() / self.cfg.step_interval.as_secs_f32()),
             no_clip: self.no_clip,
         };
         character_controller::run_character_step(
             &self.cfg,
             &self.graph,
-            &mut result,
-            &mut predicted_velocity,
+            &mut view_position,
+            &mut view_velocity,
             &predicted_input,
             self.since_input_sent.as_secs_f32(),
         );
-        result.local *= self.orientation.to_homogeneous();
-        result
+
+        self.local_character_controller.update_position(
+            view_position,
+            self.graph.get_relative_up(&view_position).unwrap(),
+            !self.no_clip,
+        )
+    }
+
+    pub fn view(&self) -> Position {
+        self.local_character_controller.oriented_position()
     }
 
     /// Destroy all aspects of an entity

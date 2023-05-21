@@ -15,6 +15,7 @@ mod config;
 pub mod graphics;
 mod lahar_deprecated;
 mod loader;
+mod local_character_controller;
 pub mod metrics;
 pub mod net;
 mod prediction;

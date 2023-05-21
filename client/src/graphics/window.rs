@@ -136,22 +136,18 @@ impl Window {
                     if let Some(sim) = self.sim.as_mut() {
                         let this_frame = Instant::now();
                         let dt = this_frame - last_frame;
-                        let move_direction: na::Vector3<f32> = na::Vector3::x()
-                            * (right as u8 as f32 - left as u8 as f32)
-                            + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
-                            + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
-                        sim.set_movement_input(if move_direction.norm_squared() > 1.0 {
-                            move_direction.normalize()
-                        } else {
-                            move_direction
-                        });
-
-                        sim.rotate(&na::UnitQuaternion::from_axis_angle(
-                            &-na::Vector3::z_axis(),
-                            (clockwise as u8 as f32 - anticlockwise as u8 as f32)
-                                * 2.0
-                                * dt.as_secs_f32(),
+                        sim.set_movement_input(na::Vector3::new(
+                            right as u8 as f32 - left as u8 as f32,
+                            up as u8 as f32 - down as u8 as f32,
+                            back as u8 as f32 - forward as u8 as f32,
                         ));
+
+                        sim.look(
+                            0.0,
+                            0.0,
+                            2.0 * (anticlockwise as u8 as f32 - clockwise as u8 as f32)
+                                * dt.as_secs_f32(),
+                        );
 
                         sim.step(dt, &mut self.net);
                         last_frame = this_frame;
@@ -163,14 +159,11 @@ impl Window {
                     DeviceEvent::MouseMotion { delta } if mouse_captured => {
                         if let Some(sim) = self.sim.as_mut() {
                             const SENSITIVITY: f32 = 2e-3;
-                            let rot = na::UnitQuaternion::from_axis_angle(
-                                &na::Vector3::y_axis(),
+                            sim.look(
                                 -delta.0 as f32 * SENSITIVITY,
-                            ) * na::UnitQuaternion::from_axis_angle(
-                                &na::Vector3::x_axis(),
                                 -delta.1 as f32 * SENSITIVITY,
+                                0.0,
                             );
-                            sim.rotate(&rot);
                         }
                     }
                     _ => {}
