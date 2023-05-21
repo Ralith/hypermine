@@ -1,6 +1,8 @@
 mod collision;
 mod vector_bounds;
 
+use std::mem::replace;
+
 use tracing::warn;
 
 use crate::{
@@ -149,7 +151,11 @@ fn get_ground_normal(
                 // We found the ground, so return its normal.
                 return Some(collision.normal);
             }
-            allowed_displacement.add_bound(VectorBound::new(collision.normal, collision.normal));
+            allowed_displacement.add_bound(VectorBound::new(
+                collision.normal,
+                collision.normal,
+                true,
+            ));
         } else {
             // Return `None` if we travel the whole `allowed_displacement` and don't find the ground.
             return None;
@@ -221,6 +227,9 @@ fn apply_velocity(
     const MAX_COLLISION_ITERATIONS: u32 = 6;
 
     let mut bounded_vectors = BoundedVectors::new(expected_displacement, Some(*velocity));
+    let mut bounded_vectors_without_collisions = bounded_vectors.clone();
+
+    let mut ground_collision_handled = false;
 
     let mut all_collisions_resolved = false;
     for _ in 0..MAX_COLLISION_ITERATIONS {
@@ -237,8 +246,16 @@ fn apply_velocity(
                 - collision_result.displacement_vector.magnitude()
                     / bounded_vectors.displacement().magnitude();
             bounded_vectors.scale_displacement(displacement_reduction_factor);
+            bounded_vectors_without_collisions.scale_displacement(displacement_reduction_factor);
 
-            handle_collision(ctx, collision, &mut bounded_vectors, ground_normal);
+            handle_collision(
+                ctx,
+                collision,
+                &bounded_vectors_without_collisions,
+                &mut bounded_vectors,
+                ground_normal,
+                &mut ground_collision_handled,
+            );
         } else {
             all_collisions_resolved = true;
             break;
@@ -256,18 +273,50 @@ fn apply_velocity(
 fn handle_collision(
     ctx: &CharacterControllerContext,
     collision: Collision,
+    bounded_vectors_without_collisions: &BoundedVectors,
     bounded_vectors: &mut BoundedVectors,
     ground_normal: &mut Option<na::UnitVector3<f32>>,
+    ground_collision_handled: &mut bool,
 ) {
     // Collisions are divided into two categories: Ground collisions and wall collisions.
     // Ground collisions will only affect vertical movement of the character, while wall collisions will
-    // push the character away from the wall in a perpendicular direction.
+    // push the character away from the wall in a perpendicular direction. If the character is on the ground,
+    // we have extra logic: Using a temporary bound to ensure that slanted wall collisions do not lift the
+    // character off the ground.
     if is_ground(ctx, &collision.normal) {
-        bounded_vectors.add_bound(VectorBound::new(collision.normal, ctx.up));
+        if !*ground_collision_handled {
+            // Wall collisions can turn vertical momentum into unwanted horizontal momentum. This can
+            // occur if the character jumps at the corner between the ground and a slanted wall. If the wall
+            // collision is handled first, this horizontal momentum will push the character away from the wall.
+            // This can also occur if the character is on the ground and walks into a slanted wall. A single frame
+            // of downward momentum caused by gravity can turn into unwanted horizontal momentum that pushes
+            // the character away from the wall. Neither of these issues can occur if the ground collision is
+            // handled first, so when computing how the velocity vectors change, we rewrite history as if
+            // the ground collision was first. This is only necessary for the first ground collision, since
+            // afterwards, there is no more unexpected vertical momentum.
+            let old_bounded_vectors =
+                replace(bounded_vectors, bounded_vectors_without_collisions.clone());
+            bounded_vectors.add_temp_bound(VectorBound::new(collision.normal, ctx.up, false));
+            bounded_vectors.add_bound(VectorBound::new(collision.normal, ctx.up, true));
+            for bound in old_bounded_vectors.bounds() {
+                bounded_vectors.add_bound(bound.clone());
+            }
+            bounded_vectors.clear_temp_bounds();
+
+            *ground_collision_handled = true;
+        } else {
+            bounded_vectors.add_temp_bound(VectorBound::new(collision.normal, ctx.up, false));
+            bounded_vectors.add_bound(VectorBound::new(collision.normal, ctx.up, true));
+            bounded_vectors.clear_temp_bounds();
+        }
 
         *ground_normal = Some(collision.normal);
     } else {
-        bounded_vectors.add_bound(VectorBound::new(collision.normal, collision.normal));
+        if let Some(ground_normal) = ground_normal {
+            bounded_vectors.add_temp_bound(VectorBound::new(*ground_normal, ctx.up, false));
+        }
+        bounded_vectors.add_bound(VectorBound::new(collision.normal, collision.normal, true));
+        bounded_vectors.clear_temp_bounds();
     }
 }
 
