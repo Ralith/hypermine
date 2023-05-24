@@ -13,7 +13,7 @@ zstd = { package = "zstd-safe", version = "6.0.4", features = ["std", "experimen
 
 [dev-dependencies]
 tempfile = "3.4"
-criterion = "0.4"
+criterion = "0.5"
 rand = { version = "0.8.5", features = ["small_rng"] }
 
 [[bench]]
