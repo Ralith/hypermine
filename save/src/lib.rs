@@ -15,40 +15,30 @@ pub struct Save {
 
 impl Save {
     pub fn open(path: &Path, default_chunk_size: u8) -> Result<Self, OpenError> {
-        let db = Database::create(path)?;
+        let db = Database::create(path).map_err(redb::Error::from)?;
         let meta = {
-            let tx = db.begin_read()?;
+            let tx = db.begin_read().map_err(redb::Error::from)?;
             // Intermediate variable to make borrowck happy
             let meta = match tx.open_table(META_TABLE) {
                 Ok(meta) => {
-                    let Some(value) = meta.get(&[][..])? else { return Err(OpenError::MissingMeta); };
+                    let Some(value) = meta.get(&[][..]).map_err(redb::Error::from)? else {
+                        return Err(OpenError::MissingMeta);
+                    };
                     let mut dctx = dctx();
                     let mut buffer = Vec::new();
                     decompress(&mut dctx, value.value(), &mut buffer)
                         .map_err(OpenError::DecompressionFailed)?;
                     Meta::decode(&*buffer)?
                 }
-                Err(redb::Error::TableDoesNotExist(_)) => {
+                Err(redb::TableError::TableDoesNotExist(_)) => {
                     // Must be an empty save file. Initialize the meta record and create the other tables.
                     let defaults = Meta {
                         chunk_size: default_chunk_size.into(),
                     };
-                    let tx = db.begin_write()?;
-                    let mut meta = tx.open_table(META_TABLE)?;
-                    let mut cctx = cctx();
-                    let mut plain = Vec::new();
-                    let mut compressed = Vec::new();
-                    prepare(&mut cctx, &mut plain, &mut compressed, &defaults);
-                    meta.insert(&[][..], &*compressed)?;
-                    drop(meta);
-
-                    tx.open_table(VOXEL_NODE_TABLE)?;
-                    tx.open_table(ENTITY_NODE_TABLE)?;
-                    tx.open_table(CHARACTERS_BY_NAME_TABLE)?;
-                    tx.commit()?;
-                    defaults.clone()
+                    init_meta_table(&db, &defaults)?;
+                    defaults
                 }
-                Err(e) => return Err(OpenError::Db(DbError(e))),
+                Err(e) => return Err(OpenError::Db(DbError(e.into()))),
             };
             meta
         };
@@ -61,14 +51,31 @@ impl Save {
     }
 
     pub fn read(&self) -> Result<ReaderGuard<'_>, DbError> {
-        let tx = self.db.begin_read()?;
+        let tx = self.db.begin_read().map_err(redb::Error::from)?;
         Ok(ReaderGuard { tx })
     }
 
     pub fn write(&mut self) -> Result<WriterGuard<'_>, DbError> {
-        let tx = self.db.begin_write()?;
+        let tx = self.db.begin_write().map_err(redb::Error::from)?;
         Ok(WriterGuard { tx })
     }
+}
+
+fn init_meta_table(db: &Database, value: &Meta) -> Result<(), redb::Error> {
+    let tx = db.begin_write()?;
+    let mut meta = tx.open_table(META_TABLE)?;
+    let mut cctx = cctx();
+    let mut plain = Vec::new();
+    let mut compressed = Vec::new();
+    prepare(&mut cctx, &mut plain, &mut compressed, value);
+    meta.insert(&[][..], &*compressed)?;
+    drop(meta);
+
+    tx.open_table(VOXEL_NODE_TABLE)?;
+    tx.open_table(ENTITY_NODE_TABLE)?;
+    tx.open_table(CHARACTERS_BY_NAME_TABLE)?;
+    tx.commit()?;
+    Ok(())
 }
 
 pub struct ReaderGuard<'a> {
@@ -157,9 +164,18 @@ pub struct WriterGuard<'a> {
 impl<'a> WriterGuard<'a> {
     pub fn get(&mut self) -> Result<Writer<'a, '_>, DbError> {
         Ok(Writer {
-            voxel_nodes: self.tx.open_table(VOXEL_NODE_TABLE)?,
-            entity_nodes: self.tx.open_table(ENTITY_NODE_TABLE)?,
-            characters: self.tx.open_table(CHARACTERS_BY_NAME_TABLE)?,
+            voxel_nodes: self
+                .tx
+                .open_table(VOXEL_NODE_TABLE)
+                .map_err(redb::Error::from)?,
+            entity_nodes: self
+                .tx
+                .open_table(ENTITY_NODE_TABLE)
+                .map_err(redb::Error::from)?,
+            characters: self
+                .tx
+                .open_table(CHARACTERS_BY_NAME_TABLE)
+                .map_err(redb::Error::from)?,
             cctx: cctx(),
             plain: Vec::new(),
             compressed: Vec::new(),
@@ -271,6 +287,30 @@ impl From<redb::Error> for GetError {
     }
 }
 
+impl From<redb::StorageError> for GetError {
+    fn from(x: redb::StorageError) -> Self {
+        GetError::Db(DbError(x.into()))
+    }
+}
+
 #[derive(Debug, Error)]
 #[error(transparent)]
 pub struct DbError(#[from] redb::Error);
+
+impl From<redb::StorageError> for DbError {
+    fn from(x: redb::StorageError) -> Self {
+        DbError(x.into())
+    }
+}
+
+impl From<redb::CommitError> for DbError {
+    fn from(x: redb::CommitError) -> Self {
+        DbError(x.into())
+    }
+}
+
+impl From<redb::TableError> for DbError {
+    fn from(x: redb::TableError) -> Self {
+        DbError(x.into())
+    }
+}
