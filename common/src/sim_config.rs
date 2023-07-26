@@ -24,14 +24,9 @@ pub struct SimConfigRaw {
     /// Note that exact voxel size varies within each chunk. We reference the mean width of the voxels
     /// along the X axis through the center of a chunk.
     pub voxel_size: Option<f32>,
-    /// Character movement speed in m/s during no-clip
-    pub no_clip_movement_speed: Option<f32>,
-    /// Character maximumum movement speed while on the ground in m/s
-    pub max_ground_speed: Option<f32>,
-    /// Character acceleration while on the ground in m/s^2
-    pub ground_acceleration: Option<f32>,
-    /// Radius of the character in meters
-    pub character_radius: Option<f32>,
+    /// Static configuration information relevant to character physics
+    #[serde(default)]
+    pub character: CharacterConfigRaw,
 }
 
 /// Complete simulation config parameters
@@ -42,10 +37,7 @@ pub struct SimConfig {
     pub view_distance: f32,
     pub input_queue_size: Duration,
     pub chunk_size: u8,
-    pub no_clip_movement_speed: f32,
-    pub max_ground_speed: f32,
-    pub ground_acceleration: f32,
-    pub character_radius: f32,
+    pub character: CharacterConfig,
     /// Scaling factor converting meters to absolute units
     pub meters_to_absolute: f32,
 }
@@ -60,10 +52,7 @@ impl SimConfig {
             view_distance: x.view_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
             chunk_size,
-            no_clip_movement_speed: x.no_clip_movement_speed.unwrap_or(12.0) * meters_to_absolute,
-            max_ground_speed: x.max_ground_speed.unwrap_or(6.0) * meters_to_absolute,
-            ground_acceleration: x.ground_acceleration.unwrap_or(30.0) * meters_to_absolute,
-            character_radius: x.character_radius.unwrap_or(0.4) * meters_to_absolute,
+            character: CharacterConfig::from_raw(&x.character, meters_to_absolute),
             meters_to_absolute,
         }
     }
@@ -77,4 +66,37 @@ fn meters_to_absolute(chunk_size: u8, voxel_size: f32) -> f32 {
     let minimum_chunk_face_separation = math::distance(&a, &b);
     let absolute_voxel_size = minimum_chunk_face_separation / f64::from(chunk_size);
     absolute_voxel_size as f32 / voxel_size
+}
+
+/// Static configuration information relevant to character physics as provided in configuration files
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct CharacterConfigRaw {
+    /// Character movement speed in m/s during no-clip
+    pub no_clip_movement_speed: Option<f32>,
+    /// Character maximumum movement speed while on the ground in m/s
+    pub max_ground_speed: Option<f32>,
+    /// Character acceleration while on the ground in m/s^2
+    pub ground_acceleration: Option<f32>,
+    /// Radius of the character in meters
+    pub character_radius: Option<f32>,
+}
+
+/// Static configuration information relevant to character physics
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CharacterConfig {
+    pub no_clip_movement_speed: f32,
+    pub max_ground_speed: f32,
+    pub ground_acceleration: f32,
+    pub character_radius: f32,
+}
+
+impl CharacterConfig {
+    pub fn from_raw(x: &CharacterConfigRaw, meters_to_absolute: f32) -> Self {
+        CharacterConfig {
+            no_clip_movement_speed: x.no_clip_movement_speed.unwrap_or(12.0) * meters_to_absolute,
+            max_ground_speed: x.max_ground_speed.unwrap_or(4.0) * meters_to_absolute,
+            ground_acceleration: x.ground_acceleration.unwrap_or(20.0) * meters_to_absolute,
+            character_radius: x.character_radius.unwrap_or(0.4) * meters_to_absolute,
+        }
+    }
 }

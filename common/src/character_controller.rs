@@ -44,14 +44,15 @@ impl CharacterControllerPass<'_> {
             // save velocity from when no-clip was off.
             *self.velocity = na::Vector3::zeros();
             self.position.local *= math::translate_along(
-                &(movement * self.cfg.no_clip_movement_speed * self.dt_seconds),
+                &(movement * self.cfg.character.no_clip_movement_speed * self.dt_seconds),
             );
         } else {
             let old_velocity = *self.velocity;
 
             // Update velocity
-            let current_to_target_velocity = movement * self.cfg.max_ground_speed - *self.velocity;
-            let max_delta_velocity = self.cfg.ground_acceleration * self.dt_seconds;
+            let current_to_target_velocity =
+                movement * self.cfg.character.max_ground_speed - *self.velocity;
+            let max_delta_velocity = self.cfg.character.ground_acceleration * self.dt_seconds;
             if current_to_target_velocity.norm_squared() > math::sqr(max_delta_velocity) {
                 *self.velocity += current_to_target_velocity.normalize() * max_delta_velocity;
             } else {
@@ -139,7 +140,7 @@ impl CharacterControllerPass<'_> {
         let tanh_distance = displacement_norm.tanh();
 
         let cast_hit = graph_collision::sphere_cast(
-            self.cfg.character_radius,
+            self.cfg.character.character_radius,
             self.graph,
             &ChunkLayout::new(self.cfg.chunk_size as usize),
             self.position,

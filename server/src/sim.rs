@@ -248,8 +248,8 @@ impl Sim {
         // is set up to cover that distance.
         // TODO: Use actual max speed instead of max ground speed.
         let chunk_generation_distance = dodeca::BOUNDING_SPHERE_RADIUS
-            + self.cfg.character_radius as f64
-            + self.cfg.max_ground_speed as f64 * self.cfg.step_interval.as_secs_f64()
+            + self.cfg.character.character_radius as f64
+            + self.cfg.character.max_ground_speed as f64 * self.cfg.step_interval.as_secs_f64()
             + 0.001;
 
         // Load all chunks around entities corresponding to clients, which correspond to entities
