@@ -111,7 +111,9 @@ pub struct Reader<'a> {
 
 impl Reader<'_> {
     pub fn get_voxel_node(&mut self, node_id: u128) -> Result<Option<VoxelNode>, GetError> {
-        let Some(node) = self.voxel_nodes.get(&node_id)? else { return Ok(None); };
+        let Some(node) = self.voxel_nodes.get(&node_id)? else {
+            return Ok(None);
+        };
         self.accum.clear();
         decompress(&mut self.dctx, node.value(), &mut self.accum)
             .map_err(GetError::DecompressionFailed)?;
@@ -119,7 +121,9 @@ impl Reader<'_> {
     }
 
     pub fn get_entity_node(&mut self, node_id: u128) -> Result<Option<EntityNode>, GetError> {
-        let Some(node) = self.entity_nodes.get(&node_id)? else { return Ok(None); };
+        let Some(node) = self.entity_nodes.get(&node_id)? else {
+            return Ok(None);
+        };
         self.accum.clear();
         decompress(&mut self.dctx, node.value(), &mut self.accum)
             .map_err(GetError::DecompressionFailed)?;
@@ -127,7 +131,9 @@ impl Reader<'_> {
     }
 
     pub fn get_character(&mut self, name: &str) -> Result<Option<Character>, GetError> {
-        let Some(node) = self.characters.get(name)? else { return Ok(None); };
+        let Some(node) = self.characters.get(name)? else {
+            return Ok(None);
+        };
         self.accum.clear();
         decompress(&mut self.dctx, node.value(), &mut self.accum)
             .map_err(GetError::DecompressionFailed)?;

@@ -59,12 +59,13 @@ pub fn sphere_cast(
     // Breadth-first search loop
     while let Some((chunk, node_transform)) = chunk_queue.pop_front() {
         let Chunk::Populated {
-                voxels: ref voxel_data,
-                ..
-            } = graph[chunk] else {
-                // Collision checking on unpopulated chunk
-                return Err(SphereCastError::OutOfBounds);
-            };
+            voxels: ref voxel_data,
+            ..
+        } = graph[chunk]
+        else {
+            // Collision checking on unpopulated chunk
+            return Err(SphereCastError::OutOfBounds);
+        };
         let local_ray = chunk.vertex.node_to_dual().cast::<f32>() * node_transform * ray;
 
         // Check collision within a single chunk
@@ -352,7 +353,10 @@ mod tests {
                     }),
                 voxel_location.vertex,
             );
-            let Chunk::Populated { voxels: voxel_data, .. } = graph.get_chunk_mut(chunk).unwrap() else {
+            let Chunk::Populated {
+                voxels: voxel_data, ..
+            } = graph.get_chunk_mut(chunk).unwrap()
+            else {
                 panic!("All chunks should be populated.");
             };
 
