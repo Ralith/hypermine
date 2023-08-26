@@ -104,7 +104,9 @@ impl Sim {
                 .world
                 .query_one::<(&EntityId, &Position, &Character)>(entity)
                 .unwrap();
-            let Some((id, pos, ch)) = q.get() else { continue; };
+            let Some((id, pos, ch)) = q.get() else {
+                continue;
+            };
             ids.push(id.to_bits());
             postcard_helpers::serialize(pos.local.as_ref(), &mut character_transforms).unwrap();
             postcard_helpers::serialize(&ch.name, &mut character_names).unwrap();

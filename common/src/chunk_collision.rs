@@ -28,12 +28,9 @@ pub fn chunk_sphere_cast(
 ) -> Option<ChunkCastHit> {
     let mut hit: Option<ChunkCastHit> = None;
 
-    let Some(bounding_box) = VoxelAABB::from_ray_segment_and_radius(
-        layout,
-        ray,
-        tanh_distance,
-        collider_radius,
-    ) else {
+    let Some(bounding_box) =
+        VoxelAABB::from_ray_segment_and_radius(layout, ray, tanh_distance, collider_radius)
+    else {
         return None;
     };
 
@@ -101,9 +98,10 @@ fn find_face_collision(
         ));
 
         let Some(new_tanh_distance) =
-            solve_sphere_plane_intersection(ray, &normal, collider_radius.sinh()) else {
-                continue;
-            };
+            solve_sphere_plane_intersection(ray, &normal, collider_radius.sinh())
+        else {
+            continue;
+        };
 
         // If new_tanh_distance is out of range, no collision occurred.
         if new_tanh_distance >= hit.as_ref().map_or(tanh_distance, |hit| hit.tanh_distance) {
@@ -263,10 +261,15 @@ fn find_vertex_collision(
                 - vertex_normal1 * math::mip(&vertex_normal1, &vertex_normal2)),
         );
 
-        let Some(new_tanh_distance) =
-            solve_sphere_point_intersection(ray, &vertex_normal0, &vertex_normal1, &vertex_normal2, collider_radius.sinh()) else {
-                continue;
-            };
+        let Some(new_tanh_distance) = solve_sphere_point_intersection(
+            ray,
+            &vertex_normal0,
+            &vertex_normal1,
+            &vertex_normal2,
+            collider_radius.sinh(),
+        ) else {
+            continue;
+        };
 
         // If new_tanh_distance is out of range, no collision occurred.
         if new_tanh_distance >= hit.as_ref().map_or(tanh_distance, |hit| hit.tanh_distance) {
