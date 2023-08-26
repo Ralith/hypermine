@@ -301,11 +301,7 @@ pub struct Asset<T: 'static> {
 
 impl<T: 'static> Clone for Asset<T> {
     fn clone(&self) -> Self {
-        Self {
-            table: self.table,
-            index: self.index,
-            _marker: PhantomData,
-        }
+        *self
     }
 }
 
