@@ -1,10 +1,9 @@
 #![allow(clippy::len_without_is_empty)]
 
-use std::convert::TryFrom;
-use std::fmt;
-use std::num::NonZeroU32;
+use std::collections::VecDeque;
 
 use blake3::Hasher;
+use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -16,7 +15,7 @@ use crate::{
 /// Graph of the right dodecahedral tiling of H^3
 #[derive(Debug, Clone)]
 pub struct Graph<N> {
-    nodes: Vec<Node<N>>,
+    nodes: FxHashMap<NodeId, Node<N>>,
     /// This field stores implicitly added nodes to ensure that they're initialized in the correct
     /// order
     fresh: Vec<NodeId>,
@@ -24,8 +23,10 @@ pub struct Graph<N> {
 
 impl<N> Graph<N> {
     pub fn new() -> Self {
+        let mut nodes = FxHashMap::default();
+        nodes.insert(NodeId::ROOT, Node::new(None, 0));
         Self {
-            nodes: vec![Node::new(None, 0, 0)],
+            nodes,
             fresh: vec![NodeId::ROOT],
         }
     }
@@ -37,7 +38,7 @@ impl<N> Graph<N> {
 
     #[inline]
     pub fn contains(&self, node: NodeId) -> bool {
-        node.0.get() as usize <= self.nodes.len()
+        self.nodes.contains_key(&node)
     }
 
     /// Nodes created since the last call to `clear_fresh`
@@ -93,22 +94,22 @@ impl<N> Graph<N> {
 
     #[inline]
     pub fn get(&self, node: NodeId) -> &Option<N> {
-        &self.nodes[node.idx()].value
+        &self.nodes[&node].value
     }
 
     #[inline]
     pub fn get_mut(&mut self, node: NodeId) -> &mut Option<N> {
-        &mut self.nodes[node.idx()].value
+        &mut self.nodes.get_mut(&node).unwrap().value
     }
 
     #[inline]
     pub fn neighbor(&self, node: NodeId, which: Side) -> Option<NodeId> {
-        self.nodes[node.idx()].neighbors[which as usize]
+        self.nodes[&node].neighbors[which as usize]
     }
 
     #[inline]
     pub fn length(&self, node: NodeId) -> u32 {
-        self.nodes[node.idx()].length
+        self.nodes[&node].length
     }
 
     /// Given a `transform` relative to a `reference` node, computes the node
@@ -141,21 +142,18 @@ impl<N> Graph<N> {
 
     #[inline]
     pub fn parent(&self, node: NodeId) -> Option<Side> {
-        self.nodes[node.idx()].parent_side
+        self.nodes[&node].parent_side
     }
 
-    /// Iterate over every node and its parent
+    /// Iterate over every node and its parent except the root
     pub fn tree(&self) -> TreeIter<'_, N> {
-        TreeIter {
-            id: NodeId::from_idx(1),
-            remaining: &self.nodes[1..],
-        }
+        TreeIter::new(self)
     }
 
     /// Ensures that the neighbour node at a particular side of a particular node exists in the graph,
     /// as well as the nodes from the origin to the neighbour node.
     pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
-        let v = &self.nodes[node.idx()];
+        let v = &self.nodes[&node];
         if let Some(x) = v.neighbors[side as usize] {
             // Neighbor already exists
             return x;
@@ -173,7 +171,7 @@ impl<N> Graph<N> {
         }
 
         // Neighbor is closer to the origin; find it, backfilling if necessary
-        let x = self.nodes[v.parent().unwrap().idx()].neighbors[side as usize].unwrap();
+        let x = self.nodes[&v.parent().unwrap()].neighbors[side as usize].unwrap();
         let parent_side = v.parent_side.unwrap();
         let neighbor = self.ensure_neighbor(x, parent_side);
         self.link_neighbors(node, neighbor, side);
@@ -182,8 +180,8 @@ impl<N> Graph<N> {
 
     /// Whether `node`'s neighbor along `side` is closer than it to the origin
     fn is_near_side(&self, node: NodeId, side: Side) -> bool {
-        let v = &self.nodes[node.idx()];
-        v.neighbors[side as usize].map_or(false, |x| self.nodes[x.idx()].length < v.length)
+        let v = &self.nodes[&node];
+        v.neighbors[side as usize].map_or(false, |x| self.nodes[&x].length < v.length)
     }
 
     pub fn insert_child(&mut self, parent: NodeId, side: Side) -> NodeId {
@@ -199,16 +197,15 @@ impl<N> Graph<N> {
             .min_by_key(|&(side, _)| side)
             .unwrap();
         let mut hasher = Hasher::new();
-        hasher.update(&self.nodes[predecessor.idx()].hash.to_le_bytes());
+        hasher.update(&predecessor.0.to_le_bytes());
         hasher.update(&[path_side as u8]);
         let mut xof = hasher.finalize_xof();
         let mut hash = [0; 16];
         xof.fill(&mut hash);
-        let hash = u128::from_le_bytes(hash);
+        let id = NodeId(u128::from_le_bytes(hash));
 
-        let id = NodeId::from_idx(self.nodes.len());
-        let length = self.nodes[parent.idx()].length + 1;
-        self.nodes.push(Node::new(Some(side), length, hash));
+        let length = self.nodes[&parent].length + 1;
+        self.nodes.insert(id, Node::new(Some(side), length));
         self.link_neighbors(id, parent, side);
         for (side, neighbor) in shorter_neighbors {
             self.link_neighbors(id, neighbor, side);
@@ -219,7 +216,7 @@ impl<N> Graph<N> {
 
     #[inline]
     pub fn hash_of(&self, node: NodeId) -> u128 {
-        self.nodes[node.idx()].hash
+        node.0
     }
 
     /// Ensure all shorter neighbors of a not-yet-created child node exist and return them, excluding the given parent node
@@ -237,7 +234,7 @@ impl<N> Graph<N> {
             {
                 continue;
             }
-            let x = self.nodes[parent.idx()].neighbors[neighbor_side as usize].unwrap();
+            let x = self.nodes[&parent].neighbors[neighbor_side as usize].unwrap();
             let neighbor = self.ensure_neighbor(x, parent_side);
             neighbors[count] = Some((neighbor_side, neighbor));
             count += 1;
@@ -248,11 +245,11 @@ impl<N> Graph<N> {
     /// Register `a` and `b` as adjacent along `side`
     fn link_neighbors(&mut self, a: NodeId, b: NodeId, side: Side) {
         debug_assert!(
-            self.nodes[a.idx()].neighbors[side as usize].is_none()
-                && self.nodes[b.idx()].neighbors[side as usize].is_none()
+            self.nodes[&a].neighbors[side as usize].is_none()
+                && self.nodes[&b].neighbors[side as usize].is_none()
         );
-        self.nodes[a.idx()].neighbors[side as usize] = Some(b);
-        self.nodes[b.idx()].neighbors[side as usize] = Some(a);
+        self.nodes.get_mut(&a).unwrap().neighbors[side as usize] = Some(b);
+        self.nodes.get_mut(&b).unwrap().neighbors[side as usize] = Some(a);
     }
 }
 
@@ -262,31 +259,11 @@ impl<N> Default for Graph<N> {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct NodeId(NonZeroU32);
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct NodeId(u128);
 
 impl NodeId {
-    pub const ROOT: Self = Self(unsafe { NonZeroU32::new_unchecked(1) });
-
-    fn from_idx(x: usize) -> Self {
-        Self(NonZeroU32::new(u32::try_from(x + 1).expect("graph grew too large")).unwrap())
-    }
-
-    fn idx(self) -> usize {
-        (self.0.get() - 1) as usize
-    }
-}
-
-impl From<NodeId> for u32 {
-    fn from(x: NodeId) -> u32 {
-        x.0.get() - 1
-    }
-}
-
-impl fmt::Debug for NodeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.0.get() - 1).fmt(f)
-    }
+    pub const ROOT: Self = Self(0);
 }
 
 #[derive(Debug, Clone)]
@@ -296,17 +273,15 @@ struct Node<N> {
     /// Distance to origin via parents
     length: u32,
     neighbors: [Option<NodeId>; SIDE_COUNT],
-    hash: u128,
 }
 
 impl<N> Node<N> {
-    fn new(parent_side: Option<Side>, length: u32, hash: u128) -> Self {
+    fn new(parent_side: Option<Side>, length: u32) -> Self {
         Self {
             value: None,
             parent_side,
             length,
             neighbors: [None; SIDE_COUNT],
-            hash,
         }
     }
 
@@ -315,18 +290,48 @@ impl<N> Node<N> {
     }
 }
 
+// Iterates through the graph with breadth-first search
 pub struct TreeIter<'a, N> {
-    id: NodeId,
-    remaining: &'a [Node<N>],
+    queue: VecDeque<NodeId>,
+    visited: FxHashSet<NodeId>,
+    nodes: &'a FxHashMap<NodeId, Node<N>>,
+}
+
+impl<'a, N> TreeIter<'a, N> {
+    fn new(graph: &'a Graph<N>) -> Self {
+        let mut result = TreeIter {
+            queue: VecDeque::from([NodeId::ROOT]),
+            visited: FxHashSet::from_iter([NodeId::ROOT]),
+            nodes: &graph.nodes,
+        };
+
+        // Skip the root node
+        let _ = result.next_node();
+
+        result
+    }
+
+    // Returns the next Node in the traversal. The iterator returns its parent and parent side.
+    fn next_node(&mut self) -> Option<&Node<N>> {
+        let node_id = self.queue.pop_front()?;
+        let node = &self.nodes[&node_id];
+        for side in Side::iter() {
+            if let Some(neighbor) = node.neighbors[side as usize] {
+                if !self.visited.contains(&neighbor) {
+                    self.queue.push_back(neighbor);
+                    self.visited.insert(neighbor);
+                }
+            }
+        }
+        Some(node)
+    }
 }
 
 impl<N> Iterator for TreeIter<'_, N> {
     type Item = (Side, NodeId);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (node, rest) = self.remaining.split_first()?;
-        self.remaining = rest;
-        self.id = NodeId::from_idx(self.id.idx() + 1);
+        let node = self.next_node()?;
         let side = node.parent_side.unwrap();
         Some((side, node.neighbors[side as usize].unwrap()))
     }
@@ -334,8 +339,9 @@ impl<N> Iterator for TreeIter<'_, N> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::{proto::Position, traversal::ensure_nearby};
+
+    use super::*;
     use approx::*;
 
     #[test]
@@ -348,14 +354,14 @@ mod tests {
         assert_eq!(graph.len(), 2);
         assert_eq!(a, a2);
         assert_eq!(graph.ensure_neighbor(a, Side::A), NodeId::ROOT);
-        assert_eq!(graph.nodes[a.idx()].length, 1);
+        assert_eq!(graph.nodes[&a].length, 1);
         let b = graph.ensure_neighbor(NodeId::ROOT, Side::B);
         assert_eq!(graph.len(), 3);
         assert_eq!(graph.ensure_neighbor(b, Side::B), NodeId::ROOT);
         let c = graph.ensure_neighbor(a, Side::C);
         assert!(graph.len() > 4);
         assert_eq!(graph.ensure_neighbor(c, Side::C), a);
-        assert_eq!(graph.nodes[c.idx()].length, 2);
+        assert_eq!(graph.nodes[&c].length, 2);
     }
 
     #[test]
@@ -382,7 +388,7 @@ mod tests {
         );
         assert!(common.contains(&NodeId::ROOT));
         let other = common.iter().cloned().find(|&x| x != NodeId::ROOT).unwrap();
-        assert_eq!(graph.nodes[other.idx()].length, 2);
+        assert_eq!(graph.nodes[&other].length, 2);
     }
 
     #[test]
@@ -424,16 +430,14 @@ mod tests {
             let n1 = g.ensure_neighbor(NodeId::ROOT, Side::A);
             let n2 = g.ensure_neighbor(n1, Side::B);
             let n3 = g.ensure_neighbor(n2, Side::C);
-            let n4 = g.ensure_neighbor(n3, Side::D);
-            g.hash_of(n4)
+            g.ensure_neighbor(n3, Side::D)
         };
         let h2 = {
             let mut g = Graph::<()>::new();
             let n1 = g.ensure_neighbor(NodeId::ROOT, Side::C);
             let n2 = g.ensure_neighbor(n1, Side::A);
             let n3 = g.ensure_neighbor(n2, Side::B);
-            let n4 = g.ensure_neighbor(n3, Side::D);
-            g.hash_of(n4)
+            g.ensure_neighbor(n3, Side::D)
         };
 
         assert_eq!(h1, h2);
