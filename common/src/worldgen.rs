@@ -3,9 +3,9 @@ use rand_distr::Normal;
 
 use crate::{
     dodeca::{Side, Vertex},
-    graph::NodeId,
+    graph::{Graph, NodeId},
     math,
-    node::{ChunkId, DualGraph, VoxelData},
+    node::{ChunkId, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,
     Plane,
@@ -82,7 +82,7 @@ impl NodeState {
         }
     }
 
-    pub fn child(&self, graph: &DualGraph, node: NodeId, side: Side) -> Self {
+    pub fn child(&self, graph: &Graph, node: NodeId, side: Side) -> Self {
         let mut d = graph
             .descenders(node)
             .map(|(s, n)| (s, &graph.get(n).as_ref().unwrap().state));
@@ -181,7 +181,7 @@ impl ChunkParams {
     /// Extract data necessary to generate a chunk
     ///
     /// Returns `None` if an unpopulated node is needed.
-    pub fn new(dimension: u8, graph: &DualGraph, chunk: ChunkId) -> Option<Self> {
+    pub fn new(dimension: u8, graph: &Graph, chunk: ChunkId) -> Option<Self> {
         let state = &graph.get(chunk.node).as_ref()?.state;
         Some(Self {
             dimension,
@@ -516,7 +516,7 @@ struct ChunkIncidentEnviroFactors {
 ///
 /// Returns `None` if not all incident nodes are populated.
 fn chunk_incident_enviro_factors(
-    graph: &DualGraph,
+    graph: &Graph,
     chunk: ChunkId,
 ) -> Option<ChunkIncidentEnviroFactors> {
     let mut i = chunk
@@ -613,7 +613,7 @@ fn hash(a: u64, b: u64) -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::node::{DualGraph, Node};
+    use crate::node::Node;
     use crate::Chunks;
     use approx::*;
 
@@ -676,7 +676,7 @@ mod test {
 
     #[test]
     fn check_chunk_incident_max_elevations() {
-        let mut g = DualGraph::new();
+        let mut g = Graph::new();
         for (i, path) in Vertex::A.dual_vertices().map(|(_, p)| p).enumerate() {
             let new_node = path.fold(NodeId::ROOT, |node, side| g.ensure_neighbor(node, side));
 

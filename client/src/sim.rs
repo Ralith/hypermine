@@ -9,8 +9,8 @@ use crate::{
 };
 use common::{
     character_controller,
-    graph::NodeId,
-    node::{populate_fresh_nodes, DualGraph},
+    graph::{Graph, NodeId},
+    node::populate_fresh_nodes,
     proto::{self, Character, CharacterInput, CharacterState, Command, Component, Position},
     sanitize_motion_input, EntityId, GraphEntities, SimConfig, Step,
 };
@@ -18,7 +18,7 @@ use common::{
 /// Game state
 pub struct Sim {
     // World state
-    pub graph: DualGraph,
+    pub graph: Graph,
     pub graph_entities: GraphEntities,
     entity_ids: FxHashMap<EntityId, Entity>,
     pub world: hecs::World,
@@ -53,7 +53,7 @@ pub struct Sim {
 
 impl Sim {
     pub fn new(cfg: SimConfig, local_character_id: EntityId) -> Self {
-        let mut graph = DualGraph::new();
+        let mut graph = Graph::new();
         populate_fresh_nodes(&mut graph);
         Self {
             graph,

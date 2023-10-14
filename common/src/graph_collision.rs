@@ -5,12 +5,13 @@ use fxhash::FxHashSet;
 use crate::{
     chunk_collision::chunk_sphere_cast,
     dodeca::{self, Vertex},
+    graph::Graph,
     math,
-    node::{Chunk, ChunkId, ChunkLayout, DualGraph},
+    node::{Chunk, ChunkId, ChunkLayout},
     proto::Position,
 };
 
-/// Performs sphere casting (swept collision query) against the voxels in the `DualGraph`
+/// Performs sphere casting (swept collision query) against the voxels in the `Graph`
 ///
 /// The `ray` parameter and any resulting hit normals are given in the local coordinate system of `position`.
 ///
@@ -21,7 +22,7 @@ use crate::{
 /// the closest node with ungenerated chunks is greater than `cast_distance + collider_radius + dodeca::BOUNDING_SPHERE_RADIUS`
 pub fn sphere_cast(
     collider_radius: f32,
-    graph: &DualGraph,
+    graph: &Graph,
     layout: &ChunkLayout,
     position: &Position,
     ray: &Ray,
@@ -201,7 +202,7 @@ impl std::ops::Mul<&Ray> for na::Matrix4<f32> {
 mod tests {
     use crate::{
         dodeca::{Side, Vertex},
-        graph::NodeId,
+        graph::{Graph, NodeId},
         node::{populate_fresh_nodes, VoxelData},
         proto::Position,
         traversal::{ensure_nearby, nearby_nodes},
@@ -260,7 +261,7 @@ mod tests {
         fn execute(self) {
             let dimension: usize = 12;
             let layout = ChunkLayout::new(dimension);
-            let mut graph = DualGraph::new();
+            let mut graph = Graph::new();
             let graph_radius = 3.0;
 
             // Set up a graph with void chunks
@@ -342,7 +343,7 @@ mod tests {
             }
         }
 
-        fn populate_voxel(graph: &mut DualGraph, dimension: usize, voxel_location: &VoxelLocation) {
+        fn populate_voxel(graph: &mut Graph, dimension: usize, voxel_location: &VoxelLocation) {
             // Find the ChunkId of the given chunk
             let chunk = ChunkId::new(
                 voxel_location
@@ -366,7 +367,7 @@ mod tests {
                 + voxel_location.coords[2] * (dimension + 2).pow(2)] = Material::Dirt;
         }
 
-        fn get_voxel_chunk(graph: &DualGraph, voxel_location: &VoxelLocation) -> ChunkId {
+        fn get_voxel_chunk(graph: &Graph, voxel_location: &VoxelLocation) -> ChunkId {
             ChunkId::new(
                 voxel_location
                     .node_path
@@ -513,7 +514,7 @@ mod tests {
     fn sphere_cast_near_unloaded_chunk() {
         let dimension: usize = 12;
         let layout = ChunkLayout::new(dimension);
-        let mut graph = DualGraph::new();
+        let mut graph = Graph::new();
 
         let sides = Vertex::A.canonical_sides();
 

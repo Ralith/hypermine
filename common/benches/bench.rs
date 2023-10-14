@@ -4,7 +4,7 @@ use common::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     node::Chunk,
-    node::{populate_fresh_nodes, ChunkId, DualGraph},
+    node::{populate_fresh_nodes, ChunkId},
     proto::Position,
     traversal::ensure_nearby,
     worldgen::ChunkParams,
@@ -25,7 +25,7 @@ fn build_graph(c: &mut Criterion) {
 
     c.bench_function("nodegen 1000", |b| {
         b.iter(|| {
-            let mut graph = DualGraph::new();
+            let mut graph = Graph::new();
             let mut n = NodeId::ROOT;
             for _ in 0..500 {
                 n = graph.ensure_neighbor(n, Side::A);
@@ -38,7 +38,7 @@ fn build_graph(c: &mut Criterion) {
 
     c.bench_function("worldgen", |b| {
         b.iter(|| {
-            let mut graph = DualGraph::new();
+            let mut graph = Graph::new();
             ensure_nearby(&mut graph, &Position::origin(), 3.0);
             let fresh = graph.fresh().to_vec();
             populate_fresh_nodes(&mut graph);

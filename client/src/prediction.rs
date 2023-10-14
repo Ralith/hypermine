@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use common::{
     character_controller,
-    node::DualGraph,
+    graph::Graph,
     proto::{CharacterInput, Position},
     SimConfig,
 };
@@ -35,7 +35,7 @@ impl PredictedMotion {
 
     /// Update for input about to be sent to the server, returning the generation it should be
     /// tagged with
-    pub fn push(&mut self, cfg: &SimConfig, graph: &DualGraph, input: &CharacterInput) -> u16 {
+    pub fn push(&mut self, cfg: &SimConfig, graph: &Graph, input: &CharacterInput) -> u16 {
         character_controller::run_character_step(
             cfg,
             graph,
@@ -54,7 +54,7 @@ impl PredictedMotion {
     pub fn reconcile(
         &mut self,
         cfg: &SimConfig,
-        graph: &DualGraph,
+        graph: &Graph,
         generation: u16,
         position: Position,
         velocity: na::Vector3<f32>,
@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn wraparound() {
         let mock_cfg = SimConfig::from_raw(&common::SimConfigRaw::default());
-        let mut mock_graph = DualGraph::new();
+        let mut mock_graph = Graph::new();
         common::node::populate_fresh_nodes(&mut mock_graph);
         let mock_character_input = CharacterInput {
             movement: na::Vector3::x(),
