@@ -10,7 +10,7 @@ use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::{math, Chunks};
 
-pub type DualGraph = Graph<Node>;
+pub type DualGraph = Graph;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkId {

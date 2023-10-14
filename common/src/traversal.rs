@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// Ensure all nodes within `distance` of `start` exist
-pub fn ensure_nearby<N>(graph: &mut Graph<N>, start: &Position, distance: f64) {
+pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f64) {
     let mut pending = Vec::<(NodeId, na::Matrix4<f64>)>::new();
     let mut visited = FxHashSet::<NodeId>::default();
 
@@ -35,8 +35,8 @@ pub fn ensure_nearby<N>(graph: &mut Graph<N>, start: &Position, distance: f64) {
 
 /// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
 /// `start`
-pub fn nearby_nodes<N>(
-    graph: &Graph<N>,
+pub fn nearby_nodes(
+    graph: &Graph,
     start: &Position,
     distance: f64,
 ) -> Vec<(NodeId, na::Matrix4<f32>)> {
