@@ -676,7 +676,7 @@ mod test {
 
     #[test]
     fn check_chunk_incident_max_elevations() {
-        let mut g = Graph::new();
+        let mut g = Graph::new(1);
         for (i, path) in Vertex::A.dual_vertices().map(|(_, p)| p).enumerate() {
             let new_node = path.fold(NodeId::ROOT, |node, side| g.ensure_neighbor(node, side));
 

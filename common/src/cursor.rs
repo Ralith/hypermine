@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn cursor_identities() {
-        let mut graph = Graph::new();
+        let mut graph = Graph::new(1);
         ensure_nearby(&mut graph, &Position::origin(), 3.0);
         let start = Cursor::from_vertex(NodeId::ROOT, Vertex::A);
         let wiggle = |dir| {

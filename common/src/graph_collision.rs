@@ -261,7 +261,7 @@ mod tests {
         fn execute(self) {
             let dimension: usize = 12;
             let layout = ChunkLayout::new(dimension);
-            let mut graph = Graph::new();
+            let mut graph = Graph::new(dimension);
             let graph_radius = 3.0;
 
             // Set up a graph with void chunks
@@ -514,7 +514,7 @@ mod tests {
     fn sphere_cast_near_unloaded_chunk() {
         let dimension: usize = 12;
         let layout = ChunkLayout::new(dimension);
-        let mut graph = Graph::new();
+        let mut graph = Graph::new(dimension);
 
         let sides = Vertex::A.canonical_sides();
 

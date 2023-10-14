@@ -53,7 +53,7 @@ pub struct Sim {
 
 impl Sim {
     pub fn new(cfg: SimConfig, local_character_id: EntityId) -> Self {
-        let mut graph = Graph::new();
+        let mut graph = Graph::new(cfg.chunk_size as usize);
         populate_fresh_nodes(&mut graph);
         Self {
             graph,

@@ -39,16 +39,16 @@ pub struct Sim {
 impl Sim {
     pub fn new(cfg: Arc<SimConfig>) -> Self {
         let mut result = Self {
-            cfg,
             rng: SmallRng::from_entropy(),
             step: 0,
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
-            graph: Graph::new(),
+            graph: Graph::new(cfg.chunk_size as usize),
             spawns: Vec::new(),
             despawns: Vec::new(),
             graph_entities: GraphEntities::new(),
             dirty_nodes: FxHashSet::default(),
+            cfg,
         };
 
         ensure_nearby(
