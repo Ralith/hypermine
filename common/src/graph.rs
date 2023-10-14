@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dodeca::{Side, SIDE_COUNT},
     math,
-    node::{ChunkId, Node},
+    node::{ChunkId, ChunkLayout, Node},
 };
 
 /// Graph of the right dodecahedral tiling of H^3
@@ -18,15 +18,17 @@ pub struct Graph {
     /// This field stores implicitly added nodes to ensure that they're initialized in the correct
     /// order
     fresh: Vec<NodeId>,
+    layout: ChunkLayout,
 }
 
 impl Graph {
-    pub fn new() -> Self {
+    pub fn new(dimension: usize) -> Self {
         let mut nodes = FxHashMap::default();
         nodes.insert(NodeId::ROOT, NodeContainer::new(None, 0));
         Self {
             nodes,
             fresh: vec![NodeId::ROOT],
+            layout: ChunkLayout::new(dimension),
         }
     }
 
@@ -253,12 +255,6 @@ impl Graph {
     }
 }
 
-impl Default for Graph {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct NodeId(u128);
 
@@ -345,7 +341,7 @@ mod tests {
 
     #[test]
     fn parent_child_relationships() {
-        let mut graph = Graph::default();
+        let mut graph = Graph::new(1);
         assert_eq!(graph.len(), 1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         assert_eq!(graph.len(), 2);
@@ -365,7 +361,7 @@ mod tests {
 
     #[test]
     fn children_have_common_neighbor() {
-        let mut graph = Graph::default();
+        let mut graph = Graph::new(1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         let b = graph.ensure_neighbor(NodeId::ROOT, Side::B);
         let a_neighbors = Side::iter()
@@ -392,7 +388,7 @@ mod tests {
 
     #[test]
     fn normalize_transform() {
-        let mut graph = Graph::default();
+        let mut graph = Graph::new(1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
             let (node, xf) =
@@ -409,9 +405,9 @@ mod tests {
 
     #[test]
     fn rebuild_from_tree() {
-        let mut a = Graph::default();
+        let mut a = Graph::new(1);
         ensure_nearby(&mut a, &Position::origin(), 3.0);
-        let mut b = Graph::default();
+        let mut b = Graph::new(1);
         for (side, parent) in a.tree() {
             b.insert_child(parent, side);
         }
@@ -425,14 +421,14 @@ mod tests {
     #[test]
     fn hash_consistency() {
         let h1 = {
-            let mut g = Graph::new();
+            let mut g = Graph::new(1);
             let n1 = g.ensure_neighbor(NodeId::ROOT, Side::A);
             let n2 = g.ensure_neighbor(n1, Side::B);
             let n3 = g.ensure_neighbor(n2, Side::C);
             g.ensure_neighbor(n3, Side::D)
         };
         let h2 = {
-            let mut g = Graph::new();
+            let mut g = Graph::new(1);
             let n1 = g.ensure_neighbor(NodeId::ROOT, Side::C);
             let n2 = g.ensure_neighbor(n1, Side::A);
             let n3 = g.ensure_neighbor(n2, Side::B);

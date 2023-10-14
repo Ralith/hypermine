@@ -13,7 +13,7 @@ use common::{
 fn build_graph(c: &mut Criterion) {
     c.bench_function("build_graph 1000", |b| {
         b.iter(|| {
-            let mut graph = Graph::new();
+            let mut graph = Graph::new(12);
             let mut n = NodeId::ROOT;
             for _ in 0..500 {
                 n = graph.ensure_neighbor(n, Side::A);
@@ -25,7 +25,7 @@ fn build_graph(c: &mut Criterion) {
 
     c.bench_function("nodegen 1000", |b| {
         b.iter(|| {
-            let mut graph = Graph::new();
+            let mut graph = Graph::new(12);
             let mut n = NodeId::ROOT;
             for _ in 0..500 {
                 n = graph.ensure_neighbor(n, Side::A);
@@ -38,7 +38,7 @@ fn build_graph(c: &mut Criterion) {
 
     c.bench_function("worldgen", |b| {
         b.iter(|| {
-            let mut graph = Graph::new();
+            let mut graph = Graph::new(12);
             ensure_nearby(&mut graph, &Position::origin(), 3.0);
             let fresh = graph.fresh().to_vec();
             populate_fresh_nodes(&mut graph);
