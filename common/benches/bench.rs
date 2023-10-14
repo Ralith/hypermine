@@ -13,7 +13,7 @@ use common::{
 fn build_graph(c: &mut Criterion) {
     c.bench_function("build_graph 1000", |b| {
         b.iter(|| {
-            let mut graph = Graph::<()>::new();
+            let mut graph = Graph::new();
             let mut n = NodeId::ROOT;
             for _ in 0..500 {
                 n = graph.ensure_neighbor(n, Side::A);
