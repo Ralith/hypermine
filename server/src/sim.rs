@@ -11,7 +11,7 @@ use common::{
     character_controller, dodeca,
     graph::{Graph, NodeId},
     math,
-    node::{populate_fresh_nodes, Chunk, DualGraph},
+    node::{populate_fresh_nodes, Chunk},
     proto::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
@@ -29,7 +29,7 @@ pub struct Sim {
     step: Step,
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
-    graph: DualGraph,
+    graph: Graph,
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
     graph_entities: GraphEntities,
@@ -60,7 +60,7 @@ impl Sim {
     }
 
     pub fn save(&mut self, save: &mut save::Save) -> Result<(), save::DbError> {
-        fn path_from_origin(graph: &DualGraph, mut node: NodeId) -> Vec<u32> {
+        fn path_from_origin(graph: &Graph, mut node: NodeId) -> Vec<u32> {
             let mut result = Vec::new();
             while let Some(parent) = graph.parent(node) {
                 result.push(parent as u32);

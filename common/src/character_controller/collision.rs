@@ -2,11 +2,7 @@
 
 use tracing::error;
 
-use crate::{
-    graph_collision, math,
-    node::{ChunkLayout, DualGraph},
-    proto::Position,
-};
+use crate::{graph::Graph, graph_collision, math, node::ChunkLayout, proto::Position};
 
 /// Checks for collisions when a character moves with a character-relative displacement vector of `relative_displacement`.
 pub fn check_collision(
@@ -71,7 +67,7 @@ pub fn check_collision(
 
 /// Contains information about the character and the world that is only relevant for collision checking
 pub struct CollisionContext<'a> {
-    pub graph: &'a DualGraph,
+    pub graph: &'a Graph,
     pub chunk_layout: ChunkLayout,
     pub radius: f32,
 }
