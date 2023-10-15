@@ -5,7 +5,7 @@ use std::{f32, os::raw::c_char};
 use ash::{extensions::khr, vk};
 use lahar::DedicatedImage;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use tracing::info;
+use tracing::{error, info};
 use winit::{
     dpi::PhysicalSize,
     event::{
@@ -16,7 +16,8 @@ use winit::{
 };
 
 use super::{Base, Core, Draw, Frustum};
-use crate::{Config, Sim};
+use crate::Net;
+use crate::{net, Config, Sim};
 
 /// OS window
 pub struct EarlyWindow {
@@ -53,7 +54,8 @@ pub struct Window {
     swapchain: Option<SwapchainMgr>,
     swapchain_needs_update: bool,
     draw: Option<Draw>,
-    sim: Sim,
+    sim: Option<Sim>,
+    net: Net,
 }
 
 impl Window {
@@ -63,7 +65,7 @@ impl Window {
         core: Arc<Core>,
         config: Arc<Config>,
         metrics: Arc<crate::metrics::Recorder>,
-        sim: Sim,
+        net: Net,
     ) -> Self {
         let surface = unsafe {
             ash_window::create_surface(
@@ -88,7 +90,8 @@ impl Window {
             swapchain: None,
             swapchain_needs_update: false,
             draw: None,
-            sim,
+            sim: None,
+            net,
         }
     }
 
@@ -126,50 +129,49 @@ impl Window {
             .unwrap()
             .run(move |event, _, control_flow| match event {
                 Event::MainEventsCleared => {
-                    let this_frame = Instant::now();
-                    let dt = this_frame - last_frame;
-                    let move_direction: na::Vector3<f32> = na::Vector3::x()
-                        * (right as u8 as f32 - left as u8 as f32)
-                        + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
-                        + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
-                    self.sim
-                        .set_movement_input(if move_direction.norm_squared() > 1.0 {
+                    while let Ok(msg) = self.net.incoming.try_recv() {
+                        self.handle_net(msg);
+                    }
+
+                    if let Some(sim) = self.sim.as_mut() {
+                        let this_frame = Instant::now();
+                        let dt = this_frame - last_frame;
+                        let move_direction: na::Vector3<f32> = na::Vector3::x()
+                            * (right as u8 as f32 - left as u8 as f32)
+                            + na::Vector3::y() * (up as u8 as f32 - down as u8 as f32)
+                            + na::Vector3::z() * (back as u8 as f32 - forward as u8 as f32);
+                        sim.set_movement_input(if move_direction.norm_squared() > 1.0 {
                             move_direction.normalize()
                         } else {
                             move_direction
                         });
 
-                    self.sim.rotate(&na::UnitQuaternion::from_axis_angle(
-                        &-na::Vector3::z_axis(),
-                        (clockwise as u8 as f32 - anticlockwise as u8 as f32)
-                            * 2.0
-                            * dt.as_secs_f32(),
-                    ));
+                        sim.rotate(&na::UnitQuaternion::from_axis_angle(
+                            &-na::Vector3::z_axis(),
+                            (clockwise as u8 as f32 - anticlockwise as u8 as f32)
+                                * 2.0
+                                * dt.as_secs_f32(),
+                        ));
 
-                    let had_params = self.sim.params().is_some();
-
-                    self.sim.step(dt);
-                    last_frame = this_frame;
-
-                    if !had_params {
-                        if let Some(params) = self.sim.params() {
-                            self.draw.as_mut().unwrap().configure(params);
-                        }
+                        sim.step(dt, &mut self.net);
+                        last_frame = this_frame;
                     }
 
                     self.draw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
                     DeviceEvent::MouseMotion { delta } if mouse_captured => {
-                        const SENSITIVITY: f32 = 2e-3;
-                        let rot = na::UnitQuaternion::from_axis_angle(
-                            &na::Vector3::y_axis(),
-                            -delta.0 as f32 * SENSITIVITY,
-                        ) * na::UnitQuaternion::from_axis_angle(
-                            &na::Vector3::x_axis(),
-                            -delta.1 as f32 * SENSITIVITY,
-                        );
-                        self.sim.rotate(&rot);
+                        if let Some(sim) = self.sim.as_mut() {
+                            const SENSITIVITY: f32 = 2e-3;
+                            let rot = na::UnitQuaternion::from_axis_angle(
+                                &na::Vector3::y_axis(),
+                                -delta.0 as f32 * SENSITIVITY,
+                            ) * na::UnitQuaternion::from_axis_angle(
+                                &na::Vector3::x_axis(),
+                                -delta.1 as f32 * SENSITIVITY,
+                            );
+                            sim.rotate(&rot);
+                        }
                     }
                     _ => {}
                 },
@@ -231,7 +233,9 @@ impl Window {
                             down = state == ElementState::Pressed;
                         }
                         VirtualKeyCode::V if state == ElementState::Pressed => {
-                            self.sim.toggle_no_clip();
+                            if let Some(sim) = self.sim.as_mut() {
+                                sim.toggle_no_clip();
+                            }
                         }
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
@@ -254,6 +258,28 @@ impl Window {
                 }
                 _ => {}
             });
+    }
+
+    fn handle_net(&mut self, msg: net::Message) {
+        match msg {
+            net::Message::ConnectionLost(e) => {
+                error!("connection lost: {}", e);
+            }
+            net::Message::Hello(msg) => {
+                let sim = Sim::new(msg.sim_config, msg.character);
+                if let Some(draw) = self.draw.as_mut() {
+                    draw.configure(sim.cfg());
+                }
+                self.sim = Some(sim);
+            }
+            msg => {
+                if let Some(sim) = self.sim.as_mut() {
+                    sim.handle_net(msg);
+                } else {
+                    error!("Received game data before ServerHello");
+                }
+            }
+        }
     }
 
     /// Draw a new frame
@@ -292,7 +318,7 @@ impl Window {
             let frustum = Frustum::from_vfov(f32::consts::FRAC_PI_4 * 1.2, aspect_ratio);
             // Render the frame
             draw.draw(
-                &mut self.sim,
+                self.sim.as_mut(),
                 frame.buffer,
                 frame.depth_view,
                 swapchain.state.extent,
