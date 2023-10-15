@@ -2,7 +2,7 @@
 
 use tracing::error;
 
-use crate::{graph::Graph, graph_collision, math, node::ChunkLayout, proto::Position};
+use crate::{graph::Graph, graph_collision, math, proto::Position};
 
 /// Checks for collisions when a character moves with a character-relative displacement vector of `relative_displacement`.
 pub fn check_collision(
@@ -28,7 +28,6 @@ pub fn check_collision(
     let cast_hit = graph_collision::sphere_cast(
         collision_context.radius,
         collision_context.graph,
-        &collision_context.chunk_layout,
         position,
         &ray,
         tanh_distance,
@@ -68,7 +67,6 @@ pub fn check_collision(
 /// Contains information about the character and the world that is only relevant for collision checking
 pub struct CollisionContext<'a> {
     pub graph: &'a Graph,
-    pub chunk_layout: ChunkLayout,
     pub radius: f32,
 }
 

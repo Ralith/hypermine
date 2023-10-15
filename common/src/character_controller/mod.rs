@@ -12,7 +12,6 @@ use crate::{
     },
     graph::Graph,
     math,
-    node::ChunkLayout,
     proto::{CharacterInput, Position},
     sanitize_motion_input,
     sim_config::CharacterConfig,
@@ -33,7 +32,6 @@ pub fn run_character_step(
         cfg: &sim_config.character,
         collision_context: CollisionContext {
             graph,
-            chunk_layout: ChunkLayout::new(sim_config.chunk_size as usize),
             radius: sim_config.character.character_radius,
         },
         up: graph.get_relative_up(position).unwrap(),

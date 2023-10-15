@@ -33,6 +33,11 @@ impl Graph {
     }
 
     #[inline]
+    pub fn layout(&self) -> &ChunkLayout {
+        &self.layout
+    }
+
+    #[inline]
     pub fn len(&self) -> u32 {
         self.nodes.len() as u32
     }
