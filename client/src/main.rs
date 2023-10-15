@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use client::{graphics, metrics, net, Config, Sim};
+use client::{graphics, metrics, net, Config};
 use save::Save;
 
 use ash::extensions::khr;
@@ -65,10 +65,9 @@ fn main() {
 
     // Kick off networking
     let net = net::spawn(config.clone());
-    let sim = Sim::new(net);
 
     // Finish creating the window, including the Vulkan resources used to render to it
-    let window = graphics::Window::new(window, core.clone(), config, metrics, sim);
+    let window = graphics::Window::new(window, core.clone(), config, metrics, net);
 
     // Initialize widely-shared graphics resources
     let gfx = Arc::new(

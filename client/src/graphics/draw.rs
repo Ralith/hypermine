@@ -7,9 +7,9 @@ use lahar::Staged;
 use metrics::histogram;
 
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
-use crate::{sim, Asset, Config, Loader, Sim};
-use common::math;
+use crate::{Asset, Config, Loader, Sim};
 use common::proto::{Character, Position};
+use common::{math, SimConfig};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -215,12 +215,12 @@ impl Draw {
     }
 
     /// Called with server-defined world parameters once they're known
-    pub fn configure(&mut self, params: &sim::Parameters) {
+    pub fn configure(&mut self, cfg: &SimConfig) {
         let voxels = Voxels::new(
             &self.gfx,
             self.cfg.clone(),
             &mut self.loader,
-            u32::from(params.cfg.chunk_size),
+            u32::from(cfg.chunk_size),
             PIPELINE_DEPTH,
         );
         for state in &mut self.states {
@@ -256,7 +256,7 @@ impl Draw {
     /// attachment.
     pub unsafe fn draw(
         &mut self,
-        sim: &mut Sim,
+        mut sim: Option<&mut Sim>,
         framebuffer: vk::Framebuffer,
         depth_view: vk::ImageView,
         extent: vk::Extent2D,
@@ -264,7 +264,7 @@ impl Draw {
         frustum: &Frustum,
     ) {
         let draw_started = Instant::now();
-        let view = sim.view();
+        let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
         let projection = frustum.projection(1.0e-4);
         let view_projection = projection.matrix() * math::mtranspose(&view.local);
         self.loader.drive();
@@ -356,7 +356,7 @@ impl Draw {
                 .build(),
         );
 
-        if let Some(ref mut voxels) = self.voxels {
+        if let (Some(voxels), Some(sim)) = (self.voxels.as_mut(), sim.as_mut()) {
             voxels.prepare(
                 device,
                 state.voxels.as_mut().unwrap(),
@@ -434,7 +434,7 @@ impl Draw {
             );
         }
 
-        if let Some(params) = sim.params() {
+        if let Some(sim) = sim.as_deref() {
             for (node, transform) in nearby_nodes(
                 &sim.graph,
                 &view,
@@ -453,7 +453,7 @@ impl Draw {
                         if let Ok(ch) = sim.world.get::<&Character>(entity) {
                             let transform = transform
                                 * pos.local
-                                * na::Matrix4::new_scaling(params.cfg.meters_to_absolute)
+                                * na::Matrix4::new_scaling(sim.cfg().meters_to_absolute)
                                 * ch.state.orientation.to_homogeneous();
                             for mesh in &character_model.0 {
                                 self.meshes
