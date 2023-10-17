@@ -100,12 +100,8 @@ impl Voxels {
             self.states.peek_mut(chunk).refcount -= 1;
         }
         while let Some(chunk) = self.worldgen.poll() {
-            sim.graph.get_mut(chunk.node).as_mut().unwrap().chunks[chunk.chunk] =
-                Chunk::Populated {
-                    surface: None,
-                    old_surface: None,
-                    voxels: chunk.voxels,
-                };
+            let chunk_id = ChunkId::new(chunk.node, chunk.chunk);
+            sim.graph.populate_chunk(chunk_id, chunk.voxels);
         }
 
         // Determine what to load/render
@@ -173,6 +169,7 @@ impl Voxels {
                         ref mut surface,
                         ref mut old_surface,
                         ref voxels,
+                        ..
                     } => {
                         if let Some(slot) = surface.or(*old_surface) {
                             // Render an already-extracted surface

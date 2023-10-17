@@ -155,6 +155,7 @@ mod tests {
                 for vertex in dodeca::Vertex::iter() {
                     graph[ChunkId::new(node, vertex)] = Chunk::Populated {
                         voxels: VoxelData::Solid(Material::Void),
+                        modified: false,
                         surface: None,
                         old_surface: None,
                     };
@@ -426,6 +427,7 @@ mod tests {
             for vertex in dodeca::Vertex::iter() {
                 graph[ChunkId::new(node, vertex)] = Chunk::Populated {
                     voxels: VoxelData::Solid(Material::Void),
+                    modified: false,
                     surface: None,
                     old_surface: None,
                 };
