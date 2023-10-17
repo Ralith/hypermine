@@ -4,6 +4,7 @@ use fxhash::FxHashSet;
 
 use crate::{
     chunk_collision::chunk_sphere_cast,
+    collision_math::Ray,
     dodeca::{self, Vertex},
     graph::Graph,
     math,
@@ -162,45 +163,11 @@ pub struct GraphCastHit {
     pub normal: na::Vector4<f32>,
 }
 
-/// A ray in hyperbolic space. The fields must be lorentz normalized, with `mip(position, position) == -1`,
-/// `mip(direction, direction) == 1`, and `mip(position, direction) == 0`.
-#[derive(Debug)]
-pub struct Ray {
-    pub position: na::Vector4<f32>,
-    pub direction: na::Vector4<f32>,
-}
-
-impl Ray {
-    pub fn new(position: na::Vector4<f32>, direction: na::Vector4<f32>) -> Ray {
-        Ray {
-            position,
-            direction,
-        }
-    }
-
-    /// Returns a point along this ray `atanh(tanh_distance)` units away from the origin. This point
-    /// is _not_ lorentz normalized.
-    pub fn ray_point(&self, tanh_distance: f32) -> na::Vector4<f32> {
-        self.position + self.direction * tanh_distance
-    }
-}
-
-impl std::ops::Mul<&Ray> for na::Matrix4<f32> {
-    type Output = Ray;
-
-    #[inline]
-    fn mul(self, rhs: &Ray) -> Self::Output {
-        Ray {
-            position: self * rhs.position,
-            direction: self * rhs.direction,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{
-        dodeca::{Side, Vertex},
+        collision_math::Ray,
+        dodeca::{self, Side, Vertex},
         graph::{Graph, NodeId},
         node::{populate_fresh_nodes, Coords, VoxelData},
         proto::Position,
