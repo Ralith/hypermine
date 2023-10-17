@@ -43,6 +43,27 @@ impl Graph {
         ))
     }
 
+    pub fn get_chunk_neighbor(
+        &self,
+        chunk: ChunkId,
+        coord_axis: CoordAxis,
+        coord_direction: CoordDirection,
+    ) -> Option<ChunkId> {
+        match coord_direction {
+            CoordDirection::Plus => Some(ChunkId::new(
+                chunk.node,
+                chunk.vertex.adjacent_vertices()[coord_axis as usize],
+            )),
+            CoordDirection::Minus => Some(ChunkId::new(
+                self.neighbor(
+                    chunk.node,
+                    chunk.vertex.canonical_sides()[coord_axis as usize],
+                )?,
+                chunk.vertex,
+            )),
+        }
+    }
+
     pub fn get_block_neighbor(
         &self,
         mut chunk: ChunkId,
@@ -85,6 +106,36 @@ impl Graph {
         Some((chunk, coords))
     }
 
+    /// Populates a chunk with the given voxel data and ensures that margins are correctly cleared if necessary.
+    pub fn populate_chunk(&mut self, chunk: ChunkId, mut new_data: VoxelData) {
+        // New solid chunks should have their margin cleared if they are adjacent to any modified chunks.
+        // See the function description of VoxelData::clear_margin for why this is necessary.
+        if new_data.is_solid() {
+            // Loop through all six potential chunk neighbors. If any are modified, the `new_data` should have
+            // its margin cleared.
+            'outer: for coord_axis in CoordAxis::iter() {
+                for coord_direction in CoordDirection::iter() {
+                    if let Some(chunk_id) =
+                        self.get_chunk_neighbor(chunk, coord_axis, coord_direction)
+                    {
+                        if let Chunk::Populated { modified: true, .. } = self[chunk_id] {
+                            new_data.clear_margin(self.layout().dimension);
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+        }
+
+        // After clearing any margins we needed to clear, we can now insert the data into the graph
+        *self.get_chunk_mut(chunk).unwrap() = Chunk::Populated {
+            voxels: new_data,
+            modified: false,
+            surface: None,
+            old_surface: None,
+        };
+    }
+
     /// Tries to update the block at the given position to the given material.
     /// Fails and returns false if the chunk is not populated yet.
     #[must_use]
@@ -94,19 +145,64 @@ impl Graph {
         // Update the block
         let Some(Chunk::Populated {
             voxels,
+            modified,
             surface,
             old_surface,
         }) = self.get_chunk_mut(block_update.chunk_id)
         else {
             return false;
         };
+        if voxels.is_solid() {
+            voxels.clear_margin(dimension);
+        }
         let voxel = voxels
             .data_mut(dimension)
             .get_mut(block_update.coords.to_index(dimension))
             .expect("coords are in-bounds");
 
         *voxel = block_update.new_material;
+        *modified = true;
         *old_surface = surface.take().or(*old_surface);
+
+        self.clear_adjacent_solid_chunk_margins(block_update.chunk_id);
+        true
+    }
+
+    /// Clears margins from any populated and solid adjacent chunks. When a chunk is modified, this function should
+    /// be called on that chunk to ensure that adjacent chunks are rendered, since they can no longer be assumed to be
+    /// hidden by world generation.
+    fn clear_adjacent_solid_chunk_margins(&mut self, chunk: ChunkId) {
+        for coord_axis in CoordAxis::iter() {
+            for coord_direction in CoordDirection::iter() {
+                if let Some(chunk_id) = self.get_chunk_neighbor(chunk, coord_axis, coord_direction)
+                {
+                    // We only need to clear margins from populated chunks.
+                    let _ = self.clear_solid_chunk_margin(chunk_id);
+                }
+            }
+        }
+    }
+
+    /// Tries to clear the margins of the given chunk. Fails and returns false if the
+    /// chunk is not populated yet. Succeeds and returns true if the chunk is not Solid, as the
+    /// chunk is assumed to have empty margins already.
+    #[must_use]
+    fn clear_solid_chunk_margin(&mut self, chunk: ChunkId) -> bool {
+        let dimension = self.layout().dimension;
+        let Some(Chunk::Populated {
+            voxels,
+            surface,
+            old_surface,
+            ..
+        }) = self.get_chunk_mut(chunk)
+        else {
+            return false;
+        };
+
+        if voxels.is_solid() {
+            voxels.clear_margin(dimension);
+            *old_surface = surface.take().or(*old_surface);
+        }
         true
     }
 }
@@ -167,6 +263,7 @@ pub enum Chunk {
     Generating,
     Populated {
         voxels: VoxelData,
+        modified: bool,
         surface: Option<SlotId>,
         old_surface: Option<SlotId>,
     },
@@ -192,6 +289,34 @@ impl VoxelData {
         match *self {
             VoxelData::Dense(ref d) => d[index],
             VoxelData::Solid(mat) => mat,
+        }
+    }
+
+    /// Replaces all voxels in the margin of this chunk with the "Void" material. This function is a coarse
+    /// way to ensure that chunks are fully rendered when they need to be, avoiding a rendering bug caused
+    /// by a voxel's surface failing to render because of a margin being solid.
+    /// Until margins are fully implemented, any solid chunk produced by world generation should have its
+    /// margins cleared if it, or any chunk adjacent to it, is edited, since otherwise, the margins could
+    /// be inaccurate.
+    pub fn clear_margin(&mut self, dimension: u8) {
+        let data = self.data_mut(dimension);
+        let lwm = usize::from(dimension) + 2;
+        for z in 0..lwm {
+            for y in 0..lwm {
+                for x in 0..lwm {
+                    if x == 0 || x == lwm - 1 || y == 0 || y == lwm - 1 || z == 0 || z == lwm - 1 {
+                        // The current coordinates correspond to a margin point. Set it to void.
+                        data[x + y * lwm + z * lwm.pow(2)] = Material::Void;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn is_solid(&self) -> bool {
+        match *self {
+            VoxelData::Dense(_) => false,
+            VoxelData::Solid(_) => true,
         }
     }
 }
