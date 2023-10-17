@@ -12,7 +12,7 @@ use common::{
     collision_math::Ray,
     graph::{Graph, NodeId},
     graph_ray_casting,
-    node::populate_fresh_nodes,
+    node::{populate_fresh_nodes, VoxelData},
     proto::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
     },
@@ -304,6 +304,14 @@ impl Sim {
                 // TODO: This case should be handled to properly support multiple players.
                 tracing::error!("Voxel data received from server for ungenerated chunk.")
             }
+        }
+        for (chunk_id, voxel_data) in msg.modified_chunks {
+            let Some(voxel_data) = VoxelData::from_serializable(&voxel_data, self.cfg.chunk_size)
+            else {
+                tracing::error!("Voxel data received from server is of incorrect dimension");
+                continue;
+            };
+            self.graph.populate_chunk(chunk_id, voxel_data, true);
         }
     }
 
