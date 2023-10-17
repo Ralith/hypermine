@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use common::proto::BlockUpdate;
 use common::{node::ChunkId, GraphEntities};
 use fxhash::{FxHashMap, FxHashSet};
 use hecs::Entity;
@@ -143,6 +144,7 @@ impl Sim {
             movement: na::Vector3::zeros(),
             jump: false,
             no_clip: true,
+            block_update: None,
         };
         let entity = self.world.spawn((id, position, character, initial_input));
         self.graph_entities.insert(position.node, entity);
@@ -185,6 +187,7 @@ impl Sim {
                 .tree()
                 .map(|(side, parent)| FreshNode { side, parent })
                 .collect(),
+            block_updates: Vec::new(),
         };
         for (entity, &id) in &mut self.world.query::<&EntityId>() {
             spawns.spawns.push((id, dump_entity(&self.world, entity)));
@@ -195,6 +198,8 @@ impl Sim {
     pub fn step(&mut self) -> (Spawns, StateDelta) {
         let span = error_span!("step", step = self.step);
         let _guard = span.enter();
+
+        let mut pending_block_updates: Vec<BlockUpdate> = vec![];
 
         // Simulate
         for (entity, (position, character, input)) in self
@@ -212,6 +217,7 @@ impl Sim {
                 input,
                 self.cfg.step_interval.as_secs_f32(),
             );
+            pending_block_updates.extend(input.block_update.iter().cloned());
             if prev_node != position.node {
                 self.dirty_nodes.insert(prev_node);
                 self.graph_entities.remove(prev_node, entity);
@@ -219,6 +225,15 @@ impl Sim {
             }
             self.dirty_nodes.insert(position.node);
             ensure_nearby(&mut self.graph, position, f64::from(self.cfg.view_distance));
+        }
+
+        let mut accepted_block_updates: Vec<BlockUpdate> = vec![];
+
+        for block_update in pending_block_updates.into_iter() {
+            if !self.graph.update_block(&block_update) {
+                tracing::warn!("Block update received from ungenerated chunk");
+            }
+            accepted_block_updates.push(block_update);
         }
 
         // Capture state changes for broadcast to clients
@@ -246,6 +261,7 @@ impl Sim {
                     })
                 })
                 .collect(),
+            block_updates: accepted_block_updates,
         };
         populate_fresh_nodes(&mut self.graph);
 
@@ -255,6 +271,7 @@ impl Sim {
             + self.cfg.character.character_radius as f64
             + self.cfg.character.speed_cap as f64 * self.cfg.step_interval.as_secs_f64()
             + self.cfg.character.ground_distance_tolerance as f64
+            + self.cfg.character.block_reach as f64
             + 0.001;
 
         // Load all chunks around entities corresponding to clients, which correspond to entities

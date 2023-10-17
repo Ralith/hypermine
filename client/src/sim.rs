@@ -161,7 +161,6 @@ impl Sim {
 
             // Send fresh input
             self.send_input(net);
-            self.handle_local_character_block_update();
             self.place_block_pressed = false;
             self.break_block_pressed = false;
 
@@ -300,6 +299,12 @@ impl Sim {
             self.graph.insert_child(node.parent, node.side);
         }
         populate_fresh_nodes(&mut self.graph);
+        for block_update in msg.block_updates.into_iter() {
+            if !self.graph.update_block(&block_update) {
+                // TODO: This case should be handled to properly support multiple players.
+                tracing::error!("Voxel data received from server for ungenerated chunk.")
+            }
+        }
     }
 
     fn spawn(
@@ -346,6 +351,7 @@ impl Sim {
             movement: sanitize_motion_input(orientation * self.average_movement_input),
             jump: self.is_jumping,
             no_clip: self.no_clip,
+            block_update: self.get_local_character_block_update(),
         };
         let generation = self
             .prediction
@@ -378,6 +384,7 @@ impl Sim {
                 / (self.since_input_sent.as_secs_f32() / self.cfg.step_interval.as_secs_f32()),
             jump: self.is_jumping,
             no_clip: self.no_clip,
+            block_update: None,
         };
         character_controller::run_character_step(
             &self.cfg,
@@ -421,13 +428,13 @@ impl Sim {
     }
 
     /// Provides the logic for the player to be able to place and break blocks at will
-    fn handle_local_character_block_update(&mut self) {
+    fn get_local_character_block_update(&self) -> Option<BlockUpdate> {
         let placing = if self.place_block_pressed {
             true
         } else if self.break_block_pressed {
             false
         } else {
-            return;
+            return None;
         };
 
         let view_position = self.view();
@@ -440,23 +447,18 @@ impl Sim {
 
         let Ok(ray_casting_result) = ray_casing_result else {
             tracing::warn!("Tried to run a raycast beyond generated terrain.");
-            return;
+            return None;
         };
 
-        let Some(hit) = ray_casting_result else {
-            return;
-        };
+        let hit = ray_casting_result?;
 
         let block_pos = if placing {
-            let Some(block_pos) = self.graph.get_block_neighbor(
+            self.graph.get_block_neighbor(
                 hit.chunk,
                 hit.voxel_coords,
                 hit.face_axis,
                 hit.face_direction,
-            ) else {
-                return;
-            };
-            block_pos
+            )?
         } else {
             (hit.chunk, hit.voxel_coords)
         };
@@ -467,13 +469,10 @@ impl Sim {
             Material::Void
         };
 
-        // Apply the block update, skipping if the chunk is unpopulated.
-        if !self.graph.update_block(&BlockUpdate {
+        Some(BlockUpdate {
             chunk_id: block_pos.0,
             coords: block_pos.1,
             new_material: material,
-        }) {
-            tracing::error!("Tried to update block in unpopulated chunk");
-        }
+        })
     }
 }

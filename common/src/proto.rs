@@ -56,6 +56,7 @@ pub struct Spawns {
     pub spawns: Vec<(EntityId, Vec<Component>)>,
     pub despawns: Vec<EntityId>,
     pub nodes: Vec<FreshNode>,
+    pub block_updates: Vec<BlockUpdate>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,6 +72,7 @@ pub struct CharacterInput {
     pub movement: na::Vector3<f32>,
     pub jump: bool,
     pub no_clip: bool,
+    pub block_update: Option<BlockUpdate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
