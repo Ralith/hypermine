@@ -43,7 +43,7 @@ impl Sim {
             step: 0,
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
-            graph: Graph::new(cfg.chunk_size as usize),
+            graph: Graph::new(cfg.chunk_size),
             spawns: Vec::new(),
             despawns: Vec::new(),
             graph_entities: GraphEntities::new(),

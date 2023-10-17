@@ -22,7 +22,7 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new(dimension: usize) -> Self {
+    pub fn new(dimension: u8) -> Self {
         let mut nodes = FxHashMap::default();
         nodes.insert(NodeId::ROOT, NodeContainer::new(None, 0));
         Self {
