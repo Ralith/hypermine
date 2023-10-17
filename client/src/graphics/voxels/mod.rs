@@ -103,6 +103,7 @@ impl Voxels {
             sim.graph.get_mut(chunk.node).as_mut().unwrap().chunks[chunk.chunk] =
                 Chunk::Populated {
                     surface: None,
+                    old_surface: None,
                     voxels: chunk.voxels,
                 };
         }
@@ -170,9 +171,10 @@ impl Voxels {
                     }
                     Populated {
                         ref mut surface,
+                        ref mut old_surface,
                         ref voxels,
-                    } => match (surface, voxels) {
-                        (&mut Some(slot), _) => {
+                    } => {
+                        if let Some(slot) = surface.or(*old_surface) {
                             // Render an already-extracted surface
                             self.states.get_mut(slot).refcount += 1;
                             frame.drawn.push(slot);
@@ -180,7 +182,7 @@ impl Voxels {
                             frame.surface.transforms_mut()[slot.0 as usize] =
                                 node_transform * vertex.chunk_to_node().map(|x| x as f32);
                         }
-                        (&mut ref mut surface @ None, &VoxelData::Dense(ref data)) => {
+                        if let (None, &VoxelData::Dense(ref data)) = (&surface, voxels) {
                             // Extract a surface so it can be drawn in future frames
                             if frame.extracted.len() == self.config.chunk_load_parallelism as usize
                             {
@@ -192,7 +194,7 @@ impl Voxels {
                                     warn!("MAX_CHUNKS is too small");
                                     break;
                                 }
-                                Some(self.states.remove(slot))
+                                Some((slot, self.states.remove(slot)))
                             } else {
                                 None
                             };
@@ -206,13 +208,21 @@ impl Voxels {
                             *surface = Some(slot);
                             let storage = self.extraction_scratch.storage(scratch_slot);
                             storage.copy_from_slice(&data[..]);
-                            if let Some(lru) = removed {
+                            if let Some((lru_slot, lru)) = removed {
                                 if let Populated {
-                                    ref mut surface, ..
+                                    ref mut surface,
+                                    ref mut old_surface,
+                                    ..
                                 } =
                                     sim.graph.get_mut(lru.node).as_mut().unwrap().chunks[lru.chunk]
                                 {
-                                    *surface = None;
+                                    // Remove references to released slot IDs
+                                    if surface.map_or(false, |slot| lru_slot == slot) {
+                                        *surface = None;
+                                    }
+                                    if old_surface.map_or(false, |slot| lru_slot == slot) {
+                                        *old_surface = None;
+                                    }
                                 }
                             }
                             let node_is_odd = sim.graph.length(node) & 1 != 0;
@@ -224,8 +234,7 @@ impl Voxels {
                                 reverse_winding: vertex.parity() ^ node_is_odd,
                             });
                         }
-                        (None, &VoxelData::Solid(_)) => continue,
-                    },
+                    }
                 }
             }
         }

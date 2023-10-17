@@ -9,10 +9,16 @@ use crate::{
 };
 use common::{
     character_controller,
+    collision_math::Ray,
     graph::{Graph, NodeId},
+    graph_ray_casting,
     node::populate_fresh_nodes,
-    proto::{self, Character, CharacterInput, CharacterState, Command, Component, Position},
-    sanitize_motion_input, EntityId, GraphEntities, SimConfig, Step,
+    proto::{
+        self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
+    },
+    sanitize_motion_input,
+    world::Material,
+    EntityId, GraphEntities, SimConfig, Step,
 };
 
 /// Game state
@@ -47,6 +53,10 @@ pub struct Sim {
     jump_pressed: bool,
     /// Whether the jump button is currently held down
     jump_held: bool,
+    /// Whether the place-block button has been pressed since the last step
+    place_block_pressed: bool,
+    /// Whether the break-block button has been pressed since the last step
+    break_block_pressed: bool,
     prediction: PredictedMotion,
     local_character_controller: LocalCharacterController,
 }
@@ -73,6 +83,8 @@ impl Sim {
             is_jumping: false,
             jump_pressed: false,
             jump_held: false,
+            place_block_pressed: false,
+            break_block_pressed: false,
             prediction: PredictedMotion::new(proto::Position {
                 node: NodeId::ROOT,
                 local: na::one(),
@@ -120,6 +132,14 @@ impl Sim {
         self.jump_pressed = true;
     }
 
+    pub fn set_place_block_pressed_true(&mut self) {
+        self.place_block_pressed = true;
+    }
+
+    pub fn set_break_block_pressed_true(&mut self) {
+        self.break_block_pressed = true;
+    }
+
     pub fn cfg(&self) -> &SimConfig {
         &self.cfg
     }
@@ -141,6 +161,9 @@ impl Sim {
 
             // Send fresh input
             self.send_input(net);
+            self.handle_local_character_block_update();
+            self.place_block_pressed = false;
+            self.break_block_pressed = false;
 
             // Toggle no clip at the start of a new step
             if self.toggle_no_clip {
@@ -395,5 +418,62 @@ impl Sim {
         self.world
             .despawn(entity)
             .expect("destroyed nonexistent entity");
+    }
+
+    /// Provides the logic for the player to be able to place and break blocks at will
+    fn handle_local_character_block_update(&mut self) {
+        let placing = if self.place_block_pressed {
+            true
+        } else if self.break_block_pressed {
+            false
+        } else {
+            return;
+        };
+
+        let view_position = self.view();
+        let ray_casing_result = graph_ray_casting::ray_cast(
+            &self.graph,
+            &view_position,
+            &Ray::new(na::Vector4::w(), -na::Vector4::z()),
+            self.cfg.character.block_reach,
+        );
+
+        let Ok(ray_casting_result) = ray_casing_result else {
+            tracing::warn!("Tried to run a raycast beyond generated terrain.");
+            return;
+        };
+
+        let Some(hit) = ray_casting_result else {
+            return;
+        };
+
+        let block_pos = if placing {
+            let Some(block_pos) = self.graph.get_block_neighbor(
+                hit.chunk,
+                hit.voxel_coords,
+                hit.face_axis,
+                hit.face_direction,
+            ) else {
+                return;
+            };
+            block_pos
+        } else {
+            (hit.chunk, hit.voxel_coords)
+        };
+
+        let material = if placing {
+            Material::WoodPlanks
+        } else {
+            Material::Void
+        };
+
+        // Apply the block update, skipping if the chunk is unpopulated.
+        if !self.graph.update_block(&BlockUpdate {
+            chunk_id: block_pos.0,
+            coords: block_pos.1,
+            new_material: material,
+        }) {
+            tracing::error!("Tried to update block in unpopulated chunk");
+        }
     }
 }

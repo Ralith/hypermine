@@ -50,6 +50,7 @@ fn build_graph(c: &mut Criterion) {
                         graph[chunk] = Chunk::Populated {
                             voxels: params.generate_voxels(),
                             surface: None,
+                            old_surface: None,
                         };
                         n += 1;
                     }

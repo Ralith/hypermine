@@ -8,12 +8,12 @@ use crate::collision_math::Ray;
 use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
-use crate::proto::Position;
+use crate::proto::{BlockUpdate, Position};
 use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::{math, Chunks};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChunkId {
     pub node: NodeId,
     pub vertex: Vertex,
@@ -41,6 +41,73 @@ impl Graph {
         Some(na::UnitVector3::new_normalize(
             (math::mtranspose(&position.local) * node.state.up_direction()).xyz(),
         ))
+    }
+
+    pub fn get_block_neighbor(
+        &self,
+        mut chunk: ChunkId,
+        mut coords: Coords,
+        coord_axis: CoordAxis,
+        coord_direction: CoordDirection,
+    ) -> Option<(ChunkId, Coords)> {
+        if coords[coord_axis] == self.layout().dimension - 1
+            && coord_direction == CoordDirection::Plus
+        {
+            let new_vertex = chunk.vertex.adjacent_vertices()[coord_axis as usize];
+            // Permute coordinates based on differences in the canonical orders between the old
+            // and new vertex
+            let [coord_plane0, coord_plane1] = coord_axis.other_axes();
+            let mut new_coords = Coords([0; 3]);
+            for current_axis in CoordAxis::iter() {
+                if new_vertex.canonical_sides()[current_axis as usize]
+                    == chunk.vertex.canonical_sides()[coord_plane0 as usize]
+                {
+                    new_coords[current_axis] = coords[coord_plane0];
+                } else if new_vertex.canonical_sides()[current_axis as usize]
+                    == chunk.vertex.canonical_sides()[coord_plane1 as usize]
+                {
+                    new_coords[current_axis] = coords[coord_plane1];
+                } else {
+                    new_coords[current_axis] = coords[coord_axis];
+                }
+            }
+            coords = new_coords;
+            chunk.vertex = new_vertex;
+        } else if coords[coord_axis] == 0 && coord_direction == CoordDirection::Minus {
+            chunk.node = self.neighbor(
+                chunk.node,
+                chunk.vertex.canonical_sides()[coord_axis as usize],
+            )?;
+        } else {
+            coords[coord_axis] = coords[coord_axis].wrapping_add_signed(coord_direction as i8);
+        }
+
+        Some((chunk, coords))
+    }
+
+    /// Tries to update the block at the given position to the given material.
+    /// Fails and returns false if the chunk is not populated yet.
+    #[must_use]
+    pub fn update_block(&mut self, block_update: &BlockUpdate) -> bool {
+        let dimension = self.layout().dimension;
+
+        // Update the block
+        let Some(Chunk::Populated {
+            voxels,
+            surface,
+            old_surface,
+        }) = self.get_chunk_mut(block_update.chunk_id)
+        else {
+            return false;
+        };
+        let voxel = voxels
+            .data_mut(dimension)
+            .get_mut(block_update.coords.to_index(dimension))
+            .expect("coords are in-bounds");
+
+        *voxel = block_update.new_material;
+        *old_surface = surface.take().or(*old_surface);
+        true
     }
 }
 
@@ -72,17 +139,17 @@ impl Coords {
     }
 }
 
-impl Index<usize> for Coords {
+impl Index<CoordAxis> for Coords {
     type Output = u8;
 
-    fn index(&self, coord_axis: usize) -> &u8 {
-        self.0.index(coord_axis)
+    fn index(&self, coord_axis: CoordAxis) -> &u8 {
+        self.0.index(coord_axis as usize)
     }
 }
 
-impl IndexMut<usize> for Coords {
-    fn index_mut(&mut self, coord_axis: usize) -> &mut u8 {
-        self.0.index_mut(coord_axis)
+impl IndexMut<CoordAxis> for Coords {
+    fn index_mut(&mut self, coord_axis: CoordAxis) -> &mut u8 {
+        self.0.index_mut(coord_axis as usize)
     }
 }
 
@@ -101,6 +168,7 @@ pub enum Chunk {
     Populated {
         voxels: VoxelData,
         surface: Option<SlotId>,
+        old_surface: Option<SlotId>,
     },
 }
 
@@ -203,6 +271,66 @@ fn populate_node(graph: &mut Graph, node: NodeId) {
             .unwrap_or_else(NodeState::root),
         chunks: Chunks::default(),
     });
+}
+
+/// Represents a particular axis in a voxel grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoordAxis {
+    X = 0,
+    Y = 1,
+    Z = 2,
+}
+
+/// Trying to convert a `usize` to a `CoordAxis` returns this struct if the provided
+/// `usize` is out-of-bounds
+#[derive(Debug, Clone, Copy)]
+pub struct CoordAxisOutOfBounds;
+
+impl CoordAxis {
+    /// Iterates through the the axes in ascending order
+    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
+        [Self::X, Self::Y, Self::Z].iter().copied()
+    }
+
+    /// Returns the pair axes orthogonal to the current axis
+    pub fn other_axes(self) -> [Self; 2] {
+        match self {
+            Self::X => [Self::Y, Self::Z],
+            Self::Y => [Self::Z, Self::X],
+            Self::Z => [Self::X, Self::Y],
+        }
+    }
+}
+
+impl TryFrom<usize> for CoordAxis {
+    type Error = CoordAxisOutOfBounds;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::X),
+            1 => Ok(Self::Y),
+            2 => Ok(Self::Z),
+            _ => Err(CoordAxisOutOfBounds),
+        }
+    }
+}
+
+/// Represents a direction in a particular axis. This struct is meant to be used with a coordinate axis,
+/// so when paired with the X-axis, it represents the postitive X-direction when set to Plus and the
+/// negative X-direction when set to Minus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoordDirection {
+    Plus = 1,
+    Minus = -1,
+}
+
+impl CoordDirection {
+    /// Iterates through the two possible coordinate directions
+    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
+        [CoordDirection::Plus, CoordDirection::Minus]
+            .iter()
+            .copied()
+    }
 }
 
 /// Represents a discretized region in the voxel grid contained by an axis-aligned bounding box.

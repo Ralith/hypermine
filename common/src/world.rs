@@ -1,4 +1,8 @@
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
+use serde::{Deserialize, Serialize};
+
+#[derive(
+    Debug, Copy, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
+)]
 #[repr(u16)]
 pub enum Material {
     #[default]

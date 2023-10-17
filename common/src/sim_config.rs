@@ -93,6 +93,8 @@ pub struct CharacterConfigRaw {
     pub ground_distance_tolerance: Option<f32>,
     /// Radius of the character in meters
     pub character_radius: Option<f32>,
+    /// How far a character can reach when placing blocks
+    pub block_reach: Option<f32>,
 }
 
 /// Static configuration information relevant to character physics
@@ -109,6 +111,7 @@ pub struct CharacterConfig {
     pub jump_speed: f32,
     pub ground_distance_tolerance: f32,
     pub character_radius: f32,
+    pub block_reach: f32,
 }
 
 impl CharacterConfig {
@@ -126,6 +129,7 @@ impl CharacterConfig {
             ground_distance_tolerance: x.ground_distance_tolerance.unwrap_or(0.2)
                 * meters_to_absolute,
             character_radius: x.character_radius.unwrap_or(0.4) * meters_to_absolute,
+            block_reach: x.block_reach.unwrap_or(10.0) * meters_to_absolute,
         }
     }
 }
