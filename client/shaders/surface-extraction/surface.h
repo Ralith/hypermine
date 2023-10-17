@@ -31,7 +31,7 @@ uint get_mat(Surface s) {
 }
 
 float get_occlusion(Surface s, uvec2 texcoords) {
-    return float((s.occlusion_mat >> (24 + 2 * (texcoords.x | texcoords.y << 1))) & 0x03) / 3.0;
+    return float((s.occlusion_mat >> (24 + 2 * (texcoords.x | texcoords.y << 1))) & 0x03) / 3.0 * 0.95 + 0.05;
 }
 
 Surface surface(uvec3 pos, uint axis, bool reverse, uint mat, uvec4 occlusion) {
