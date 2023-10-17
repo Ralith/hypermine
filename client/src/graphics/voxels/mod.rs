@@ -101,7 +101,7 @@ impl Voxels {
         }
         while let Some(chunk) = self.worldgen.poll() {
             let chunk_id = ChunkId::new(chunk.node, chunk.chunk);
-            sim.graph.populate_chunk(chunk_id, chunk.voxels);
+            sim.graph.populate_chunk(chunk_id, chunk.voxels, false);
         }
 
         // Determine what to load/render

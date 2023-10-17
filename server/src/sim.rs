@@ -35,6 +35,7 @@ pub struct Sim {
     despawns: Vec<EntityId>,
     graph_entities: GraphEntities,
     dirty_nodes: FxHashSet<NodeId>,
+    modified_chunks: FxHashSet<ChunkId>,
 }
 
 impl Sim {
@@ -49,6 +50,7 @@ impl Sim {
             despawns: Vec::new(),
             graph_entities: GraphEntities::new(),
             dirty_nodes: FxHashSet::default(),
+            modified_chunks: FxHashSet::default(),
             cfg,
         };
 
@@ -188,9 +190,21 @@ impl Sim {
                 .map(|(side, parent)| FreshNode { side, parent })
                 .collect(),
             block_updates: Vec::new(),
+            modified_chunks: Vec::new(),
         };
         for (entity, &id) in &mut self.world.query::<&EntityId>() {
             spawns.spawns.push((id, dump_entity(&self.world, entity)));
+        }
+        for &chunk_id in self.modified_chunks.iter() {
+            let voxels =
+                match self.graph.get(chunk_id.node).as_ref().unwrap().chunks[chunk_id.vertex] {
+                    Chunk::Populated { ref voxels, .. } => voxels,
+                    _ => panic!("ungenerated chunk is marked as modified"),
+                };
+
+            spawns
+                .modified_chunks
+                .push((chunk_id, voxels.to_serializable(self.cfg.chunk_size)));
         }
         spawns
     }
@@ -233,6 +247,7 @@ impl Sim {
             if !self.graph.update_block(&block_update) {
                 tracing::warn!("Block update received from ungenerated chunk");
             }
+            self.modified_chunks.insert(block_update.chunk_id);
             accepted_block_updates.push(block_update);
         }
 
@@ -262,6 +277,7 @@ impl Sim {
                 })
                 .collect(),
             block_updates: accepted_block_updates,
+            modified_chunks: vec![],
         };
         populate_fresh_nodes(&mut self.graph);
 
@@ -290,7 +306,7 @@ impl Sim {
                             ChunkParams::new(self.cfg.chunk_size, &self.graph, chunk)
                         {
                             self.graph
-                                .populate_chunk(chunk, params.generate_voxels());
+                                .populate_chunk(chunk, params.generate_voxels(), false);
                         }
                     }
                 }
