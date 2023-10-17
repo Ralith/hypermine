@@ -1,7 +1,7 @@
 use crate::{
     graph_collision::Ray,
     math,
-    node::{ChunkLayout, VoxelData},
+    node::{ChunkLayout, Coords, VoxelData},
     world::Material,
 };
 
@@ -108,12 +108,20 @@ fn find_face_collision(
             continue;
         }
 
-        // Whether we are approaching the front or back of the face. An approach from the positive t direction
-        // is 1, and an approach from the negative t direction is -1.
-        let collision_side = -math::mip(&ray.direction, &normal).signum();
-
-        // Which side we approach the plane from affects which voxel we want to use for collision checking
-        let voxel_t = if collision_side > 0.0 { t } else { t + 1 };
+        // Which side we approach the plane from affects which voxel we want to use for hit detection.
+        // If exiting a chunk via a chunk boundary, hit detection is handled by a different chunk.
+        // We also want to adjust the normal vector to always face outward from the hit block
+        let (normal, voxel_t) = if math::mip(&ray.direction, &normal) < 0.0 {
+            if t == 0 {
+                continue;
+            }
+            (normal, t - 1)
+        } else {
+            if t == layout.dimension() {
+                continue;
+            }
+            (-normal, t)
+        };
 
         let ray_endpoint = ray.ray_point(new_tanh_distance);
         let contact_point = ray_endpoint - normal * math::mip(&ray_endpoint, &normal);
@@ -138,7 +146,7 @@ fn find_face_collision(
         // A collision was found. Update the hit.
         hit = Some(ChunkCastHit {
             tanh_distance: new_tanh_distance,
-            normal: normal * collision_side,
+            normal,
         });
     }
 
@@ -201,12 +209,12 @@ fn find_edge_collision(
         };
 
         // Ensure that the edge has a solid voxel adjacent to it
-        if (0..2).all(|du| {
-            (0..2).all(|dv| {
+        if layout.neighboring_voxels(u).all(|voxel_u| {
+            layout.neighboring_voxels(v).all(|voxel_v| {
                 !voxel_is_solid(
                     voxel_data,
                     layout,
-                    tuv_to_xyz(t_axis, [voxel_t, u + du, v + dv]),
+                    tuv_to_xyz(t_axis, [voxel_t, voxel_u, voxel_v]),
                 )
             })
         }) {
@@ -237,9 +245,11 @@ fn find_vertex_collision(
     // Loop through all grid points contained in the bounding box
     for (x, y, z) in bounding_box.grid_points(0, 1, 2) {
         // Skip vertices that have no solid voxels adjacent to them
-        if (0..2).all(|dx| {
-            (0..2).all(|dy| {
-                (0..2).all(|dz| !voxel_is_solid(voxel_data, layout, [x + dx, y + dy, z + dz]))
+        if layout.neighboring_voxels(x).all(|voxel_x| {
+            layout.neighboring_voxels(y).all(|voxel_y| {
+                layout
+                    .neighboring_voxels(z)
+                    .all(|voxel_z| !voxel_is_solid(voxel_data, layout, [voxel_x, voxel_y, voxel_z]))
             })
         }) {
             continue;
@@ -407,28 +417,23 @@ fn tuv_to_xyz<T: std::ops::IndexMut<usize, Output = N>, N: Copy>(t_axis: usize, 
 }
 
 /// Checks whether a voxel can be collided with. Any non-void voxel falls under this category.
-fn voxel_is_solid(voxel_data: &VoxelData, layout: &ChunkLayout, coords: [usize; 3]) -> bool {
-    let dimension_with_margin = layout.dimension() + 2;
-    debug_assert!(coords[0] < dimension_with_margin);
-    debug_assert!(coords[1] < dimension_with_margin);
-    debug_assert!(coords[2] < dimension_with_margin);
-    voxel_data.get(
-        coords[0] + coords[1] * dimension_with_margin + coords[2] * dimension_with_margin.pow(2),
-    ) != Material::Void
+fn voxel_is_solid(voxel_data: &VoxelData, layout: &ChunkLayout, coords: [u8; 3]) -> bool {
+    debug_assert!(coords[0] < layout.dimension());
+    debug_assert!(coords[1] < layout.dimension());
+    debug_assert!(coords[2] < layout.dimension());
+    voxel_data.get(Coords(coords).to_index(layout.dimension())) != Material::Void
 }
 
 /// Represents a discretized region in the voxel grid contained by an axis-aligned bounding box.
 struct VoxelAABB {
-    // The bounds are of the form [[x_min, x_max], [y_min, y_max], [z_min, z_max]], using voxel coordinates with margins.
-    // Any voxel that intersects the cube of interest is included in these bounds. By adding or subtracting 1 in the right
-    // places, these bounds can be used to find other useful info related to the cube of interset, such as what grid points
-    // it contains.
-    bounds: [[usize; 2]; 3],
+    // The bounds are of the form [[x_min, x_max], [y_min, y_max], [z_min, z_max]], using voxel coordinates with a one-block
+    // wide margins added on both sides. This helps make sure that that we can detect if the AABB intersects the chunk's boundaries.
+    bounds: [[u8; 2]; 3],
 }
 
 impl VoxelAABB {
     /// Returns a bounding box that is guaranteed to cover a given radius around a ray segment. Returns None if the
-    /// bounding box lies entirely outside the chunk, including its margins.
+    /// bounding box lies entirely outside the chunk.
     pub fn from_ray_segment_and_radius(
         layout: &ChunkLayout,
         ray: &Ray,
@@ -451,14 +456,14 @@ impl VoxelAABB {
                 .floor()
                 .min(layout.dimension() as f32 + 1.0);
 
-            // This will happen when voxel_min is greater than dimension+1 or voxel_max is less than 0, which
-            // occurs when the cube is out of range.
-            if voxel_min > voxel_max {
+            // When voxel_min is greater than dimension or voxel_max is less than 1, the cube does not intersect
+            // the chunk.
+            if voxel_min > layout.dimension() as f32 || voxel_max < 1.0 {
                 return None;
             }
 
-            // We convert to usize here instead of earlier because out-of-range voxel coordinates can be negative.
-            bounds[axis] = [voxel_min.floor() as usize, voxel_max.floor() as usize];
+            // We convert to u8 here instead of earlier because out-of-range voxel coordinates can violate casting assumptions.
+            bounds[axis] = [voxel_min.floor() as u8, voxel_max.floor() as u8];
         }
 
         Some(VoxelAABB { bounds })
@@ -470,7 +475,7 @@ impl VoxelAABB {
         axis0: usize,
         axis1: usize,
         axis2: usize,
-    ) -> impl Iterator<Item = (usize, usize, usize)> {
+    ) -> impl Iterator<Item = (u8, u8, u8)> {
         let bounds = self.bounds;
         (bounds[axis0][0]..bounds[axis0][1]).flat_map(move |i| {
             (bounds[axis1][0]..bounds[axis1][1])
@@ -479,14 +484,14 @@ impl VoxelAABB {
     }
 
     /// Iterator over grid lines intersecting the region, represented as ordered pairs determining the line's two fixed coordinates
-    pub fn grid_lines(&self, axis0: usize, axis1: usize) -> impl Iterator<Item = (usize, usize)> {
+    pub fn grid_lines(&self, axis0: usize, axis1: usize) -> impl Iterator<Item = (u8, u8)> {
         let bounds = self.bounds;
         (bounds[axis0][0]..bounds[axis0][1])
             .flat_map(move |i| (bounds[axis1][0]..bounds[axis1][1]).map(move |j| (i, j)))
     }
 
     /// Iterator over grid planes intersecting the region, represented as integers determining the plane's fixed coordinate
-    pub fn grid_planes(&self, axis: usize) -> impl Iterator<Item = usize> {
+    pub fn grid_planes(&self, axis: usize) -> impl Iterator<Item = u8> {
         self.bounds[axis][0]..self.bounds[axis][1]
     }
 }
@@ -509,7 +514,7 @@ mod tests {
 
     impl TestSphereCastContext {
         fn new(collider_radius: f32) -> Self {
-            let dimension: usize = 12;
+            let dimension: u8 = 12;
 
             let mut ctx = TestSphereCastContext {
                 collider_radius,
@@ -517,26 +522,24 @@ mod tests {
                 voxel_data: VoxelData::Solid(Material::Void),
             };
 
-            // Populate voxels. Consists of a single voxel with voxel coordinates (2, 2, 2). The cube corresponding
+            // Populate voxels. Consists of a single voxel with voxel coordinates (1, 1, 1). The cube corresponding
             // to this voxel has grid coordinates from (1, 1, 1) to (2, 2, 2)
-            ctx.set_voxel([2, 2, 2], Material::Dirt);
+            ctx.set_voxel([1, 1, 1], Material::Dirt);
 
             ctx
         }
 
-        fn set_voxel(&mut self, coords: [usize; 3], material: Material) {
-            let dimension_with_margin = self.layout.dimension() + 2;
-            debug_assert!(coords[0] < dimension_with_margin);
-            debug_assert!(coords[1] < dimension_with_margin);
-            debug_assert!(coords[2] < dimension_with_margin);
-            self.voxel_data.data_mut(self.layout.dimension() as u8)[coords[0]
-                + coords[1] * dimension_with_margin
-                + coords[2] * dimension_with_margin.pow(2)] = material;
+        fn set_voxel(&mut self, coords: [u8; 3], material: Material) {
+            debug_assert!(coords[0] < self.layout.dimension());
+            debug_assert!(coords[1] < self.layout.dimension());
+            debug_assert!(coords[2] < self.layout.dimension());
+            self.voxel_data.data_mut(self.layout.dimension())
+                [Coords(coords).to_index(self.layout.dimension())] = material;
         }
     }
 
-    /// Helper method to create a `ChunkSphereCastContext` that can be used
-    /// in a closure to call sphere casting methods.
+    /// Helper method to set up common parameters that are used
+    /// in a passed-in closure to call sphere casting methods.
     fn cast_with_test_ray(
         ctx: &TestSphereCastContext,
         ray_start_grid_coords: [f32; 3],

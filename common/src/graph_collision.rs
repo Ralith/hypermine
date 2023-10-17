@@ -202,7 +202,7 @@ mod tests {
     use crate::{
         dodeca::{Side, Vertex},
         graph::{Graph, NodeId},
-        node::{populate_fresh_nodes, VoxelData},
+        node::{populate_fresh_nodes, Coords, VoxelData},
         proto::Position,
         traversal::{ensure_nearby, nearby_nodes},
         world::Material,
@@ -218,16 +218,16 @@ mod tests {
         /// Which chunk in the given node the voxel is in
         vertex: Vertex,
 
-        /// The coordinates of the voxel, including margins
-        coords: [usize; 3],
+        /// The coordinates of the voxel
+        coords: Coords,
     }
 
     impl VoxelLocation<'_> {
-        fn new(node_path: &[Side], vertex: Vertex, coords: [usize; 3]) -> VoxelLocation<'_> {
+        fn new(node_path: &[Side], vertex: Vertex, coords: [u8; 3]) -> VoxelLocation<'_> {
             VoxelLocation {
                 node_path,
                 vertex,
-                coords,
+                coords: Coords(coords),
             }
         }
     }
@@ -258,7 +258,7 @@ mod tests {
 
     impl SphereCastExampleTestCase<'_> {
         fn execute(self) {
-            let dimension: usize = 12;
+            let dimension: u8 = 12;
             let mut graph = Graph::new(dimension);
             let graph_radius = 3.0;
 
@@ -341,7 +341,7 @@ mod tests {
             }
         }
 
-        fn populate_voxel(graph: &mut Graph, dimension: usize, voxel_location: &VoxelLocation) {
+        fn populate_voxel(graph: &mut Graph, dimension: u8, voxel_location: &VoxelLocation) {
             // Find the ChunkId of the given chunk
             let chunk = ChunkId::new(
                 voxel_location
@@ -360,9 +360,8 @@ mod tests {
             };
 
             // Populate the given voxel with dirt.
-            voxel_data.data_mut(dimension as u8)[voxel_location.coords[0]
-                + voxel_location.coords[1] * (dimension + 2)
-                + voxel_location.coords[2] * (dimension + 2).pow(2)] = Material::Dirt;
+            voxel_data.data_mut(dimension)[voxel_location.coords.to_index(dimension)] =
+                Material::Dirt;
         }
 
         fn get_voxel_chunk(graph: &Graph, voxel_location: &VoxelLocation) -> ChunkId {
@@ -383,7 +382,7 @@ mod tests {
     fn sphere_cast_examples() {
         // Basic test case
         SphereCastExampleTestCase {
-            chosen_voxel: VoxelLocation::new(&[Side::G], Vertex::I, [3, 4, 6]),
+            chosen_voxel: VoxelLocation::new(&[Side::G], Vertex::I, [2, 3, 5]),
             additional_populated_voxels: &[],
             start_chunk_relative_grid_ray_start: [12.0, 12.0, 12.0], // Node center
             chosen_chunk_relative_grid_ray_end: [2.5, 3.5, 5.5],
@@ -398,7 +397,7 @@ mod tests {
             chosen_voxel: VoxelLocation::new(
                 &[Vertex::B.canonical_sides()[0]],
                 Vertex::B,
-                [1, 12, 12],
+                [0, 11, 11],
             ),
             additional_populated_voxels: &[],
             start_chunk_relative_grid_ray_start: [12.0, 12.0, 12.0], // Node center
@@ -414,7 +413,7 @@ mod tests {
             chosen_voxel: VoxelLocation::new(
                 &[Vertex::B.canonical_sides()[0]],
                 Vertex::B,
-                [1, 12, 12],
+                [0, 11, 11],
             ),
             additional_populated_voxels: &[],
             start_chunk_relative_grid_ray_start: [12.0, 12.0, 12.0], // Node center
@@ -436,8 +435,8 @@ mod tests {
                 .iter()
                 .position(|side| !Vertex::A.canonical_sides().contains(side))
                 .unwrap();
-            let mut chosen_voxel_coords = [1, 1, 1];
-            chosen_voxel_coords[corresponding_axis] = 12;
+            let mut chosen_voxel_coords = [0, 0, 0];
+            chosen_voxel_coords[corresponding_axis] = 11;
             let mut grid_ray_end = [0.0, 0.0, 0.0];
             grid_ray_end[corresponding_axis] = 12.0;
             SphereCastExampleTestCase {
@@ -461,7 +460,7 @@ mod tests {
                     Vertex::D.canonical_sides()[2],
                 ],
                 Vertex::D,
-                [1, 1, 1],
+                [0, 0, 0],
             ),
             additional_populated_voxels: &[],
             start_chunk_relative_grid_ray_start: [12.0, 12.0, 12.0], // Node center
@@ -477,9 +476,9 @@ mod tests {
             chosen_voxel: VoxelLocation::new(
                 &[Vertex::A.canonical_sides()[0]],
                 Vertex::A,
-                [1, 5, 5],
+                [0, 4, 4],
             ),
-            additional_populated_voxels: &[VoxelLocation::new(&[], Vertex::A, [1, 6, 5])],
+            additional_populated_voxels: &[VoxelLocation::new(&[], Vertex::A, [0, 5, 4])],
             // Because we use the "A" vertex, the two coordinate systems below coincide for x = 0.0
             start_chunk_relative_grid_ray_start: [0.0, 3.0, 4.5],
             chosen_chunk_relative_grid_ray_end: [0.0, 8.0, 4.5],
@@ -491,11 +490,11 @@ mod tests {
 
         // Colliding with the center node's voxel before a neighboring node's voxel
         SphereCastExampleTestCase {
-            chosen_voxel: VoxelLocation::new(&[], Vertex::A, [1, 5, 5]),
+            chosen_voxel: VoxelLocation::new(&[], Vertex::A, [0, 4, 4]),
             additional_populated_voxels: &[VoxelLocation::new(
                 &[Vertex::A.canonical_sides()[0]],
                 Vertex::A,
-                [1, 6, 5],
+                [0, 5, 4],
             )],
             start_chunk_relative_grid_ray_start: [0.0, 3.0, 4.5],
             chosen_chunk_relative_grid_ray_end: [0.0, 8.0, 4.5],
@@ -510,7 +509,7 @@ mod tests {
     /// long as the contract for sphere_cast is upheld.
     #[test]
     fn sphere_cast_near_unloaded_chunk() {
-        let dimension: usize = 12;
+        let dimension: u8 = 12;
         let mut graph = Graph::new(dimension);
 
         let sides = Vertex::A.canonical_sides();
