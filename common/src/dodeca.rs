@@ -64,7 +64,7 @@ impl Side {
 }
 
 /// Vertices of a right dodecahedron
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Vertex {
     A,
     B,

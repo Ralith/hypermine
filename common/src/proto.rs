@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{dodeca, graph::NodeId, EntityId, SimConfig, Step};
+use crate::{
+    dodeca,
+    graph::NodeId,
+    node::{ChunkId, Coords},
+    world::Material,
+    EntityId, SimConfig, Step,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientHello {
@@ -65,6 +71,13 @@ pub struct CharacterInput {
     pub movement: na::Vector3<f32>,
     pub jump: bool,
     pub no_clip: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockUpdate {
+    pub chunk_id: ChunkId,
+    pub coords: Coords,
+    pub new_material: Material,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
