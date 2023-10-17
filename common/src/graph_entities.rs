@@ -20,7 +20,7 @@ impl GraphEntities {
     }
 
     pub fn insert(&mut self, node: NodeId, entity: Entity) {
-        let vec = self.map.entry(node).or_insert_with(Vec::new);
+        let vec = self.map.entry(node).or_default();
         debug_assert!(!vec.contains(&entity), "redundant insert");
         vec.push(entity);
     }
