@@ -1,7 +1,6 @@
 use std::{sync::Arc, thread};
 
 use anyhow::{anyhow, Error, Result};
-use futures_util::{StreamExt, TryStreamExt};
 use tokio::sync::mpsc;
 
 use common::{codec, proto};
@@ -63,16 +62,12 @@ async fn inner(
     endpoint: quinn::Endpoint,
 ) -> Result<()> {
     let server = cfg.server.unwrap();
-    let quinn::NewConnection {
-        connection,
-        mut uni_streams,
-        ..
-    } = endpoint.connect(server, "localhost").unwrap().await?;
+    let connection = endpoint.connect(server, "localhost").unwrap().await?;
 
     // Open the first stream for our hello message
     let clienthello_stream = connection.open_uni().await?;
     // Start sending commands asynchronously
-    tokio::spawn(handle_outgoing(outgoing, connection));
+    tokio::spawn(handle_outgoing(outgoing, connection.clone()));
     // Actually send the hello message
     codec::send_whole(
         clienthello_stream,
@@ -82,9 +77,9 @@ async fn inner(
     )
     .await?;
 
-    let mut ordered = uni_streams.next().await.unwrap()?;
+    let mut ordered = connection.accept_uni().await?;
     // Handle unordered messages
-    tokio::spawn(handle_unordered(incoming.clone(), uni_streams));
+    tokio::spawn(handle_unordered(incoming.clone(), connection));
 
     // Receive the server's hello message
     let hello = codec::recv::<proto::ServerHello>(&mut ordered)
@@ -116,23 +111,26 @@ async fn handle_outgoing(
 }
 
 /// Receive unordered messages from the server
-async fn handle_unordered(
-    incoming: mpsc::UnboundedSender<Message>,
-    uni_streams: quinn::IncomingUniStreams,
-) -> Result<()> {
-    let mut msgs = uni_streams
-        .map(|stream| async {
-            let stream = stream?;
-            codec::recv_whole::<proto::StateDelta>(2usize.pow(16), stream).await
-        })
-        .buffer_unordered(128);
-    // TODO: Don't silently die on parse errors
-    while let Some(msg) = msgs.try_next().await? {
-        // Ignore errors so we don't panic if the simulation thread goes away between checking
-        // `msgs` and here.
-        let _ = incoming.send(Message::StateDelta(msg));
+async fn handle_unordered(incoming: mpsc::UnboundedSender<Message>, connection: quinn::Connection) {
+    loop {
+        let Ok(stream) = connection.accept_uni().await else {
+            // accept_uni should only fail if the connection is closed, which is already handled elsewhere.
+            return;
+        };
+        let incoming = incoming.clone();
+        let connection = connection.clone();
+        tokio::spawn(async move {
+            match codec::recv_whole::<proto::StateDelta>(2usize.pow(16), stream).await {
+                Err(e) => {
+                    tracing::error!("Error when parsing unordered stream from server: {e}");
+                    connection.close(1u32.into(), b"could not process stream");
+                }
+                Ok(msg) => {
+                    let _ = incoming.send(Message::StateDelta(msg));
+                }
+            }
+        });
     }
-    Ok(())
 }
 
 struct AcceptAnyCert;

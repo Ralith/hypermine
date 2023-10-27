@@ -47,7 +47,7 @@ pub async fn send_whole<T: Serialize + ?Sized>(
 /// Receive the entirety of `stream` as a `T`
 pub async fn recv_whole<T: DeserializeOwned>(
     size_limit: usize,
-    stream: quinn::RecvStream,
+    mut stream: quinn::RecvStream,
 ) -> Result<T> {
     let buf = stream.read_to_end(size_limit).await?;
     Ok(bincode::deserialize(&buf)?)

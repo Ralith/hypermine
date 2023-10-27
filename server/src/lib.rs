@@ -8,7 +8,7 @@ mod sim;
 use std::{net::UdpSocket, sync::Arc, time::Instant};
 
 use anyhow::{Context, Error, Result};
-use futures::{select, StreamExt, TryStreamExt};
+use futures::{select, StreamExt};
 use hecs::Entity;
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
@@ -32,15 +32,16 @@ pub async fn run(net: NetParams, mut sim: SimConfig, save: Save) -> Result<()> {
     let server_config =
         quinn::ServerConfig::with_single_cert(net.certificate_chain, net.private_key)
             .context("parsing certificate")?;
-    let (endpoint, incoming) = quinn::Endpoint::new(
+    let endpoint = quinn::Endpoint::new(
         quinn::EndpointConfig::default(),
         Some(server_config),
         net.socket,
+        quinn::default_runtime().unwrap(),
     )?;
     info!(address = %endpoint.local_addr().unwrap(), "listening");
 
     let server = Server::new(sim, save);
-    server.run(incoming).await;
+    server.run(endpoint).await;
     Ok(())
 }
 
@@ -62,11 +63,9 @@ impl Server {
         }
     }
 
-    async fn run(mut self, incoming: quinn::Incoming) {
+    async fn run(mut self, endpoint: quinn::Endpoint) {
         let mut ticks = IntervalStream::new(tokio::time::interval(self.cfg.step_interval)).fuse();
-        let mut incoming = incoming
-            .inspect(|x| trace!(address = %x.remote_address(), "connection incoming"))
-            .buffer_unordered(16);
+        let mut incoming = ReceiverStream::new(self.handle_incoming(endpoint)).fuse();
         let (client_events_send, client_events) = mpsc::channel(128);
         let mut client_events = ReceiverStream::new(client_events).fuse();
         loop {
@@ -76,6 +75,27 @@ impl Server {
                 e = client_events.select_next_some() => { self.on_client_event(e.0, e.1); }
             }
         }
+    }
+
+    fn handle_incoming(&self, endpoint: quinn::Endpoint) -> mpsc::Receiver<quinn::Connection> {
+        let (incoming_send, incoming_recv) = mpsc::channel(16);
+        tokio::spawn(async move {
+            while let Some(conn) = endpoint.accept().await {
+                trace!(address = %conn.remote_address(), "connection incoming");
+                let incoming_send = incoming_send.clone();
+                tokio::spawn(async move {
+                    match conn.await {
+                        Err(e) => {
+                            error!("incoming connection failed: {}", e.to_string());
+                        }
+                        Ok(connection) => {
+                            let _ = incoming_send.send(connection).await;
+                        }
+                    }
+                });
+            }
+        });
+        incoming_recv
     }
 
     fn on_step(&mut self) {
@@ -135,7 +155,10 @@ impl Server {
     fn on_client_event(&mut self, client_id: ClientId, event: ClientEvent) {
         let span = error_span!("client", id = ?client_id.0);
         let _guard = span.enter();
-        let client = &mut self.clients[client_id];
+        let Some(client) = self.clients.get_mut(client_id) else {
+            // Skip messages from cleaned-up clients
+            return;
+        };
         match event {
             ClientEvent::Hello(hello) => {
                 assert!(client.handles.is_none());
@@ -186,25 +209,19 @@ impl Server {
 
     fn on_connect(
         &mut self,
-        conn: Result<quinn::NewConnection, quinn::ConnectionError>,
+        connection: quinn::Connection,
         mut send: mpsc::Sender<(ClientId, ClientEvent)>,
     ) {
-        let quinn::NewConnection {
-            connection,
-            uni_streams,
-            ..
-        } = match conn {
-            Ok(x) => x,
-            Err(e) => {
-                error!("incoming connection failed: {}", e);
-                return;
-            }
-        };
         let id = self.clients.insert(Client::new(connection.clone()));
         info!(id = ?id.0, address = %connection.remote_address(), "connection established");
         tokio::spawn(async move {
-            if let Err(e) = drive_recv(id, uni_streams, &mut send).await {
+            if let Err(e) = drive_recv(id, connection, &mut send).await {
+                // drive_recv returns an error when any connection-terminating issue occurs, so we
+                // send a `Lost` message to ensure the client is cleaned up. Note that this message may
+                // be redundant, as dropping a slow client also sends a `Lost` message.
                 let _ = send.send((id, ClientEvent::Lost(e))).await;
+            } else {
+                unreachable!("Graceful disconnects are not implemented.")
             }
         });
     }
@@ -214,26 +231,35 @@ const MAX_CLIENT_MSG_SIZE: usize = 1 << 16;
 
 async fn drive_recv(
     id: ClientId,
-    mut streams: quinn::IncomingUniStreams,
+    connection: quinn::Connection,
     send: &mut mpsc::Sender<(ClientId, ClientEvent)>,
 ) -> Result<()> {
-    let hello = match streams.next().await {
-        None => return Ok(()),
-        Some(stream) => {
-            codec::recv_whole::<proto::ClientHello>(MAX_CLIENT_MSG_SIZE, stream?).await?
-        }
-    };
+    let stream = connection.accept_uni().await.map_err(Error::msg)?;
+    let hello = codec::recv_whole::<proto::ClientHello>(MAX_CLIENT_MSG_SIZE, stream).await?;
     let _ = send.send((id, ClientEvent::Hello(hello))).await;
 
-    let mut cmds = streams
-        .map(|stream| async {
-            codec::recv_whole::<proto::Command>(MAX_CLIENT_MSG_SIZE, stream?).await
-        })
-        .buffer_unordered(16); // Allow a modest amount of out-of-order completion
-    while let Some(msg) = cmds.try_next().await? {
-        let _ = send.send((id, ClientEvent::Command(msg))).await;
+    loop {
+        let stream = connection.accept_uni().await.map_err(Error::msg)?;
+        let send = send.clone();
+
+        // We spawn a separate task to allow messages to be processed in a different order from when they were
+        // initiated.
+        let connection = connection.clone();
+        tokio::spawn(async move {
+            match codec::recv_whole::<proto::Command>(MAX_CLIENT_MSG_SIZE, stream).await {
+                Err(e) => {
+                    // This error can occur if the client sends a badly-formatted command. In this case,
+                    // we want to drop the client. We close the connection, which will cause `drive_recv` to
+                    // return eventually.
+                    tracing::error!("Error when parsing unordered stream from client: {e}");
+                    connection.close(2u32.into(), b"could not process stream");
+                }
+                Ok(msg) => {
+                    let _ = send.send((id, ClientEvent::Command(msg))).await;
+                }
+            }
+        });
     }
-    Ok(())
 }
 
 async fn drive_send(
