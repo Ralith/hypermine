@@ -159,6 +159,8 @@ impl Sim {
     ) -> Result<(), hecs::ComponentError> {
         let mut input = self.world.get::<&mut CharacterInput>(entity)?;
         *input = command.character_input;
+        let mut ch = self.world.get::<&mut Character>(entity)?;
+        ch.state.orientation = command.orientation;
         Ok(())
     }
 
