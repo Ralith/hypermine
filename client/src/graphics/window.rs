@@ -6,12 +6,12 @@ use ash::{extensions::khr, vk};
 use lahar::DedicatedImage;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tracing::{error, info};
+use winit::event::KeyEvent;
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{
     dpi::PhysicalSize,
-    event::{
-        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
-    },
-    event_loop::{ControlFlow, EventLoop},
+    event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent},
+    event_loop::EventLoop,
     window::{CursorGrabMode, Window as WinitWindow, WindowBuilder},
 };
 
@@ -27,7 +27,7 @@ pub struct EarlyWindow {
 
 impl EarlyWindow {
     pub fn new() -> Self {
-        let event_loop = EventLoop::new();
+        let event_loop = EventLoop::new().unwrap();
         let window = WindowBuilder::new()
             .with_title("hypermine")
             .build(&event_loop)
@@ -105,7 +105,7 @@ impl Window {
     }
 
     /// Run the event loop until process exit
-    pub fn run(mut self, gfx: Arc<Base>) -> ! {
+    pub fn run(mut self, gfx: Arc<Base>) {
         // Allocate the presentable images we'll be rendering to
         self.swapchain = Some(SwapchainMgr::new(
             &self,
@@ -128,34 +128,9 @@ impl Window {
         self.event_loop
             .take()
             .unwrap()
-            .run(move |event, _, control_flow| match event {
-                Event::MainEventsCleared => {
-                    while let Ok(msg) = self.net.incoming.try_recv() {
-                        self.handle_net(msg);
-                    }
-
-                    if let Some(sim) = self.sim.as_mut() {
-                        let this_frame = Instant::now();
-                        let dt = this_frame - last_frame;
-                        sim.set_movement_input(na::Vector3::new(
-                            right as u8 as f32 - left as u8 as f32,
-                            up as u8 as f32 - down as u8 as f32,
-                            back as u8 as f32 - forward as u8 as f32,
-                        ));
-                        sim.set_jump_held(jump);
-
-                        sim.look(
-                            0.0,
-                            0.0,
-                            2.0 * (anticlockwise as u8 as f32 - clockwise as u8 as f32)
-                                * dt.as_secs_f32(),
-                        );
-
-                        sim.step(dt, &mut self.net);
-                        last_frame = this_frame;
-                    }
-
-                    self.draw();
+            .run(move |event, window_target| match event {
+                Event::AboutToWait => {
+                    self.window.request_redraw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
                     DeviceEvent::MouseMotion { delta } if mouse_captured => {
@@ -171,6 +146,34 @@ impl Window {
                     _ => {}
                 },
                 Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::RedrawRequested => {
+                        while let Ok(msg) = self.net.incoming.try_recv() {
+                            self.handle_net(msg);
+                        }
+
+                        if let Some(sim) = self.sim.as_mut() {
+                            let this_frame = Instant::now();
+                            let dt = this_frame - last_frame;
+                            sim.set_movement_input(na::Vector3::new(
+                                right as u8 as f32 - left as u8 as f32,
+                                up as u8 as f32 - down as u8 as f32,
+                                back as u8 as f32 - forward as u8 as f32,
+                            ));
+                            sim.set_jump_held(jump);
+
+                            sim.look(
+                                0.0,
+                                0.0,
+                                2.0 * (anticlockwise as u8 as f32 - clockwise as u8 as f32)
+                                    * dt.as_secs_f32(),
+                            );
+
+                            sim.step(dt, &mut self.net);
+                            last_frame = this_frame;
+                        }
+
+                        self.draw();
+                    }
                     WindowEvent::Resized(_) => {
                         // Some environments may not emit the vulkan signals that recommend or
                         // require surface reconstruction, so we need to check for messages from the
@@ -180,7 +183,7 @@ impl Window {
                     }
                     WindowEvent::CloseRequested => {
                         info!("exiting due to closed window");
-                        *control_flow = ControlFlow::Exit;
+                        window_target.exit();
                     }
                     WindowEvent::MouseInput {
                         button: MouseButton::Left,
@@ -195,39 +198,39 @@ impl Window {
                         mouse_captured = true;
                     }
                     WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
                                 state,
-                                virtual_keycode: Some(key),
+                                physical_key: PhysicalKey::Code(key),
                                 ..
                             },
                         ..
                     } => match key {
-                        VirtualKeyCode::W => {
+                        KeyCode::KeyW => {
                             forward = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::A => {
+                        KeyCode::KeyA => {
                             left = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::S => {
+                        KeyCode::KeyS => {
                             back = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::D => {
+                        KeyCode::KeyD => {
                             right = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::Q => {
+                        KeyCode::KeyQ => {
                             anticlockwise = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::E => {
+                        KeyCode::KeyE => {
                             clockwise = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::R => {
+                        KeyCode::KeyR => {
                             up = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::F => {
+                        KeyCode::KeyF => {
                             down = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::Space => {
+                        KeyCode::Space => {
                             if let Some(sim) = self.sim.as_mut() {
                                 if !jump && state == ElementState::Pressed {
                                     sim.set_jump_pressed_true();
@@ -235,12 +238,12 @@ impl Window {
                                 jump = state == ElementState::Pressed;
                             }
                         }
-                        VirtualKeyCode::V if state == ElementState::Pressed => {
+                        KeyCode::KeyV if state == ElementState::Pressed => {
                             if let Some(sim) = self.sim.as_mut() {
                                 sim.toggle_no_clip();
                             }
                         }
-                        VirtualKeyCode::Escape => {
+                        KeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
                             mouse_captured = false;
@@ -256,11 +259,12 @@ impl Window {
                     }
                     _ => {}
                 },
-                Event::LoopDestroyed => {
+                Event::LoopExiting => {
                     self.metrics.report();
                 }
                 _ => {}
-            });
+            })
+            .unwrap();
     }
 
     fn handle_net(&mut self, msg: net::Message) {
