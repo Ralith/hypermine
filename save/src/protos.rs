@@ -15,24 +15,10 @@ pub struct Character {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntityNode {
-    /// Entities whose origins lie within this node
-    #[prost(message, repeated, tag = "1")]
-    pub archetypes: ::prost::alloc::vec::Vec<Archetype>,
-}
-/// A set of entities, all of which have the same components
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Archetype {
-    /// Entity IDs
-    #[prost(fixed64, repeated, tag = "1")]
-    pub entities: ::prost::alloc::vec::Vec<u64>,
-    /// Type of components stored in each column
-    #[prost(enumeration = "ComponentType", repeated, tag = "2")]
-    pub component_types: ::prost::alloc::vec::Vec<i32>,
-    /// Each data represents a dense column of component values of the type identified by the
-    /// component_type at the same index as the column
-    #[prost(bytes = "vec", repeated, tag = "3")]
-    pub component_data: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+    /// Entities whose origins lie within this node, each encoded as:
+    /// { entity: u64, component_count: varint, components: \[{ type: varint, length: varint, data: [u8\] }] }
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub entities: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -56,7 +42,7 @@ pub struct Chunk {
 pub enum ComponentType {
     /// 4x4 matrix of f32s
     Position = 0,
-    /// Varint length tag followed by UTF-8 text
+    /// UTF-8 text
     Name = 1,
 }
 impl ComponentType {

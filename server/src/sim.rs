@@ -6,6 +6,7 @@ use fxhash::{FxHashMap, FxHashSet};
 use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use save::ComponentType;
 use tracing::{error_span, info, trace};
 
 use common::{
@@ -22,7 +23,7 @@ use common::{
     EntityId, SimConfig, Step,
 };
 
-use crate::postcard_helpers;
+use crate::postcard_helpers::{self, SaveEntity};
 
 pub struct Sim {
     cfg: Arc<SimConfig>,
@@ -96,12 +97,8 @@ impl Sim {
     }
 
     fn snapshot_node(&self, node: NodeId) -> save::EntityNode {
-        let mut ids = Vec::new();
-        let mut character_transforms = Vec::new();
-        let mut character_names = Vec::new();
-        let entities = self.graph_entities.get(node);
-
-        for &entity in entities {
+        let mut entities = Vec::new();
+        for &entity in self.graph_entities.get(node) {
             // TODO: Handle entities other than characters
             let mut q = self
                 .world
@@ -110,21 +107,25 @@ impl Sim {
             let Some((id, pos, ch)) = q.get() else {
                 continue;
             };
-            ids.push(id.to_bits());
-            postcard_helpers::serialize(pos.local.as_ref(), &mut character_transforms).unwrap();
-            postcard_helpers::serialize(&ch.name, &mut character_names).unwrap();
+            let mut repr = Vec::new();
+            postcard_helpers::serialize(
+                &SaveEntity {
+                    entity: id.to_bits().to_le_bytes(),
+                    components: vec![
+                        (
+                            ComponentType::Position as u64,
+                            postcard::to_stdvec(pos.local.as_ref()).unwrap(),
+                        ),
+                        (ComponentType::Name as u64, ch.name.as_bytes().into()),
+                    ],
+                },
+                &mut repr,
+            )
+            .unwrap();
+            entities.push(repr);
         }
 
-        save::EntityNode {
-            archetypes: vec![save::Archetype {
-                entities: ids,
-                component_types: vec![
-                    save::ComponentType::Position.into(),
-                    save::ComponentType::Name.into(),
-                ],
-                component_data: vec![character_transforms, character_names],
-            }],
-        }
+        save::EntityNode { entities }
     }
 
     pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {

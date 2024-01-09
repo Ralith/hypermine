@@ -25,3 +25,10 @@ impl postcard::ser_flavors::Flavor for ExtendVec<'_> {
         Ok(())
     }
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SaveEntity {
+    /// [`EntityId`] value, represented as an array to avoid wastefully varint encoding random bytes
+    pub entity: [u8; 8],
+    pub components: Vec<(u64, Vec<u8>)>,
+}

@@ -13,21 +13,9 @@ message Character {
 }
 
 message EntityNode {
-    // Entities whose origins lie within this node
-    repeated Archetype archetypes = 1;
-}
-
-// A set of entities, all of which have the same components
-message Archetype {
-    // Entity IDs
-    repeated fixed64 entities = 1;
-
-    // Type of components stored in each column
-    repeated ComponentType component_types = 2;
-
-    // Each data represents a dense column of component values of the type identified by the
-    // component_type at the same index as the column
-    repeated bytes component_data = 3;
+    // Entities whose origins lie within this node, each encoded as:
+    // { entity: u64, component_count: varint, components: [{ type: varint, length: varint, data: [u8] }] }
+    repeated bytes entities = 1;
 }
 
 message VoxelNode {
@@ -46,6 +34,6 @@ message Chunk {
 enum ComponentType {
     // 4x4 matrix of f32s
     POSITION = 0;
-    // Varint length tag followed by UTF-8 text
+    // UTF-8 text
     NAME = 1;
 }
