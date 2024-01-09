@@ -58,6 +58,10 @@ pub struct Sim {
     place_block_pressed: bool,
     /// Whether the break-block button has been pressed since the last step
     break_block_pressed: bool,
+
+    selected_material: Material,
+    material_palette: [Material; 10],
+
     prediction: PredictedMotion,
     local_character_controller: LocalCharacterController,
 }
@@ -87,6 +91,10 @@ impl Sim {
             jump_held: false,
             place_block_pressed: false,
             break_block_pressed: false,
+            selected_material: Material::WoodPlanks,
+            material_palette: [Material::WoodPlanks, Material::Grass, Material::Dirt,
+                Material::Sand, Material::Snow, Material::WhiteBrick,
+                Material::GreyBrick, Material::Basalt, Material::Water, Material::Lava],
             prediction: PredictedMotion::new(proto::Position {
                 node: NodeId::ROOT,
                 local: na::one(),
@@ -136,6 +144,14 @@ impl Sim {
 
     pub fn set_place_block_pressed_true(&mut self) {
         self.place_block_pressed = true;
+    }
+
+    pub fn select_material(&mut self, idx: usize) {
+        self.selected_material = if idx < self.material_palette.len() {
+            self.material_palette[idx]
+        } else {
+            self.material_palette[0]
+        };
     }
 
     pub fn set_break_block_pressed_true(&mut self) {
@@ -476,7 +492,7 @@ impl Sim {
         };
 
         let material = if placing {
-            Material::WoodPlanks
+            self.selected_material
         } else {
             Material::Void
         };

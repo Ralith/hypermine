@@ -256,6 +256,16 @@ impl Window {
                                 sim.toggle_no_clip();
                             }
                         }
+                        VirtualKeyCode::Key1 | VirtualKeyCode::Key2 | VirtualKeyCode::Key3
+                        | VirtualKeyCode::Key4 | VirtualKeyCode::Key5 | VirtualKeyCode::Key6
+                        | VirtualKeyCode::Key7 | VirtualKeyCode::Key8 | VirtualKeyCode::Key9
+                        | VirtualKeyCode::Key0 => {
+                            if state == ElementState::Pressed {
+                                if let Some(sim) = self.sim.as_mut() {
+                                    sim.select_material(number_key_to_index(key));
+                                }
+                            }
+                        }
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
@@ -353,6 +363,22 @@ impl Window {
                 Err(e) => panic!("queue_present: {e}"),
             };
         }
+    }
+}
+
+fn number_key_to_index(key: VirtualKeyCode) -> usize {
+    match key {
+        VirtualKeyCode::Key1 => 0,
+        VirtualKeyCode::Key2 => 1,
+        VirtualKeyCode::Key3 => 2,
+        VirtualKeyCode::Key4 => 3,
+        VirtualKeyCode::Key5 => 4,
+        VirtualKeyCode::Key6 => 5,
+        VirtualKeyCode::Key7 => 6,
+        VirtualKeyCode::Key8 => 7,
+        VirtualKeyCode::Key9 => 8,
+        VirtualKeyCode::Key0 => 9,
+        _ => 0,
     }
 }
 
