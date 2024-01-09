@@ -7,7 +7,7 @@ use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use save::ComponentType;
-use tracing::{error_span, info, trace};
+use tracing::{error, error_span, info, trace};
 
 use common::{
     character_controller, dodeca,
@@ -99,25 +99,28 @@ impl Sim {
     fn snapshot_node(&self, node: NodeId) -> save::EntityNode {
         let mut entities = Vec::new();
         for &entity in self.graph_entities.get(node) {
-            // TODO: Handle entities other than characters
-            let mut q = self
-                .world
-                .query_one::<(&EntityId, &Position, &Character)>(entity)
-                .unwrap();
-            let Some((id, pos, ch)) = q.get() else {
+            let Ok(entity) = self.world.entity(entity) else {
+                error!("stale graph entity {:?}", entity);
                 continue;
             };
+            let Some(id) = entity.get::<&EntityId>() else {
+                continue;
+            };
+            let mut components = Vec::new();
+            if let Some(pos) = entity.get::<&Position>() {
+                components.push((
+                    ComponentType::Position as u64,
+                    postcard::to_stdvec(pos.local.as_ref()).unwrap(),
+                ));
+            }
+            if let Some(ch) = entity.get::<&Character>() {
+                components.push((ComponentType::Name as u64, ch.name.as_bytes().into()));
+            }
             let mut repr = Vec::new();
             postcard_helpers::serialize(
                 &SaveEntity {
                     entity: id.to_bits().to_le_bytes(),
-                    components: vec![
-                        (
-                            ComponentType::Position as u64,
-                            postcard::to_stdvec(pos.local.as_ref()).unwrap(),
-                        ),
-                        (ComponentType::Name as u64, ch.name.as_bytes().into()),
-                    ],
+                    components,
                 },
                 &mut repr,
             )
