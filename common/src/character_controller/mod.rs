@@ -34,7 +34,7 @@ pub fn run_character_step(
             graph,
             radius: sim_config.character.character_radius,
         },
-        up: graph.get_relative_up(position).unwrap(), // up: graph.get_relative_up(position).unwrap_or(na::Vector3::x_axis()),
+        up: graph.get_relative_up(position).unwrap(),
         dt_seconds,
         movement_input: sanitize_motion_input(input.movement),
         jump_input: input.jump,

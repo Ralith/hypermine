@@ -256,22 +256,20 @@ impl Window {
                                 sim.toggle_no_clip();
                             }
                         }
-                        VirtualKeyCode::Key1 | VirtualKeyCode::Key2 | VirtualKeyCode::Key3
-                        | VirtualKeyCode::Key4 | VirtualKeyCode::Key5 | VirtualKeyCode::Key6
-                        | VirtualKeyCode::Key7 | VirtualKeyCode::Key8 | VirtualKeyCode::Key9
-                        | VirtualKeyCode::Key0 => {
-                            if state == ElementState::Pressed {
-                                if let Some(sim) = self.sim.as_mut() {
-                                    sim.select_material(number_key_to_index(key));
-                                }
-                            }
-                        }
                         VirtualKeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
                             mouse_captured = false;
                         }
-                        _ => {}
+                        _ => {
+                            if let Some(material_idx) = number_key_to_index(key) {
+                                if state == ElementState::Pressed {
+                                    if let Some(sim) = self.sim.as_mut() {
+                                        sim.select_material(material_idx);
+                                    }
+                                }
+                            }
+                        }
                     },
                     WindowEvent::Focused(focused) => {
                         if !focused {
@@ -366,19 +364,19 @@ impl Window {
     }
 }
 
-fn number_key_to_index(key: VirtualKeyCode) -> usize {
+fn number_key_to_index(key: VirtualKeyCode) -> Option<usize> {
     match key {
-        VirtualKeyCode::Key1 => 0,
-        VirtualKeyCode::Key2 => 1,
-        VirtualKeyCode::Key3 => 2,
-        VirtualKeyCode::Key4 => 3,
-        VirtualKeyCode::Key5 => 4,
-        VirtualKeyCode::Key6 => 5,
-        VirtualKeyCode::Key7 => 6,
-        VirtualKeyCode::Key8 => 7,
-        VirtualKeyCode::Key9 => 8,
-        VirtualKeyCode::Key0 => 9,
-        _ => 0,
+        VirtualKeyCode::Key1 => Some(0),
+        VirtualKeyCode::Key2 => Some(1),
+        VirtualKeyCode::Key3 => Some(2),
+        VirtualKeyCode::Key4 => Some(3),
+        VirtualKeyCode::Key5 => Some(4),
+        VirtualKeyCode::Key6 => Some(5),
+        VirtualKeyCode::Key7 => Some(6),
+        VirtualKeyCode::Key8 => Some(7),
+        VirtualKeyCode::Key9 => Some(8),
+        VirtualKeyCode::Key0 => Some(9),
+        _ => None,
     }
 }
 
