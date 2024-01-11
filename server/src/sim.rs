@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use common::proto::BlockUpdate;
+use anyhow::Context;
+use common::dodeca::Vertex;
+use common::node::VoxelData;
+use common::proto::{BlockUpdate, SerializedVoxelData};
 use common::{node::ChunkId, GraphEntities};
 use fxhash::{FxHashMap, FxHashSet};
 use hecs::Entity;
@@ -32,29 +35,40 @@ pub struct Sim {
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
     graph: Graph,
+    /// Voxel data that has been fetched from a savefile but not yet introduced to the graph
+    preloaded_voxel_data: FxHashMap<ChunkId, VoxelData>,
     spawns: Vec<Entity>,
     despawns: Vec<EntityId>,
     graph_entities: GraphEntities,
+    /// All nodes that have entity-related information yet to be saved
     dirty_nodes: FxHashSet<NodeId>,
+    /// All nodes that have voxel-related information yet to be saved
+    dirty_voxel_nodes: FxHashSet<NodeId>,
+    /// All chunks that have ever had any block updates applied to them and can no longer be regenerated with worldgen
     modified_chunks: FxHashSet<ChunkId>,
 }
 
 impl Sim {
-    pub fn new(cfg: Arc<SimConfig>) -> Self {
+    pub fn new(cfg: Arc<SimConfig>, save: &save::Save) -> Self {
         let mut result = Self {
             rng: SmallRng::from_entropy(),
             step: 0,
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
             graph: Graph::new(cfg.chunk_size),
+            preloaded_voxel_data: FxHashMap::default(),
             spawns: Vec::new(),
             despawns: Vec::new(),
             graph_entities: GraphEntities::new(),
             dirty_nodes: FxHashSet::default(),
+            dirty_voxel_nodes: FxHashSet::default(),
             modified_chunks: FxHashSet::default(),
             cfg,
         };
 
+        result
+            .load_all_voxels(save)
+            .expect("save file must be of a valid format");
         ensure_nearby(
             &mut result.graph,
             &Position::origin(),
@@ -86,13 +100,42 @@ impl Sim {
         }
 
         let dirty_nodes = self.dirty_nodes.drain().collect::<Vec<_>>();
+        let dirty_voxel_nodes = self.dirty_voxel_nodes.drain().collect::<Vec<_>>();
         for node in dirty_nodes {
             let entities = self.snapshot_node(node);
             writer.put_entity_node(self.graph.hash_of(node), &entities)?;
         }
+        for node in dirty_voxel_nodes {
+            let voxels = self.snapshot_voxel_node(node);
+            writer.put_voxel_node(self.graph.hash_of(node), &voxels)?;
+        }
 
         drop(writer);
         tx.commit()?;
+        Ok(())
+    }
+
+    fn load_all_voxels(&mut self, save: &save::Save) -> anyhow::Result<()> {
+        let read_guard = save.read()?;
+        let mut read = read_guard.get()?;
+        for node_hash in read.get_all_voxel_node_ids()? {
+            let Some(voxel_node) = read.get_voxel_node(node_hash)? else {
+                continue;
+            };
+            for chunk in voxel_node.chunks {
+                let voxels = SerializedVoxelData {
+                    inner: chunk.voxels,
+                };
+                let vertex = Vertex::iter()
+                    .nth(chunk.vertex as usize)
+                    .context("deserializing vertex ID")?;
+                self.preloaded_voxel_data.insert(
+                    ChunkId::new(self.graph.from_hash(node_hash), vertex),
+                    VoxelData::deserialize(&voxels, self.cfg.chunk_size)
+                        .context("deserializing voxel data")?,
+                );
+            }
+        }
         Ok(())
     }
 
@@ -129,6 +172,24 @@ impl Sim {
         }
 
         save::EntityNode { entities }
+    }
+
+    fn snapshot_voxel_node(&self, node: NodeId) -> save::VoxelNode {
+        let mut chunks = vec![];
+        let node_data = self.graph.get(node).as_ref().unwrap();
+        for vertex in Vertex::iter() {
+            if !self.modified_chunks.contains(&ChunkId::new(node, vertex)) {
+                continue;
+            }
+            let Chunk::Populated { ref voxels, .. } = node_data.chunks[vertex] else {
+                panic!("Unknown chunk listed as modified");
+            };
+            chunks.push(save::Chunk {
+                vertex: vertex as u32,
+                voxels: voxels.serialize(self.cfg.chunk_size).inner,
+            })
+        }
+        save::VoxelNode { chunks }
     }
 
     pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
@@ -194,7 +255,7 @@ impl Sim {
                 .map(|(side, parent)| FreshNode { side, parent })
                 .collect(),
             block_updates: Vec::new(),
-            modified_chunks: Vec::new(),
+            voxel_data: Vec::new(),
         };
         for (entity, &id) in &mut self.world.query::<&EntityId>() {
             spawns.spawns.push((id, dump_entity(&self.world, entity)));
@@ -207,7 +268,7 @@ impl Sim {
                 };
 
             spawns
-                .modified_chunks
+                .voxel_data
                 .push((chunk_id, voxels.serialize(self.cfg.chunk_size)));
         }
         spawns
@@ -245,6 +306,9 @@ impl Sim {
             ensure_nearby(&mut self.graph, position, f64::from(self.cfg.view_distance));
         }
 
+        let fresh_nodes = self.graph.fresh().to_vec();
+        populate_fresh_nodes(&mut self.graph);
+
         let mut accepted_block_updates: Vec<BlockUpdate> = vec![];
 
         for block_update in pending_block_updates.into_iter() {
@@ -252,6 +316,7 @@ impl Sim {
                 tracing::warn!("Block update received from ungenerated chunk");
             }
             self.modified_chunks.insert(block_update.chunk_id);
+            self.dirty_voxel_nodes.insert(block_update.chunk_id.node);
             accepted_block_updates.push(block_update);
         }
 
@@ -261,16 +326,28 @@ impl Sim {
             let id = *self.world.get::<&EntityId>(entity).unwrap();
             spawns.push((id, dump_entity(&self.world, entity)));
         }
-        if !self.graph.fresh().is_empty() {
+
+        let mut fresh_voxel_data = vec![];
+        for fresh_node in fresh_nodes.iter().copied() {
+            for vertex in Vertex::iter() {
+                let chunk = ChunkId::new(fresh_node, vertex);
+                if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
+                    fresh_voxel_data.push((chunk, voxel_data.serialize(self.cfg.chunk_size)));
+                    self.modified_chunks.insert(chunk);
+                    self.graph.populate_chunk(chunk, voxel_data, true)
+                }
+            }
+        }
+
+        if !fresh_nodes.is_empty() {
             trace!(count = self.graph.fresh().len(), "broadcasting fresh nodes");
         }
+
         let spawns = Spawns {
             step: self.step,
             spawns,
             despawns: std::mem::take(&mut self.despawns),
-            nodes: self
-                .graph
-                .fresh()
+            nodes: fresh_nodes
                 .iter()
                 .filter_map(|&id| {
                     let side = self.graph.parent(id)?;
@@ -281,9 +358,8 @@ impl Sim {
                 })
                 .collect(),
             block_updates: accepted_block_updates,
-            modified_chunks: vec![],
+            voxel_data: fresh_voxel_data,
         };
-        populate_fresh_nodes(&mut self.graph);
 
         // We want to load all chunks that a player can interact with in a single step, so chunk_generation_distance
         // is set up to cover that distance.

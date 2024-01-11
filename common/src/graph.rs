@@ -226,6 +226,11 @@ impl Graph {
         node.0
     }
 
+    #[inline]
+    pub fn from_hash(&self, hash: u128) -> NodeId {
+        NodeId(hash)
+    }
+
     /// Ensure all shorter neighbors of a not-yet-created child node exist and return them, excluding the given parent node
     fn populate_shorter_neighbors_of_child(
         &mut self,

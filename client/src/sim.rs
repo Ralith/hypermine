@@ -38,7 +38,8 @@ const MATERIAL_PALETTE: [Material; 10] = [
 pub struct Sim {
     // World state
     pub graph: Graph,
-    pub pending_modified_chunks: FxHashMap<ChunkId, Vec<BlockUpdate>>,
+    /// Voxel data that have been downloaded from the server for chunks not yet introduced to the graph
+    pub preloaded_block_updates: FxHashMap<ChunkId, Vec<BlockUpdate>>,
     pub graph_entities: GraphEntities,
     entity_ids: FxHashMap<EntityId, Entity>,
     pub world: hecs::World,
@@ -84,7 +85,7 @@ impl Sim {
         populate_fresh_nodes(&mut graph);
         Self {
             graph,
-            pending_modified_chunks: FxHashMap::default(),
+            preloaded_block_updates: FxHashMap::default(),
             graph_entities: GraphEntities::new(),
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
@@ -324,13 +325,13 @@ impl Sim {
         populate_fresh_nodes(&mut self.graph);
         for block_update in msg.block_updates.into_iter() {
             if !self.graph.update_block(&block_update) {
-                self.pending_modified_chunks
+                self.preloaded_block_updates
                     .entry(block_update.chunk_id)
                     .or_default()
                     .push(block_update);
             }
         }
-        for (chunk_id, voxel_data) in msg.modified_chunks {
+        for (chunk_id, voxel_data) in msg.voxel_data {
             let Some(voxel_data) = VoxelData::deserialize(&voxel_data, self.cfg.chunk_size) else {
                 tracing::error!("Voxel data received from server is of incorrect dimension");
                 continue;

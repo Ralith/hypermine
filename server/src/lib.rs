@@ -56,7 +56,7 @@ impl Server {
     fn new(params: SimConfig, save: Save) -> Self {
         let cfg = Arc::new(params);
         Self {
-            sim: Sim::new(cfg.clone()),
+            sim: Sim::new(cfg.clone(), &save),
             cfg,
             clients: DenseSlotMap::default(),
             save,
@@ -125,7 +125,7 @@ impl Server {
                     || !spawns.despawns.is_empty()
                     || !spawns.nodes.is_empty()
                     || !spawns.block_updates.is_empty()
-                    || !spawns.modified_chunks.is_empty()
+                    || !spawns.voxel_data.is_empty()
                 {
                     handles.ordered.try_send(spawns.clone())
                 } else {
