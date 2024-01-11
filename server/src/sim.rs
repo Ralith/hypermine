@@ -208,7 +208,7 @@ impl Sim {
 
             spawns
                 .modified_chunks
-                .push((chunk_id, voxels.to_serializable(self.cfg.chunk_size)));
+                .push((chunk_id, voxels.serialize(self.cfg.chunk_size)));
         }
         spawns
     }
