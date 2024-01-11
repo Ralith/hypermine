@@ -105,7 +105,7 @@ impl Voxels {
 
             // Now that the block is populated, we can apply any pending block updates the server
             // provided that the client couldn't apply.
-            if let Some(block_updates) = sim.pending_modified_chunks.remove(&chunk_id) {
+            if let Some(block_updates) = sim.preloaded_block_updates.remove(&chunk_id) {
                 for block_update in block_updates {
                     // The chunk was just populated, so a block update should always succeed.
                     assert!(sim.graph.update_block(&block_update));

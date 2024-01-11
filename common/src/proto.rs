@@ -57,7 +57,7 @@ pub struct Spawns {
     pub despawns: Vec<EntityId>,
     pub nodes: Vec<FreshNode>,
     pub block_updates: Vec<BlockUpdate>,
-    pub modified_chunks: Vec<(ChunkId, SerializedVoxelData)>,
+    pub voxel_data: Vec<(ChunkId, SerializedVoxelData)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

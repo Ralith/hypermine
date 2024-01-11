@@ -139,6 +139,16 @@ impl Reader<'_> {
             .map_err(GetError::DecompressionFailed)?;
         Ok(Some(Character::decode(&*self.accum)?))
     }
+
+    /// Temporary function to load all voxel-related save data at once.
+    /// TODO: Replace this implementation with a streaming implementation
+    /// that does not require loading everything at once
+    pub fn get_all_voxel_node_ids(&self) -> Result<Vec<u128>, GetError> {
+        self.voxel_nodes
+            .iter()?
+            .map(|n| Ok(n.map_err(GetError::from)?.0.value()))
+            .collect()
+    }
 }
 
 fn decompress(
