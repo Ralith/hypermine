@@ -57,7 +57,7 @@ pub struct Spawns {
     pub despawns: Vec<EntityId>,
     pub nodes: Vec<FreshNode>,
     pub block_updates: Vec<BlockUpdate>,
-    pub modified_chunks: Vec<(ChunkId, SerializableVoxelData)>,
+    pub modified_chunks: Vec<(ChunkId, SerializedVoxelData)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,8 +84,9 @@ pub struct BlockUpdate {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SerializableVoxelData {
-    pub voxels: Vec<Material>,
+pub struct SerializedVoxelData {
+    /// Dense 3D array of 16-bit material tags for all voxels in this chunk
+    pub inner: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

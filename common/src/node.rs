@@ -8,7 +8,7 @@ use crate::collision_math::Ray;
 use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
-use crate::proto::{BlockUpdate, Position, SerializableVoxelData};
+use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::{math, Chunks};
@@ -326,46 +326,49 @@ impl VoxelData {
         }
     }
 
-    /// Returns a `VoxelData` with void margins based on the given `SerializableVoxelData`, or `None` if
-    /// the `SerializableVoxelData` came from a `VoxelData` with the wrong dimension.
-    pub fn from_serializable(serializable: &SerializableVoxelData, dimension: u8) -> Option<Self> {
-        if serializable.voxels.len() != usize::from(dimension).pow(3) {
+    /// Returns a `VoxelData` with void margins based on the given `SerializedVoxelData`, or `None` if
+    /// the `SerializedVoxelData` came from a `VoxelData` with the wrong dimension or an unknown material.
+    pub fn deserialize(serialized: &SerializedVoxelData, dimension: u8) -> Option<Self> {
+        if serialized.inner.len() != usize::from(dimension).pow(3) * 2 {
             return None;
         }
 
+        let mut materials = serialized
+            .inner
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]));
+
         let mut data = vec![Material::Void; (usize::from(dimension) + 2).pow(3)];
-        let mut input_index = 0;
         for z in 0..dimension {
             for y in 0..dimension {
                 for x in 0..dimension {
-                    // We cannot use a linear copy here because `data` has margins, while `serializable.voxels` does not.
-                    data[Coords([x, y, z]).to_index(dimension)] = serializable.voxels[input_index];
-                    input_index += 1;
+                    // We cannot use a linear copy here because `data` has margins, while `serialized.inner` does not.
+                    data[Coords([x, y, z]).to_index(dimension)] =
+                        materials.next().unwrap().try_into().ok()?;
                 }
             }
         }
         Some(VoxelData::Dense(data.into_boxed_slice()))
     }
 
-    /// Returns a `SerializableVoxelData` corresponding to `self`. Assumes that`self` is `Dense` and
+    /// Returns a `SerializedVoxelData` corresponding to `self`. Assumes that `self` is `Dense` and
     /// has the right dimension, as it will panic or return incorrect data otherwise.
-    pub fn to_serializable(&self, dimension: u8) -> SerializableVoxelData {
+    pub fn serialize(&self, dimension: u8) -> SerializedVoxelData {
         let VoxelData::Dense(data) = self else {
             panic!("Only dense chunks can be serialized.");
         };
 
-        let mut serializable: Vec<Material> = Vec::with_capacity(usize::from(dimension).pow(3));
+        let mut serialized: Vec<u8> = Vec::with_capacity(usize::from(dimension).pow(3) * 2);
         for z in 0..dimension {
             for y in 0..dimension {
                 for x in 0..dimension {
-                    // We cannot use a linear copy here because `data` has margins, while `serializable.voxels` does not.
-                    serializable.push(data[Coords([x, y, z]).to_index(dimension)]);
+                    // We cannot use a linear copy here because `data` has margins, while `serialized.inner` does not.
+                    serialized
+                        .extend((data[Coords([x, y, z]).to_index(dimension)] as u16).to_le_bytes());
                 }
             }
         }
-        SerializableVoxelData {
-            voxels: serializable,
-        }
+        SerializedVoxelData { inner: serialized }
     }
 }
 
