@@ -69,11 +69,6 @@ impl Sim {
         result
             .load_all_voxels(save)
             .expect("save file must be of a valid format");
-        ensure_nearby(
-            &mut result.graph,
-            &Position::origin(),
-            f64::from(result.cfg.view_distance),
-        );
         result
     }
 
@@ -280,52 +275,13 @@ impl Sim {
 
         let mut pending_block_updates: Vec<BlockUpdate> = vec![];
 
-        // Simulate
-        for (entity, (position, character, input)) in self
-            .world
-            .query::<(&mut Position, &mut Character, &CharacterInput)>()
-            .iter()
-        {
-            let prev_node = position.node;
-            character_controller::run_character_step(
-                &self.cfg,
-                &self.graph,
-                position,
-                &mut character.state.velocity,
-                &mut character.state.on_ground,
-                input,
-                self.cfg.step_interval.as_secs_f32(),
-            );
-            pending_block_updates.extend(input.block_update.iter().cloned());
-            if prev_node != position.node {
-                self.dirty_nodes.insert(prev_node);
-                self.graph_entities.remove(prev_node, entity);
-                self.graph_entities.insert(position.node, entity);
-            }
-            self.dirty_nodes.insert(position.node);
+        // Extend graph structure
+        for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
             ensure_nearby(&mut self.graph, position, f64::from(self.cfg.view_distance));
         }
 
         let fresh_nodes = self.graph.fresh().to_vec();
         populate_fresh_nodes(&mut self.graph);
-
-        let mut accepted_block_updates: Vec<BlockUpdate> = vec![];
-
-        for block_update in pending_block_updates.into_iter() {
-            if !self.graph.update_block(&block_update) {
-                tracing::warn!("Block update received from ungenerated chunk");
-            }
-            self.modified_chunks.insert(block_update.chunk_id);
-            self.dirty_voxel_nodes.insert(block_update.chunk_id.node);
-            accepted_block_updates.push(block_update);
-        }
-
-        // Capture state changes for broadcast to clients
-        let mut spawns = Vec::with_capacity(self.spawns.len());
-        for entity in self.spawns.drain(..) {
-            let id = *self.world.get::<&EntityId>(entity).unwrap();
-            spawns.push((id, dump_entity(&self.world, entity)));
-        }
 
         let mut fresh_voxel_data = vec![];
         for fresh_node in fresh_nodes.iter().copied() {
@@ -338,28 +294,6 @@ impl Sim {
                 }
             }
         }
-
-        if !fresh_nodes.is_empty() {
-            trace!(count = self.graph.fresh().len(), "broadcasting fresh nodes");
-        }
-
-        let spawns = Spawns {
-            step: self.step,
-            spawns,
-            despawns: std::mem::take(&mut self.despawns),
-            nodes: fresh_nodes
-                .iter()
-                .filter_map(|&id| {
-                    let side = self.graph.parent(id)?;
-                    Some(FreshNode {
-                        side,
-                        parent: self.graph.neighbor(id, side).unwrap(),
-                    })
-                })
-                .collect(),
-            block_updates: accepted_block_updates,
-            voxel_data: fresh_voxel_data,
-        };
 
         // We want to load all chunks that a player can interact with in a single step, so chunk_generation_distance
         // is set up to cover that distance.
@@ -392,6 +326,71 @@ impl Sim {
                 }
             }
         }
+
+        // Simulate
+        for (entity, (position, character, input)) in self
+            .world
+            .query::<(&mut Position, &mut Character, &CharacterInput)>()
+            .iter()
+        {
+            let prev_node = position.node;
+            character_controller::run_character_step(
+                &self.cfg,
+                &self.graph,
+                position,
+                &mut character.state.velocity,
+                &mut character.state.on_ground,
+                input,
+                self.cfg.step_interval.as_secs_f32(),
+            );
+            pending_block_updates.extend(input.block_update.iter().cloned());
+            if prev_node != position.node {
+                self.dirty_nodes.insert(prev_node);
+                self.graph_entities.remove(prev_node, entity);
+                self.graph_entities.insert(position.node, entity);
+            }
+            self.dirty_nodes.insert(position.node);
+        }
+
+        let mut accepted_block_updates: Vec<BlockUpdate> = vec![];
+
+        for block_update in pending_block_updates.into_iter() {
+            if !self.graph.update_block(&block_update) {
+                tracing::warn!("Block update received from ungenerated chunk");
+            }
+            self.modified_chunks.insert(block_update.chunk_id);
+            self.dirty_voxel_nodes.insert(block_update.chunk_id.node);
+            accepted_block_updates.push(block_update);
+        }
+
+        // Capture state changes for broadcast to clients
+        let mut spawns = Vec::with_capacity(self.spawns.len());
+        for entity in self.spawns.drain(..) {
+            let id = *self.world.get::<&EntityId>(entity).unwrap();
+            spawns.push((id, dump_entity(&self.world, entity)));
+        }
+
+        if !fresh_nodes.is_empty() {
+            trace!(count = self.graph.fresh().len(), "broadcasting fresh nodes");
+        }
+
+        let spawns = Spawns {
+            step: self.step,
+            spawns,
+            despawns: std::mem::take(&mut self.despawns),
+            nodes: fresh_nodes
+                .iter()
+                .filter_map(|&id| {
+                    let side = self.graph.parent(id)?;
+                    Some(FreshNode {
+                        side,
+                        parent: self.graph.neighbor(id, side).unwrap(),
+                    })
+                })
+                .collect(),
+            block_updates: accepted_block_updates,
+            voxel_data: fresh_voxel_data,
+        };
 
         // TODO: Omit unchanged (e.g. freshly spawned) entities (dirty flag?)
         let delta = StateDelta {
