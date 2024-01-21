@@ -437,7 +437,15 @@ impl Sim {
     }
 
     pub fn view(&self) -> Position {
-        self.local_character_controller.oriented_position()
+        let mut pos = self.local_character_controller.position();
+        let up = self.graph.get_relative_up(&pos).unwrap();
+        pos.local *= common::math::translate_along(
+            &(up.as_ref() * (self.cfg.character.character_radius - 1e-3)),
+        ) * self
+            .local_character_controller
+            .orientation()
+            .to_homogeneous();
+        pos
     }
 
     /// Destroy all aspects of an entity
