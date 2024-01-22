@@ -21,8 +21,12 @@ impl LocalCharacterController {
         }
     }
 
-    pub fn position(&self) -> Position {
-        self.position
+    /// Get the current position with orientation applied to it
+    pub fn oriented_position(&self) -> Position {
+        Position {
+            node: self.position.node,
+            local: self.position.local * self.orientation.to_homogeneous(),
+        }
     }
 
     pub fn orientation(&self) -> na::UnitQuaternion<f32> {
