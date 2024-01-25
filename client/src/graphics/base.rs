@@ -1,6 +1,6 @@
 //! Common state shared throughout the graphics system
 
-use std::ffi::CStr;
+use std::ffi::{c_char, CStr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io, ptr};
@@ -111,7 +111,7 @@ impl Base {
                     .device_name
                     .iter()
                     .position(|&x| x == 0)
-                    .unwrap()] as *const [i8] as *const [u8]),
+                    .unwrap()] as *const [c_char] as *const [u8]),
             )
             .unwrap();
             info!(name, "selected device");

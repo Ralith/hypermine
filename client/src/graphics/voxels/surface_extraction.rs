@@ -1,3 +1,4 @@
+use std::ffi::c_char;
 use std::{mem, ptr};
 
 use ash::{vk, Device};
@@ -109,7 +110,7 @@ impl SurfaceExtraction {
                 .map_entries(&specialization_map_entries)
                 .data(as_bytes(&WORKGROUP_SIZE));
 
-            let p_name = b"main\0".as_ptr() as *const i8;
+            let p_name = b"main\0".as_ptr() as *const c_char;
             let mut pipelines = device
                 .create_compute_pipelines(
                     gfx.pipeline_cache,
