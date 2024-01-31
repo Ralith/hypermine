@@ -1,7 +1,7 @@
 let
   moz_overlay = import (builtins.fetchTarball
     "https://github.com/mozilla/nixpkgs-mozilla/archive/9b11a87c0cc54e308fa83aac5b4ee1816d5418a2.tar.gz");
-  nixpkgs = import <nixpkgs> { overlays = [ moz_overlay ]; }; # 23.11
+  nixpkgs = import <nixpkgs> { overlays = [ moz_overlay ]; };
 in with nixpkgs;
 let
   dlopen-libs = with xorg; [ vulkan-loader libX11 libXcursor libXrandr libXi ];
