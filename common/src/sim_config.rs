@@ -48,7 +48,7 @@ impl SimConfig {
         let voxel_size = x.voxel_size.unwrap_or(1.0);
         let meters_to_absolute = meters_to_absolute(chunk_size, voxel_size);
         SimConfig {
-            step_interval: Duration::from_secs(1) / x.rate.unwrap_or(10) as u32,
+            step_interval: Duration::from_secs(1) / x.rate.unwrap_or(30) as u32,
             view_distance: x.view_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
             chunk_size,
