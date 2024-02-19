@@ -52,6 +52,15 @@ impl Core {
                 info!("vulkan debugging unavailable");
             }
 
+            let instance_layers = entry.enumerate_instance_layer_properties().unwrap();
+            tracing::info!(
+                "Vulkan instance layers: {:?}",
+                instance_layers
+                    .iter()
+                    .map(|layer| CStr::from_ptr(layer.layer_name.as_ptr()).to_str().unwrap())
+                    .collect::<Vec<_>>()
+            );
+
             let name = cstr!("hypermine");
 
             let app_info = vk::ApplicationInfo::builder()
