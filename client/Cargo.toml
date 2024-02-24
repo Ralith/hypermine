@@ -37,7 +37,7 @@ hecs = { workspace = true }
 rcgen = { version = "0.12.1", default-features = false, features = ["ring"] }
 memoffset = "0.9"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
-metrics = { version = "0.21.0" }
+metrics = "0.22.1"
 hdrhistogram = { version = "7", default-features = false }
 save = { path = "../save" }
 
