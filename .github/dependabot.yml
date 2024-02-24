@@ -6,13 +6,8 @@ updates:
     interval: daily
   open-pull-requests-limit: 10
   ignore:
-  - dependency-name: whoami
-    versions:
-    - 1.1.0
-    - 1.1.1
+  # Ignore raw-window-handle because it's tied to ash-window
+  - dependency-name: raw-window-handle
+  # Ignore rustls and rustls-pemfile because they're tied to quinn
   - dependency-name: rustls
-    versions:
-    - 0.19.0
-  - dependency-name: directories
-    versions:
-    - 3.0.1
+  - dependency-name: rustls-pemfile
