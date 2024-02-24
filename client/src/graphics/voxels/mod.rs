@@ -126,10 +126,7 @@ impl Voxels {
             &view,
             f64::from(self.config.local_simulation.view_distance),
         );
-        histogram!(
-            "frame.cpu.voxels.graph_traversal",
-            graph_traversal_started.elapsed()
-        );
+        histogram!("frame.cpu.voxels.graph_traversal").record(graph_traversal_started.elapsed());
         // Sort nodes by distance to the view to prioritize loading closer data and improve early Z
         // performance
         let view_pos = view.local * math::origin();
@@ -252,7 +249,7 @@ impl Voxels {
             cmd,
             &extractions,
         );
-        histogram!("frame.cpu.voxels.node_scan", node_scan_started.elapsed());
+        histogram!("frame.cpu.voxels.node_scan").record(node_scan_started.elapsed());
     }
 
     pub unsafe fn draw(
@@ -277,7 +274,7 @@ impl Voxels {
         for chunk in &frame.drawn {
             self.draw.draw(device, cmd, &self.surfaces, chunk.0);
         }
-        histogram!("frame.cpu.voxels.draw", started.elapsed());
+        histogram!("frame.cpu.voxels.draw").record(started.elapsed());
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {

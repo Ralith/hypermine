@@ -314,8 +314,8 @@ impl Draw {
                 self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[1] - queries[0]) as f64;
             let after_seconds =
                 self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[2] - queries[1]) as f64;
-            histogram!("frame.gpu.draw", draw_seconds);
-            histogram!("frame.gpu.after_draw", after_seconds);
+            histogram!("frame.gpu.draw").record(draw_seconds);
+            histogram!("frame.gpu.after_draw").record(after_seconds);
         }
 
         device
@@ -516,7 +516,7 @@ impl Draw {
             .unwrap();
         state.used = true;
         state.in_flight = true;
-        histogram!("frame.cpu", draw_started.elapsed());
+        histogram!("frame.cpu").record(draw_started.elapsed());
     }
 
     /// Wait for all drawing to complete

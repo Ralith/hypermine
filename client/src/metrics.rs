@@ -11,7 +11,7 @@ pub fn init() -> Arc<Recorder> {
     let recorder = Arc::new(Recorder {
         histograms: RwLock::new(HashMap::new()),
     });
-    metrics::set_boxed_recorder(Box::new(ArcRecorder(recorder.clone()))).unwrap();
+    metrics::set_global_recorder(ArcRecorder(recorder.clone())).unwrap();
     recorder
 }
 
@@ -68,15 +68,27 @@ impl metrics::Recorder for ArcRecorder {
         todo!()
     }
 
-    fn register_counter(&self, _key: &metrics::Key) -> metrics::Counter {
+    fn register_counter(
+        &self,
+        _key: &metrics::Key,
+        _metadata: &metrics::Metadata<'_>,
+    ) -> metrics::Counter {
         todo!()
     }
 
-    fn register_gauge(&self, _key: &metrics::Key) -> metrics::Gauge {
+    fn register_gauge(
+        &self,
+        _key: &metrics::Key,
+        _metadata: &metrics::Metadata<'_>,
+    ) -> metrics::Gauge {
         todo!()
     }
 
-    fn register_histogram(&self, key: &metrics::Key) -> metrics::Histogram {
+    fn register_histogram(
+        &self,
+        key: &metrics::Key,
+        _metadata: &metrics::Metadata<'_>,
+    ) -> metrics::Histogram {
         metrics::Histogram::from_arc(Arc::new(Handle {
             recorder: self.0.clone(),
             key: key.clone(),
