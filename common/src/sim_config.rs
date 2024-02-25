@@ -64,8 +64,8 @@ fn meters_to_absolute(chunk_size: u8, voxel_size: f32) -> f32 {
     let a = dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(1.0, 0.5, 0.5, 1.0);
     let b = dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(0.0, 0.5, 0.5, 1.0);
     let minimum_chunk_face_separation = math::distance(&a, &b);
-    let absolute_voxel_size = minimum_chunk_face_separation / f64::from(chunk_size);
-    absolute_voxel_size as f32 / voxel_size
+    let absolute_voxel_size = minimum_chunk_face_separation / f32::from(chunk_size);
+    absolute_voxel_size / voxel_size
 }
 
 /// Static configuration information relevant to character physics as provided in configuration files
