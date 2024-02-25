@@ -383,7 +383,7 @@ impl ChunkLayout {
     pub fn new(dimension: u8) -> Self {
         ChunkLayout {
             dimension,
-            dual_to_grid_factor: Vertex::dual_to_chunk_factor() as f32 * dimension as f32,
+            dual_to_grid_factor: Vertex::dual_to_chunk_factor() * dimension as f32,
         }
     }
 
