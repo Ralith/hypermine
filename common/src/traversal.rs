@@ -13,14 +13,17 @@ use crate::{
 
 /// Ensure all nodes within `distance` of `start` exist
 pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f64) {
-    let mut pending = Vec::<(NodeId, na::Matrix4<f64>)>::new();
+    // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
+    // minimal path to each node. This greatly helps prevent error from accumulating due to
+    // hundreds of transformations being composed.
+    let mut pending = VecDeque::<(NodeId, na::Matrix4<f64>)>::new();
     let mut visited = FxHashSet::<NodeId>::default();
 
-    pending.push((start.node, na::Matrix4::identity()));
+    pending.push_back((start.node, na::Matrix4::identity()));
     visited.insert(start.node);
     let start_p = start.local.map(|x| x as f64) * math::origin();
 
-    while let Some((node, current_transform)) = pending.pop() {
+    while let Some((node, current_transform)) = pending.pop_front() {
         for side in Side::iter() {
             let neighbor = graph.ensure_neighbor(node, side);
             if visited.contains(&neighbor) {
@@ -32,7 +35,7 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f64) {
             if math::distance(&start_p, &neighbor_p) > distance {
                 continue;
             }
-            pending.push((neighbor, neighbor_transform));
+            pending.push_back((neighbor, neighbor_transform));
         }
     }
 }
@@ -50,17 +53,21 @@ pub fn nearby_nodes(
     }
 
     let mut result = Vec::new();
-    let mut pending = Vec::<PendingNode>::new();
+
+    // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
+    // minimal path to each node. This greatly helps prevent error from accumulating due to
+    // hundreds of transformations being composed.
+    let mut pending = VecDeque::<PendingNode>::new();
     let mut visited = FxHashSet::<NodeId>::default();
     let start_p = start.local.map(|x| x as f64) * math::origin();
 
-    pending.push(PendingNode {
+    pending.push_back(PendingNode {
         id: start.node,
         transform: na::Matrix4::identity(),
     });
     visited.insert(start.node);
 
-    while let Some(current) = pending.pop() {
+    while let Some(current) = pending.pop_front() {
         let current_p = current.transform * math::origin();
         if math::distance(&start_p, &current_p) > distance {
             continue;
@@ -75,7 +82,7 @@ pub fn nearby_nodes(
             if visited.contains(&neighbor) {
                 continue;
             }
-            pending.push(PendingNode {
+            pending.push_back(PendingNode {
                 id: neighbor,
                 transform: current.transform * side.reflection(),
             });
