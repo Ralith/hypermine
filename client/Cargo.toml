@@ -48,7 +48,7 @@ use-repo-assets = []
 [dev-dependencies]
 approx = "0.5.1"
 bencher = "0.1.5"
-renderdoc = "0.11.0"
+renderdoc = "0.12.1"
 
 [[bench]]
 name = "surface_extraction"
