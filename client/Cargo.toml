@@ -31,7 +31,7 @@ fxhash = "0.2.1"
 downcast-rs = "1.1.1"
 quinn = { workspace = true }
 futures-util = "0.3.1"
-rustls = { version = "0.21.7", features = ["dangerous_configuration"] }
+rustls = { version = "0.23.3", features = ["dangerous_configuration"] }
 webpki = "0.22.0"
 hecs = { workspace = true }
 rcgen = { version = "0.12.1", default-features = false, features = ["ring"] }
