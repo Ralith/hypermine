@@ -15,7 +15,7 @@ fn persist_meta() {
 #[test]
 fn persist_node() {
     let file = tempfile::NamedTempFile::new().unwrap();
-    let mut save = Save::open(file.path(), 12).unwrap();
+    let save = Save::open(file.path(), 12).unwrap();
     let node = save::VoxelNode {
         chunks: vec![save::Chunk {
             vertex: 0,
@@ -31,20 +31,14 @@ fn persist_node() {
     writer_guard.commit().unwrap();
     assert_eq!(
         node,
-        save.read()
-            .unwrap()
-            .get()
-            .unwrap()
-            .get_voxel_node(0)
-            .unwrap()
-            .unwrap()
+        save.read().unwrap().get_voxel_node(0).unwrap().unwrap()
     );
 }
 
 #[test]
 fn persist_character() {
     let file = tempfile::NamedTempFile::new().unwrap();
-    let mut save = Save::open(file.path(), 12).unwrap();
+    let save = Save::open(file.path(), 12).unwrap();
     let mut writer_guard = save.write().unwrap();
     let mut writer = writer_guard.get().unwrap();
     let mut rng = SmallRng::from_entropy();
@@ -61,12 +55,6 @@ fn persist_character() {
     let save = Save::open(file.path(), 12).unwrap();
     assert_eq!(
         ch,
-        save.read()
-            .unwrap()
-            .get()
-            .unwrap()
-            .get_character("asdf")
-            .unwrap()
-            .unwrap()
+        save.read().unwrap().get_character("asdf").unwrap().unwrap()
     );
 }
