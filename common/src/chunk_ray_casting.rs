@@ -32,11 +32,7 @@ pub fn chunk_ray_cast(
 ) -> Option<ChunkCastHit> {
     let mut hit: Option<ChunkCastHit> = None;
 
-    let Some(bounding_box) =
-        VoxelAABB::from_ray_segment_and_radius(layout, ray, tanh_distance, 0.0)
-    else {
-        return None;
-    };
+    let bounding_box = VoxelAABB::from_ray_segment_and_radius(layout, ray, tanh_distance, 0.0)?;
 
     for t_axis in 0..3 {
         hit = find_face_collision(
