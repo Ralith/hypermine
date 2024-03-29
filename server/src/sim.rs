@@ -111,8 +111,7 @@ impl Sim {
     }
 
     fn load_all_voxels(&mut self, save: &save::Save) -> anyhow::Result<()> {
-        let read_guard = save.read()?;
-        let mut read = read_guard.get()?;
+        let mut read = save.read()?;
         for node_hash in read.get_all_voxel_node_ids()? {
             let Some(voxel_node) = read.get_voxel_node(node_hash)? else {
                 continue;

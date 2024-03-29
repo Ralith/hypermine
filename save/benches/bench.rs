@@ -27,7 +27,7 @@ fn save(c: &mut Criterion) {
                         .collect::<Vec<u128>>();
                     (file, save, node_ids)
                 },
-                |(_file, mut save, node_ids)| {
+                |(_file, save, node_ids)| {
                     let mut tx = save.write().unwrap();
                     let mut writer = tx.get().unwrap();
                     for i in node_ids {
@@ -49,7 +49,7 @@ fn save(c: &mut Criterion) {
             b.iter_batched(
                 || {
                     let file = tempfile::NamedTempFile::new().unwrap();
-                    let mut save = Save::open(file.path(), 12).unwrap();
+                    let save = Save::open(file.path(), 12).unwrap();
                     let node_ids = (&mut rng)
                         .sample_iter(rand::distributions::Standard)
                         .take(count as usize)
@@ -66,8 +66,7 @@ fn save(c: &mut Criterion) {
                     (file, save, node_ids)
                 },
                 |(_file, save, node_ids)| {
-                    let read = save.read().unwrap();
-                    let mut read = read.get().unwrap();
+                    let mut read = save.read().unwrap();
                     for i in node_ids {
                         black_box(read.get_voxel_node(i).unwrap().unwrap());
                     }
