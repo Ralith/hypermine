@@ -158,12 +158,12 @@ fn decompress(
 ) -> Result<(), &'static str> {
     dctx.init().map_err(zstd::get_error_name)?;
     let mut input = zstd::InBuffer::around(compressed);
-    let mut out = zstd::OutBuffer::around(out);
     let out_size = zstd::DCtx::out_size();
     loop {
-        if out.dst.len() + out_size > out.dst.capacity() {
-            out.dst.reserve(out_size);
+        if out.len() + out_size > out.capacity() {
+            out.reserve(out_size);
         }
+        let mut out = zstd::OutBuffer::around_pos(out, out.len());
         let n = dctx
             .decompress_stream(&mut out, &mut input)
             .map_err(zstd::get_error_name)?;
