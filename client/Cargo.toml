@@ -15,7 +15,7 @@ tracing = "0.1.10"
 ash = { version = "0.37.1", features = ["loaded"] }
 lahar = { git = "https://github.com/Ralith/lahar", rev = "88abd75e41d04c3a4199d95f581cb135f5962844" }
 winit = { version = "0.29.10", features = ["rwh_05"] }
-ash-window = "0.12.0"
+ash-window = "0.13.0"
 raw-window-handle = { version = "0.5.0", features = ["std"] }
 directories = "5.0.1"
 vk-shader-macros = "0.2.5"
