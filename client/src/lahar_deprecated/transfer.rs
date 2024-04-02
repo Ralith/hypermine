@@ -37,8 +37,8 @@ pub struct TransferContext {
     /// May be equal to queue_family
     pub dst_queue_family: u32,
     pub stages: vk::PipelineStageFlags,
-    pub buffer_barriers: Vec<vk::BufferMemoryBarrier>,
-    pub image_barriers: Vec<vk::ImageMemoryBarrier>,
+    pub buffer_barriers: Vec<vk::BufferMemoryBarrier<'static>>,
+    pub image_barriers: Vec<vk::ImageMemoryBarrier<'static>>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -82,7 +82,7 @@ impl Reactor {
         let (send, recv) = mpsc::unbounded_channel();
         let cmd_pool = device
             .create_command_pool(
-                &vk::CommandPoolCreateInfo::builder()
+                &vk::CommandPoolCreateInfo::default()
                     .queue_family_index(queue_family)
                     .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
                 None,
@@ -185,7 +185,7 @@ impl Reactor {
                 self.ctx
                     .device
                     .allocate_command_buffers(
-                        &vk::CommandBufferAllocateInfo::builder()
+                        &vk::CommandBufferAllocateInfo::default()
                             .command_pool(self.cmd_pool)
                             .command_buffer_count(1),
                     )
@@ -200,7 +200,7 @@ impl Reactor {
                 .device
                 .begin_command_buffer(
                     cmd,
-                    &vk::CommandBufferBeginInfo::builder()
+                    &vk::CommandBufferBeginInfo::default()
                         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .unwrap();
@@ -242,9 +242,7 @@ impl Reactor {
             device
                 .queue_submit(
                     self.queue,
-                    &[vk::SubmitInfo::builder()
-                        .command_buffers(&[pending.cmd])
-                        .build()],
+                    &[vk::SubmitInfo::default().command_buffers(&[pending.cmd])],
                     fence,
                 )
                 .unwrap();

@@ -1,5 +1,3 @@
-use std::ptr;
-
 use ash::{vk, Device};
 use lahar::{DedicatedImage, DedicatedMapping};
 use vk_shader_macros::include_glsl;
@@ -27,25 +25,25 @@ impl Surface {
         unsafe {
             // Construct the shader modules
             let vert = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(VERT), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(VERT), None)
                 .unwrap();
             // Note that these only need to live until the pipeline itself is constructed
             let v_guard = defer(|| device.destroy_shader_module(vert, None));
 
             let frag = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(FRAG), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(FRAG), None)
                 .unwrap();
             let f_guard = defer(|| device.destroy_shader_module(frag, None));
 
             let static_ds_layout = device
                 .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
                         vk::DescriptorSetLayoutBinding {
                             binding: 0,
                             descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::VERTEX,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                         vk::DescriptorSetLayoutBinding {
                             binding: 1,
@@ -53,6 +51,7 @@ impl Surface {
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::FRAGMENT,
                             p_immutable_samplers: &gfx.linear_sampler,
+                            ..Default::default()
                         },
                     ]),
                     None,
@@ -61,7 +60,7 @@ impl Surface {
 
             let descriptor_pool = device
                 .create_descriptor_pool(
-                    &vk::DescriptorPoolCreateInfo::builder()
+                    &vk::DescriptorPoolCreateInfo::default()
                         .max_sets(1)
                         .pool_sizes(&[
                             vk::DescriptorPoolSize {
@@ -78,13 +77,13 @@ impl Surface {
                 .unwrap();
             let ds = device
                 .allocate_descriptor_sets(
-                    &vk::DescriptorSetAllocateInfo::builder()
+                    &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(descriptor_pool)
                         .set_layouts(&[static_ds_layout]),
                 )
                 .unwrap()[0];
             device.update_descriptor_sets(
-                &[vk::WriteDescriptorSet::builder()
+                &[vk::WriteDescriptorSet::default()
                     .dst_set(ds)
                     .dst_binding(0)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -92,15 +91,14 @@ impl Surface {
                         buffer: buffer.face_buffer(),
                         offset: 0,
                         range: vk::WHOLE_SIZE,
-                    }])
-                    .build()],
+                    }])],
                 &[],
             );
 
             // Define the outward-facing interface of the shaders, incl. uniforms, samplers, etc.
             let pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder()
+                    &vk::PipelineLayoutCreateInfo::default()
                         .set_layouts(&[gfx.common_layout, static_ds_layout])
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::VERTEX,
@@ -115,7 +113,7 @@ impl Surface {
             let mut pipelines = device
                 .create_graphics_pipelines(
                     gfx.pipeline_cache,
-                    &[vk::GraphicsPipelineCreateInfo::builder()
+                    &[vk::GraphicsPipelineCreateInfo::default()
                         .stages(&[
                             vk::PipelineShaderStageCreateInfo {
                                 stage: vk::ShaderStageFlags::VERTEX,
@@ -131,7 +129,7 @@ impl Surface {
                             },
                         ])
                         .vertex_input_state(
-                            &vk::PipelineVertexInputStateCreateInfo::builder()
+                            &vk::PipelineVertexInputStateCreateInfo::default()
                                 .vertex_binding_descriptions(&[vk::VertexInputBindingDescription {
                                     binding: 0,
                                     stride: TRANSFORM_SIZE as u32,
@@ -165,33 +163,33 @@ impl Surface {
                                 ]),
                         )
                         .input_assembly_state(
-                            &vk::PipelineInputAssemblyStateCreateInfo::builder()
+                            &vk::PipelineInputAssemblyStateCreateInfo::default()
                                 .topology(vk::PrimitiveTopology::TRIANGLE_LIST),
                         )
                         .viewport_state(
-                            &vk::PipelineViewportStateCreateInfo::builder()
+                            &vk::PipelineViewportStateCreateInfo::default()
                                 .scissor_count(1)
                                 .viewport_count(1),
                         )
                         .rasterization_state(
-                            &vk::PipelineRasterizationStateCreateInfo::builder()
+                            &vk::PipelineRasterizationStateCreateInfo::default()
                                 .cull_mode(vk::CullModeFlags::BACK)
                                 .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
                                 .polygon_mode(vk::PolygonMode::FILL)
                                 .line_width(1.0),
                         )
                         .multisample_state(
-                            &vk::PipelineMultisampleStateCreateInfo::builder()
+                            &vk::PipelineMultisampleStateCreateInfo::default()
                                 .rasterization_samples(vk::SampleCountFlags::TYPE_1),
                         )
                         .depth_stencil_state(
-                            &vk::PipelineDepthStencilStateCreateInfo::builder()
+                            &vk::PipelineDepthStencilStateCreateInfo::default()
                                 .depth_test_enable(true)
                                 .depth_write_enable(true)
                                 .depth_compare_op(vk::CompareOp::GREATER),
                         )
                         .color_blend_state(
-                            &vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[
+                            &vk::PipelineColorBlendStateCreateInfo::default().attachments(&[
                                 vk::PipelineColorBlendAttachmentState {
                                     blend_enable: vk::TRUE,
                                     src_color_blend_factor: vk::BlendFactor::ONE,
@@ -205,15 +203,14 @@ impl Surface {
                             ]),
                         )
                         .dynamic_state(
-                            &vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&[
+                            &vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&[
                                 vk::DynamicState::VIEWPORT,
                                 vk::DynamicState::SCISSOR,
                             ]),
                         )
                         .layout(pipeline_layout)
                         .render_pass(gfx.render_pass)
-                        .subpass(0)
-                        .build()],
+                        .subpass(0)],
                     None,
                 )
                 .unwrap()
@@ -260,7 +257,7 @@ impl Surface {
             if let Some(colors) = loader.get(self.colors) {
                 self.colors_view = device
                     .create_image_view(
-                        &vk::ImageViewCreateInfo::builder()
+                        &vk::ImageViewCreateInfo::default()
                             .image(colors.handle)
                             .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
                             .format(vk::Format::R8G8B8A8_SRGB)
@@ -275,7 +272,7 @@ impl Surface {
                     )
                     .unwrap();
                 device.update_descriptor_sets(
-                    &[vk::WriteDescriptorSet::builder()
+                    &[vk::WriteDescriptorSet::default()
                         .dst_set(self.ds)
                         .dst_binding(1)
                         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
@@ -283,8 +280,7 @@ impl Surface {
                             sampler: vk::Sampler::null(),
                             image_view: self.colors_view,
                             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                        }])
-                        .build()],
+                        }])],
                     &[],
                 );
             } else {

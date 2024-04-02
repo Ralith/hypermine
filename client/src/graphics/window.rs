@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{f32, os::raw::c_char};
 
-use ash::{extensions::khr, vk};
+use ash::{khr, vk};
 use lahar::DedicatedImage;
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use tracing::{error, info};
 use winit::event::KeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -37,8 +37,10 @@ impl EarlyWindow {
 
     /// Identify the Vulkan extension needed to render to this window
     pub fn required_extensions(&self) -> &'static [*const c_char] {
-        ash_window::enumerate_required_extensions(self.event_loop.raw_display_handle())
-            .expect("unsupported platform")
+        ash_window::enumerate_required_extensions(
+            self.event_loop.display_handle().unwrap().as_raw(),
+        )
+        .expect("unsupported platform")
     }
 }
 
@@ -49,7 +51,7 @@ pub struct Window {
     config: Arc<Config>,
     metrics: Arc<crate::metrics::Recorder>,
     event_loop: Option<EventLoop<()>>,
-    surface_fn: khr::Surface,
+    surface_fn: khr::surface::Instance,
     surface: vk::SurfaceKHR,
     swapchain: Option<SwapchainMgr>,
     swapchain_needs_update: bool,
@@ -71,13 +73,13 @@ impl Window {
             ash_window::create_surface(
                 &core.entry,
                 &core.instance,
-                early.window.raw_display_handle(),
-                early.window.raw_window_handle(),
+                early.window.display_handle().unwrap().as_raw(),
+                early.window.window_handle().unwrap().as_raw(),
                 None,
             )
             .unwrap()
         };
-        let surface_fn = khr::Surface::new(&core.entry, &core.instance);
+        let surface_fn = khr::surface::Instance::new(&core.entry, &core.instance);
 
         Self {
             _core: core,
@@ -403,7 +405,7 @@ impl SwapchainMgr {
     /// Construct a swapchain manager for a certain window
     fn new(window: &Window, gfx: Arc<Base>, fallback_size: PhysicalSize<u32>) -> Self {
         let device = &*gfx.device;
-        let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, device);
+        let swapchain_fn = khr::swapchain::Device::new(&gfx.core.instance, device);
         let surface_formats = unsafe {
             window
                 .surface_fn
@@ -449,7 +451,7 @@ impl SwapchainMgr {
     /// - There must be no operations scheduled that access the current swapchain
     unsafe fn update(
         &mut self,
-        surface_fn: &khr::Surface,
+        surface_fn: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
         fallback_size: PhysicalSize<u32>,
     ) {
@@ -478,7 +480,7 @@ impl SwapchainMgr {
     unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> {
         self.state.swapchain_fn.queue_present(
             self.state.gfx.queue,
-            &vk::PresentInfoKHR::builder()
+            &vk::PresentInfoKHR::default()
                 .wait_semaphores(&[self.state.frames[index as usize].present])
                 .swapchains(&[self.state.handle])
                 .image_indices(&[index]),
@@ -489,7 +491,7 @@ impl SwapchainMgr {
 /// Data that's replaced when the swapchain is updated
 struct SwapchainState {
     gfx: Arc<Base>,
-    swapchain_fn: khr::Swapchain,
+    swapchain_fn: khr::swapchain::Device,
     extent: vk::Extent2D,
     handle: vk::SwapchainKHR,
     frames: Vec<Frame>,
@@ -497,8 +499,8 @@ struct SwapchainState {
 
 impl SwapchainState {
     unsafe fn new(
-        surface_fn: &khr::Surface,
-        swapchain_fn: khr::Swapchain,
+        surface_fn: &khr::surface::Instance,
+        swapchain_fn: khr::swapchain::Device,
         gfx: Arc<Base>,
         surface: vk::SurfaceKHR,
         format: vk::SurfaceFormatKHR,
@@ -545,7 +547,7 @@ impl SwapchainState {
 
         let handle = swapchain_fn
             .create_swapchain(
-                &vk::SwapchainCreateInfoKHR::builder()
+                &vk::SwapchainCreateInfoKHR::default()
                     .surface(surface)
                     .min_image_count(image_count)
                     .image_color_space(format.color_space)
@@ -570,7 +572,7 @@ impl SwapchainState {
             .map(|image| {
                 let view = device
                     .create_image_view(
-                        &vk::ImageViewCreateInfo::builder()
+                        &vk::ImageViewCreateInfo::default()
                             .view_type(vk::ImageViewType::TYPE_2D)
                             .format(format.format)
                             .subresource_range(vk::ImageSubresourceRange {
@@ -588,7 +590,7 @@ impl SwapchainState {
                 let depth = DedicatedImage::new(
                     device,
                     &gfx.memory_properties,
-                    &vk::ImageCreateInfo::builder()
+                    &vk::ImageCreateInfo::default()
                         .image_type(vk::ImageType::TYPE_2D)
                         .format(vk::Format::D32_SFLOAT)
                         .extent(vk::Extent3D {
@@ -608,7 +610,7 @@ impl SwapchainState {
                 gfx.set_name(depth.memory, cstr!("depth"));
                 let depth_view = device
                     .create_image_view(
-                        &vk::ImageViewCreateInfo::builder()
+                        &vk::ImageViewCreateInfo::default()
                             .image(depth.handle)
                             .view_type(vk::ImageViewType::TYPE_2D)
                             .format(vk::Format::D32_SFLOAT)
@@ -631,7 +633,7 @@ impl SwapchainState {
                     depth_view,
                     buffer: device
                         .create_framebuffer(
-                            &vk::FramebufferCreateInfo::builder()
+                            &vk::FramebufferCreateInfo::default()
                                 .render_pass(gfx.render_pass)
                                 .attachments(&[view, depth_view])
                                 .width(extent.width)

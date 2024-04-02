@@ -44,9 +44,9 @@ pub struct Draw {
     fog: Fog,
 
     /// Reusable storage for barriers that prevent races between image upload and read
-    image_barriers: Vec<vk::ImageMemoryBarrier>,
+    image_barriers: Vec<vk::ImageMemoryBarrier<'static>>,
     /// Reusable storage for barriers that prevent races between buffer upload and read
-    buffer_barriers: Vec<vk::BufferMemoryBarrier>,
+    buffer_barriers: Vec<vk::BufferMemoryBarrier<'static>>,
 
     /// Miscellany
     character_model: Asset<GltfScene>,
@@ -63,7 +63,7 @@ impl Draw {
             // Allocate a command buffer for each frame state
             let cmd_pool = device
                 .create_command_pool(
-                    &vk::CommandPoolCreateInfo::builder()
+                    &vk::CommandPoolCreateInfo::default()
                         .queue_family_index(gfx.queue_family)
                         .flags(
                             vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER
@@ -74,7 +74,7 @@ impl Draw {
                 .unwrap();
             let cmds = device
                 .allocate_command_buffers(
-                    &vk::CommandBufferAllocateInfo::builder()
+                    &vk::CommandBufferAllocateInfo::default()
                         .command_pool(cmd_pool)
                         .command_buffer_count(2 * PIPELINE_DEPTH),
                 )
@@ -82,7 +82,7 @@ impl Draw {
 
             let timestamp_pool = device
                 .create_query_pool(
-                    &vk::QueryPoolCreateInfo::builder()
+                    &vk::QueryPoolCreateInfo::default()
                         .query_type(vk::QueryType::TIMESTAMP)
                         .query_count(TIMESTAMPS_PER_FRAME * PIPELINE_DEPTH),
                     None,
@@ -92,7 +92,7 @@ impl Draw {
 
             let common_pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder().set_layouts(&[gfx.common_layout]),
+                    &vk::PipelineLayoutCreateInfo::default().set_layouts(&[gfx.common_layout]),
                     None,
                 )
                 .unwrap();
@@ -101,7 +101,7 @@ impl Draw {
             // uniforms)
             let common_descriptor_pool = device
                 .create_descriptor_pool(
-                    &vk::DescriptorPoolCreateInfo::builder()
+                    &vk::DescriptorPoolCreateInfo::default()
                         .max_sets(PIPELINE_DEPTH)
                         .pool_sizes(&[
                             vk::DescriptorPoolSize {
@@ -118,7 +118,7 @@ impl Draw {
                 .unwrap();
             let common_ds = device
                 .allocate_descriptor_sets(
-                    &vk::DescriptorSetAllocateInfo::builder()
+                    &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(common_descriptor_pool)
                         .set_layouts(&vec![gfx.common_layout; PIPELINE_DEPTH as usize]),
                 )
@@ -137,7 +137,7 @@ impl Draw {
                         vk::BufferUsageFlags::UNIFORM_BUFFER,
                     );
                     device.update_descriptor_sets(
-                        &[vk::WriteDescriptorSet::builder()
+                        &[vk::WriteDescriptorSet::default()
                             .dst_set(common_ds)
                             .dst_binding(0)
                             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -145,8 +145,7 @@ impl Draw {
                                 buffer: uniforms.buffer(),
                                 offset: 0,
                                 range: vk::WHOLE_SIZE,
-                            }])
-                            .build()],
+                            }])],
                         &[],
                     );
                     let x = State {
@@ -156,7 +155,7 @@ impl Draw {
                         image_acquired: device.create_semaphore(&Default::default(), None).unwrap(),
                         fence: device
                             .create_fence(
-                                &vk::FenceCreateInfo::builder()
+                                &vk::FenceCreateInfo::default()
                                     .flags(vk::FenceCreateFlags::SIGNALED),
                                 None,
                             )
@@ -281,7 +280,7 @@ impl Draw {
 
         // Set up framebuffer attachments
         device.update_descriptor_sets(
-            &[vk::WriteDescriptorSet::builder()
+            &[vk::WriteDescriptorSet::default()
                 .dst_set(state.common_ds)
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
@@ -289,8 +288,7 @@ impl Draw {
                     sampler: vk::Sampler::null(),
                     image_view: depth_view,
                     image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-                }])
-                .build()],
+                }])],
             &[],
         );
 
@@ -305,7 +303,6 @@ impl Draw {
                 .get_query_pool_results(
                     self.timestamp_pool,
                     first_query,
-                    TIMESTAMPS_PER_FRAME,
                     &mut queries,
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 )
@@ -321,14 +318,14 @@ impl Draw {
         device
             .begin_command_buffer(
                 cmd,
-                &vk::CommandBufferBeginInfo::builder()
+                &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
         device
             .begin_command_buffer(
                 state.post_cmd,
-                &vk::CommandBufferBeginInfo::builder()
+                &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
@@ -348,12 +345,11 @@ impl Draw {
         // latency.
         state.uniforms.record_transfer(device, cmd);
         self.buffer_barriers.push(
-            vk::BufferMemoryBarrier::builder()
+            vk::BufferMemoryBarrier::default()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
                 .buffer(state.uniforms.buffer())
-                .size(vk::WHOLE_SIZE)
-                .build(),
+                .size(vk::WHOLE_SIZE),
         );
 
         if let (Some(voxels), Some(sim)) = (self.voxels.as_mut(), sim.as_mut()) {
@@ -381,7 +377,7 @@ impl Draw {
 
         device.cmd_begin_render_pass(
             cmd,
-            &vk::RenderPassBeginInfo::builder()
+            &vk::RenderPassBeginInfo::default()
                 .render_pass(self.gfx.render_pass)
                 .framebuffer(framebuffer)
                 .render_area(vk::Rect2D {
@@ -501,15 +497,12 @@ impl Draw {
             .queue_submit(
                 self.gfx.queue,
                 &[
-                    vk::SubmitInfo::builder()
+                    vk::SubmitInfo::default()
                         .command_buffers(&[cmd])
                         .wait_semaphores(&[state.image_acquired])
                         .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                        .signal_semaphores(&[present])
-                        .build(),
-                    vk::SubmitInfo::builder()
-                        .command_buffers(&[state.post_cmd])
-                        .build(),
+                        .signal_semaphores(&[present]),
+                    vk::SubmitInfo::default().command_buffers(&[state.post_cmd]),
                 ],
                 state.fence,
             )

@@ -6,7 +6,7 @@ use std::{
 use client::{graphics, metrics, net, Config};
 use save::Save;
 
-use ash::extensions::khr;
+use ash::khr;
 use tracing::{error, error_span, info};
 
 fn main() {
@@ -74,7 +74,7 @@ fn main() {
         graphics::Base::new(
             core,
             Some(dirs.cache_dir().join("pipeline_cache")),
-            &[khr::Swapchain::name()],
+            &[khr::swapchain::NAME],
             |physical, queue_family| window.supports(physical, queue_family),
         )
         .unwrap(),
