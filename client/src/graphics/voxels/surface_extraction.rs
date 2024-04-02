@@ -1,5 +1,5 @@
 use std::ffi::c_char;
-use std::{mem, ptr};
+use std::mem;
 
 use ash::{vk, Device};
 use lahar::{DedicatedBuffer, DedicatedMapping};
@@ -24,13 +24,13 @@ impl SurfaceExtraction {
         unsafe {
             let params_layout = device
                 .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
                         vk::DescriptorSetLayoutBinding {
                             binding: 0,
                             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                     ]),
                     None,
@@ -38,34 +38,34 @@ impl SurfaceExtraction {
                 .unwrap();
             let ds_layout = device
                 .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
                         vk::DescriptorSetLayoutBinding {
                             binding: 0,
                             descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                         vk::DescriptorSetLayoutBinding {
                             binding: 1,
                             descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                         vk::DescriptorSetLayoutBinding {
                             binding: 2,
                             descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                         vk::DescriptorSetLayoutBinding {
                             binding: 3,
                             descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                     ]),
                     None,
@@ -73,7 +73,7 @@ impl SurfaceExtraction {
                 .unwrap();
             let pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder()
+                    &vk::PipelineLayoutCreateInfo::default()
                         .set_layouts(&[params_layout, ds_layout])
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::COMPUTE,
@@ -85,7 +85,7 @@ impl SurfaceExtraction {
                 .unwrap();
 
             let extract = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(EXTRACT), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(EXTRACT), None)
                 .unwrap();
             let extract_guard = defer(|| device.destroy_shader_module(extract, None));
 
@@ -106,7 +106,7 @@ impl SurfaceExtraction {
                     size: 4,
                 },
             ];
-            let specialization = vk::SpecializationInfo::builder()
+            let specialization = vk::SpecializationInfo::default()
                 .map_entries(&specialization_map_entries)
                 .data(as_bytes(&WORKGROUP_SIZE));
 
@@ -119,7 +119,7 @@ impl SurfaceExtraction {
                             stage: vk::ShaderStageFlags::COMPUTE,
                             module: extract,
                             p_name,
-                            p_specialization_info: &*specialization,
+                            p_specialization_info: &specialization,
                             ..Default::default()
                         },
                         layout: pipeline_layout,
@@ -187,7 +187,7 @@ impl ScratchBuffer {
             let params = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
-                &vk::BufferCreateInfo::builder()
+                &vk::BufferCreateInfo::default()
                     .size(mem::size_of::<Params>() as vk::DeviceSize)
                     .usage(
                         vk::BufferUsageFlags::UNIFORM_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
@@ -208,7 +208,7 @@ impl ScratchBuffer {
             let voxels = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
-                &vk::BufferCreateInfo::builder()
+                &vk::BufferCreateInfo::default()
                     .size(voxels_size)
                     .usage(
                         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
@@ -221,7 +221,7 @@ impl ScratchBuffer {
             let state = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
-                &vk::BufferCreateInfo::builder()
+                &vk::BufferCreateInfo::default()
                     .size(state_buffer_unit * vk::DeviceSize::from(concurrency))
                     .usage(
                         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
@@ -233,7 +233,7 @@ impl ScratchBuffer {
 
             let descriptor_pool = device
                 .create_descriptor_pool(
-                    &vk::DescriptorPoolCreateInfo::builder()
+                    &vk::DescriptorPoolCreateInfo::default()
                         .max_sets(concurrency + 1)
                         .pool_sizes(&[
                             vk::DescriptorPoolSize {
@@ -253,7 +253,7 @@ impl ScratchBuffer {
             layouts.push(ctx.params_layout);
             let mut descriptor_sets = device
                 .allocate_descriptor_sets(
-                    &vk::DescriptorSetAllocateInfo::builder()
+                    &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(descriptor_pool)
                         .set_layouts(&layouts),
                 )
@@ -261,7 +261,7 @@ impl ScratchBuffer {
 
             let params_ds = descriptor_sets.pop().unwrap();
             device.update_descriptor_sets(
-                &[vk::WriteDescriptorSet::builder()
+                &[vk::WriteDescriptorSet::default()
                     .dst_set(params_ds)
                     .dst_binding(0)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -269,8 +269,7 @@ impl ScratchBuffer {
                         buffer: params.handle,
                         offset: 0,
                         range: vk::WHOLE_SIZE,
-                    }])
-                    .build()],
+                    }])],
                 &[],
             );
 
@@ -373,7 +372,7 @@ impl ScratchBuffer {
 
             device.update_descriptor_sets(
                 &[
-                    vk::WriteDescriptorSet::builder()
+                    vk::WriteDescriptorSet::default()
                         .dst_set(self.descriptor_sets[index])
                         .dst_binding(0)
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -381,9 +380,8 @@ impl ScratchBuffer {
                             buffer: self.voxels.handle,
                             offset: voxels_offset,
                             range: voxels_range,
-                        }])
-                        .build(),
-                    vk::WriteDescriptorSet::builder()
+                        }]),
+                    vk::WriteDescriptorSet::default()
                         .dst_set(self.descriptor_sets[index])
                         .dst_binding(1)
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -391,9 +389,8 @@ impl ScratchBuffer {
                             buffer: self.state.handle,
                             offset: self.state_buffer_unit * vk::DeviceSize::from(task.index),
                             range: 4,
-                        }])
-                        .build(),
-                    vk::WriteDescriptorSet::builder()
+                        }]),
+                    vk::WriteDescriptorSet::default()
                         .dst_set(self.descriptor_sets[index])
                         .dst_binding(2)
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -401,9 +398,8 @@ impl ScratchBuffer {
                             buffer: indirect_buffer,
                             offset: task.indirect_offset,
                             range: INDIRECT_SIZE,
-                        }])
-                        .build(),
-                    vk::WriteDescriptorSet::builder()
+                        }]),
+                    vk::WriteDescriptorSet::default()
                         .dst_set(self.descriptor_sets[index])
                         .dst_binding(3)
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -411,8 +407,7 @@ impl ScratchBuffer {
                             buffer: face_buffer,
                             offset: task.face_offset,
                             range: max_faces as vk::DeviceSize * FACE_SIZE,
-                        }])
-                        .build(),
+                        }]),
                 ],
                 &[],
             );
@@ -557,7 +552,7 @@ impl DrawBuffer {
             let indirect = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
-                &vk::BufferCreateInfo::builder()
+                &vk::BufferCreateInfo::default()
                     .size(count as vk::DeviceSize * INDIRECT_SIZE)
                     .usage(
                         vk::BufferUsageFlags::STORAGE_BUFFER
@@ -572,7 +567,7 @@ impl DrawBuffer {
             let faces = DedicatedBuffer::new(
                 device,
                 &gfx.memory_properties,
-                &vk::BufferCreateInfo::builder()
+                &vk::BufferCreateInfo::default()
                     .size(face_buffer_size)
                     .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),

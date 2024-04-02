@@ -43,7 +43,7 @@ impl SurfaceExtractionTest {
 
             let cmd_pool = device
                 .create_command_pool(
-                    &vk::CommandPoolCreateInfo::builder()
+                    &vk::CommandPoolCreateInfo::default()
                         .queue_family_index(gfx.queue_family)
                         .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
                     None,
@@ -52,7 +52,7 @@ impl SurfaceExtractionTest {
 
             let cmd = device
                 .allocate_command_buffers(
-                    &vk::CommandBufferAllocateInfo::builder()
+                    &vk::CommandBufferAllocateInfo::default()
                         .command_pool(cmd_pool)
                         .command_buffer_count(1),
                 )
@@ -82,7 +82,7 @@ impl SurfaceExtractionTest {
             device
                 .begin_command_buffer(
                     self.cmd,
-                    &vk::CommandBufferBeginInfo::builder()
+                    &vk::CommandBufferBeginInfo::default()
                         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .unwrap();
@@ -106,9 +106,7 @@ impl SurfaceExtractionTest {
             device
                 .queue_submit(
                     self.gfx.queue,
-                    &[vk::SubmitInfo::builder()
-                        .command_buffers(&[self.cmd])
-                        .build()],
+                    &[vk::SubmitInfo::default().command_buffers(&[self.cmd])],
                     vk::Fence::null(),
                 )
                 .unwrap();

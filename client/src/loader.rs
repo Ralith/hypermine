@@ -80,13 +80,14 @@ impl Loader {
         let mesh_ds_layout = unsafe {
             gfx.device
                 .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
                         vk::DescriptorSetLayoutBinding {
                             binding: 0,
                             descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::FRAGMENT,
                             p_immutable_samplers: &gfx.linear_sampler,
+                            ..vk::DescriptorSetLayoutBinding::default()
                         },
                     ]),
                     None,

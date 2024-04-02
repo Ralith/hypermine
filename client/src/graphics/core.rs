@@ -4,7 +4,7 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::slice;
 
-use ash::extensions::ext::DebugUtils;
+use ash::ext::debug_utils;
 use ash::{vk, Entry, Instance};
 use tracing::{debug, error, info, trace, warn};
 
@@ -20,7 +20,7 @@ pub struct Core {
     /// Diagnostic infrastructure, configured if the environment supports them. Typically present
     /// when the Vulkan validation layers are enabled or a graphics debugger is in use and absent
     /// otherwise.
-    pub debug_utils: Option<DebugUtils>,
+    pub debug_utils: Option<debug_utils::Instance>,
     messenger: vk::DebugUtilsMessengerEXT,
 }
 
@@ -43,11 +43,11 @@ impl Core {
             let supported_exts = entry.enumerate_instance_extension_properties(None).unwrap();
             let has_debug = supported_exts
                 .iter()
-                .any(|x| CStr::from_ptr(x.extension_name.as_ptr()) == DebugUtils::name());
+                .any(|x| CStr::from_ptr(x.extension_name.as_ptr()) == debug_utils::NAME);
 
             let mut exts = exts.to_vec();
             if has_debug {
-                exts.push(DebugUtils::name().as_ptr());
+                exts.push(debug_utils::NAME.as_ptr());
             } else {
                 info!("vulkan debugging unavailable");
             }
@@ -63,17 +63,17 @@ impl Core {
 
             let name = cstr!("hypermine");
 
-            let app_info = vk::ApplicationInfo::builder()
+            let app_info = vk::ApplicationInfo::default()
                 .application_name(name)
                 .application_version(0)
                 .engine_name(name)
                 .engine_version(0)
                 .api_version(vk::make_api_version(0, 1, 1, 0));
-            let mut instance_info = vk::InstanceCreateInfo::builder()
+            let mut instance_info = vk::InstanceCreateInfo::default()
                 .application_info(&app_info)
                 .enabled_extension_names(&exts);
 
-            let mut debug_utils_messenger_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            let mut debug_utils_messenger_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
                 .message_severity(
                     vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
                         | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
@@ -98,7 +98,7 @@ impl Core {
             let messenger;
             if has_debug {
                 // Configure Vulkan diagnostic message logging
-                let utils = DebugUtils::new(&entry, &instance);
+                let utils = debug_utils::Instance::new(&entry, &instance);
                 messenger = utils
                     .create_debug_utils_messenger(&debug_utils_messenger_info, None)
                     .unwrap();

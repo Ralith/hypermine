@@ -142,7 +142,7 @@ async fn load_primitive(
     unsafe {
         let color_view = device
             .create_image_view(
-                &vk::ImageViewCreateInfo::builder()
+                &vk::ImageViewCreateInfo::default()
                     .image(color.handle)
                     .view_type(vk::ImageViewType::TYPE_2D)
                     .format(vk::Format::R8G8B8A8_SRGB)
@@ -158,7 +158,7 @@ async fn load_primitive(
             .unwrap();
         let pool = device
             .create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::builder()
+                &vk::DescriptorPoolCreateInfo::default()
                     .max_sets(1)
                     .pool_sizes(&[vk::DescriptorPoolSize {
                         ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -169,13 +169,13 @@ async fn load_primitive(
             .unwrap();
         let ds = device
             .allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::builder()
+                &vk::DescriptorSetAllocateInfo::default()
                     .descriptor_pool(pool)
                     .set_layouts(&[ctx.mesh_ds_layout]),
             )
             .unwrap()[0];
         device.update_descriptor_sets(
-            &[vk::WriteDescriptorSet::builder()
+            &[vk::WriteDescriptorSet::default()
                 .dst_set(ds)
                 .dst_binding(0)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
@@ -183,8 +183,7 @@ async fn load_primitive(
                     sampler: vk::Sampler::null(),
                     image_view: color_view,
                     image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                }])
-                .build()],
+                }])],
             &[],
         );
 
@@ -317,15 +316,14 @@ async fn load_geom(
             );
             xf.stages |= vk::PipelineStageFlags::VERTEX_INPUT;
             xf.buffer_barriers.push(
-                vk::BufferMemoryBarrier::builder()
+                vk::BufferMemoryBarrier::default()
                     .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                     .dst_access_mask(vk::AccessFlags::VERTEX_ATTRIBUTE_READ)
                     .src_queue_family_index(xf.queue_family)
                     .dst_queue_family_index(xf.dst_queue_family)
                     .buffer(vert_buffer)
                     .offset(vert_dst_offset)
-                    .size(byte_size as vk::DeviceSize)
-                    .build(),
+                    .size(byte_size as vk::DeviceSize),
             );
         })
     };
@@ -352,15 +350,14 @@ async fn load_geom(
             );
             xf.stages |= vk::PipelineStageFlags::VERTEX_INPUT;
             xf.buffer_barriers.push(
-                vk::BufferMemoryBarrier::builder()
+                vk::BufferMemoryBarrier::default()
                     .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                     .dst_access_mask(vk::AccessFlags::INDEX_READ)
                     .src_queue_family_index(xf.queue_family)
                     .dst_queue_family_index(xf.dst_queue_family)
                     .buffer(idx_buffer)
                     .offset(idx_dst_offset)
-                    .size(index_count as vk::DeviceSize * 4)
-                    .build(),
+                    .size(index_count as vk::DeviceSize * 4),
             );
         })
     };
@@ -434,7 +431,7 @@ async fn load_material(
         DedicatedImage::new(
             device,
             &ctx.gfx.memory_properties,
-            &vk::ImageCreateInfo::builder()
+            &vk::ImageCreateInfo::default()
                 .image_type(vk::ImageType::TYPE_2D)
                 .format(vk::Format::R8G8B8A8_SRGB)
                 .extent(vk::Extent3D {
@@ -468,15 +465,14 @@ async fn load_material(
                     vk::DependencyFlags::default(),
                     &[],
                     &[],
-                    &[vk::ImageMemoryBarrier::builder()
+                    &[vk::ImageMemoryBarrier::default()
                         .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                         .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .old_layout(vk::ImageLayout::UNDEFINED)
                         .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                         .image(color_handle)
-                        .subresource_range(range)
-                        .build()],
+                        .subresource_range(range)],
                 );
                 xf.device.cmd_copy_buffer_to_image(
                     cmd,
@@ -501,7 +497,7 @@ async fn load_material(
                 );
                 xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
                 xf.image_barriers.push(
-                    vk::ImageMemoryBarrier::builder()
+                    vk::ImageMemoryBarrier::default()
                         .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                         .dst_access_mask(vk::AccessFlags::SHADER_READ)
                         .src_queue_family_index(xf.queue_family)
@@ -509,8 +505,7 @@ async fn load_material(
                         .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .image(color_handle)
-                        .subresource_range(range)
-                        .build(),
+                        .subresource_range(range),
                 );
             })
             .await?;
@@ -523,7 +518,7 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
         let image = DedicatedImage::new(
             &ctx.gfx.device,
             &ctx.gfx.memory_properties,
-            &vk::ImageCreateInfo::builder()
+            &vk::ImageCreateInfo::default()
                 .image_type(vk::ImageType::TYPE_2D)
                 .format(vk::Format::R8G8B8A8_SRGB)
                 .extent(vk::Extent3D {
@@ -553,15 +548,14 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
                     vk::DependencyFlags::default(),
                     &[],
                     &[],
-                    &[vk::ImageMemoryBarrier::builder()
+                    &[vk::ImageMemoryBarrier::default()
                         .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                         .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .old_layout(vk::ImageLayout::UNDEFINED)
                         .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                         .image(handle)
-                        .subresource_range(range)
-                        .build()],
+                        .subresource_range(range)],
                 );
                 xf.device.cmd_clear_color_image(
                     cmd,
@@ -572,7 +566,7 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
                 );
                 xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
                 xf.image_barriers.push(
-                    vk::ImageMemoryBarrier::builder()
+                    vk::ImageMemoryBarrier::default()
                         .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                         .dst_access_mask(vk::AccessFlags::SHADER_READ)
                         .src_queue_family_index(xf.queue_family)
@@ -580,8 +574,7 @@ async fn load_solid_color(ctx: &LoadCtx, rgba: [f32; 4]) -> Result<DedicatedImag
                         .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .image(handle)
-                        .subresource_range(range)
-                        .build(),
+                        .subresource_range(range),
                 );
             })
             .await?;
