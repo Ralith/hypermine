@@ -15,7 +15,7 @@ impl From<Side> for Plane<f64> {
     /// A surface overlapping with a particular dodecahedron side
     fn from(side: Side) -> Self {
         Self {
-            normal: *side.normal(),
+            normal: *side.normal_f64(),
         }
     }
 }
@@ -42,7 +42,7 @@ impl Mul<Plane<f64>> for Side {
     type Output = Plane<f64>;
     /// Reflect a plane across the side
     fn mul(self, rhs: Plane<f64>) -> Plane<f64> {
-        self.reflection() * rhs
+        self.reflection_f64() * rhs
     }
 }
 
@@ -72,7 +72,7 @@ impl<N: na::RealField + Copy> Plane<N> {
 impl Plane<f64> {
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
-        let pos = lorentz_normalize(&(chunk.chunk_to_node() * coord.push(1.0)));
+        let pos = lorentz_normalize(&(chunk.chunk_to_node_f64() * coord.push(1.0)));
         self.distance_to(&pos)
     }
 }

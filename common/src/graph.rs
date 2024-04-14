@@ -136,7 +136,7 @@ impl Graph {
                     None => continue,
                     Some(x) => x,
                 };
-                let mat = na::convert::<_, na::Matrix4<T>>(*side.reflection());
+                let mat = na::convert::<_, na::Matrix4<T>>(*side.reflection_f64());
                 location = mat * location;
                 transform = mat * transform;
                 continue 'outer;

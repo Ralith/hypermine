@@ -172,8 +172,8 @@ mod tests {
             let chosen_chunk_transform: na::Matrix4<f32> =
                 self.chosen_voxel.node_path.iter().fold(
                     na::Matrix4::identity(),
-                    |transform: na::Matrix4<f32>, side| transform * side.reflection().cast::<f32>(),
-                ) * self.chosen_voxel.vertex.dual_to_node().cast();
+                    |transform: na::Matrix4<f32>, side| transform * side.reflection(),
+                ) * self.chosen_voxel.vertex.dual_to_node();
 
             let dual_to_grid_factor = graph.layout().dual_to_grid_factor();
             let ray_target = chosen_chunk_transform
@@ -184,7 +184,7 @@ mod tests {
                     1.0,
                 ));
 
-            let ray_position = Vertex::A.dual_to_node().cast()
+            let ray_position = Vertex::A.dual_to_node()
                 * math::lorentz_normalize(&na::Vector4::new(
                     self.start_chunk_relative_grid_ray_start[0] / dual_to_grid_factor,
                     self.start_chunk_relative_grid_ray_start[1] / dual_to_grid_factor,
@@ -435,7 +435,7 @@ mod tests {
         }
 
         // The node coordinates of the corner of the missing node
-        let vertex_pos = Vertex::A.dual_to_node().cast::<f32>() * math::origin();
+        let vertex_pos = Vertex::A.dual_to_node() * math::origin();
 
         // Use a ray starting from the origin. The direction vector is vertex_pos with the w coordinate
         // set to 0 and normalized
