@@ -45,20 +45,32 @@ impl Side {
 
     /// Outward normal vector of this side
     #[inline]
-    pub fn normal(self) -> &'static na::Vector4<f64> {
-        &SIDE_NORMALS[self as usize]
+    pub fn normal(self) -> &'static na::Vector4<f32> {
+        &SIDE_NORMALS_F32[self as usize]
+    }
+
+    /// Outward normal vector of this side
+    #[inline]
+    pub fn normal_f64(self) -> &'static na::Vector4<f64> {
+        &SIDE_NORMALS_F64[self as usize]
     }
 
     /// Reflection across this side
     #[inline]
-    pub fn reflection(self) -> &'static na::Matrix4<f64> {
-        &REFLECTIONS[self as usize]
+    pub fn reflection(self) -> &'static na::Matrix4<f32> {
+        &REFLECTIONS_F32[self as usize]
+    }
+
+    /// Reflection across this side
+    #[inline]
+    pub fn reflection_f64(self) -> &'static na::Matrix4<f64> {
+        &REFLECTIONS_F64[self as usize]
     }
 
     /// Whether `p` is opposite the dodecahedron across the plane containing `self`
     #[inline]
     pub fn is_facing<N: na::RealField + Copy>(self, p: &na::Vector4<N>) -> bool {
-        let r = na::convert::<_, na::RowVector4<N>>(self.reflection().row(3).clone_owned());
+        let r = na::convert::<_, na::RowVector4<N>>(self.reflection_f64().row(3).clone_owned());
         (r * p).x < p.w
     }
 }
@@ -138,37 +150,71 @@ impl Vertex {
     }
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
-    pub fn chunk_to_node(self) -> na::Matrix4<f64> {
+    pub fn chunk_to_node(self) -> na::Matrix4<f32> {
         self.dual_to_node() * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
     }
 
+    /// Transform from euclidean chunk coordinates to hyperbolic node space
+    pub fn chunk_to_node_f64(self) -> na::Matrix4<f64> {
+        self.dual_to_node_f64() * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor_f64())
+    }
+
     /// Transform from hyperbolic node space to euclidean chunk coordinates
-    pub fn node_to_chunk(self) -> na::Matrix4<f64> {
+    pub fn node_to_chunk(self) -> na::Matrix4<f32> {
         na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * self.node_to_dual()
     }
 
+    /// Transform from hyperbolic node space to euclidean chunk coordinates
+    pub fn node_to_chunk_f64(self) -> na::Matrix4<f64> {
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64()) * self.node_to_dual_f64()
+    }
+
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
-    pub fn dual_to_node(self) -> &'static na::Matrix4<f64> {
-        &DUAL_TO_NODE[self as usize]
+    pub fn dual_to_node(self) -> &'static na::Matrix4<f32> {
+        &DUAL_TO_NODE_F32[self as usize]
+    }
+
+    /// Transform from cube-centric coordinates to dodeca-centric coordinates
+    pub fn dual_to_node_f64(self) -> &'static na::Matrix4<f64> {
+        &DUAL_TO_NODE_F64[self as usize]
     }
 
     /// Transform from dodeca-centric coordinates to cube-centric coordinates
-    pub fn node_to_dual(self) -> &'static na::Matrix4<f64> {
-        &NODE_TO_DUAL[self as usize]
+    pub fn node_to_dual(self) -> &'static na::Matrix4<f32> {
+        &NODE_TO_DUAL_F32[self as usize]
+    }
+
+    /// Transform from dodeca-centric coordinates to cube-centric coordinates
+    pub fn node_to_dual_f64(self) -> &'static na::Matrix4<f64> {
+        &NODE_TO_DUAL_F64[self as usize]
     }
 
     /// Scale factor used in conversion from cube-centric coordinates to euclidean chunk coordinates.
     /// Scaling the x, y, and z components of a vector in cube-centric coordinates by this value
     /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
-    pub fn dual_to_chunk_factor() -> f64 {
-        *DUAL_TO_CHUNK_FACTOR
+    pub fn dual_to_chunk_factor() -> f32 {
+        *DUAL_TO_CHUNK_FACTOR_F32
+    }
+
+    /// Scale factor used in conversion from cube-centric coordinates to euclidean chunk coordinates.
+    /// Scaling the x, y, and z components of a vector in cube-centric coordinates by this value
+    /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
+    pub fn dual_to_chunk_factor_f64() -> f64 {
+        *DUAL_TO_CHUNK_FACTOR_F64
     }
 
     /// Scale factor used in conversion from euclidean chunk coordinates to cube-centric coordinates.
     /// Scaling the x, y, and z components of a vector in homogeneous euclidean chunk coordinates by this value
     /// and lorentz-normalizing the result will yield cube-centric coordinates.
-    pub fn chunk_to_dual_factor() -> f64 {
-        *CHUNK_TO_DUAL_FACTOR
+    pub fn chunk_to_dual_factor() -> f32 {
+        *CHUNK_TO_DUAL_FACTOR_F32
+    }
+
+    /// Scale factor used in conversion from euclidean chunk coordinates to cube-centric coordinates.
+    /// Scaling the x, y, and z components of a vector in homogeneous euclidean chunk coordinates by this value
+    /// and lorentz-normalizing the result will yield cube-centric coordinates.
+    pub fn chunk_to_dual_factor_f64() -> f64 {
+        *CHUNK_TO_DUAL_FACTOR_F64
     }
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
@@ -179,7 +225,8 @@ impl Vertex {
 
 pub const VERTEX_COUNT: usize = 20;
 pub const SIDE_COUNT: usize = 12;
-pub const BOUNDING_SPHERE_RADIUS: f64 = 1.2264568712514068;
+pub const BOUNDING_SPHERE_RADIUS_F64: f64 = 1.2264568712514068;
+pub const BOUNDING_SPHERE_RADIUS: f32 = BOUNDING_SPHERE_RADIUS_F64 as f32;
 
 lazy_static! {
     /// Whether two sides share an edge
@@ -187,7 +234,7 @@ lazy_static! {
         let mut result = [[false; SIDE_COUNT]; SIDE_COUNT];
         for i in 0..SIDE_COUNT {
             for j in 0..SIDE_COUNT {
-                let cosh_distance = (REFLECTIONS[i] * REFLECTIONS[j])[(3, 3)];
+                let cosh_distance = (REFLECTIONS_F64[i] * REFLECTIONS_F64[j])[(3, 3)];
                 // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
                 // < 2.0 indicates identical faces; < 5.0 indicates adjacent faces; > 5.0 indicates non-adjacent faces
                 result[i][j] = (2.0..5.0).contains(&cosh_distance);
@@ -197,7 +244,7 @@ lazy_static! {
     };
 
     /// Vector corresponding to the outer normal of each side
-    static ref SIDE_NORMALS: [na::Vector4<f64>; SIDE_COUNT] = {
+    static ref SIDE_NORMALS_F64: [na::Vector4<f64>; SIDE_COUNT] = {
         let phi = libm::sqrt(1.25) + 0.5; // golden ratio
         let f = math::lorentz_normalize(&na::Vector4::new(1.0, phi, 0.0, libm::sqrt(phi)));
 
@@ -219,8 +266,8 @@ lazy_static! {
     };
 
     /// Transform that moves from a neighbor to a reference node, for each side
-    static ref REFLECTIONS: [na::Matrix4<f64>; SIDE_COUNT] = {
-        SIDE_NORMALS.map(|r| math::reflect(&r))
+    static ref REFLECTIONS_F64: [na::Matrix4<f64>; SIDE_COUNT] = {
+        SIDE_NORMALS_F64.map(|r| math::reflect(&r))
     };
 
     /// Sides incident to a vertex, in canonical order
@@ -267,26 +314,26 @@ lazy_static! {
     };
 
     /// Transform that converts from cube-centric coordinates to dodeca-centric coordinates
-    static ref DUAL_TO_NODE: [na::Matrix4<f64>; VERTEX_COUNT] = {
-        let mip_origin_normal = math::mip(&math::origin(), &SIDE_NORMALS[0]); // This value is the same for every side
+    static ref DUAL_TO_NODE_F64: [na::Matrix4<f64>; VERTEX_COUNT] = {
+        let mip_origin_normal = math::mip(&math::origin(), &SIDE_NORMALS_F64[0]); // This value is the same for every side
         let mut result = [na::zero(); VERTEX_COUNT];
         for i in 0..VERTEX_COUNT {
             let [a, b, c] = VERTEX_SIDES[i];
             let vertex_position = math::lorentz_normalize(
-                &(math::origin() - (a.normal() + b.normal() + c.normal()) * mip_origin_normal),
+                &(math::origin() - (a.normal_f64() + b.normal_f64() + c.normal_f64()) * mip_origin_normal),
             );
-            result[i] = na::Matrix4::from_columns(&[-a.normal(), -b.normal(), -c.normal(), vertex_position]);
+            result[i] = na::Matrix4::from_columns(&[-a.normal_f64(), -b.normal_f64(), -c.normal_f64(), vertex_position]);
         }
         result
     };
 
     /// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
-    static ref NODE_TO_DUAL: [na::Matrix4<f64>; VERTEX_COUNT] = {
-        DUAL_TO_NODE.map(|m| math::mtranspose(&m))
+    static ref NODE_TO_DUAL_F64: [na::Matrix4<f64>; VERTEX_COUNT] = {
+        DUAL_TO_NODE_F64.map(|m| math::mtranspose(&m))
     };
 
-    static ref DUAL_TO_CHUNK_FACTOR: f64 = (2.0 + 5.0f64.sqrt()).sqrt();
-    static ref CHUNK_TO_DUAL_FACTOR: f64 = 1.0 / *DUAL_TO_CHUNK_FACTOR;
+    static ref DUAL_TO_CHUNK_FACTOR_F64: f64 = (2.0 + 5.0f64.sqrt()).sqrt();
+    static ref CHUNK_TO_DUAL_FACTOR_F64: f64 = 1.0 / *DUAL_TO_CHUNK_FACTOR_F64;
 
     /// Vertex shared by 3 sides
     static ref SIDES_TO_VERTEX: [[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT] = {
@@ -321,11 +368,18 @@ lazy_static! {
         let mut result = [false; VERTEX_COUNT];
 
         for v in Vertex::iter() {
-            result[v as usize] = math::parity(&v.chunk_to_node());
+            result[v as usize] = math::parity(&v.chunk_to_node_f64());
         }
 
         result
     };
+
+    static ref SIDE_NORMALS_F32: [na::Vector4<f32>; SIDE_COUNT] = SIDE_NORMALS_F64.map(|n| n.cast());
+    static ref REFLECTIONS_F32: [na::Matrix4<f32>; SIDE_COUNT] = REFLECTIONS_F64.map(|n| n.cast());
+    static ref DUAL_TO_NODE_F32: [na::Matrix4<f32>; VERTEX_COUNT] = DUAL_TO_NODE_F64.map(|n| n.cast());
+    static ref NODE_TO_DUAL_F32: [na::Matrix4<f32>; VERTEX_COUNT] = NODE_TO_DUAL_F64.map(|n| n.cast());
+    static ref DUAL_TO_CHUNK_FACTOR_F32: f32 = *DUAL_TO_CHUNK_FACTOR_F64 as f32;
+    static ref CHUNK_TO_DUAL_FACTOR_F32: f32 = *CHUNK_TO_DUAL_FACTOR_F64 as f32;
 }
 
 #[cfg(test)]
@@ -371,15 +425,15 @@ mod tests {
 
     #[test]
     fn radius() {
-        let corner = Vertex::A.chunk_to_node() * math::origin();
+        let corner = Vertex::A.chunk_to_node_f64() * math::origin();
         assert_abs_diff_eq!(
-            BOUNDING_SPHERE_RADIUS,
+            BOUNDING_SPHERE_RADIUS_F64,
             math::distance(&corner, &math::origin()),
             epsilon = 1e-10
         );
         let phi = (1.0 + 5.0f64.sqrt()) / 2.0; // Golden ratio
         assert_abs_diff_eq!(
-            BOUNDING_SPHERE_RADIUS,
+            BOUNDING_SPHERE_RADIUS_F64,
             (1.5 * phi).sqrt().asinh(),
             epsilon = 1e-10
         );
@@ -389,7 +443,7 @@ mod tests {
     fn chunk_to_node() {
         // Chunk coordinates of (1, 1, 1) should be at the center of a dodecahedron.
         let mut chunk_corner_in_node_coordinates =
-            Vertex::A.chunk_to_node() * na::Vector4::new(1.0, 1.0, 1.0, 1.0);
+            Vertex::A.chunk_to_node_f64() * na::Vector4::new(1.0, 1.0, 1.0, 1.0);
         chunk_corner_in_node_coordinates /= chunk_corner_in_node_coordinates.w;
         assert_abs_diff_eq!(
             chunk_corner_in_node_coordinates,
@@ -401,8 +455,8 @@ mod tests {
     #[test]
     fn node_to_chunk() {
         assert_abs_diff_eq!(
-            Vertex::A.chunk_to_node().try_inverse().unwrap(),
-            Vertex::A.node_to_chunk(),
+            Vertex::A.chunk_to_node_f64().try_inverse().unwrap(),
+            Vertex::A.node_to_chunk_f64(),
             epsilon = 1e-10
         );
     }

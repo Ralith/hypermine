@@ -431,11 +431,9 @@ impl Draw {
         }
 
         if let Some(sim) = sim.as_deref() {
-            for (node, transform) in nearby_nodes(
-                &sim.graph,
-                &view,
-                f64::from(self.cfg.local_simulation.view_distance),
-            ) {
+            for (node, transform) in
+                nearby_nodes(&sim.graph, &view, self.cfg.local_simulation.view_distance)
+            {
                 for &entity in sim.graph_entities.get(node) {
                     if sim.local_character == Some(entity) {
                         // Don't draw ourself

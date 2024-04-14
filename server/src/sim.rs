@@ -276,7 +276,7 @@ impl Sim {
 
         // Extend graph structure
         for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
-            ensure_nearby(&mut self.graph, position, f64::from(self.cfg.view_distance));
+            ensure_nearby(&mut self.graph, position, self.cfg.view_distance);
         }
 
         let fresh_nodes = self.graph.fresh().to_vec();
@@ -297,10 +297,10 @@ impl Sim {
         // We want to load all chunks that a player can interact with in a single step, so chunk_generation_distance
         // is set up to cover that distance.
         let chunk_generation_distance = dodeca::BOUNDING_SPHERE_RADIUS
-            + self.cfg.character.character_radius as f64
-            + self.cfg.character.speed_cap as f64 * self.cfg.step_interval.as_secs_f64()
-            + self.cfg.character.ground_distance_tolerance as f64
-            + self.cfg.character.block_reach as f64
+            + self.cfg.character.character_radius
+            + self.cfg.character.speed_cap * self.cfg.step_interval.as_secs_f32()
+            + self.cfg.character.ground_distance_tolerance
+            + self.cfg.character.block_reach
             + 0.001;
 
         // Load all chunks around entities corresponding to clients, which correspond to entities
