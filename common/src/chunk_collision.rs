@@ -1,7 +1,8 @@
 use crate::{
     collision_math::Ray,
     math,
-    node::{ChunkLayout, Coords, VoxelAABB, VoxelData},
+    node::{ChunkLayout, VoxelAABB, VoxelData},
+    voxel_math::Coords,
     world::Material,
 };
 

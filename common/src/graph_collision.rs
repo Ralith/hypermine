@@ -88,9 +88,10 @@ mod tests {
         collision_math::Ray,
         dodeca::{self, Side, Vertex},
         graph::{Graph, NodeId},
-        node::{populate_fresh_nodes, Coords, VoxelData},
+        node::{populate_fresh_nodes, VoxelData},
         proto::Position,
         traversal::{ensure_nearby, nearby_nodes},
+        voxel_math::Coords,
         world::Material,
     };
 
