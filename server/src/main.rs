@@ -48,7 +48,7 @@ pub fn run() -> Result<()> {
         _ => {
             // TODO: Cache on disk
             warn!("generating self-signed certificate");
-            let cert = rcgen::generate_simple_self_signed(vec![cfg
+            let certified_key = rcgen::generate_simple_self_signed(vec![cfg
                 .server_name
                 .clone()
                 .map(Ok)
@@ -59,8 +59,8 @@ pub fn run() -> Result<()> {
                     })
                 })?])
             .unwrap();
-            let key = cert.serialize_private_key_der();
-            let cert = cert.serialize_der().unwrap();
+            let key = certified_key.key_pair.serialize_der();
+            let cert = certified_key.cert.der().to_vec();
             (vec![rustls::Certificate(cert)], rustls::PrivateKey(key))
         }
     };

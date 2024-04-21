@@ -34,7 +34,7 @@ futures-util = "0.3.1"
 rustls = { version = "0.21.7", features = ["dangerous_configuration"] }
 webpki = "0.22.0"
 hecs = { workspace = true }
-rcgen = { version = "0.12.1", default-features = false, features = ["ring"] }
+rcgen = { version = "0.13.1", default-features = false, features = ["ring"] }
 memoffset = "0.9"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
 metrics = "0.22.1"
