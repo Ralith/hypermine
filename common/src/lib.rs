@@ -22,6 +22,7 @@ pub mod graph_collision;
 mod graph_entities;
 pub mod graph_ray_casting;
 pub mod lru_slab;
+mod margins;
 pub mod math;
 pub mod node;
 mod plane;

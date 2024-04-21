@@ -4,7 +4,7 @@ use rand_distr::Normal;
 use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
-    math,
+    margins, math,
     node::{ChunkId, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,
@@ -246,6 +246,7 @@ impl ChunkParams {
             self.generate_trees(&mut voxels, &mut rng);
         }
 
+        margins::initialize_margins(self.dimension, &mut voxels);
         voxels
     }
 
