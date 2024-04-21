@@ -1,8 +1,10 @@
 use crate::{
     dodeca::Vertex,
+    graph::Graph,
     math,
-    node::VoxelData,
+    node::{Chunk, ChunkId, VoxelData},
     voxel_math::{ChunkAxisPermutation, ChunkDirection, CoordAxis, CoordSign, Coords},
+    world::Material,
 };
 
 /// Updates the margins of both `voxels` and `neighbor_voxels` at the side they meet at.
@@ -79,6 +81,52 @@ pub fn initialize_margins(dimension: u8, voxels: &mut VoxelData) {
     }
 }
 
+/// Assuming that the voxel at `chunk` and `coords` is set to `material`, updates the cooresponding
+/// margin in the chunk at direction `direction` from `chunk` if such a margin exists. Unpopulated chunks
+/// are ignored.
+pub fn update_margin_voxel(
+    graph: &mut Graph,
+    chunk: ChunkId,
+    coords: Coords,
+    direction: ChunkDirection,
+    material: Material,
+) {
+    let coords: CoordsWithMargins = coords.into();
+    let dimension = graph.layout().dimension();
+    let edge_coord = match direction.sign {
+        CoordSign::Plus => dimension,
+        CoordSign::Minus => 1,
+    };
+    if coords[direction.axis] != edge_coord {
+        // There is nothing to do if we're not on an edge voxel.
+        return;
+    }
+    let Some(Chunk::Populated {
+        voxels: neighbor_voxels,
+        surface: neighbor_surface,
+        old_surface: neighbor_old_surface,
+        ..
+    }) = graph
+        .get_chunk_neighbor(chunk, direction.axis, direction.sign)
+        .map(|chunk_id| &mut graph[chunk_id])
+    else {
+        // If the neighboring chunk to check is not populated, there is nothing to do.
+        return;
+    };
+
+    let margin_coord = match direction.sign {
+        CoordSign::Plus => dimension + 1,
+        CoordSign::Minus => 0,
+    };
+    let neighbor_axis_permutation = neighbor_axis_permutation(chunk.vertex, direction);
+    let mut neighbor_coords = coords;
+    neighbor_coords[direction.axis] = margin_coord;
+    neighbor_coords = neighbor_axis_permutation * neighbor_coords;
+
+    neighbor_voxels.data_mut(dimension)[neighbor_coords.to_index(dimension)] = material;
+    *neighbor_old_surface = neighbor_surface.take().or(*neighbor_old_surface);
+}
+
 fn neighbor_axis_permutation(vertex: Vertex, direction: ChunkDirection) -> ChunkAxisPermutation {
     match direction.sign {
         CoordSign::Plus => vertex.chunk_axis_permutations()[direction.axis as usize],
@@ -153,7 +201,7 @@ impl std::ops::Mul<CoordsWithMargins> for ChunkAxisPermutation {
 
 #[cfg(test)]
 mod tests {
-    use crate::{dodeca::Vertex, voxel_math::Coords, world::Material};
+    use crate::{dodeca::Vertex, graph::NodeId, node, voxel_math::Coords, world::Material};
 
     use super::*;
 
@@ -219,6 +267,71 @@ mod tests {
         assert_eq!(
             voxels.get(CoordsWithMargins([13, 3, 11]).to_index(12)),
             Material::WoodPlanks
+        );
+    }
+
+    #[test]
+    fn test_update_margin_voxel() {
+        let mut graph = Graph::new(12);
+        let current_vertex = Vertex::A;
+        let neighbor_vertex = current_vertex.adjacent_vertices()[1];
+        let neighbor_node =
+            graph.ensure_neighbor(NodeId::ROOT, current_vertex.canonical_sides()[0]);
+        node::populate_fresh_nodes(&mut graph);
+
+        // These are the chunks this test will work with.
+        let current_chunk = ChunkId::new(NodeId::ROOT, current_vertex);
+        let node_neighbor_chunk = ChunkId::new(neighbor_node, current_vertex);
+        let vertex_neighbor_chunk = ChunkId::new(NodeId::ROOT, neighbor_vertex);
+
+        // Populate relevant chunks with void
+        for chunk in [current_chunk, node_neighbor_chunk, vertex_neighbor_chunk] {
+            *graph.get_chunk_mut(chunk).unwrap() = Chunk::Populated {
+                voxels: VoxelData::Solid(Material::Void),
+                modified: false,
+                surface: None,
+                old_surface: None,
+            };
+        }
+
+        // Update and check the margins of node_neighbor_chunk
+        update_margin_voxel(
+            &mut graph,
+            current_chunk,
+            Coords([0, 7, 9]),
+            ChunkDirection::MINUS_X,
+            Material::WoodPlanks,
+        );
+        let Chunk::Populated {
+            voxels: node_neighbor_voxels,
+            ..
+        } = graph.get_chunk_mut(node_neighbor_chunk).unwrap()
+        else {
+            panic!("node_neighbor_chunk should have just been populated by this test");
+        };
+        assert_eq!(
+            node_neighbor_voxels.get(CoordsWithMargins([0, 8, 10]).to_index(12)),
+            Material::WoodPlanks
+        );
+
+        // Update and check the margins of vertex_neighbor_chunk
+        update_margin_voxel(
+            &mut graph,
+            current_chunk,
+            Coords([5, 11, 9]),
+            ChunkDirection::PLUS_Y,
+            Material::Grass,
+        );
+        let Chunk::Populated {
+            voxels: vertex_neighbor_voxels,
+            ..
+        } = graph.get_chunk_mut(vertex_neighbor_chunk).unwrap()
+        else {
+            panic!("vertex_neighbor_chunk should have just been populated by this test");
+        };
+        assert_eq!(
+            vertex_neighbor_voxels.get(CoordsWithMargins([6, 10, 13]).to_index(12)),
+            Material::Grass
         );
     }
 }
