@@ -23,9 +23,9 @@ fn main() {
             UdpSocket::bind("[::1]:0".parse::<SocketAddr>().unwrap()).expect("binding socket");
         config.server = Some(socket.local_addr().unwrap());
 
-        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let key = cert.serialize_private_key_der();
-        let cert = cert.serialize_der().unwrap();
+        let certified_key = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let key = certified_key.key_pair.serialize_der();
+        let cert = certified_key.cert.der().to_vec();
         let sim_cfg = config.local_simulation.clone();
 
         let save = dirs.data_local_dir().join("default.save");
