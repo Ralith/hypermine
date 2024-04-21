@@ -76,6 +76,9 @@ bool find_face(out Face info) {
     // Flip face around if the neighbor is the solid one
     info.inward = self_mat == 0;
     info.material = self_mat | neighbor_mat;
+    // If self or neighbor is a void margin, then no surface should be generated, as any surface
+    // that would be rendered is the responsibility of the adjacent chunk.
+    if ((self_mat == 0 && info.voxel[info.axis] == dimension) || (neighbor_mat == 0 && neighbor[info.axis] == -1)) return false;
     return (neighbor_mat == 0) != (self_mat == 0);
 }
 
