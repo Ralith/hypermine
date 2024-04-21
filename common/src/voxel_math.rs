@@ -48,15 +48,15 @@ impl TryFrom<usize> for CoordAxis {
 /// so when paired with the X-axis, it represents the postitive X-direction when set to Plus and the
 /// negative X-direction when set to Minus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CoordDirection {
+pub enum CoordSign {
     Plus = 1,
     Minus = -1,
 }
 
-impl CoordDirection {
+impl CoordSign {
     /// Iterates through the two possible coordinate directions
     pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        [CoordDirection::Plus, CoordDirection::Minus].into_iter()
+        [CoordSign::Plus, CoordSign::Minus].into_iter()
     }
 }
 

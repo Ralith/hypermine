@@ -495,7 +495,7 @@ impl Sim {
                 hit.chunk,
                 hit.voxel_coords,
                 hit.face_axis,
-                hit.face_direction,
+                hit.face_sign,
             )?
         } else {
             (hit.chunk, hit.voxel_coords)
