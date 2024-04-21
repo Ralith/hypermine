@@ -5,7 +5,7 @@ use crate::{
     node::{Chunk, ChunkId},
     proto::Position,
     traversal::RayTraverser,
-    voxel_math::{CoordAxis, CoordDirection, Coords},
+    voxel_math::{CoordAxis, CoordSign, Coords},
 };
 
 /// Performs ray casting against the voxels in the `DualGraph`
@@ -55,7 +55,7 @@ pub fn ray_cast(
                 chunk,
                 voxel_coords: hit.voxel_coords,
                 face_axis: hit.face_axis,
-                face_direction: hit.face_direction,
+                face_sign: hit.face_sign,
             })
         });
     }
@@ -82,5 +82,5 @@ pub struct GraphCastHit {
     pub face_axis: CoordAxis,
 
     /// The direction along `face_axis` corresponding to the outside of the face that was hit.
-    pub face_direction: CoordDirection,
+    pub face_sign: CoordSign,
 }

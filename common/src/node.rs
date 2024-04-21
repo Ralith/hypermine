@@ -9,7 +9,7 @@ use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
-use crate::voxel_math::{CoordAxis, CoordDirection, Coords};
+use crate::voxel_math::{CoordAxis, CoordSign, Coords};
 use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::{math, Chunks};
@@ -48,14 +48,14 @@ impl Graph {
         &self,
         chunk: ChunkId,
         coord_axis: CoordAxis,
-        coord_direction: CoordDirection,
+        coord_sign: CoordSign,
     ) -> Option<ChunkId> {
-        match coord_direction {
-            CoordDirection::Plus => Some(ChunkId::new(
+        match coord_sign {
+            CoordSign::Plus => Some(ChunkId::new(
                 chunk.node,
                 chunk.vertex.adjacent_vertices()[coord_axis as usize],
             )),
-            CoordDirection::Minus => Some(ChunkId::new(
+            CoordSign::Minus => Some(ChunkId::new(
                 self.neighbor(
                     chunk.node,
                     chunk.vertex.canonical_sides()[coord_axis as usize],
@@ -70,11 +70,9 @@ impl Graph {
         mut chunk: ChunkId,
         mut coords: Coords,
         coord_axis: CoordAxis,
-        coord_direction: CoordDirection,
+        coord_sign: CoordSign,
     ) -> Option<(ChunkId, Coords)> {
-        if coords[coord_axis] == self.layout().dimension - 1
-            && coord_direction == CoordDirection::Plus
-        {
+        if coords[coord_axis] == self.layout().dimension - 1 && coord_sign == CoordSign::Plus {
             let new_vertex = chunk.vertex.adjacent_vertices()[coord_axis as usize];
             // Permute coordinates based on differences in the canonical orders between the old
             // and new vertex
@@ -95,13 +93,13 @@ impl Graph {
             }
             coords = new_coords;
             chunk.vertex = new_vertex;
-        } else if coords[coord_axis] == 0 && coord_direction == CoordDirection::Minus {
+        } else if coords[coord_axis] == 0 && coord_sign == CoordSign::Minus {
             chunk.node = self.neighbor(
                 chunk.node,
                 chunk.vertex.canonical_sides()[coord_axis as usize],
             )?;
         } else {
-            coords[coord_axis] = coords[coord_axis].wrapping_add_signed(coord_direction as i8);
+            coords[coord_axis] = coords[coord_axis].wrapping_add_signed(coord_sign as i8);
         }
 
         Some((chunk, coords))
@@ -115,10 +113,8 @@ impl Graph {
             // Loop through all six potential chunk neighbors. If any are modified, the `new_data` should have
             // its margin cleared.
             'outer: for coord_axis in CoordAxis::iter() {
-                for coord_direction in CoordDirection::iter() {
-                    if let Some(chunk_id) =
-                        self.get_chunk_neighbor(chunk, coord_axis, coord_direction)
-                    {
+                for coord_sign in CoordSign::iter() {
+                    if let Some(chunk_id) = self.get_chunk_neighbor(chunk, coord_axis, coord_sign) {
                         if let Chunk::Populated { modified: true, .. } = self[chunk_id] {
                             new_data.clear_margin(self.layout().dimension);
                             break 'outer;
@@ -180,9 +176,8 @@ impl Graph {
     /// hidden by world generation.
     fn clear_adjacent_solid_chunk_margins(&mut self, chunk: ChunkId) {
         for coord_axis in CoordAxis::iter() {
-            for coord_direction in CoordDirection::iter() {
-                if let Some(chunk_id) = self.get_chunk_neighbor(chunk, coord_axis, coord_direction)
-                {
+            for coord_sign in CoordSign::iter() {
+                if let Some(chunk_id) = self.get_chunk_neighbor(chunk, coord_axis, coord_sign) {
                     // We only need to clear margins from populated chunks.
                     let _ = self.clear_solid_chunk_margin(chunk_id);
                 }
