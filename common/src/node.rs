@@ -9,7 +9,7 @@ use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
-use crate::voxel_math::{CoordAxis, CoordSign, Coords};
+use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::{math, Chunks};
@@ -72,32 +72,19 @@ impl Graph {
         coord_axis: CoordAxis,
         coord_sign: CoordSign,
     ) -> Option<(ChunkId, Coords)> {
-        if coords[coord_axis] == self.layout().dimension - 1 && coord_sign == CoordSign::Plus {
-            let new_vertex = chunk.vertex.adjacent_vertices()[coord_axis as usize];
-            // Permute coordinates based on differences in the canonical orders between the old
-            // and new vertex
-            let [coord_plane0, coord_plane1] = coord_axis.other_axes();
-            let mut new_coords = Coords([0; 3]);
-            for current_axis in CoordAxis::iter() {
-                if new_vertex.canonical_sides()[current_axis as usize]
-                    == chunk.vertex.canonical_sides()[coord_plane0 as usize]
-                {
-                    new_coords[current_axis] = coords[coord_plane0];
-                } else if new_vertex.canonical_sides()[current_axis as usize]
-                    == chunk.vertex.canonical_sides()[coord_plane1 as usize]
-                {
-                    new_coords[current_axis] = coords[coord_plane1];
-                } else {
-                    new_coords[current_axis] = coords[coord_axis];
+        if coords[coord_axis] == Coords::edge_coord(self.layout().dimension, coord_sign) {
+            match coord_sign {
+                CoordSign::Plus => {
+                    coords = chunk.vertex.chunk_axis_permutations()[coord_axis as usize] * coords;
+                    chunk.vertex = chunk.vertex.adjacent_vertices()[coord_axis as usize];
+                }
+                CoordSign::Minus => {
+                    chunk.node = self.neighbor(
+                        chunk.node,
+                        chunk.vertex.canonical_sides()[coord_axis as usize],
+                    )?;
                 }
             }
-            coords = new_coords;
-            chunk.vertex = new_vertex;
-        } else if coords[coord_axis] == 0 && coord_sign == CoordSign::Minus {
-            chunk.node = self.neighbor(
-                chunk.node,
-                chunk.vertex.canonical_sides()[coord_axis as usize],
-            )?;
         } else {
             coords[coord_axis] = coords[coord_axis].wrapping_add_signed(coord_sign as i8);
         }
@@ -112,13 +99,13 @@ impl Graph {
         if new_data.is_solid() {
             // Loop through all six potential chunk neighbors. If any are modified, the `new_data` should have
             // its margin cleared.
-            'outer: for coord_axis in CoordAxis::iter() {
-                for coord_sign in CoordSign::iter() {
-                    if let Some(chunk_id) = self.get_chunk_neighbor(chunk, coord_axis, coord_sign) {
-                        if let Chunk::Populated { modified: true, .. } = self[chunk_id] {
-                            new_data.clear_margin(self.layout().dimension);
-                            break 'outer;
-                        }
+            for chunk_direction in ChunkDirection::iter() {
+                if let Some(chunk_id) =
+                    self.get_chunk_neighbor(chunk, chunk_direction.axis, chunk_direction.sign)
+                {
+                    if let Chunk::Populated { modified: true, .. } = self[chunk_id] {
+                        new_data.clear_margin(self.layout().dimension);
+                        break;
                     }
                 }
             }

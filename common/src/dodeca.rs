@@ -1,7 +1,9 @@
 //! Tools for processing the geometry of a right dodecahedron
+
+use data::*;
 use serde::{Deserialize, Serialize};
 
-use crate::dodeca::data::*;
+use crate::voxel_math::ChunkAxisPermutation;
 
 /// Sides of a right dodecahedron
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -112,16 +114,43 @@ impl Vertex {
         sides_to_vertex()[a as usize][b as usize][c as usize]
     }
 
-    /// Sides incident to this vertex, in canonical order
+    /// Sides incident to this vertex, in canonical order.
+    ///
+    /// This canonical order determines the X, Y, and Z axes of the chunk
+    /// corresponding to the vertex.
     #[inline]
     pub fn canonical_sides(self) -> [Side; 3] {
         vertex_sides()[self as usize]
     }
 
-    /// Vertices adjacent to this vertex, opposite the sides in canonical order
+    /// Vertices adjacent to this vertex in canonical order.
+    ///
+    /// The canonical order of adjacent vertices is based on the canonical order
+    /// of sides incident to the vertex, as each of the three adjacent vertices
+    /// corresponds to one of the three sides. As for which side, when two
+    /// vertices are adjacent, they share two out of three sides of the
+    /// dodecahedron. The side they do _not_ share is the side they correspond
+    /// to.
+    ///
+    /// Put another way, anything leaving a chunk in the negative-X direction
+    /// will end up crossing `canonical_sides()[0]`, while anything leaving a
+    /// chunk in the positive-X direction will end up arriving at
+    /// `adjacent_vertices()[0]`.
     #[inline]
     pub fn adjacent_vertices(self) -> [Vertex; 3] {
         adjacent_vertices()[self as usize]
+    }
+
+    /// Chunk axes permutations for vertices adjacent to this vertex in
+    /// canonical order.
+    ///
+    /// The chunks of two adjacent vertices meet at a plane. When swiching
+    /// reference frames from one vertex to another, it is necessary to reflect
+    /// about this plane and then apply the permutation returned by this
+    /// function.
+    #[inline]
+    pub fn chunk_axis_permutations(self) -> &'static [ChunkAxisPermutation; 3] {
+        &chunk_axis_permutations()[self as usize]
     }
 
     /// For each vertex of the cube dual to this dodecahedral vertex, provides an iterator of at
@@ -227,10 +256,12 @@ pub const BOUNDING_SPHERE_RADIUS_F64: f64 = 1.2264568712514068;
 pub const BOUNDING_SPHERE_RADIUS: f32 = BOUNDING_SPHERE_RADIUS_F64 as f32;
 
 mod data {
+    use std::array;
     use std::sync::OnceLock;
 
     use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
     use crate::math;
+    use crate::voxel_math::ChunkAxisPermutation;
 
     /// Whether two sides share an edge
     pub fn adjacent() -> &'static [[bool; SIDE_COUNT]; SIDE_COUNT] {
@@ -331,6 +362,39 @@ mod data {
                 }
             }
             result
+        })
+    }
+
+    // Which transformations have to be done after a reflection to switch reference frames from one vertex
+    // to one of its adjacent vertices (ordered similarly to ADJACENT_VERTICES)
+    pub fn chunk_axis_permutations() -> &'static [[ChunkAxisPermutation; 3]; VERTEX_COUNT] {
+        static LOCK: OnceLock<[[ChunkAxisPermutation; 3]; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| {
+            array::from_fn(|vertex| {
+                array::from_fn(|result_index| {
+                    let mut test_sides = vertex_sides()[vertex];
+                    // Keep modifying the result_index'th element of test_sides until its three elements are all
+                    // adjacent to a single vertex (determined using `Vertex::from_sides`).
+                    for side in Side::iter() {
+                        if side == vertex_sides()[vertex][result_index] {
+                            continue;
+                        }
+                        test_sides[result_index] = side;
+                        let Some(adjacent_vertex) =
+                            Vertex::from_sides(test_sides[0], test_sides[1], test_sides[2])
+                        else {
+                            continue;
+                        };
+                        // Compare the natural permutation of sides after a reflection from `vertex` to `adjacent_vertex`
+                        // to the canonical permutation of the sides for `adjacent_vertex`.
+                        return ChunkAxisPermutation::from_permutation(
+                            test_sides,
+                            adjacent_vertex.canonical_sides(),
+                        );
+                    }
+                    panic!("No suitable vertex found");
+                })
+            })
         })
     }
 
@@ -482,6 +546,57 @@ mod tests {
             assert_eq!(v, Vertex::from_sides(c, a, b).unwrap());
             assert_eq!(v, Vertex::from_sides(c, b, a).unwrap());
         }
+    }
+
+    #[test]
+    fn adjacent_chunk_axis_permutations() {
+        // Assumptions for this test to be valid. If any assertions in this section fail, the test itself
+        // needs to be modified
+        assert_eq!(Vertex::A.canonical_sides(), [Side::A, Side::B, Side::C]);
+        assert_eq!(Vertex::B.canonical_sides(), [Side::A, Side::B, Side::E]);
+
+        assert_eq!(Vertex::F.canonical_sides(), [Side::B, Side::C, Side::F]);
+        assert_eq!(Vertex::J.canonical_sides(), [Side::C, Side::F, Side::H]);
+
+        // Test cases
+
+        // Variables with name vertex_?_canonical_sides_reflected refer to the canonical sides
+        // of a particular vertex after a reflection that moves it to another vertex.
+        // For instance, vertex_a_canonical_sides_reflected is similar to Vertex::A.canonical_sides(),
+        // but one of the sides is changed to match Vertex B, but the order of the other two sides is left alone.
+        let vertex_a_canonical_sides_reflected = [Side::A, Side::B, Side::E];
+        let vertex_b_canonical_sides_reflected = [Side::A, Side::B, Side::C];
+        assert_eq!(
+            Vertex::A.chunk_axis_permutations()[2],
+            ChunkAxisPermutation::from_permutation(
+                vertex_a_canonical_sides_reflected,
+                Vertex::B.canonical_sides()
+            )
+        );
+        assert_eq!(
+            Vertex::B.chunk_axis_permutations()[2],
+            ChunkAxisPermutation::from_permutation(
+                vertex_b_canonical_sides_reflected,
+                Vertex::A.canonical_sides()
+            )
+        );
+
+        let vertex_f_canonical_sides_reflected = [Side::H, Side::C, Side::F];
+        let vertex_j_canonical_sides_reflected = [Side::C, Side::F, Side::B];
+        assert_eq!(
+            Vertex::F.chunk_axis_permutations()[0],
+            ChunkAxisPermutation::from_permutation(
+                vertex_f_canonical_sides_reflected,
+                Vertex::J.canonical_sides()
+            )
+        );
+        assert_eq!(
+            Vertex::J.chunk_axis_permutations()[2],
+            ChunkAxisPermutation::from_permutation(
+                vertex_j_canonical_sides_reflected,
+                Vertex::F.canonical_sides()
+            )
+        );
     }
 
     #[test]
