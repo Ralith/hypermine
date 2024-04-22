@@ -283,7 +283,7 @@ impl Sim {
         populate_fresh_nodes(&mut self.graph);
 
         let mut fresh_voxel_data = vec![];
-        for fresh_node in fresh_nodes.iter().copied() {
+        for fresh_node in fresh_nodes.iter().cloned() {
             for vertex in Vertex::iter() {
                 let chunk = ChunkId::new(fresh_node, vertex);
                 if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {

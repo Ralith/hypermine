@@ -465,7 +465,7 @@ pub struct CoordAxisOutOfBounds;
 impl CoordAxis {
     /// Iterates through the the axes in ascending order
     pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        [Self::X, Self::Y, Self::Z].iter().copied()
+        [Self::X, Self::Y, Self::Z].into_iter()
     }
 
     /// Returns the pair axes orthogonal to the current axis
