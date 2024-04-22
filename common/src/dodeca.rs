@@ -32,7 +32,7 @@ impl Side {
 
     pub fn iter() -> impl ExactSizeIterator<Item = Self> {
         use Side::*;
-        [A, B, C, D, E, F, G, H, I, J, K, L].iter().cloned()
+        [A, B, C, D, E, F, G, H, I, J, K, L].into_iter()
     }
 
     /// Whether `self` and `other` share an edge

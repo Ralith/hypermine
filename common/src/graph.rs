@@ -64,7 +64,7 @@ impl Graph {
     ///
     /// A node's length is defined as a its distance from the root node.
     pub fn canonicalize(&self, mut chunk: ChunkId) -> Option<ChunkId> {
-        for side in chunk.vertex.canonical_sides().iter().cloned() {
+        for side in chunk.vertex.canonical_sides().into_iter() {
             // missing neighbors are always longer
             if let Some(neighbor) = self.neighbor(chunk.node, side) {
                 if self.length(neighbor) < self.length(chunk.node) {
@@ -392,7 +392,7 @@ mod tests {
             "both the root and some other node are common neighbors"
         );
         assert!(common.contains(&NodeId::ROOT));
-        let other = common.iter().cloned().find(|&x| x != NodeId::ROOT).unwrap();
+        let other = common.into_iter().find(|&x| x != NodeId::ROOT).unwrap();
         assert_eq!(graph.nodes[&other].length, 2);
     }
 

@@ -70,7 +70,7 @@ pub enum Dir {
 impl Dir {
     pub fn iter() -> impl ExactSizeIterator<Item = Self> + Clone {
         use Dir::*;
-        [Left, Right, Down, Up, Forward, Back].iter().cloned()
+        [Left, Right, Down, Up, Forward, Back].into_iter()
     }
 
     /// Returns the unit vector corresponding to the direction.
