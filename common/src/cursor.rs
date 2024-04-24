@@ -1,6 +1,7 @@
 use std::sync::OnceLock;
 
-use crate::dodeca::{Side, Vertex, SIDE_COUNT};
+use crate::dodeca::SIDE_COUNT;
+use crate::dodeca::{Side, Vertex};
 use crate::graph::{Graph, NodeId};
 use crate::node::ChunkId;
 

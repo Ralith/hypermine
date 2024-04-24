@@ -1,9 +1,7 @@
 //! Tools for processing the geometry of a right dodecahedron
-use std::sync::OnceLock;
-
 use serde::{Deserialize, Serialize};
 
-use crate::math;
+use crate::dodeca::data::*;
 
 /// Sides of a right dodecahedron
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -228,226 +226,234 @@ pub const SIDE_COUNT: usize = 12;
 pub const BOUNDING_SPHERE_RADIUS_F64: f64 = 1.2264568712514068;
 pub const BOUNDING_SPHERE_RADIUS: f32 = BOUNDING_SPHERE_RADIUS_F64 as f32;
 
-/// Whether two sides share an edge
-fn adjacent() -> &'static [[bool; SIDE_COUNT]; SIDE_COUNT] {
-    static LOCK: OnceLock<[[bool; SIDE_COUNT]; SIDE_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| {
-        let mut result = [[false; SIDE_COUNT]; SIDE_COUNT];
-        for (i, side) in result.iter_mut().enumerate() {
-            for (j, is_adjacent) in side.iter_mut().enumerate() {
-                let cosh_distance = (reflections_f64()[i] * reflections_f64()[j])[(3, 3)];
-                // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
-                // < 2.0 indicates identical faces; < 5.0 indicates adjacent faces; > 5.0 indicates non-adjacent faces
-                *is_adjacent = (2.0..5.0).contains(&cosh_distance);
-            }
-        }
-        result
-    })
-}
+mod data {
+    use std::sync::OnceLock;
 
-/// Vector corresponding to the outer normal of each side
-fn side_normals_f64() -> &'static [na::Vector4<f64>; SIDE_COUNT] {
-    static LOCK: OnceLock<[na::Vector4<f64>; SIDE_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| {
-        let phi = libm::sqrt(1.25) + 0.5; // golden ratio
-        let f = math::lorentz_normalize(&na::Vector4::new(1.0, phi, 0.0, libm::sqrt(phi)));
+    use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
+    use crate::math;
 
-        let mut result: [na::Vector4<f64>; SIDE_COUNT] = [na::zero(); SIDE_COUNT];
-        let mut i = 0;
-        for (x, y, z, w) in [
-            (f.x, f.y, f.z, f.w),
-            (-f.x, f.y, -f.z, f.w),
-            (f.x, -f.y, -f.z, f.w),
-            (-f.x, -f.y, f.z, f.w),
-        ] {
-            for (x, y, z, w) in [(x, y, z, w), (y, z, x, w), (z, x, y, w)] {
-                result[i] = na::Vector4::new(x, y, z, w);
-                i += 1;
-            }
-        }
-        result
-    })
-}
-
-/// Transform that moves from a neighbor to a reference node, for each side
-fn reflections_f64() -> &'static [na::Matrix4<f64>; SIDE_COUNT] {
-    static LOCK: OnceLock<[na::Matrix4<f64>; SIDE_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| side_normals_f64().map(|r| math::reflect(&r)))
-}
-
-/// Sides incident to a vertex, in canonical order
-fn vertex_sides() -> &'static [[Side; 3]; VERTEX_COUNT] {
-    static LOCK: OnceLock<[[Side; 3]; VERTEX_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| {
-        let mut result = [[Side::A; 3]; VERTEX_COUNT];
-        let mut vertex = 0;
-        // Kind of a hack, but working this out by hand isn't any fun.
-        for a in 0..SIDE_COUNT {
-            for b in (a + 1)..SIDE_COUNT {
-                for c in (b + 1)..SIDE_COUNT {
-                    if !adjacent()[a][b] || !adjacent()[b][c] || !adjacent()[c][a] {
-                        continue;
-                    }
-                    result[vertex] = [
-                        Side::from_index(a),
-                        Side::from_index(b),
-                        Side::from_index(c),
-                    ];
-                    vertex += 1;
+    /// Whether two sides share an edge
+    pub fn adjacent() -> &'static [[bool; SIDE_COUNT]; SIDE_COUNT] {
+        static LOCK: OnceLock<[[bool; SIDE_COUNT]; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| {
+            let mut result = [[false; SIDE_COUNT]; SIDE_COUNT];
+            for (i, side) in result.iter_mut().enumerate() {
+                for (j, is_adjacent) in side.iter_mut().enumerate() {
+                    let cosh_distance = (reflections_f64()[i] * reflections_f64()[j])[(3, 3)];
+                    // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
+                    // < 2.0 indicates identical faces; < 5.0 indicates adjacent faces; > 5.0 indicates non-adjacent faces
+                    *is_adjacent = (2.0..5.0).contains(&cosh_distance);
                 }
             }
-        }
-        assert_eq!(vertex, 20);
-        result
-    })
-}
+            result
+        })
+    }
 
-// Which vertices are adjacent to other vertices and opposite the canonical sides
-fn adjacent_vertices() -> &'static [[Vertex; 3]; VERTEX_COUNT] {
-    static LOCK: OnceLock<[[Vertex; 3]; VERTEX_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| {
-        let mut result = [[Vertex::A; 3]; VERTEX_COUNT];
+    /// Vector corresponding to the outer normal of each side
+    pub fn side_normals_f64() -> &'static [na::Vector4<f64>; SIDE_COUNT] {
+        static LOCK: OnceLock<[na::Vector4<f64>; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| {
+            let phi = libm::sqrt(1.25) + 0.5; // golden ratio
+            let f = math::lorentz_normalize(&na::Vector4::new(1.0, phi, 0.0, libm::sqrt(phi)));
 
-        for (i, triple) in result.iter_mut().enumerate() {
-            for result_index in 0..3 {
-                let mut test_sides = vertex_sides()[i];
-                // Keep modifying the result_index'th element of test_sides until its three elements are all
-                // adjacent to a single vertex. That vertex is the vertex we're looking for.
-                for side in Side::iter() {
-                    if side == vertex_sides()[i][result_index] {
-                        continue;
-                    }
-                    test_sides[result_index] = side;
-                    if let Some(adjacent_vertex) =
-                        Vertex::from_sides(test_sides[0], test_sides[1], test_sides[2])
-                    {
-                        triple[result_index] = adjacent_vertex;
+            let mut result: [na::Vector4<f64>; SIDE_COUNT] = [na::zero(); SIDE_COUNT];
+            let mut i = 0;
+            for (x, y, z, w) in [
+                (f.x, f.y, f.z, f.w),
+                (-f.x, f.y, -f.z, f.w),
+                (f.x, -f.y, -f.z, f.w),
+                (-f.x, -f.y, f.z, f.w),
+            ] {
+                for (x, y, z, w) in [(x, y, z, w), (y, z, x, w), (z, x, y, w)] {
+                    result[i] = na::Vector4::new(x, y, z, w);
+                    i += 1;
+                }
+            }
+            result
+        })
+    }
+
+    /// Transform that moves from a neighbor to a reference node, for each side
+    pub fn reflections_f64() -> &'static [na::Matrix4<f64>; SIDE_COUNT] {
+        static LOCK: OnceLock<[na::Matrix4<f64>; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| side_normals_f64().map(|r| math::reflect(&r)))
+    }
+
+    /// Sides incident to a vertex, in canonical order
+    pub fn vertex_sides() -> &'static [[Side; 3]; VERTEX_COUNT] {
+        static LOCK: OnceLock<[[Side; 3]; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| {
+            let mut result = [[Side::A; 3]; VERTEX_COUNT];
+            let mut vertex = 0;
+            // Kind of a hack, but working this out by hand isn't any fun.
+            for a in 0..SIDE_COUNT {
+                for b in (a + 1)..SIDE_COUNT {
+                    for c in (b + 1)..SIDE_COUNT {
+                        if !adjacent()[a][b] || !adjacent()[b][c] || !adjacent()[c][a] {
+                            continue;
+                        }
+                        result[vertex] = [
+                            Side::from_index(a),
+                            Side::from_index(b),
+                            Side::from_index(c),
+                        ];
+                        vertex += 1;
                     }
                 }
             }
-        }
-        result
-    })
-}
+            assert_eq!(vertex, 20);
+            result
+        })
+    }
 
-/// Transform that converts from cube-centric coordinates to dodeca-centric coordinates
-fn dual_to_node_f64() -> &'static [na::Matrix4<f64>; VERTEX_COUNT] {
-    static LOCK: OnceLock<[na::Matrix4<f64>; VERTEX_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| {
-        let mip_origin_normal = math::mip(&math::origin(), &side_normals_f64()[0]); // This value is the same for every side
-        let mut result = [na::zero(); VERTEX_COUNT];
-        for (i, map) in result.iter_mut().enumerate() {
-            let [a, b, c] = vertex_sides()[i];
-            let vertex_position = math::lorentz_normalize(
-                &(math::origin()
-                    - (a.normal_f64() + b.normal_f64() + c.normal_f64()) * mip_origin_normal),
-            );
-            *map = na::Matrix4::from_columns(&[
-                -a.normal_f64(),
-                -b.normal_f64(),
-                -c.normal_f64(),
-                vertex_position,
-            ]);
-        }
-        result
-    })
-}
+    // Which vertices are adjacent to other vertices and opposite the canonical sides
+    pub fn adjacent_vertices() -> &'static [[Vertex; 3]; VERTEX_COUNT] {
+        static LOCK: OnceLock<[[Vertex; 3]; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| {
+            let mut result = [[Vertex::A; 3]; VERTEX_COUNT];
 
-/// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
-fn node_to_dual_f64() -> &'static [na::Matrix4<f64>; VERTEX_COUNT] {
-    static LOCK: OnceLock<[na::Matrix4<f64>; VERTEX_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| dual_to_node_f64().map(|m| math::mtranspose(&m)))
-}
-
-fn dual_to_chunk_factor_f64() -> f64 {
-    static LOCK: OnceLock<f64> = OnceLock::new();
-    *LOCK.get_or_init(|| (2.0 + 5.0f64.sqrt()).sqrt())
-}
-
-fn chunk_to_dual_factor_f64() -> f64 {
-    static LOCK: OnceLock<f64> = OnceLock::new();
-    *LOCK.get_or_init(|| 1.0 / dual_to_chunk_factor_f64())
-}
-
-/// Vertex shared by 3 sides
-fn sides_to_vertex() -> &'static [[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT] {
-    static LOCK: OnceLock<[[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT]> =
-        OnceLock::new();
-    LOCK.get_or_init(|| {
-        let mut result = [[[None; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT];
-        let mut vertex = Vertex::iter();
-        // Kind of a hack, but working this out by hand isn't any fun.
-        for a in 0..SIDE_COUNT {
-            for b in (a + 1)..SIDE_COUNT {
-                for c in (b + 1)..SIDE_COUNT {
-                    if !Side::from_index(a).adjacent_to(Side::from_index(b))
-                        || !Side::from_index(b).adjacent_to(Side::from_index(c))
-                        || !Side::from_index(c).adjacent_to(Side::from_index(a))
-                    {
-                        continue;
+            for (i, triple) in result.iter_mut().enumerate() {
+                for result_index in 0..3 {
+                    let mut test_sides = vertex_sides()[i];
+                    // Keep modifying the result_index'th element of test_sides until its three elements are all
+                    // adjacent to a single vertex. That vertex is the vertex we're looking for.
+                    for side in Side::iter() {
+                        if side == vertex_sides()[i][result_index] {
+                            continue;
+                        }
+                        test_sides[result_index] = side;
+                        if let Some(adjacent_vertex) =
+                            Vertex::from_sides(test_sides[0], test_sides[1], test_sides[2])
+                        {
+                            triple[result_index] = adjacent_vertex;
+                        }
                     }
-                    let v = Some(vertex.next().unwrap());
-                    result[a][b][c] = v;
-                    result[a][c][b] = v;
-                    result[b][a][c] = v;
-                    result[b][c][a] = v;
-                    result[c][a][b] = v;
-                    result[c][b][a] = v;
                 }
             }
-        }
-        assert_eq!(vertex.next(), None);
-        result
-    })
-}
+            result
+        })
+    }
 
-/// Whether the determinant of the cube-to-node transform is negative
-fn chunk_to_node_parity() -> &'static [bool; VERTEX_COUNT] {
-    static LOCK: OnceLock<[bool; VERTEX_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| {
-        let mut result = [false; VERTEX_COUNT];
+    /// Transform that converts from cube-centric coordinates to dodeca-centric coordinates
+    pub fn dual_to_node_f64() -> &'static [na::Matrix4<f64>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[na::Matrix4<f64>; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| {
+            let mip_origin_normal = math::mip(&math::origin(), &side_normals_f64()[0]); // This value is the same for every side
+            let mut result = [na::zero(); VERTEX_COUNT];
+            for (i, map) in result.iter_mut().enumerate() {
+                let [a, b, c] = vertex_sides()[i];
+                let vertex_position = math::lorentz_normalize(
+                    &(math::origin()
+                        - (a.normal_f64() + b.normal_f64() + c.normal_f64()) * mip_origin_normal),
+                );
+                *map = na::Matrix4::from_columns(&[
+                    -a.normal_f64(),
+                    -b.normal_f64(),
+                    -c.normal_f64(),
+                    vertex_position,
+                ]);
+            }
+            result
+        })
+    }
 
-        for v in Vertex::iter() {
-            result[v as usize] = math::parity(&v.chunk_to_node_f64());
-        }
+    /// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
+    pub fn node_to_dual_f64() -> &'static [na::Matrix4<f64>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[na::Matrix4<f64>; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| dual_to_node_f64().map(|m| math::mtranspose(&m)))
+    }
 
-        result
-    })
-}
+    pub fn dual_to_chunk_factor_f64() -> f64 {
+        static LOCK: OnceLock<f64> = OnceLock::new();
+        *LOCK.get_or_init(|| (2.0 + 5.0f64.sqrt()).sqrt())
+    }
 
-fn side_normals_f32() -> &'static [na::Vector4<f32>; SIDE_COUNT] {
-    static LOCK: OnceLock<[na::Vector4<f32>; SIDE_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| side_normals_f64().map(|n| n.cast()))
-}
+    pub fn chunk_to_dual_factor_f64() -> f64 {
+        static LOCK: OnceLock<f64> = OnceLock::new();
+        *LOCK.get_or_init(|| 1.0 / dual_to_chunk_factor_f64())
+    }
 
-fn reflections_f32() -> &'static [na::Matrix4<f32>; SIDE_COUNT] {
-    static LOCK: OnceLock<[na::Matrix4<f32>; SIDE_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| reflections_f64().map(|n| n.cast()))
-}
+    /// Vertex shared by 3 sides
+    pub fn sides_to_vertex() -> &'static [[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT] {
+        static LOCK: OnceLock<[[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT]> =
+            OnceLock::new();
+        LOCK.get_or_init(|| {
+            let mut result = [[[None; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT];
+            let mut vertex = Vertex::iter();
+            // Kind of a hack, but working this out by hand isn't any fun.
+            for a in 0..SIDE_COUNT {
+                for b in (a + 1)..SIDE_COUNT {
+                    for c in (b + 1)..SIDE_COUNT {
+                        if !Side::from_index(a).adjacent_to(Side::from_index(b))
+                            || !Side::from_index(b).adjacent_to(Side::from_index(c))
+                            || !Side::from_index(c).adjacent_to(Side::from_index(a))
+                        {
+                            continue;
+                        }
+                        let v = Some(vertex.next().unwrap());
+                        result[a][b][c] = v;
+                        result[a][c][b] = v;
+                        result[b][a][c] = v;
+                        result[b][c][a] = v;
+                        result[c][a][b] = v;
+                        result[c][b][a] = v;
+                    }
+                }
+            }
+            assert_eq!(vertex.next(), None);
+            result
+        })
+    }
 
-fn dual_to_node_f32() -> &'static [na::Matrix4<f32>; VERTEX_COUNT] {
-    static LOCK: OnceLock<[na::Matrix4<f32>; VERTEX_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| dual_to_node_f64().map(|n| n.cast()))
-}
+    /// Whether the determinant of the cube-to-node transform is negative
+    pub fn chunk_to_node_parity() -> &'static [bool; VERTEX_COUNT] {
+        static LOCK: OnceLock<[bool; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| {
+            let mut result = [false; VERTEX_COUNT];
 
-fn node_to_dual_f32() -> &'static [na::Matrix4<f32>; VERTEX_COUNT] {
-    static LOCK: OnceLock<[na::Matrix4<f32>; VERTEX_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| node_to_dual_f64().map(|n| n.cast()))
-}
+            for v in Vertex::iter() {
+                result[v as usize] = math::parity(&v.chunk_to_node_f64());
+            }
 
-fn dual_to_chunk_factor_f32() -> f32 {
-    static LOCK: OnceLock<f32> = OnceLock::new();
-    *LOCK.get_or_init(|| dual_to_chunk_factor_f64() as f32)
-}
+            result
+        })
+    }
 
-fn chunk_to_dual_factor_f32() -> f32 {
-    static LOCK: OnceLock<f32> = OnceLock::new();
-    *LOCK.get_or_init(|| chunk_to_dual_factor_f64() as f32)
+    pub fn side_normals_f32() -> &'static [na::Vector4<f32>; SIDE_COUNT] {
+        static LOCK: OnceLock<[na::Vector4<f32>; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| side_normals_f64().map(|n| n.cast()))
+    }
+
+    pub fn reflections_f32() -> &'static [na::Matrix4<f32>; SIDE_COUNT] {
+        static LOCK: OnceLock<[na::Matrix4<f32>; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| reflections_f64().map(|n| n.cast()))
+    }
+
+    pub fn dual_to_node_f32() -> &'static [na::Matrix4<f32>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[na::Matrix4<f32>; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| dual_to_node_f64().map(|n| n.cast()))
+    }
+
+    pub fn node_to_dual_f32() -> &'static [na::Matrix4<f32>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[na::Matrix4<f32>; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| node_to_dual_f64().map(|n| n.cast()))
+    }
+
+    pub fn dual_to_chunk_factor_f32() -> f32 {
+        static LOCK: OnceLock<f32> = OnceLock::new();
+        *LOCK.get_or_init(|| dual_to_chunk_factor_f64() as f32)
+    }
+
+    pub fn chunk_to_dual_factor_f32() -> f32 {
+        static LOCK: OnceLock<f32> = OnceLock::new();
+        *LOCK.get_or_init(|| chunk_to_dual_factor_f64() as f32)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math;
     use approx::*;
 
     #[test]
