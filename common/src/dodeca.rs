@@ -233,13 +233,12 @@ fn adjacent() -> &'static [[bool; SIDE_COUNT]; SIDE_COUNT] {
     static LOCK: OnceLock<[[bool; SIDE_COUNT]; SIDE_COUNT]> = OnceLock::new();
     LOCK.get_or_init(|| {
         let mut result = [[false; SIDE_COUNT]; SIDE_COUNT];
-        for i in 0..SIDE_COUNT {
-            for j in 0..SIDE_COUNT {
-                let cosh_distance =
-                    (reflections_f64()[i] * reflections_f64()[j])[(3, 3)];
+        for (i, side) in result.iter_mut().enumerate() {
+            for (j, is_adjacent) in side.iter_mut().enumerate() {
+                let cosh_distance = (reflections_f64()[i] * reflections_f64()[j])[(3, 3)];
                 // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
                 // < 2.0 indicates identical faces; < 5.0 indicates adjacent faces; > 5.0 indicates non-adjacent faces
-                result[i][j] = (2.0..5.0).contains(&cosh_distance);
+                *is_adjacent = (2.0..5.0).contains(&cosh_distance);
             }
         }
         result
@@ -286,10 +285,7 @@ fn vertex_sides() -> &'static [[Side; 3]; VERTEX_COUNT] {
         for a in 0..SIDE_COUNT {
             for b in (a + 1)..SIDE_COUNT {
                 for c in (b + 1)..SIDE_COUNT {
-                    if !adjacent()[a][b]
-                        || !adjacent()[b][c]
-                        || !adjacent()[c][a]
-                    {
+                    if !adjacent()[a][b] || !adjacent()[b][c] || !adjacent()[c][a] {
                         continue;
                     }
                     result[vertex] = [
@@ -340,13 +336,13 @@ fn dual_to_node_f64() -> &'static [na::Matrix4<f64>; VERTEX_COUNT] {
     LOCK.get_or_init(|| {
         let mip_origin_normal = math::mip(&math::origin(), &side_normals_f64()[0]); // This value is the same for every side
         let mut result = [na::zero(); VERTEX_COUNT];
-        for i in 0..VERTEX_COUNT {
+        for (i, map) in result.iter_mut().enumerate() {
             let [a, b, c] = vertex_sides()[i];
             let vertex_position = math::lorentz_normalize(
                 &(math::origin()
                     - (a.normal_f64() + b.normal_f64() + c.normal_f64()) * mip_origin_normal),
             );
-            result[i] = na::Matrix4::from_columns(&[
+            *map = na::Matrix4::from_columns(&[
                 -a.normal_f64(),
                 -b.normal_f64(),
                 -c.normal_f64(),
