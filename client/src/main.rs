@@ -28,7 +28,7 @@ fn main() {
         let cert = certified_key.cert.der().to_vec();
         let sim_cfg = config.local_simulation.clone();
 
-        let save = dirs.data_local_dir().join("default.save");
+        let save = dirs.data_local_dir().join(&config.save);
         info!("using save file {}", save.display());
         std::fs::create_dir_all(save.parent().unwrap()).unwrap();
         let save = match Save::open(&save, config.local_simulation.chunk_size) {
