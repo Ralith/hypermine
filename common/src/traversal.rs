@@ -32,7 +32,7 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
             visited.insert(neighbor);
             let neighbor_transform = current_transform * side.reflection();
             let neighbor_p = neighbor_transform * math::origin();
-            if math::distance(&start_p, &neighbor_p) > distance {
+            if -math::mip(&start_p, &neighbor_p) > distance.cosh() {
                 continue;
             }
             pending.push_back((neighbor, neighbor_transform));
@@ -69,7 +69,7 @@ pub fn nearby_nodes(
 
     while let Some(current) = pending.pop_front() {
         let current_p = current.transform * math::origin();
-        if math::distance(&start_p, &current_p) > distance {
+        if -math::mip(&start_p, &current_p) > distance.cosh() {
             continue;
         }
         result.push((current.id, na::convert(current.transform)));
@@ -218,5 +218,28 @@ impl<'a> RayTraverser<'a> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_abs_diff_eq;
+
+    use super::*;
+
+    // Make sure that ensure_nearby and nearby_nodes finish even for a relatively large radius
+    // and traverse the expected number of nodes
+    #[test]
+    fn traversal_functions_example() {
+        let mut graph = Graph::new(1);
+        ensure_nearby(&mut graph, &Position::origin(), 6.0);
+        assert_abs_diff_eq!(graph.len(), 502079, epsilon = 50);
+
+        // TODO: nearby_nodes has a stricter interpretation of distance than
+        // ensure_nearby, resulting in far fewer nodes. Getting these two
+        // functions to align may be a future performance improvement
+        // opportunity.
+        let nodes = nearby_nodes(&graph, &Position::origin(), 6.0);
+        assert_abs_diff_eq!(nodes.len(), 60137, epsilon = 5);
     }
 }
