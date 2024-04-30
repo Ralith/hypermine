@@ -153,12 +153,11 @@ impl Graph {
         *old_surface = surface.take().or(*old_surface);
 
         for chunk_direction in ChunkDirection::iter() {
-            margins::update_margin_voxel(
+            margins::reconcile_margin_voxels(
                 self,
                 block_update.chunk_id,
                 block_update.coords,
                 chunk_direction,
-                block_update.new_material,
             )
         }
         true
