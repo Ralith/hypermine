@@ -21,6 +21,40 @@ pub fn fix_margins(
 
     let margin_coord = CoordsWithMargins::margin_coord(dimension, direction.sign);
     let boundary_coord = CoordsWithMargins::boundary_coord(dimension, direction.sign);
+
+    // If two solid chunks are both void or both non-void, do nothing.
+    if voxels.is_solid()
+        && neighbor_voxels.is_solid()
+        && (voxels.get(0) == Material::Void) == (neighbor_voxels.get(0) == Material::Void)
+    {
+        return;
+    }
+
+    // If either chunk is solid and consistent with the boundary of the other chunk, do nothing.
+    // Since this consists of two similar cases (which of the two chunks is solid), we use a loop
+    // here to make it clear how the logic of these two cases differ from each other.
+    for (dense_voxels, dense_to_solid_direction, solid_voxels) in [
+        (&*voxels, direction, &*neighbor_voxels),
+        (
+            &*neighbor_voxels,
+            neighbor_axis_permutation * direction,
+            &*voxels,
+        ),
+    ] {
+        // Check that dense_voxels is indeed dense and solid_voxels is indeed solid
+        if !dense_voxels.is_solid() && solid_voxels.is_solid() {
+            let solid_voxels_is_void = solid_voxels.get(0) == Material::Void;
+            // Check that the face of dense_voxels that meets solid_voxels matches. If it does,
+            // skip the margin reconciliation stage.
+            if all_voxels_at_face(dimension, dense_voxels, dense_to_solid_direction, |m| {
+                (m == Material::Void) == solid_voxels_is_void
+            }) {
+                return;
+            }
+        }
+    }
+
+    // Otherwise, both chunks need to be dense, and margins should be reconciled between them.
     let voxel_data = voxels.data_mut(dimension);
     let neighbor_voxel_data = neighbor_voxels.data_mut(dimension);
     for j in 0..dimension {
@@ -47,6 +81,30 @@ pub fn fix_margins(
                 voxel_data[coords_of_boundary_voxel.to_index(dimension)];
         }
     }
+}
+
+/// Check if the given predicate `f` holds true for any voxel at the given face of a chunk
+fn all_voxels_at_face(
+    dimension: u8,
+    voxels: &VoxelData,
+    direction: ChunkDirection,
+    f: impl Fn(Material) -> bool,
+) -> bool {
+    let boundary_coord = CoordsWithMargins::boundary_coord(dimension, direction.sign);
+    for j in 0..dimension {
+        for i in 0..dimension {
+            let coords_of_boundary_voxel = CoordsWithMargins(math::tuv_to_xyz(
+                direction.axis as usize,
+                [boundary_coord, i + 1, j + 1],
+            ));
+
+            if !f(voxels.get(coords_of_boundary_voxel.to_index(dimension))) {
+                return false;
+            }
+        }
+    }
+
+    true
 }
 
 /// Updates the margins of a given VoxelData to match the voxels they're next to. This is a good assumption to start
