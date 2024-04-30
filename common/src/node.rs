@@ -72,7 +72,7 @@ impl Graph {
         coord_axis: CoordAxis,
         coord_sign: CoordSign,
     ) -> Option<(ChunkId, Coords)> {
-        if coords[coord_axis] == Coords::edge_coord(self.layout().dimension, coord_sign) {
+        if coords[coord_axis] == Coords::boundary_coord(self.layout().dimension, coord_sign) {
             match coord_sign {
                 CoordSign::Plus => {
                     coords = chunk.vertex.chunk_axis_permutations()[coord_axis as usize] * coords;
