@@ -128,11 +128,12 @@ impl Voxels {
         );
         histogram!("frame.cpu.voxels.graph_traversal").record(graph_traversal_started.elapsed());
         // Sort nodes by distance to the view to prioritize loading closer data and improve early Z
-        // performance
+        // performance. Sorting by `mip` in descending order is equivalent to sorting by distance
+        // in ascending order.
         let view_pos = view.local * math::origin();
         nodes.sort_unstable_by(|&(_, ref xf_a), &(_, ref xf_b)| {
-            math::distance(&view_pos, &(xf_a * math::origin()))
-                .partial_cmp(&math::distance(&view_pos, &(xf_b * math::origin())))
+            math::mip(&view_pos, &(xf_b * math::origin()))
+                .partial_cmp(&math::mip(&view_pos, &(xf_a * math::origin())))
                 .unwrap_or(std::cmp::Ordering::Less)
         });
         let node_scan_started = Instant::now();
