@@ -289,7 +289,7 @@ impl Sim {
                 if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
                     fresh_voxel_data.push((chunk, voxel_data.serialize(self.cfg.chunk_size)));
                     self.modified_chunks.insert(chunk);
-                    self.graph.populate_chunk(chunk, voxel_data, true)
+                    self.graph.populate_chunk(chunk, voxel_data)
                 }
             }
         }
@@ -318,8 +318,7 @@ impl Sim {
                         if let Some(params) =
                             ChunkParams::new(self.cfg.chunk_size, &self.graph, chunk)
                         {
-                            self.graph
-                                .populate_chunk(chunk, params.generate_voxels(), false);
+                            self.graph.populate_chunk(chunk, params.generate_voxels());
                         }
                     }
                 }

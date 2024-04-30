@@ -49,7 +49,6 @@ fn build_graph(c: &mut Criterion) {
                     if let Some(params) = ChunkParams::new(12, &graph, chunk) {
                         graph[chunk] = Chunk::Populated {
                             voxels: params.generate_voxels(),
-                            modified: false,
                             surface: None,
                             old_surface: None,
                         };

@@ -336,7 +336,7 @@ impl Sim {
                 tracing::error!("Voxel data received from server is of incorrect dimension");
                 continue;
             };
-            self.graph.populate_chunk(chunk_id, voxel_data, true);
+            self.graph.populate_chunk(chunk_id, voxel_data);
         }
     }
 
