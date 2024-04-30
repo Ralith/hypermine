@@ -192,7 +192,6 @@ pub fn reconcile_margin_voxels(
         voxels: neighbor_voxels,
         surface: neighbor_surface,
         old_surface: neighbor_old_surface,
-        ..
     } = &mut graph[neighbor_chunk]
     else {
         unreachable!();
@@ -213,7 +212,6 @@ pub fn reconcile_margin_voxels(
         voxels,
         surface,
         old_surface,
-        ..
     } = &mut graph[chunk]
     else {
         unreachable!();
@@ -383,7 +381,6 @@ mod tests {
         for chunk in [current_chunk, node_neighbor_chunk, vertex_neighbor_chunk] {
             *graph.get_chunk_mut(chunk).unwrap() = Chunk::Populated {
                 voxels: VoxelData::Solid(Material::Void),
-                modified: false,
                 surface: None,
                 old_surface: None,
             };
