@@ -5,7 +5,8 @@ use hecs::Entity;
 use tracing::{debug, error, trace};
 
 use crate::{
-    local_character_controller::LocalCharacterController, net, prediction::PredictedMotion, Net,
+    local_character_controller::LocalCharacterController, metrics, net,
+    prediction::PredictedMotion, Net,
 };
 use common::{
     character_controller,
@@ -318,6 +319,9 @@ impl Sim {
         }
         if !msg.nodes.is_empty() {
             trace!(count = msg.nodes.len(), "adding nodes");
+            // The first "Spawns" message from the server populates the graph and allows CPU/GPU metrics
+            // to be accurate instead of measuring thousands of no-op frames
+            metrics::declare_ready_for_profiling();
         }
         for node in &msg.nodes {
             self.graph.insert_child(node.parent, node.side);

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex, OnceLock, RwLock},
     time::Duration,
 };
 
@@ -106,6 +106,11 @@ struct Handle {
 
 impl metrics::HistogramFn for Handle {
     fn record(&self, value: f64) {
+        if !is_ready_for_profiling() {
+            // We include an extra check here to avoid profiling when there is
+            // nothing to render.
+            return;
+        }
         let mut histograms = self.recorder.histograms.read().unwrap();
         let mut histogram = match histograms.get(&self.key) {
             Some(x) => x.lock().unwrap(),
@@ -122,4 +127,16 @@ impl metrics::HistogramFn for Handle {
         };
         histogram.record((value * 1e9) as u64).unwrap();
     }
+}
+
+static PROFILING_LOCK: OnceLock<()> = OnceLock::new();
+
+/// This function will keep returning false until `declare_ready_for_profiling is called`
+fn is_ready_for_profiling() -> bool {
+    PROFILING_LOCK.get().is_some()
+}
+
+/// Once this function is called, calls to "histogram!" will be effective.
+pub fn declare_ready_for_profiling() {
+    let _ = PROFILING_LOCK.set(());
 }
