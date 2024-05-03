@@ -24,6 +24,9 @@ impl Recorder {
         // metrics crate documentation assures us that Key's interior mutability does not affect the hash code.
         #[allow(clippy::mutable_key_type)]
         let histograms = &*self.histograms.read().unwrap();
+        // Sort histogram entries before displaying them
+        let mut histograms = histograms.iter().collect::<Vec<_>>();
+        histograms.sort_unstable_by_key(|(key, _)| *key);
         for (key, histogram) in histograms {
             let histogram = histogram.lock().unwrap();
             info!(
