@@ -22,7 +22,6 @@ use common::{
     lru_slab::SlotId,
     math,
     node::{Chunk, ChunkId, VoxelData},
-    traversal::nearby_nodes,
     LruSlab,
 };
 
@@ -89,6 +88,7 @@ impl Voxels {
         device: &Device,
         frame: &mut Frame,
         sim: &mut Sim,
+        nearby_nodes: &[(NodeId, na::Matrix4<f32>)],
         cmd: vk::CommandBuffer,
         frustum: &Frustum,
     ) {
@@ -120,27 +120,11 @@ impl Voxels {
             // there's no point trying to draw.
             return;
         }
-        let graph_traversal_started = Instant::now();
-        let mut nodes = nearby_nodes(
-            &sim.graph,
-            &view,
-            self.config.local_simulation.view_distance,
-        );
-        histogram!("frame.cpu.voxels.graph_traversal").record(graph_traversal_started.elapsed());
-        // Sort nodes by distance to the view to prioritize loading closer data and improve early Z
-        // performance. Sorting by `mip` in descending order is equivalent to sorting by distance
-        // in ascending order.
-        let view_pos = view.local * math::origin();
-        nodes.sort_unstable_by(|&(_, ref xf_a), &(_, ref xf_b)| {
-            math::mip(&view_pos, &(xf_b * math::origin()))
-                .partial_cmp(&math::mip(&view_pos, &(xf_a * math::origin())))
-                .unwrap_or(std::cmp::Ordering::Less)
-        });
         let node_scan_started = Instant::now();
         let frustum_planes = frustum.planes();
         let local_to_view = math::mtranspose(&view.local);
         let mut extractions = Vec::new();
-        for &(node, ref node_transform) in &nodes {
+        for &(node, ref node_transform) in nearby_nodes {
             let node_to_view = local_to_view * node_transform;
             let origin = node_to_view * math::origin();
             if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS) {

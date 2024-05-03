@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ash::vk;
-use common::traversal::nearby_nodes;
+use common::traversal;
 use lahar::Staged;
 use metrics::histogram;
 
@@ -352,11 +352,20 @@ impl Draw {
                 .size(vk::WHOLE_SIZE),
         );
 
+        let nearby_nodes_started = Instant::now();
+        let nearby_nodes = if let Some(sim) = sim.as_deref() {
+            traversal::nearby_nodes(&sim.graph, &view, self.cfg.local_simulation.view_distance)
+        } else {
+            vec![]
+        };
+        histogram!("frame.cpu.nearby_nodes").record(nearby_nodes_started.elapsed());
+
         if let (Some(voxels), Some(sim)) = (self.voxels.as_mut(), sim.as_mut()) {
             voxels.prepare(
                 device,
                 state.voxels.as_mut().unwrap(),
                 sim,
+                &nearby_nodes,
                 state.post_cmd,
                 frustum,
             );
@@ -431,9 +440,7 @@ impl Draw {
         }
 
         if let Some(sim) = sim.as_deref() {
-            for (node, transform) in
-                nearby_nodes(&sim.graph, &view, self.cfg.local_simulation.view_distance)
-            {
+            for (node, transform) in nearby_nodes {
                 for &entity in sim.graph_entities.get(node) {
                     if sim.local_character == Some(entity) {
                         // Don't draw ourself
