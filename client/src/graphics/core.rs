@@ -130,6 +130,12 @@ unsafe extern "system" fn messenger_callback(
     _p_user_data: *mut c_void,
 ) -> vk::Bool32 {
     unsafe fn fmt_labels(ptr: *const vk::DebugUtilsLabelEXT, count: u32) -> String {
+        if count == 0 {
+            // We need to handle a count of 0 separately because ptr may be
+            // null, resulting in undefined behavior if used with
+            // slice::from_raw_parts.
+            return String::new();
+        }
         slice::from_raw_parts(ptr, count as usize)
             .iter()
             .map(|label| {
