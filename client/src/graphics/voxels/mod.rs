@@ -124,6 +124,7 @@ impl Voxels {
         let frustum_planes = frustum.planes();
         let local_to_view = math::mtranspose(&view.local);
         let mut extractions = Vec::new();
+        let mut workqueue_is_full = false;
         for &(node, ref node_transform) in nearby_nodes {
             let node_to_view = local_to_view * node_transform;
             let origin = node_to_view * math::origin();
@@ -144,6 +145,10 @@ impl Voxels {
                 {
                     Generating => continue,
                     Fresh => {
+                        // Don't bother trying to generate fresh nodes if the work queue is full
+                        if workqueue_is_full {
+                            continue;
+                        }
                         // Generate voxel data
                         if let Some(params) = common::worldgen::ChunkParams::new(
                             self.surfaces.dimension() as u8,
@@ -152,6 +157,8 @@ impl Voxels {
                         ) {
                             if self.worldgen.load(ChunkDesc { node, params }).is_ok() {
                                 sim.graph[chunk] = Generating;
+                            } else {
+                                workqueue_is_full = true;
                             }
                         }
                         continue;
