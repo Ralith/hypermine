@@ -139,7 +139,11 @@ impl Base {
                             .queue_create_infos(&[vk::DeviceQueueCreateInfo::default()
                                 .queue_family_index(queue_family_index)
                                 .queue_priorities(&[1.0])])
-                            .enabled_extension_names(&device_exts),
+                            .enabled_extension_names(&device_exts)
+                            .push_next(
+                                &mut vk::PhysicalDeviceDescriptorIndexingFeatures::default()
+                                    .descriptor_binding_partially_bound(true),
+                            ),
                         None,
                     )
                     .unwrap(),
