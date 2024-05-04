@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
 use tracing::{error, info, trace, warn};
+use yakui_vulkan::{VulkanContext, YakuiVulkan};
 
 use ash::{vk, Device};
 
@@ -36,6 +37,8 @@ pub struct Base {
     pub timestamp_bits: u32,
     pipeline_cache_path: Option<PathBuf>,
     debug_utils: Option<debug_utils::Device>,
+    // Yakui Vulkan context
+    pub yakui_vulkan: yakui_vulkan::YakuiVulkan,
 }
 
 unsafe impl Send for Base {}
@@ -44,6 +47,7 @@ unsafe impl Sync for Base {}
 impl Drop for Base {
     fn drop(&mut self) {
         unsafe {
+            self.yakui_vulkan.cleanup(&self.device);
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, None);
             self.device.destroy_render_pass(self.render_pass, None);
@@ -274,6 +278,14 @@ impl Base {
                 .as_ref()
                 .map(|_| debug_utils::Device::new(&core.instance, &device));
 
+            let mut yakui_vulkan_options = yakui_vulkan::Options::default();
+            yakui_vulkan_options.render_pass = render_pass;
+            let mut yakui_vulkan = YakuiVulkan::new(
+                &VulkanContext::new(&device, queue, memory_properties),
+                yakui_vulkan_options,
+            );
+            yakui_vulkan.transfers_submitted();
+
             Some(Self {
                 core,
                 physical,
@@ -289,6 +301,7 @@ impl Base {
                 limits: physical_properties.properties.limits,
                 timestamp_bits: queue_family_properties.timestamp_valid_bits,
                 debug_utils,
+                yakui_vulkan,
             })
         }
     }
