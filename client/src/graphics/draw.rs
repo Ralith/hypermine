@@ -50,6 +50,8 @@ pub struct Draw {
 
     /// Miscellany
     character_model: Asset<GltfScene>,
+    /// Yakui Vulkan context
+    pub yakui_vulkan: yakui_vulkan::YakuiVulkan,
 }
 
 /// Maximum number of simultaneous frames in flight
@@ -188,6 +190,14 @@ impl Draw {
                 },
             );
 
+            let mut yakui_vulkan_options = yakui_vulkan::Options::default();
+            yakui_vulkan_options.render_pass = gfx.render_pass;
+            let mut yakui_vulkan = yakui_vulkan::YakuiVulkan::new(
+                &yakui_vulkan::VulkanContext::new(device, gfx.queue, gfx.memory_properties),
+                yakui_vulkan_options,
+            );
+            yakui_vulkan.transfers_submitted();
+
             Self {
                 gfx,
                 cfg,
@@ -209,6 +219,7 @@ impl Draw {
                 image_barriers: Vec::new(),
 
                 character_model,
+                yakui_vulkan,
             }
         }
     }
@@ -262,6 +273,12 @@ impl Draw {
         present: vk::Semaphore,
         frustum: &Frustum,
     ) {
+        let _yakui_vulkan_context = yakui_vulkan::VulkanContext::new(
+            &self.gfx.device,
+            self.gfx.queue,
+            self.gfx.memory_properties,
+        );
+
         let draw_started = Instant::now();
         let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
         let projection = frustum.projection(1.0e-4);
@@ -546,6 +563,7 @@ impl Drop for Draw {
                     voxels.destroy(device);
                 }
             }
+            self.yakui_vulkan.cleanup(&self.gfx.device);
             device.destroy_command_pool(self.cmd_pool, None);
             device.destroy_query_pool(self.timestamp_pool, None);
             device.destroy_descriptor_pool(self.common_descriptor_pool, None);
