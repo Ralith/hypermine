@@ -52,6 +52,8 @@ pub struct Draw {
     character_model: Asset<GltfScene>,
     /// Yakui Vulkan context
     pub yakui_vulkan: yakui_vulkan::YakuiVulkan,
+    /// Yakui context
+    pub yak: yakui::Yakui,
 }
 
 /// Maximum number of simultaneous frames in flight
@@ -220,6 +222,7 @@ impl Draw {
 
                 character_model,
                 yakui_vulkan,
+                yak: yakui::Yakui::new(),
             }
         }
     }
@@ -273,12 +276,6 @@ impl Draw {
         present: vk::Semaphore,
         frustum: &Frustum,
     ) {
-        let _yakui_vulkan_context = yakui_vulkan::VulkanContext::new(
-            &self.gfx.device,
-            self.gfx.queue,
-            self.gfx.memory_properties,
-        );
-
         let draw_started = Instant::now();
         let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
         let projection = frustum.projection(1.0e-4);
@@ -289,6 +286,24 @@ impl Draw {
         let state_index = self.next_state;
         let state = &mut self.states[self.next_state];
         let cmd = state.cmd;
+
+        let yakui_vulkan_context = yakui_vulkan::VulkanContext::new(
+            device,
+            self.gfx.queue,
+            self.gfx.memory_properties,
+        );
+
+        self.yak.set_surface_size([extent.width as f32, extent.height as f32].into());
+        self.yak.set_unscaled_viewport(yakui::geometry::Rect::from_pos_size(
+            Default::default(),
+            [extent.width as f32, extent.height as f32].into(),
+        ));
+
+        self.yak.start();
+        yakui::text(96.0, "Hello world!");
+        self.yak.finish();
+
+        let paint = self.yak.paint();
 
         // We're using this state again, so put the fence back in the unsignaled state and compute
         // the next frame to use
@@ -356,6 +371,9 @@ impl Draw {
             timestamp_index,
         );
         timestamp_index += 1;
+
+        self.yakui_vulkan.transfers_finished(&yakui_vulkan_context);
+        self.yakui_vulkan.transfer(paint, &yakui_vulkan_context, cmd);
 
         // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
         // before submitting the command buffer so time-sensitive values can be set with minimum
@@ -483,9 +501,12 @@ impl Draw {
             }
         }
 
+        // TODO
+        self.yakui_vulkan.paint(paint, &yakui_vulkan_context, cmd, extent);
+
         device.cmd_next_subpass(cmd, vk::SubpassContents::INLINE);
 
-        self.fog.draw(device, state.common_ds, cmd);
+        //self.fog.draw(device, state.common_ds, cmd);
 
         // Finish up
         device.cmd_end_render_pass(cmd);
