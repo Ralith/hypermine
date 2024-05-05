@@ -3,7 +3,6 @@ name: Package
 on:
   push:
     branches: ['master']
-  pull_request:
 
 jobs:
   package-windows:
