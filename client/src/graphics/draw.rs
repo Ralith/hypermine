@@ -5,6 +5,7 @@ use ash::vk;
 use common::traversal;
 use lahar::Staged;
 use metrics::histogram;
+use yakui::Color;
 
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{Asset, Config, Loader, Sim};
@@ -302,10 +303,20 @@ impl Draw {
             ));
 
         self.yak.start();
-        yakui::text(96.0, "Hello world!");
-        yakui::align(yakui::Alignment::CENTER, || {
-            yakui::colored_box(yakui::Color::BLACK.with_alpha(0.9), [5.0, 5.0]);
-        });
+        if let Some(sim) = sim.as_ref() {
+            // Cursor
+            yakui::align(yakui::Alignment::CENTER, || {
+                yakui::colored_box(yakui::Color::BLACK.with_alpha(0.9), [5.0, 5.0]);
+            });
+
+            yakui::align(yakui::Alignment::TOP_LEFT, || {
+                yakui::pad(yakui::widgets::Pad::all(8.0), || {
+                    yakui::colored_box_container(Color::BLACK.with_alpha(0.7), || {
+                        yakui::label(format!("Selected material: {:?}", sim.selected_material()));
+                    });
+                });
+            });
+        }
         self.yak.finish();
 
         let paint = self.yak.paint();
