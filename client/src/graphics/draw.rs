@@ -200,6 +200,7 @@ impl Draw {
                 yakui_vulkan_options,
             );
             yakui_vulkan.transfers_submitted();
+            yakui_vulkan.transfers_submitted();
 
             Self {
                 gfx,
