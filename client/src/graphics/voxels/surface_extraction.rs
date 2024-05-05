@@ -442,7 +442,7 @@ impl ScratchBuffer {
             Default::default(),
             &[vk::MemoryBarrier {
                 src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-                dst_access_mask: vk::AccessFlags::SHADER_READ,
+                dst_access_mask: vk::AccessFlags::SHADER_READ | vk::AccessFlags::UNIFORM_READ,
                 ..Default::default()
             }],
             &[],
