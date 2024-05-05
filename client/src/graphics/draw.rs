@@ -303,6 +303,9 @@ impl Draw {
 
         self.yak.start();
         yakui::text(96.0, "Hello world!");
+        yakui::align(yakui::Alignment::CENTER, || {
+            yakui::colored_box(yakui::Color::BLACK.with_alpha(0.9), [5.0, 5.0]);
+        });
         self.yak.finish();
 
         let paint = self.yak.paint();
