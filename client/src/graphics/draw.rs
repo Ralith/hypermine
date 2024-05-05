@@ -199,8 +199,9 @@ impl Draw {
                 &yakui_vulkan::VulkanContext::new(device, gfx.queue, gfx.memory_properties),
                 yakui_vulkan_options,
             );
-            yakui_vulkan.transfers_submitted();
-            yakui_vulkan.transfers_submitted();
+            for _ in 0..PIPELINE_DEPTH {
+                yakui_vulkan.transfers_submitted();
+            }
 
             Self {
                 gfx,
