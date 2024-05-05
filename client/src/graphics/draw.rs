@@ -347,7 +347,7 @@ impl Draw {
         self.buffer_barriers.push(
             vk::BufferMemoryBarrier::default()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .dst_access_mask(vk::AccessFlags::UNIFORM_READ)
                 .buffer(state.uniforms.buffer())
                 .size(vk::WHOLE_SIZE),
         );
