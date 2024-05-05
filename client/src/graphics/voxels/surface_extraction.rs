@@ -332,6 +332,29 @@ impl ScratchBuffer {
             &[],
             &[],
         );
+        // HACKITY HACK: Queue submit synchronization validation thinks we're
+        // racing with the preceding chunk draws. Our logic to allocate unique
+        // ranges should be preventing this, so this may be a false positive.
+        // However, if that's true, why does the validation error only trigger a
+        // handful of times at startup? Perhaps we're freeing and reusing
+        // storage before the previous draw completes, and validation is somehow
+        // smart enough to notice?
+        device.cmd_pipeline_barrier(
+            cmd,
+            vk::PipelineStageFlags::VERTEX_SHADER,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            Default::default(),
+            &[],
+            &[vk::BufferMemoryBarrier {
+                buffer: face_buffer,
+                src_access_mask: vk::AccessFlags::SHADER_READ,
+                dst_access_mask: vk::AccessFlags::SHADER_WRITE,
+                offset: 0,
+                size: vk::WHOLE_SIZE,
+                ..Default::default()
+            }],
+            &[],
+        );
 
         // Prepare shared state
         device.cmd_update_buffer(
