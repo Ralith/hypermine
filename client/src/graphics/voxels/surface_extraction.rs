@@ -318,6 +318,21 @@ impl ScratchBuffer {
         cmd: vk::CommandBuffer,
         tasks: &[ExtractTask],
     ) {
+        // Prevent overlap with the last batch of work
+        device.cmd_pipeline_barrier(
+            cmd,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::PipelineStageFlags::TRANSFER,
+            Default::default(),
+            &[vk::MemoryBarrier {
+                src_access_mask: vk::AccessFlags::SHADER_READ,
+                dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                ..Default::default()
+            }],
+            &[],
+            &[],
+        );
+
         // Prepare shared state
         device.cmd_update_buffer(
             cmd,
@@ -340,21 +355,6 @@ impl ScratchBuffer {
             ctx.pipeline_layout,
             0,
             &[self.params_ds],
-            &[],
-        );
-
-        // Prevent overlap with the last batch of work
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            vk::PipelineStageFlags::TRANSFER,
-            Default::default(),
-            &[vk::MemoryBarrier {
-                src_access_mask: vk::AccessFlags::SHADER_READ,
-                dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-                ..Default::default()
-            }],
-            &[],
             &[],
         );
 
