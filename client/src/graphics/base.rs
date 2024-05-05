@@ -215,10 +215,12 @@ impl Base {
                             vk::SubpassDependency {
                                 src_subpass: 0,
                                 dst_subpass: 1,
-                                src_stage_mask: vk::PipelineStageFlags::LATE_FRAGMENT_TESTS, // depth write
-                                dst_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS, // depth read
+                                src_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS, // depth write
+                                dst_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER, // subpass input
+
                                 src_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                                dst_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+                                dst_access_mask: vk::AccessFlags::INPUT_ATTACHMENT_READ,
                                 dependency_flags: vk::DependencyFlags::BY_REGION,
                             },
                         ]),
