@@ -5,8 +5,8 @@ use ash::vk;
 use common::traversal;
 use lahar::Staged;
 use metrics::histogram;
-use yakui::Color;
 
+use super::gui::{self, GuiState};
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{Asset, Config, Loader, Sim};
 use common::proto::{Character, Position};
@@ -271,9 +271,11 @@ impl Draw {
     ///
     /// Submits commands that wait on `image_acquired` before writing to `framebuffer`'s color
     /// attachment.
+    #[allow(clippy::too_many_arguments)] // Every argument is of a different type, making this less of a problem.
     pub unsafe fn draw(
         &mut self,
         mut sim: Option<&mut Sim>,
+        gui_state: &GuiState,
         framebuffer: vk::Framebuffer,
         depth_view: vk::ImageView,
         extent: vk::Extent2D,
@@ -304,18 +306,7 @@ impl Draw {
 
         self.yak.start();
         if let Some(sim) = sim.as_ref() {
-            // Cursor
-            yakui::align(yakui::Alignment::CENTER, || {
-                yakui::colored_box(yakui::Color::BLACK.with_alpha(0.9), [5.0, 5.0]);
-            });
-
-            yakui::align(yakui::Alignment::TOP_LEFT, || {
-                yakui::pad(yakui::widgets::Pad::all(8.0), || {
-                    yakui::colored_box_container(Color::BLACK.with_alpha(0.7), || {
-                        yakui::label(format!("Selected material: {:?}", sim.selected_material()));
-                    });
-                });
-            });
+            gui::gui(gui_state, sim);
         }
         self.yak.finish();
 

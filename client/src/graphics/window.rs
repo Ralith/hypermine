@@ -15,6 +15,7 @@ use winit::{
     window::{CursorGrabMode, Window as WinitWindow, WindowBuilder},
 };
 
+use super::gui::GuiState;
 use super::{Base, Core, Draw, Frustum};
 use crate::Net;
 use crate::{net, Config, Sim};
@@ -57,6 +58,7 @@ pub struct Window {
     swapchain_needs_update: bool,
     draw: Option<Draw>,
     sim: Option<Sim>,
+    gui_state: GuiState,
     net: Net,
 }
 
@@ -93,6 +95,7 @@ impl Window {
             swapchain_needs_update: false,
             draw: None,
             sim: None,
+            gui_state: GuiState::new(),
             net,
         }
     }
@@ -261,6 +264,9 @@ impl Window {
                                 sim.toggle_no_clip();
                             }
                         }
+                        KeyCode::F1 if state == ElementState::Pressed => {
+                            self.gui_state.toggle_gui();
+                        }
                         KeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
@@ -352,6 +358,7 @@ impl Window {
             // Render the frame
             draw.draw(
                 self.sim.as_mut(),
+                &self.gui_state,
                 frame.buffer,
                 frame.depth_view,
                 swapchain.state.extent,
