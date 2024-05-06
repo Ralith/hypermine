@@ -48,6 +48,9 @@ pub struct Draw {
     /// Reusable storage for barriers that prevent races between buffer upload and read
     buffer_barriers: Vec<vk::BufferMemoryBarrier<'static>>,
 
+    /// Yakui Vulkan context
+    yakui_vulkan: yakui_vulkan::YakuiVulkan,
+
     /// Miscellany
     character_model: Asset<GltfScene>,
 }
@@ -181,6 +184,17 @@ impl Draw {
 
             gfx.save_pipeline_cache();
 
+            let mut yakui_vulkan_options = yakui_vulkan::Options::default();
+            yakui_vulkan_options.render_pass = gfx.render_pass;
+            yakui_vulkan_options.subpass = 1;
+            let mut yakui_vulkan = yakui_vulkan::YakuiVulkan::new(
+                &yakui_vulkan::VulkanContext::new(device, gfx.queue, gfx.memory_properties),
+                yakui_vulkan_options,
+            );
+            for _ in 0..PIPELINE_DEPTH {
+                yakui_vulkan.transfers_submitted();
+            }
+
             let character_model = loader.load(
                 "character model",
                 super::GlbFile {
@@ -207,6 +221,8 @@ impl Draw {
 
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
+
+                yakui_vulkan,
 
                 character_model,
             }
@@ -235,6 +251,12 @@ impl Draw {
         let device = &*self.gfx.device;
         let state = &mut self.states[self.next_state];
         device.wait_for_fences(&[state.fence], true, !0).unwrap();
+        self.yakui_vulkan
+            .transfers_finished(&yakui_vulkan::VulkanContext::new(
+                device,
+                self.gfx.queue,
+                self.gfx.memory_properties,
+            ));
         state.in_flight = false;
     }
 
@@ -253,9 +275,11 @@ impl Draw {
     ///
     /// Submits commands that wait on `image_acquired` before writing to `framebuffer`'s color
     /// attachment.
+    #[allow(clippy::too_many_arguments)] // Every argument is of a different type, making this less of a problem.
     pub unsafe fn draw(
         &mut self,
         mut sim: Option<&mut Sim>,
+        yakui_paint_dom: &yakui::paint::PaintDom,
         framebuffer: vk::Framebuffer,
         depth_view: vk::ImageView,
         extent: vk::Extent2D,
@@ -272,6 +296,9 @@ impl Draw {
         let state_index = self.next_state;
         let state = &mut self.states[self.next_state];
         let cmd = state.cmd;
+
+        let yakui_vulkan_context =
+            yakui_vulkan::VulkanContext::new(device, self.gfx.queue, self.gfx.memory_properties);
 
         // We're using this state again, so put the fence back in the unsignaled state and compute
         // the next frame to use
@@ -339,6 +366,9 @@ impl Draw {
             timestamp_index,
         );
         timestamp_index += 1;
+
+        self.yakui_vulkan
+            .transfer(yakui_paint_dom, &yakui_vulkan_context, cmd);
 
         // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
         // before submitting the command buffer so time-sensitive values can be set with minimum
@@ -470,6 +500,9 @@ impl Draw {
 
         self.fog.draw(device, state.common_ds, cmd);
 
+        self.yakui_vulkan
+            .paint(yakui_paint_dom, &yakui_vulkan_context, cmd, extent);
+
         // Finish up
         device.cmd_end_render_pass(cmd);
         device.cmd_write_timestamp(
@@ -512,6 +545,7 @@ impl Draw {
                 state.fence,
             )
             .unwrap();
+        self.yakui_vulkan.transfers_submitted();
         state.used = true;
         state.in_flight = true;
         histogram!("frame.cpu").record(draw_started.elapsed());
@@ -546,6 +580,7 @@ impl Drop for Draw {
                     voxels.destroy(device);
                 }
             }
+            self.yakui_vulkan.cleanup(&self.gfx.device);
             device.destroy_command_pool(self.cmd_pool, None);
             device.destroy_query_pool(self.timestamp_pool, None);
             device.destroy_descriptor_pool(self.common_descriptor_pool, None);
