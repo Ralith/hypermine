@@ -161,6 +161,10 @@ impl Sim {
         self.selected_material = *MATERIAL_PALETTE.get(idx).unwrap_or(&MATERIAL_PALETTE[0]);
     }
 
+    pub fn selected_material(&self) -> Material {
+        self.selected_material
+    }
+
     pub fn set_break_block_pressed_true(&mut self) {
         self.break_block_pressed = true;
     }
