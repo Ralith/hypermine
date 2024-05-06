@@ -366,7 +366,9 @@ impl Window {
                     [extent.width as f32, extent.height as f32].into(),
                 ));
             self.yak.start();
-            self.gui_state.run();
+            if let Some(sim) = self.sim.as_ref() {
+                self.gui_state.run(sim);
+            }
             self.yak.finish();
             // Render the frame
             draw.draw(
