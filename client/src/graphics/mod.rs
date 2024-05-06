@@ -6,6 +6,7 @@ mod draw;
 mod fog;
 mod frustum;
 mod gltf_mesh;
+mod gui;
 mod meshes;
 mod png_array;
 pub mod voxels;
