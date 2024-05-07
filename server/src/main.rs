@@ -5,6 +5,7 @@ mod config;
 use std::{fs, net::UdpSocket, path::Path};
 
 use anyhow::{anyhow, Context, Result};
+use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use tracing::{info, warn};
 
 use common::SimConfig;
@@ -32,18 +33,15 @@ pub fn run() -> Result<()> {
             rustls_pemfile::certs(
                 &mut &*fs::read(certificate_chain).context("reading certificate chain")?,
             )
-            .context("parsing certificate chain")?
-            .into_iter()
-            .map(rustls::Certificate)
-            .collect(),
+            .collect::<Result<Vec<_>, _>>()
+            .context("parsing certificate chain")?,
             rustls_pemfile::pkcs8_private_keys(
                 &mut &*fs::read(private_key).context("reading private key")?,
             )
-            .context("parsing private key")?
-            .into_iter()
-            .map(rustls::PrivateKey)
             .next()
-            .ok_or_else(|| anyhow!("no private key found with PKCS #8 format"))?,
+            .ok_or_else(|| anyhow!("no private key found with PKCS #8 format"))?
+            .context("parsing private key")?
+            .into(),
         ),
         _ => {
             // TODO: Cache on disk
@@ -61,7 +59,10 @@ pub fn run() -> Result<()> {
             .unwrap();
             let key = certified_key.key_pair.serialize_der();
             let cert = certified_key.cert.der().to_vec();
-            (vec![rustls::Certificate(cert)], rustls::PrivateKey(key))
+            (
+                vec![CertificateDer::from(cert)],
+                PrivateKeyDer::from(PrivatePkcs8KeyDer::from(key)),
+            )
         }
     };
 
