@@ -10,6 +10,7 @@ use std::{net::UdpSocket, sync::Arc, time::Instant};
 use anyhow::{Context, Error, Result};
 use futures::{select, StreamExt};
 use hecs::Entity;
+use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
@@ -21,8 +22,8 @@ use save::Save;
 use sim::Sim;
 
 pub struct NetParams {
-    pub certificate_chain: Vec<rustls::Certificate>,
-    pub private_key: rustls::PrivateKey,
+    pub certificate_chain: Vec<CertificateDer<'static>>,
+    pub private_key: PrivateKeyDer<'static>,
     pub socket: UdpSocket,
 }
 

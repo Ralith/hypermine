@@ -4,6 +4,7 @@ use std::{
 };
 
 use client::{graphics, metrics, net, Config};
+use quinn::rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use save::Save;
 
 use ash::khr;
@@ -44,8 +45,8 @@ fn main() {
             let _guard = span.enter();
             if let Err(e) = server::run(
                 server::NetParams {
-                    certificate_chain: vec![rustls::Certificate(cert)],
-                    private_key: rustls::PrivateKey(key),
+                    certificate_chain: vec![CertificateDer::from(cert)],
+                    private_key: PrivatePkcs8KeyDer::from(key).into(),
                     socket,
                 },
                 sim_cfg,
