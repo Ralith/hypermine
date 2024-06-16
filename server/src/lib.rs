@@ -192,8 +192,7 @@ impl Server {
                 self.cleanup_client(client_id);
             }
             ClientEvent::Command(cmd) => {
-                if cmd.generation.wrapping_sub(client.latest_input_received) < u16::max_value() / 2
-                {
+                if cmd.generation.wrapping_sub(client.latest_input_received) < u16::MAX / 2 {
                     client.latest_input_received = cmd.generation;
                     client.inputs.push(cmd, Instant::now());
                 } else {

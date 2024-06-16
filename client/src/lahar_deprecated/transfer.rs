@@ -130,7 +130,7 @@ impl Reactor {
             self.ctx.device.wait_for_fences(
                 &self.in_flight_fences,
                 false,
-                u64::try_from(timeout.as_nanos()).unwrap_or(u64::max_value()),
+                u64::try_from(timeout.as_nanos()).unwrap_or(u64::MAX),
             )
         };
         match result {
@@ -261,7 +261,7 @@ impl Drop for Reactor {
         unsafe {
             if !self.in_flight.is_empty() {
                 device
-                    .wait_for_fences(&self.in_flight_fences, true, u64::max_value())
+                    .wait_for_fences(&self.in_flight_fences, true, u64::MAX)
                     .unwrap();
             }
             device.destroy_command_pool(self.cmd_pool, None);

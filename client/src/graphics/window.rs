@@ -492,7 +492,7 @@ impl SwapchainMgr {
     unsafe fn acquire_next_image(&self, signal: vk::Semaphore) -> Result<(u32, bool), vk::Result> {
         self.state.swapchain_fn.acquire_next_image(
             self.state.handle,
-            std::u64::MAX,
+            u64::MAX,
             signal,
             vk::Fence::null(),
         )

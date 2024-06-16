@@ -17,7 +17,7 @@ impl<T> LruSlab<T> {
     }
 
     pub fn with_capacity(capacity: u32) -> Self {
-        assert!(capacity != u32::max_value(), "capacity too large");
+        assert!(capacity != u32::MAX, "capacity too large");
         Self {
             slots: (0..capacity)
                 .map(|n| Slot {
@@ -216,7 +216,7 @@ struct Slot<T> {
 pub struct SlotId(pub u32);
 
 impl SlotId {
-    const NONE: Self = SlotId(u32::max_value());
+    const NONE: Self = SlotId(u32::MAX);
 }
 
 pub struct Iter<'a, T> {
