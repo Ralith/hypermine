@@ -185,7 +185,7 @@ impl Meshes {
             self.pipeline_layout,
             vk::ShaderStageFlags::VERTEX,
             0,
-            &mem::transmute::<_, [u8; 64]>(*transform),
+            &mem::transmute::<na::Matrix4<f32>, [u8; 64]>(*transform),
         );
         device.cmd_bind_vertex_buffers(cmd, 0, &[mesh.vertices.buffer], &[mesh.vertices.offset]);
         device.cmd_bind_index_buffer(
