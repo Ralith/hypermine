@@ -29,6 +29,7 @@ anyhow = "1.0.26"
 whoami = "1.2.1"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = { workspace = true }
+rand = { version = "0.8.5", features = ["small_rng"] }
 fxhash = "0.2.1"
 downcast-rs = "1.1.1"
 quinn = { workspace = true }

@@ -3,6 +3,8 @@ use std::time::Duration;
 use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 
 use crate::{
     local_character_controller::LocalCharacterController, metrics, net,
@@ -18,6 +20,7 @@ use common::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
     },
     sanitize_motion_input,
+    ticker::{TickerEntity, Ticker},
     world::Material,
     EntityId, GraphEntities, SimConfig, Step,
 };
@@ -48,6 +51,7 @@ pub struct Sim {
     pub local_character_id: EntityId,
     pub local_character: Option<Entity>,
     step: Option<Step>,
+    rng: SmallRng,
 
     // Input state
     since_input_sent: Duration,
@@ -94,6 +98,7 @@ impl Sim {
             local_character_id,
             local_character: None,
             step: None,
+            rng: SmallRng::from_entropy(),
 
             since_input_sent: Duration::new(0, 0),
             movement_input: na::zero(),
@@ -142,6 +147,20 @@ impl Sim {
         // there would be a discontinuity when predicting the player's position within a given step,
         // causing an undesirable jolt.
         self.toggle_no_clip = true;
+    }
+
+    pub fn debug_spawn_blinker(&mut self) { // Note: the blinker currently does nothing but update internal state
+        let mut components: Vec<Component> = Vec::<Component>::new();
+        let position: Position = self.local_character_controller.position;
+        let ticker: TickerEntity = TickerEntity {
+            lastTicked: 0,
+            tickerID: 1,
+            tickerUID: 0.into(),
+            ticker: Ticker::new(),
+        };
+        components.push(common::proto::Component::Position(position));
+        components.push(common::proto::Component::TickerEntity(ticker));
+        self.request_server_spawn(components);
     }
 
     pub fn set_jump_held(&mut self, jump_held: bool) {
@@ -222,6 +241,13 @@ impl Sim {
         self.update_view_position();
         if !self.no_clip {
             self.local_character_controller.align_to_gravity();
+        }
+
+        // This is just for testing the blinker. Remove this once we actually sync it to the server
+        let mut blinkerQuery = self.world.query::<&mut TickerEntity>();
+        let blinkerIter = blinkerQuery.iter();
+        for (_entity, mut ticker_entity) in blinkerIter {
+            ticker_entity.ticker.tick(Option::expect(self.step, "missing step"));
         }
     }
 
@@ -367,6 +393,10 @@ impl Sim {
                     node = Some(x.node);
                     builder.add(x);
                 }
+                TickerEntity(mut x) => {
+                    x.setUID(id);
+                    builder.add(x);
+                }
             };
         }
         let entity = self.world.spawn(builder.build());
@@ -380,6 +410,16 @@ impl Sim {
             self.destroy_idless(x);
             error!(%id, "id collision");
         }
+    }
+
+    fn request_server_spawn(
+        &mut self,
+        components: Vec<Component>,
+    ) {
+        // TODO: actually tell the server to spawn the entity, rather than spawning it ourselves. (We should wait for the server to confirm the spawn and send the data back to us rather than instantiating it right away.) Also get rid of the blinker debug code
+        let mut builder = hecs::EntityBuilder::new();
+        let id = self.new_id();
+        self.spawn(&mut builder, id, components);
     }
 
     fn send_input(&mut self, net: &mut Net) {
@@ -520,5 +560,14 @@ impl Sim {
             coords: block_pos.1,
             new_material: material,
         })
+    }
+
+    fn new_id(&mut self) -> EntityId {
+        loop {
+            let id = self.rng.gen();
+            if !self.entity_ids.contains_key(&id) {
+                return id;
+            }
+        }
     }
 }

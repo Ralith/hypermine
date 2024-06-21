@@ -266,6 +266,11 @@ impl Window {
                                 sim.toggle_no_clip();
                             }
                         }
+                        KeyCode::KeyB if state == ElementState::Pressed => {
+                            if let Some(sim) = self.sim.as_mut() {
+                                sim.debug_spawn_blinker();
+                            }
+                        }
                         KeyCode::F1 if state == ElementState::Pressed => {
                             self.gui_state.toggle_gui();
                         }
