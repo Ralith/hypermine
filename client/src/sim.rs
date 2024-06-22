@@ -422,6 +422,7 @@ impl Sim {
             character_input,
             orientation: self.local_character_controller.orientation(),
         });
+        self.debug_spawn_blinker = false;
     }
 
     fn update_view_position(&mut self) {
