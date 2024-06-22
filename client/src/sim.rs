@@ -18,7 +18,6 @@ use common::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
     },
     sanitize_motion_input,
-    ticker::TickerEntity,
     world::Material,
     EntityId, GraphEntities, SimConfig, Step,
 };
@@ -229,13 +228,6 @@ impl Sim {
         self.update_view_position();
         if !self.no_clip {
             self.local_character_controller.align_to_gravity();
-        }
-
-        // This is just for testing the blinker. Remove this once we actually sync it to the server
-        let mut blinker_query = self.world.query::<&mut TickerEntity>();
-        let blinker_iter = blinker_query.iter();
-        for (_entity, ticker_entity) in blinker_iter {
-            ticker_entity.ticker.tick(self.step.unwrap());
         }
     }
 
