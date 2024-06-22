@@ -3,8 +3,6 @@ use std::time::Duration;
 use fxhash::FxHashMap;
 use hecs::Entity;
 use tracing::{debug, error, trace};
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
 
 use crate::{
     local_character_controller::LocalCharacterController, metrics, net,
@@ -20,7 +18,7 @@ use common::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
     },
     sanitize_motion_input,
-    ticker::{TickerEntity, Ticker},
+    ticker::TickerEntity,
     world::Material,
     EntityId, GraphEntities, SimConfig, Step,
 };
@@ -51,7 +49,6 @@ pub struct Sim {
     pub local_character_id: EntityId,
     pub local_character: Option<Entity>,
     step: Option<Step>,
-    rng: SmallRng,
 
     // Input state
     since_input_sent: Duration,
@@ -67,6 +64,7 @@ pub struct Sim {
     no_clip: bool,
     /// Whether no_clip will be toggled next step
     toggle_no_clip: bool,
+    debug_spawn_blinker: bool,
     /// Whether the current step starts with a jump
     is_jumping: bool,
     /// Whether the jump button has been pressed since the last step
@@ -98,13 +96,13 @@ impl Sim {
             local_character_id,
             local_character: None,
             step: None,
-            rng: SmallRng::from_entropy(),
 
             since_input_sent: Duration::new(0, 0),
             movement_input: na::zero(),
             average_movement_input: na::zero(),
             no_clip: true,
             toggle_no_clip: false,
+            debug_spawn_blinker: false,
             is_jumping: false,
             jump_pressed: false,
             jump_held: false,
@@ -150,17 +148,7 @@ impl Sim {
     }
 
     pub fn debug_spawn_blinker(&mut self) { // Note: the blinker currently does nothing but update internal state
-        let mut components: Vec<Component> = Vec::<Component>::new();
-        let position: Position = self.local_character_controller.position;
-        let ticker: TickerEntity = TickerEntity {
-            lastTicked: 0,
-            tickerID: 1,
-            tickerUID: 0.into(),
-            ticker: Ticker::new(),
-        };
-        components.push(common::proto::Component::Position(position));
-        components.push(common::proto::Component::TickerEntity(ticker));
-        self.request_server_spawn(components);
+        self.debug_spawn_blinker = true;
     }
 
     pub fn set_jump_held(&mut self, jump_held: bool) {
@@ -244,10 +232,10 @@ impl Sim {
         }
 
         // This is just for testing the blinker. Remove this once we actually sync it to the server
-        let mut blinkerQuery = self.world.query::<&mut TickerEntity>();
-        let blinkerIter = blinkerQuery.iter();
-        for (_entity, mut ticker_entity) in blinkerIter {
-            ticker_entity.ticker.tick(Option::expect(self.step, "missing step"));
+        let mut blinker_query = self.world.query::<&mut TickerEntity>();
+        let blinker_iter = blinker_query.iter();
+        for (_entity, ticker_entity) in blinker_iter {
+            ticker_entity.ticker.tick(self.step.unwrap());
         }
     }
 
@@ -393,8 +381,7 @@ impl Sim {
                     node = Some(x.node);
                     builder.add(x);
                 }
-                TickerEntity(mut x) => {
-                    x.setUID(id);
+                TickerEntity(x) => {
                     builder.add(x);
                 }
             };
@@ -412,16 +399,6 @@ impl Sim {
         }
     }
 
-    fn request_server_spawn(
-        &mut self,
-        components: Vec<Component>,
-    ) {
-        // TODO: actually tell the server to spawn the entity, rather than spawning it ourselves. (We should wait for the server to confirm the spawn and send the data back to us rather than instantiating it right away.) Also get rid of the blinker debug code
-        let mut builder = hecs::EntityBuilder::new();
-        let id = self.new_id();
-        self.spawn(&mut builder, id, components);
-    }
-
     fn send_input(&mut self, net: &mut Net) {
         let orientation = if self.no_clip {
             self.local_character_controller.orientation()
@@ -432,6 +409,7 @@ impl Sim {
             movement: sanitize_motion_input(orientation * self.average_movement_input),
             jump: self.is_jumping,
             no_clip: self.no_clip,
+            debug_spawn_blinker: self.debug_spawn_blinker,
             block_update: self.get_local_character_block_update(),
         };
         let generation = self
@@ -465,6 +443,7 @@ impl Sim {
                 / (self.since_input_sent.as_secs_f32() / self.cfg.step_interval.as_secs_f32()),
             jump: self.is_jumping,
             no_clip: self.no_clip,
+            debug_spawn_blinker: self.debug_spawn_blinker,
             block_update: None,
         };
         character_controller::run_character_step(
@@ -560,14 +539,5 @@ impl Sim {
             coords: block_pos.1,
             new_material: material,
         })
-    }
-
-    fn new_id(&mut self) -> EntityId {
-        loop {
-            let id = self.rng.gen();
-            if !self.entity_ids.contains_key(&id) {
-                return id;
-            }
-        }
     }
 }

@@ -7,20 +7,20 @@ use common::proto::{BlockUpdate, SerializedVoxelData};
 use common::{node::ChunkId, GraphEntities};
 use fxhash::{FxHashMap, FxHashSet};
 use hecs::Entity;
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
 use save::ComponentType;
 use tracing::{error, error_span, info, trace};
 
 use common::{
     character_controller, dodeca,
     graph::{Graph, NodeId},
+    id_generator::IDGenerator,
     math,
     node::{populate_fresh_nodes, Chunk},
     proto::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
     },
+    ticker::{Ticker, TickerEntity},
     traversal::{ensure_nearby, nearby_nodes},
     worldgen::ChunkParams,
     EntityId, SimConfig, Step,
@@ -30,14 +30,14 @@ use crate::postcard_helpers::{self, SaveEntity};
 
 pub struct Sim {
     cfg: Arc<SimConfig>,
-    rng: SmallRng,
     step: Step,
-    entity_ids: FxHashMap<EntityId, Entity>,
+    id_generator: IDGenerator,
     world: hecs::World,
     graph: Graph,
     /// Voxel data that has been fetched from a savefile but not yet introduced to the graph
     preloaded_voxel_data: FxHashMap<ChunkId, VoxelData>,
     spawns: Vec<Entity>,
+    pending_ticker_spawns: Vec<(Position, TickerEntity)>,
     despawns: Vec<EntityId>,
     graph_entities: GraphEntities,
     /// All nodes that have entity-related information yet to be saved
@@ -51,13 +51,13 @@ pub struct Sim {
 impl Sim {
     pub fn new(cfg: Arc<SimConfig>, save: &save::Save) -> Self {
         let mut result = Self {
-            rng: SmallRng::from_entropy(),
             step: 0,
-            entity_ids: FxHashMap::default(),
+            id_generator: IDGenerator::new(),
             world: hecs::World::new(),
             graph: Graph::new(cfg.chunk_size),
             preloaded_voxel_data: FxHashMap::default(),
             spawns: Vec::new(),
+            pending_ticker_spawns: Vec::new(),
             despawns: Vec::new(),
             graph_entities: GraphEntities::new(),
             dirty_nodes: FxHashSet::default(),
@@ -187,7 +187,7 @@ impl Sim {
     }
 
     pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
-        let id = self.new_id();
+        let id = self.id_generator.new_id();
         info!(%id, name = %hello.name, "spawning character");
         let position = Position {
             node: NodeId::ROOT,
@@ -205,11 +205,12 @@ impl Sim {
             movement: na::Vector3::zeros(),
             jump: false,
             no_clip: true,
+            debug_spawn_blinker: false,
             block_update: None,
         };
         let entity = self.world.spawn((id, position, character, initial_input));
         self.graph_entities.insert(position.node, entity);
-        self.entity_ids.insert(id, entity);
+        self.id_generator.entity_ids.insert(id, entity);
         self.spawns.push(entity);
         self.dirty_nodes.insert(position.node);
         (id, entity)
@@ -229,7 +230,7 @@ impl Sim {
 
     pub fn destroy(&mut self, entity: Entity) {
         let id = *self.world.get::<&EntityId>(entity).unwrap();
-        self.entity_ids.remove(&id);
+        self.id_generator.entity_ids.remove(&id);
         if let Ok(position) = self.world.get::<&Position>(entity) {
             self.graph_entities.remove(position.node, entity);
         }
@@ -272,7 +273,16 @@ impl Sim {
         let span = error_span!("step", step = self.step);
         let _guard = span.enter();
 
+        {
+            let mut ticker_query = self.world.query::<&mut TickerEntity>();
+            let ticker_iter = ticker_query.iter();
+            for (_entity, ticker_entity) in ticker_iter {
+                ticker_entity.ticker.tick(self.step);
+            }
+        }
+
         let mut pending_block_updates: Vec<BlockUpdate> = vec![];
+
 
         // Extend graph structure
         for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
@@ -332,6 +342,13 @@ impl Sim {
             .iter()
         {
             let prev_node = position.node;
+            if input.debug_spawn_blinker {
+                let ticker: TickerEntity = TickerEntity {
+                    last_ticked: 0,
+                    ticker: Ticker::new(),
+                };
+                self.pending_ticker_spawns.push((*position, ticker));
+            }
             character_controller::run_character_step(
                 &self.cfg,
                 &self.graph,
@@ -347,6 +364,16 @@ impl Sim {
                 self.graph_entities.remove(prev_node, entity);
                 self.graph_entities.insert(position.node, entity);
             }
+            self.dirty_nodes.insert(position.node);
+        }
+
+        let pending_ticker_spawns = std::mem::take(&mut self.pending_ticker_spawns);
+        for (position, ticker) in pending_ticker_spawns {
+            let id = self.id_generator.new_id();
+            let entity = self.world.spawn((id, position, ticker));
+            self.graph_entities.insert(position.node, entity);
+            self.id_generator.entity_ids.insert(id, entity);
+            self.spawns.push(entity);
             self.dirty_nodes.insert(position.node);
         }
 
@@ -410,15 +437,6 @@ impl Sim {
 
         self.step += 1;
         (spawns, delta)
-    }
-
-    fn new_id(&mut self) -> EntityId {
-        loop {
-            let id = self.rng.gen();
-            if !self.entity_ids.contains_key(&id) {
-                return id;
-            }
-        }
     }
 }
 

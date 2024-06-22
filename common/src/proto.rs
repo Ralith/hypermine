@@ -70,6 +70,7 @@ pub struct CharacterInput {
     pub movement: na::Vector3<f32>,
     pub jump: bool,
     pub no_clip: bool,
+    pub debug_spawn_blinker: bool,
     pub block_update: Option<BlockUpdate>,
 }
 

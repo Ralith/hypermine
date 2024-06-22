@@ -1,25 +1,10 @@
 use serde::{Deserialize, Serialize};
-use hecs::Entity;
-use crate::{Step, EntityId};
+use crate::Step;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TickerEntity {
-    pub lastTicked: Step,
-    pub tickerID: u16, // This ID determines what *type* of ticker this is (blinker, sapling, etc)
-    pub tickerUID: EntityId,
+    pub last_ticked: Step,
     pub ticker: Ticker,
-}
-
-impl TickerEntity {
-    pub fn setUID(&mut self, id: EntityId) {
-        self.tickerUID = id;
-    }
-    pub fn setLastTicked(&mut self, step: Step) {
-        self.lastTicked = step;
-    }
-    pub fn setID(&mut self, id: u16) {
-        self.tickerID = id;
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
