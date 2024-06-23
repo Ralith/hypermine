@@ -3,10 +3,11 @@ use std::sync::Arc;
 use anyhow::Context;
 use common::dodeca::Vertex;
 use common::node::VoxelData;
-use common::proto::{BlockUpdate, SerializedVoxelData};
+use common::proto::{BlockUpdate, Inventory, SerializedVoxelData};
+use common::world::Material;
 use common::{node::ChunkId, GraphEntities};
 use fxhash::{FxHashMap, FxHashSet};
-use hecs::Entity;
+use hecs::{DynamicBundle, Entity, EntityBuilder};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use save::ComponentType;
@@ -185,8 +186,6 @@ impl Sim {
     }
 
     pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
-        let id = self.new_id();
-        info!(%id, name = %hello.name, "spawning character");
         let position = Position {
             node: NodeId::ROOT,
             local: math::translate_along(&(na::Vector3::y() * 1.4)),
@@ -199,17 +198,35 @@ impl Sim {
                 on_ground: false,
             },
         };
+        let inventory = Inventory { contents: vec![] };
         let initial_input = CharacterInput {
             movement: na::Vector3::zeros(),
             jump: false,
             no_clip: true,
             block_update: None,
         };
-        let entity = self.world.spawn((id, position, character, initial_input));
-        self.graph_entities.insert(position.node, entity);
+        self.spawn((position, character, inventory, initial_input))
+    }
+
+    fn spawn(&mut self, bundle: impl DynamicBundle) -> (EntityId, Entity) {
+        let id = self.new_id();
+        let mut entity_builder = EntityBuilder::new();
+        entity_builder.add(id);
+        entity_builder.add_bundle(bundle);
+        let entity = self.world.spawn(entity_builder.build());
+
+        if let Ok(position) = self.world.get::<&Position>(entity) {
+            self.graph_entities.insert(position.node, entity);
+            self.dirty_nodes.insert(position.node);
+        }
+
+        if let Ok(character) = self.world.get::<&Character>(entity) {
+            info!(%id, name = %character.name, "spawning character");
+        }
+
         self.entity_ids.insert(id, entity);
         self.accumulated_changes.spawns.push(entity);
-        self.dirty_nodes.insert(position.node);
+
         (id, entity)
     }
 
@@ -248,6 +265,8 @@ impl Sim {
                 .collect(),
             block_updates: Vec::new(),
             voxel_data: Vec::new(),
+            inventory_additions: Vec::new(),
+            inventory_removals: Vec::new(),
         };
         for (entity, &id) in &mut self.world.query::<&EntityId>() {
             spawns.spawns.push((id, dump_entity(&self.world, entity)));
@@ -322,7 +341,7 @@ impl Sim {
             }
         }
 
-        let mut pending_block_updates: Vec<BlockUpdate> = vec![];
+        let mut pending_block_updates: Vec<(Entity, BlockUpdate)> = vec![];
 
         // Simulate
         for (entity, (position, character, input)) in self
@@ -340,7 +359,9 @@ impl Sim {
                 input,
                 self.cfg.step_interval.as_secs_f32(),
             );
-            pending_block_updates.extend(input.block_update.iter().cloned());
+            if let Some(block_update) = input.block_update.clone() {
+                pending_block_updates.push((entity, block_update));
+            }
             if prev_node != position.node {
                 self.dirty_nodes.insert(prev_node);
                 self.graph_entities.remove(prev_node, entity);
@@ -349,13 +370,9 @@ impl Sim {
             self.dirty_nodes.insert(position.node);
         }
 
-        for block_update in pending_block_updates.into_iter() {
-            if !self.graph.update_block(&block_update) {
-                tracing::warn!("Block update received from ungenerated chunk");
-            }
-            self.modified_chunks.insert(block_update.chunk_id);
-            self.dirty_voxel_nodes.insert(block_update.chunk_id.node);
-            self.accumulated_changes.block_updates.push(block_update);
+        for (entity, block_update) in pending_block_updates {
+            let id = *self.world.get::<&EntityId>(entity).unwrap();
+            self.attempt_block_update(id, block_update);
         }
 
         let spawns = std::mem::take(&mut self.accumulated_changes).into_spawns(
@@ -394,6 +411,78 @@ impl Sim {
             }
         }
     }
+
+    /// Add the given entity to the given inventory
+    fn add_to_inventory(&mut self, inventory_id: EntityId, entity_id: EntityId) {
+        let mut inventory = self
+            .world
+            .get::<&mut Inventory>(*self.entity_ids.get(&inventory_id).unwrap())
+            .unwrap();
+        inventory.contents.push(entity_id);
+        self.accumulated_changes
+            .inventory_additions
+            .push((inventory_id, entity_id));
+    }
+
+    /// Remove the given entity from the given inventory. Note that this does not destroy the entity.
+    /// Returns whether the item was in the inventory to begin with.
+    fn remove_from_inventory(&mut self, inventory_id: EntityId, entity_id: EntityId) -> bool {
+        let mut inventory = self
+            .world
+            .get::<&mut Inventory>(*self.entity_ids.get(&inventory_id).unwrap())
+            .unwrap();
+        let Some(position) = inventory.contents.iter().position(|&e| e == entity_id) else {
+            return false;
+        };
+        inventory.contents.remove(position);
+        self.accumulated_changes
+            .inventory_removals
+            .push((inventory_id, entity_id));
+        true
+    }
+
+    /// Executes the requested block update if the subject is able to do so and
+    /// leaves the state of the world unchanged otherwise
+    fn attempt_block_update(&mut self, subject: EntityId, block_update: BlockUpdate) {
+        let Some(old_material) = self
+            .graph
+            .get_material(block_update.chunk_id, block_update.coords)
+        else {
+            tracing::warn!("Block update received from ungenerated chunk");
+            return;
+        };
+        if block_update.new_material != Material::Void {
+            let Some(consumed_entity_id) = block_update.consumed_entity else {
+                tracing::warn!("Tried to place block without consuming any entities");
+                return;
+            };
+            let Some(&consumed_entity) = self.entity_ids.get(&consumed_entity_id) else {
+                tracing::warn!("Tried to consume an unknown entity ID");
+                return;
+            };
+            if !self
+                .world
+                .get::<&Material>(consumed_entity)
+                .is_ok_and(|m| *m == block_update.new_material)
+            {
+                tracing::warn!("Tried to consume wrong material");
+                return;
+            }
+            if !self.remove_from_inventory(subject, consumed_entity_id) {
+                tracing::warn!("Tried to consume entity not in player inventory");
+                return;
+            }
+            self.destroy(consumed_entity);
+        }
+        if old_material != Material::Void {
+            let (produced_entity, _) = self.spawn((old_material,));
+            self.add_to_inventory(subject, produced_entity);
+        }
+        assert!(self.graph.update_block(&block_update));
+        self.modified_chunks.insert(block_update.chunk_id);
+        self.dirty_voxel_nodes.insert(block_update.chunk_id.node);
+        self.accumulated_changes.block_updates.push(block_update);
+    }
 }
 
 fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
@@ -403,6 +492,12 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     }
     if let Ok(x) = world.get::<&Character>(entity) {
         components.push(Component::Character((*x).clone()));
+    }
+    if let Ok(x) = world.get::<&Inventory>(entity) {
+        components.push(Component::Inventory((*x).clone()));
+    }
+    if let Ok(x) = world.get::<&Material>(entity) {
+        components.push(Component::Material(*x));
     }
     components
 }
@@ -419,6 +514,14 @@ struct AccumulatedChanges {
     /// Block updates that have been applied to the world since the last broadcast
     block_updates: Vec<BlockUpdate>,
 
+    /// Entities that have been added to an inventory since the last broadcast, where `(a, b)`` represents
+    /// entity `b`` being added to inventory `a``
+    inventory_additions: Vec<(EntityId, EntityId)>,
+
+    /// Entities that have been removed from an inventory since the last broadcast, where `(a, b)`` represents
+    /// entity `b`` being removed from inventory `a``
+    inventory_removals: Vec<(EntityId, EntityId)>,
+
     /// Nodes that have been added to the graph since the last broadcast
     fresh_nodes: Vec<NodeId>,
 
@@ -432,6 +535,8 @@ impl AccumulatedChanges {
         self.spawns.is_empty()
             && self.despawns.is_empty()
             && self.block_updates.is_empty()
+            && self.inventory_additions.is_empty()
+            && self.inventory_removals.is_empty()
             && self.fresh_nodes.is_empty()
             && self.fresh_voxel_data.is_empty()
     }
@@ -469,6 +574,8 @@ impl AccumulatedChanges {
                 .collect(),
             block_updates: self.block_updates,
             voxel_data: self.fresh_voxel_data,
+            inventory_additions: self.inventory_additions,
+            inventory_removals: self.inventory_removals,
         })
     }
 }
