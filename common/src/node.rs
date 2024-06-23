@@ -125,6 +125,16 @@ impl Graph {
         };
     }
 
+    /// Returns the material at the specified coordinates of the specified chunk, if the chunk is generated
+    pub fn get_material(&self, chunk_id: ChunkId, coords: Coords) -> Option<Material> {
+        let dimension = self.layout().dimension;
+
+        let Some(Chunk::Populated { voxels, .. }) = self.get_chunk(chunk_id) else {
+            return None;
+        };
+        Some(voxels.get(coords.to_index(dimension)))
+    }
+
     /// Tries to update the block at the given position to the given material.
     /// Fails and returns false if the chunk is not populated yet.
     #[must_use]

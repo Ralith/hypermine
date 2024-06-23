@@ -55,6 +55,8 @@ pub struct Spawns {
     pub nodes: Vec<FreshNode>,
     pub block_updates: Vec<BlockUpdate>,
     pub voxel_data: Vec<(ChunkId, SerializedVoxelData)>,
+    pub inventory_additions: Vec<(EntityId, EntityId)>,
+    pub inventory_removals: Vec<(EntityId, EntityId)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -78,6 +80,7 @@ pub struct BlockUpdate {
     pub chunk_id: ChunkId,
     pub coords: Coords,
     pub new_material: Material,
+    pub consumed_entity: Option<EntityId>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,6 +93,8 @@ pub struct SerializedVoxelData {
 pub enum Component {
     Character(Character),
     Position(Position),
+    Material(Material),
+    Inventory(Inventory),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,4 +108,9 @@ pub struct FreshNode {
 pub struct Character {
     pub name: String,
     pub state: CharacterState,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Inventory {
+    pub contents: Vec<EntityId>,
 }
