@@ -13,6 +13,8 @@ pub struct SimConfigRaw {
     /// Maximum distance at which anything can be seen in meters
     pub view_distance: Option<f32>,
     pub input_queue_size_ms: Option<u16>,
+    /// Whether gameplay-like restrictions exist, such as limited inventory
+    pub gameplay_enabled: Option<bool>,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: Option<u8>,
     /// Approximate length of the edge of a voxel in meters
@@ -36,6 +38,7 @@ pub struct SimConfig {
     pub step_interval: Duration,
     pub view_distance: f32,
     pub input_queue_size: Duration,
+    pub gameplay_enabled: bool,
     pub chunk_size: u8,
     pub character: CharacterConfig,
     /// Scaling factor converting meters to absolute units
@@ -51,6 +54,7 @@ impl SimConfig {
             step_interval: Duration::from_secs(1) / x.rate.unwrap_or(30) as u32,
             view_distance: x.view_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
+            gameplay_enabled: x.gameplay_enabled.unwrap_or(false),
             chunk_size,
             character: CharacterConfig::from_raw(&x.character, meters_to_absolute),
             meters_to_absolute,
