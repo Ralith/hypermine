@@ -276,10 +276,8 @@ impl Sim {
         let span = error_span!("step", step = self.step);
         let _guard = span.enter();
 
-        {
-            for (_entity, ticker_entity) in self.world.query::<&mut TickerEntity>().iter() {
-                ticker_entity.ticker.tick(self.step);
-            }
+        for (_entity, ticker_entity) in self.world.query::<&mut TickerEntity>().iter() {
+            ticker_entity.ticker.tick(self.step);
         }
 
         let mut pending_block_updates: Vec<BlockUpdate> = vec![];
