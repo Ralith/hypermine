@@ -1,14 +1,13 @@
-use hecs::Entity;
 use crate::EntityId;
+use fxhash::FxHashMap;
+use hecs::Entity;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use fxhash::FxHashMap;
 
 pub struct IDGenerator {
     pub rng: SmallRng,
     pub entity_ids: FxHashMap<EntityId, Entity>,
 }
-
 
 impl IDGenerator {
     pub fn new() -> Self {
@@ -24,5 +23,11 @@ impl IDGenerator {
                 return id;
             }
         }
+    }
+}
+
+impl Default for IDGenerator {
+    fn default() -> Self {
+        IDGenerator::new()
     }
 }

@@ -283,7 +283,6 @@ impl Sim {
 
         let mut pending_block_updates: Vec<BlockUpdate> = vec![];
 
-
         // Extend graph structure
         for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
             ensure_nearby(&mut self.graph, position, self.cfg.view_distance);

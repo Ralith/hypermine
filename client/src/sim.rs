@@ -146,7 +146,8 @@ impl Sim {
         self.toggle_no_clip = true;
     }
 
-    pub fn debug_spawn_blinker(&mut self) { // Note: the blinker currently does nothing but update internal state
+    pub fn debug_spawn_blinker(&mut self) {
+        // Note: the blinker currently does nothing but update internal state
         self.debug_spawn_blinker = true;
     }
 

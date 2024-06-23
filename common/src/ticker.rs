@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::Step;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TickerEntity {
@@ -14,9 +14,7 @@ pub struct Ticker {
 
 impl Ticker {
     pub fn new() -> Self {
-        Self {
-            on: false,
-        }
+        Self { on: false }
     }
     pub fn tick(&mut self, _step: Step) {
         self.on = !self.on;
@@ -27,5 +25,11 @@ impl Ticker {
         } else {
             println!("Ticked OFF!");
         }
+    }
+}
+
+impl Default for Ticker {
+    fn default() -> Self {
+        Ticker::new()
     }
 }
