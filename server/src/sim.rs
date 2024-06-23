@@ -7,13 +7,14 @@ use common::proto::{BlockUpdate, SerializedVoxelData};
 use common::{node::ChunkId, GraphEntities};
 use fxhash::{FxHashMap, FxHashSet};
 use hecs::Entity;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use save::ComponentType;
 use tracing::{error, error_span, info, trace};
 
 use common::{
     character_controller, dodeca,
     graph::{Graph, NodeId},
-    id_generator::IDGenerator,
     math,
     node::{populate_fresh_nodes, Chunk},
     proto::{
@@ -31,7 +32,8 @@ use crate::postcard_helpers::{self, SaveEntity};
 pub struct Sim {
     cfg: Arc<SimConfig>,
     step: Step,
-    id_generator: IDGenerator,
+    pub rng: SmallRng,
+    pub entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
     graph: Graph,
     /// Voxel data that has been fetched from a savefile but not yet introduced to the graph
@@ -52,7 +54,8 @@ impl Sim {
     pub fn new(cfg: Arc<SimConfig>, save: &save::Save) -> Self {
         let mut result = Self {
             step: 0,
-            id_generator: IDGenerator::new(),
+            rng: SmallRng::from_entropy(),
+            entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
             graph: Graph::new(cfg.chunk_size),
             preloaded_voxel_data: FxHashMap::default(),
@@ -187,7 +190,7 @@ impl Sim {
     }
 
     pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
-        let id = self.id_generator.new_id();
+        let id = self.new_id();
         info!(%id, name = %hello.name, "spawning character");
         let position = Position {
             node: NodeId::ROOT,
@@ -210,7 +213,7 @@ impl Sim {
         };
         let entity = self.world.spawn((id, position, character, initial_input));
         self.graph_entities.insert(position.node, entity);
-        self.id_generator.entity_ids.insert(id, entity);
+        self.entity_ids.insert(id, entity);
         self.spawns.push(entity);
         self.dirty_nodes.insert(position.node);
         (id, entity)
@@ -230,7 +233,7 @@ impl Sim {
 
     pub fn destroy(&mut self, entity: Entity) {
         let id = *self.world.get::<&EntityId>(entity).unwrap();
-        self.id_generator.entity_ids.remove(&id);
+        self.entity_ids.remove(&id);
         if let Ok(position) = self.world.get::<&Position>(entity) {
             self.graph_entities.remove(position.node, entity);
         }
@@ -368,10 +371,10 @@ impl Sim {
 
         let pending_ticker_spawns = std::mem::take(&mut self.pending_ticker_spawns);
         for (position, ticker) in pending_ticker_spawns {
-            let id = self.id_generator.new_id();
+            let id = self.new_id();
             let entity = self.world.spawn((id, position, ticker));
             self.graph_entities.insert(position.node, entity);
-            self.id_generator.entity_ids.insert(id, entity);
+            self.entity_ids.insert(id, entity);
             self.spawns.push(entity);
             self.dirty_nodes.insert(position.node);
         }
@@ -436,6 +439,15 @@ impl Sim {
 
         self.step += 1;
         (spawns, delta)
+    }
+
+    pub fn new_id(&mut self) -> EntityId {
+        loop {
+            let id = self.rng.gen();
+            if !self.entity_ids.contains_key(&id) {
+                return id;
+            }
+        }
     }
 }
 
