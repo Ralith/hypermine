@@ -32,10 +32,16 @@ impl GuiState {
         align(Alignment::TOP_LEFT, || {
             pad(Pad::all(8.0), || {
                 colored_box_container(Color::BLACK.with_alpha(0.7), || {
+                    let material_count_string = if sim.cfg.gameplay_enabled {
+                        sim.count_inventory_entities_matching_material(sim.selected_material())
+                            .to_string()
+                    } else {
+                        "∞".to_string()
+                    };
                     label(format!(
                         "Selected material: {:?} (×{})",
                         sim.selected_material(),
-                        sim.count_inventory_entities_matching_material(sim.selected_material())
+                        material_count_string
                     ));
                 });
             });

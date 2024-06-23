@@ -451,32 +451,34 @@ impl Sim {
             tracing::warn!("Block update received from ungenerated chunk");
             return;
         };
-        if block_update.new_material != Material::Void {
-            let Some(consumed_entity_id) = block_update.consumed_entity else {
-                tracing::warn!("Tried to place block without consuming any entities");
-                return;
-            };
-            let Some(&consumed_entity) = self.entity_ids.get(&consumed_entity_id) else {
-                tracing::warn!("Tried to consume an unknown entity ID");
-                return;
-            };
-            if !self
-                .world
-                .get::<&Material>(consumed_entity)
-                .is_ok_and(|m| *m == block_update.new_material)
-            {
-                tracing::warn!("Tried to consume wrong material");
-                return;
+        if self.cfg.gameplay_enabled {
+            if block_update.new_material != Material::Void {
+                let Some(consumed_entity_id) = block_update.consumed_entity else {
+                    tracing::warn!("Tried to place block without consuming any entities");
+                    return;
+                };
+                let Some(&consumed_entity) = self.entity_ids.get(&consumed_entity_id) else {
+                    tracing::warn!("Tried to consume an unknown entity ID");
+                    return;
+                };
+                if !self
+                    .world
+                    .get::<&Material>(consumed_entity)
+                    .is_ok_and(|m| *m == block_update.new_material)
+                {
+                    tracing::warn!("Tried to consume wrong material");
+                    return;
+                }
+                if !self.remove_from_inventory(subject, consumed_entity_id) {
+                    tracing::warn!("Tried to consume entity not in player inventory");
+                    return;
+                }
+                self.destroy(consumed_entity);
             }
-            if !self.remove_from_inventory(subject, consumed_entity_id) {
-                tracing::warn!("Tried to consume entity not in player inventory");
-                return;
+            if old_material != Material::Void {
+                let (produced_entity, _) = self.spawn((old_material,));
+                self.add_to_inventory(subject, produced_entity);
             }
-            self.destroy(consumed_entity);
-        }
-        if old_material != Material::Void {
-            let (produced_entity, _) = self.spawn((old_material,));
-            self.add_to_inventory(subject, produced_entity);
         }
         assert!(self.graph.update_block(&block_update));
         self.modified_chunks.insert(block_update.chunk_id);
