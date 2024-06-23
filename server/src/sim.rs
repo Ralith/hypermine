@@ -277,9 +277,7 @@ impl Sim {
         let _guard = span.enter();
 
         {
-            let mut ticker_query = self.world.query::<&mut TickerEntity>();
-            let ticker_iter = ticker_query.iter();
-            for (_entity, ticker_entity) in ticker_iter {
+            for (_entity, ticker_entity) in self.world.query::<&mut TickerEntity>().iter() {
                 ticker_entity.ticker.tick(self.step);
             }
         }
