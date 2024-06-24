@@ -300,8 +300,6 @@ impl Sim {
             }
         }
 
-        let mut pending_block_updates: Vec<BlockUpdate> = vec![];
-
         // Extend graph structure
         for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
             ensure_nearby(&mut self.graph, position, self.cfg.view_distance);
@@ -387,16 +385,16 @@ impl Sim {
             }
             self.dirty_nodes.insert(position.node);
         }
-      
+
         for (position, blinker) in pending_blinker_spawns {
             let id = self.new_id();
             let entity = self.world.spawn((id, position, blinker));
             self.graph_entities.insert(position.node, entity);
             self.entity_ids.insert(id, entity);
-            self.spawns.push(entity);
+            self.accumulated_changes.spawns.push(entity);
             self.dirty_nodes.insert(position.node);
         }
-      
+
         for (entity, block_update) in pending_block_updates {
             let id = *self.world.get::<&EntityId>(entity).unwrap();
             self.attempt_block_update(id, block_update);
