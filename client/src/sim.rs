@@ -9,6 +9,7 @@ use crate::{
     prediction::PredictedMotion, Net,
 };
 use common::{
+    blinker::Blinker,
     character_controller,
     collision_math::Ray,
     graph::{Graph, NodeId},
@@ -18,7 +19,6 @@ use common::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
     },
     sanitize_motion_input,
-    ticker::Blinker,
     world::Material,
     EntityId, GraphEntities, SimConfig, Step,
 };

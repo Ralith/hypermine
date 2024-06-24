@@ -13,6 +13,7 @@ use save::ComponentType;
 use tracing::{error, error_span, info, trace};
 
 use common::{
+    blinker::Blinker,
     character_controller, dodeca,
     graph::{Graph, NodeId},
     math,
@@ -21,7 +22,6 @@ use common::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
     },
-    ticker::Blinker,
     traversal::{ensure_nearby, nearby_nodes},
     worldgen::ChunkParams,
     EntityId, SimConfig, Step,
@@ -31,8 +31,8 @@ use crate::postcard_helpers::{self, SaveEntity};
 
 pub struct Sim {
     cfg: Arc<SimConfig>,
-    step: Step,
     rng: SmallRng,
+    step: Step,
     entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
     graph: Graph,
@@ -52,8 +52,8 @@ pub struct Sim {
 impl Sim {
     pub fn new(cfg: Arc<SimConfig>, save: &save::Save) -> Self {
         let mut result = Self {
-            step: 0,
             rng: SmallRng::from_entropy(),
+            step: 0,
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
             graph: Graph::new(cfg.chunk_size),

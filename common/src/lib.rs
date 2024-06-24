@@ -9,6 +9,7 @@ use rand::{
 mod id;
 
 extern crate nalgebra as na;
+pub mod blinker;
 pub mod character_controller;
 pub mod chunk_collision;
 mod chunk_ray_casting;
@@ -29,7 +30,6 @@ mod plane;
 pub mod proto;
 mod sim_config;
 pub mod terraingen;
-pub mod ticker;
 pub mod traversal;
 pub mod voxel_math;
 pub mod world;
