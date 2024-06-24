@@ -445,7 +445,7 @@ impl Sim {
         (spawns, delta)
     }
 
-    pub fn new_id(&mut self) -> EntityId {
+    fn new_id(&mut self) -> EntityId {
         loop {
             let id = self.rng.gen();
             if !self.entity_ids.contains_key(&id) {
