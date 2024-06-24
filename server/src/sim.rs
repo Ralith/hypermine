@@ -13,14 +13,13 @@ use save::ComponentType;
 use tracing::{error, error_span, info, trace};
 
 use common::{
-    blinker::Blinker,
     character_controller, dodeca,
     graph::{Graph, NodeId},
     math,
     node::{populate_fresh_nodes, Chunk},
     proto::{
-        Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
-        Position, Spawns, StateDelta,
+        Blinker, Character, CharacterInput, CharacterState, ClientHello, Command, Component,
+        FreshNode, Position, Spawns, StateDelta,
     },
     traversal::{ensure_nearby, nearby_nodes},
     worldgen::ChunkParams,
@@ -347,7 +346,7 @@ impl Sim {
         {
             let prev_node = position.node;
             if input.debug_spawn_blinker {
-                let blinker: Blinker = Blinker::new();
+                let blinker: Blinker = Blinker { on: false };
                 pending_blinker_spawns.push((*position, blinker));
             }
             character_controller::run_character_step(

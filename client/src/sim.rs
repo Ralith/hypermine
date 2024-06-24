@@ -9,14 +9,14 @@ use crate::{
     prediction::PredictedMotion, Net,
 };
 use common::{
-    blinker::Blinker,
     character_controller,
     collision_math::Ray,
     graph::{Graph, NodeId},
     graph_ray_casting,
     node::{populate_fresh_nodes, ChunkId, VoxelData},
     proto::{
-        self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
+        self, Blinker, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
+        Position,
     },
     sanitize_motion_input,
     world::Material,

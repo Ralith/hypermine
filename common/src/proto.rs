@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    blinker::Blinker, dodeca, graph::NodeId, node::ChunkId, voxel_math::Coords, world::Material,
-    EntityId, SimConfig, Step,
+    dodeca, graph::NodeId, node::ChunkId, voxel_math::Coords, world::Material, EntityId, SimConfig,
+    Step,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -106,4 +106,9 @@ pub struct FreshNode {
 pub struct Character {
     pub name: String,
     pub state: CharacterState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Blinker {
+    pub on: bool,
 }
