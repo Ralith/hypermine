@@ -295,7 +295,7 @@ impl Sim {
             None => debug!(%id, "blinker state update for unknown entity"),
             Some(&entity) => match self.world.get::<&mut Blinker>(entity) {
                 Ok(mut blinker) => {
-                    blinker.on = new_blinker.on;
+                    *blinker = new_blinker.clone();
                 }
                 Err(e) => {
                     error!(%id, "blinker state update error: {}", e)
