@@ -18,6 +18,7 @@ use common::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
     },
     sanitize_motion_input,
+    ticker::Blinker,
     world::Material,
     EntityId, GraphEntities, SimConfig, Step,
 };
@@ -251,6 +252,9 @@ impl Sim {
                 for &(id, ref new_state) in &msg.character_states {
                     self.update_character_state(id, new_state);
                 }
+                for &(id, ref new_blinker) in &msg.blinker_states {
+                    self.update_blinker_state(id, new_blinker);
+                }
                 self.reconcile_prediction(msg.latest_input);
             }
         }
@@ -281,6 +285,20 @@ impl Sim {
                 }
                 Err(e) => {
                     error!(%id, "character state update error: {}", e)
+                }
+            },
+        }
+    }
+
+    fn update_blinker_state(&mut self, id: EntityId, new_blinker: &Blinker) {
+        match self.entity_ids.get(&id) {
+            None => debug!(%id, "blinker state update for unknown entity"),
+            Some(&entity) => match self.world.get::<&mut Blinker>(entity) {
+                Ok(mut blinker) => {
+                    blinker.on = new_blinker.on;
+                }
+                Err(e) => {
+                    error!(%id, "blinker state update error: {}", e)
                 }
             },
         }

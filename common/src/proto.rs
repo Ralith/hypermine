@@ -38,6 +38,7 @@ pub struct StateDelta {
     pub latest_input: u16,
     pub positions: Vec<(EntityId, Position)>,
     pub character_states: Vec<(EntityId, CharacterState)>,
+    pub blinker_states: Vec<(EntityId, Blinker)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

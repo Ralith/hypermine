@@ -433,6 +433,12 @@ impl Sim {
                 .iter()
                 .map(|(_, (&id, ch))| (id, ch.state.clone()))
                 .collect(),
+            blinker_states: self
+                .world
+                .query::<(&EntityId, &Blinker)>()
+                .iter()
+                .map(|(_, (&id, blinker))| (id, blinker.clone()))
+                .collect(),
         };
 
         self.step += 1;
@@ -456,6 +462,9 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     }
     if let Ok(x) = world.get::<&Character>(entity) {
         components.push(Component::Character((*x).clone()));
+    }
+    if let Ok(x) = world.get::<&Blinker>(entity) {
+        components.push(Component::Blinker((*x).clone()));
     }
     components
 }
