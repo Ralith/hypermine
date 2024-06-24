@@ -16,7 +16,7 @@ use common::{
     node::{populate_fresh_nodes, ChunkId, VoxelData},
     proto::{
         self, Blinker, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
-        Position,
+        Inventory, Position,
     },
     sanitize_motion_input,
     world::Material,
@@ -171,6 +171,48 @@ impl Sim {
 
     pub fn selected_material(&self) -> Material {
         self.selected_material
+    }
+
+    /// Returns an EntityId in the inventory with the given material
+    pub fn get_any_inventory_entity_matching_material(
+        &self,
+        material: Material,
+    ) -> Option<EntityId> {
+        self.world
+            .get::<&Inventory>(self.local_character?)
+            .ok()?
+            .contents
+            .iter()
+            .copied()
+            .find(|e| {
+                self.entity_ids.get(e).is_some_and(|&entity| {
+                    self.world
+                        .get::<&Material>(entity)
+                        .is_ok_and(|m| *m == material)
+                })
+            })
+    }
+
+    /// Returns the number of entities in the inventory with the given material
+    pub fn count_inventory_entities_matching_material(&self, material: Material) -> usize {
+        let Some(local_character) = self.local_character else {
+            return 0;
+        };
+        let Ok(inventory) = self.world.get::<&Inventory>(local_character) else {
+            return 0;
+        };
+        inventory
+            .contents
+            .iter()
+            .copied()
+            .filter(|e| {
+                self.entity_ids.get(e).is_some_and(|&entity| {
+                    self.world
+                        .get::<&Material>(entity)
+                        .is_ok_and(|m| *m == material)
+                })
+            })
+            .count()
     }
 
     pub fn set_break_block_pressed_true(&mut self) {
@@ -371,6 +413,20 @@ impl Sim {
             };
             self.graph.populate_chunk(chunk_id, voxel_data);
         }
+        for (subject, new_entity) in msg.inventory_additions {
+            self.world
+                .get::<&mut Inventory>(*self.entity_ids.get(&subject).unwrap())
+                .unwrap()
+                .contents
+                .push(new_entity);
+        }
+        for (subject, removed_entity) in msg.inventory_removals {
+            self.world
+                .get::<&mut Inventory>(*self.entity_ids.get(&subject).unwrap())
+                .unwrap()
+                .contents
+                .retain(|&id| id != removed_entity);
+        }
     }
 
     fn spawn(
@@ -393,6 +449,12 @@ impl Sim {
                     builder.add(x);
                 }
                 Blinker(x) => {
+                    builder.add(x);
+                }
+                Inventory(x) => {
+                    builder.add(x);
+                }
+                Material(x) => {
                     builder.add(x);
                 }
             };
@@ -546,10 +608,17 @@ impl Sim {
             Material::Void
         };
 
+        let consumed_entity = if placing && self.cfg.gameplay_enabled {
+            Some(self.get_any_inventory_entity_matching_material(material)?)
+        } else {
+            None
+        };
+
         Some(BlockUpdate {
             chunk_id: block_pos.0,
             coords: block_pos.1,
             new_material: material,
+            consumed_entity,
         })
     }
 }
