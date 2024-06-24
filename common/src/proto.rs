@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dodeca, graph::NodeId, node::ChunkId, ticker::TickerEntity, voxel_math::Coords,
+    dodeca, graph::NodeId, node::ChunkId, ticker::Blinker, voxel_math::Coords,
     world::Material, EntityId, SimConfig, Step,
 };
 
@@ -91,7 +91,7 @@ pub struct SerializedVoxelData {
 pub enum Component {
     Character(Character),
     Position(Position),
-    TickerEntity(TickerEntity),
+    Blinker(Blinker),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

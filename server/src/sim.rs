@@ -21,7 +21,7 @@ use common::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
     },
-    ticker::{Ticker, TickerEntity},
+    ticker::Blinker,
     traversal::{ensure_nearby, nearby_nodes},
     worldgen::ChunkParams,
     EntityId, SimConfig, Step,
@@ -32,14 +32,13 @@ use crate::postcard_helpers::{self, SaveEntity};
 pub struct Sim {
     cfg: Arc<SimConfig>,
     step: Step,
-    pub rng: SmallRng,
-    pub entity_ids: FxHashMap<EntityId, Entity>,
+    rng: SmallRng,
+    entity_ids: FxHashMap<EntityId, Entity>,
     world: hecs::World,
     graph: Graph,
     /// Voxel data that has been fetched from a savefile but not yet introduced to the graph
     preloaded_voxel_data: FxHashMap<ChunkId, VoxelData>,
     spawns: Vec<Entity>,
-    pending_ticker_spawns: Vec<(Position, TickerEntity)>,
     despawns: Vec<EntityId>,
     graph_entities: GraphEntities,
     /// All nodes that have entity-related information yet to be saved
@@ -60,7 +59,6 @@ impl Sim {
             graph: Graph::new(cfg.chunk_size),
             preloaded_voxel_data: FxHashMap::default(),
             spawns: Vec::new(),
-            pending_ticker_spawns: Vec::new(),
             despawns: Vec::new(),
             graph_entities: GraphEntities::new(),
             dirty_nodes: FxHashSet::default(),
@@ -276,8 +274,14 @@ impl Sim {
         let span = error_span!("step", step = self.step);
         let _guard = span.enter();
 
-        for (_entity, ticker_entity) in self.world.query::<&mut TickerEntity>().iter() {
-            ticker_entity.ticker.tick(self.step);
+        for (_entity, blinker) in self.world.query::<&mut Blinker>().iter() {
+            blinker.on = !blinker.on;
+
+            if blinker.on {
+                tracing::info!("Blinked ON");
+            } else {
+                tracing::info!("Blinked OFF");
+            }
         }
 
         let mut pending_block_updates: Vec<BlockUpdate> = vec![];
@@ -333,6 +337,8 @@ impl Sim {
             }
         }
 
+        let mut pending_blinker_spawns: Vec<(Position, Blinker)> = Vec::new();
+
         // Simulate
         for (entity, (position, character, input)) in self
             .world
@@ -341,11 +347,8 @@ impl Sim {
         {
             let prev_node = position.node;
             if input.debug_spawn_blinker {
-                let ticker: TickerEntity = TickerEntity {
-                    last_ticked: 0,
-                    ticker: Ticker::new(),
-                };
-                self.pending_ticker_spawns.push((*position, ticker));
+                let blinker: Blinker = Blinker::new();
+                pending_blinker_spawns.push((*position, blinker));
             }
             character_controller::run_character_step(
                 &self.cfg,
@@ -365,8 +368,7 @@ impl Sim {
             self.dirty_nodes.insert(position.node);
         }
 
-        let pending_ticker_spawns = std::mem::take(&mut self.pending_ticker_spawns);
-        for (position, ticker) in pending_ticker_spawns {
+        for (position, ticker) in pending_blinker_spawns {
             let id = self.new_id();
             let entity = self.world.spawn((id, position, ticker));
             self.graph_entities.insert(position.node, entity);

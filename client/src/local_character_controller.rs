@@ -3,7 +3,7 @@ use common::{math, proto::Position};
 pub struct LocalCharacterController {
     /// The last extrapolated inter-frame view position, used for rendering and gravity-specific
     /// orientation computations
-    pub position: Position,
+    position: Position,
 
     /// The up vector relative to position, ignoring orientation
     up: na::UnitVector3<f32>,

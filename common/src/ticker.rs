@@ -1,35 +1,18 @@
-use crate::Step;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TickerEntity {
-    pub last_ticked: Step,
-    pub ticker: Ticker,
+pub struct Blinker {
+    pub on: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Ticker {
-    on: bool,
-}
-
-impl Ticker {
+impl Blinker {
     pub fn new() -> Self {
         Self { on: false }
     }
-    pub fn tick(&mut self, _step: Step) {
-        self.on = !self.on;
-
-        // Just for testing
-        if self.on {
-            println!("Ticked ON!");
-        } else {
-            println!("Ticked OFF!");
-        }
-    }
 }
 
-impl Default for Ticker {
+impl Default for Blinker {
     fn default() -> Self {
-        Ticker::new()
+        Blinker::new()
     }
 }

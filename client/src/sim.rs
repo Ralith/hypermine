@@ -374,7 +374,7 @@ impl Sim {
                     node = Some(x.node);
                     builder.add(x);
                 }
-                TickerEntity(x) => {
+                Blinker(x) => {
                     builder.add(x);
                 }
             };
