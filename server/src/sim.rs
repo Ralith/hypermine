@@ -368,9 +368,9 @@ impl Sim {
             self.dirty_nodes.insert(position.node);
         }
 
-        for (position, ticker) in pending_blinker_spawns {
+        for (position, blinker) in pending_blinker_spawns {
             let id = self.new_id();
-            let entity = self.world.spawn((id, position, ticker));
+            let entity = self.world.spawn((id, position, blinker));
             self.graph_entities.insert(position.node, entity);
             self.entity_ids.insert(id, entity);
             self.spawns.push(entity);
