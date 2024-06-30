@@ -159,62 +159,42 @@ impl Graph {
     /// Ensures that the neighbour node at a particular side of a particular node exists in the graph,
     /// as well as the nodes from the origin to the neighbour node.
     pub fn ensure_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
-        let v = &self.nodes[&node];
-        if let Some(x) = v.neighbors[side as usize] {
-            // Neighbor already exists
-            return x;
-        }
-
-        let neighbor_is_further = |parent_side| {
-            (side != parent_side && !side.adjacent_to(parent_side))
-                || !self.is_near_side(v.parent().unwrap(), side)
-        };
-
-        // Create a new neighbor
-        if v.parent_side.map_or(true, neighbor_is_further) {
-            // New neighbor will be further from the origin
-            return self.insert_child(node, side);
-        }
-
-        // Neighbor is closer to the origin; find it, backfilling if necessary
-        let x = self.nodes[&v.parent().unwrap()].neighbors[side as usize].unwrap();
-        let parent_side = v.parent_side.unwrap();
-        let neighbor = self.ensure_neighbor(x, parent_side);
-        self.link_neighbors(node, neighbor, side);
-        neighbor
+        self.nodes[&node].neighbors[side as usize]
+            .unwrap_or_else(|| self.insert_neighbor(node, side))
     }
 
     /// Whether `node`'s neighbor along `side` is closer than it to the origin
-    fn is_near_side(&self, node: NodeId, side: Side) -> bool {
+    fn is_descender(&self, node: NodeId, side: Side) -> bool {
         let v = &self.nodes[&node];
         v.neighbors[side as usize].map_or(false, |x| self.nodes[&x].length < v.length)
     }
 
-    pub fn insert_child(&mut self, parent: NodeId, side: Side) -> NodeId {
-        // Always create shorter nodes first so that self.nodes always puts parent nodes before their child nodes, enabling
-        // graceful synchronization of the graph
-        let shorter_neighbors = self.populate_shorter_neighbors_of_child(parent, side);
+    /// Inserts the neighbor of the given node at the given side into the graph, ensuring that all
+    /// shorter nodes it depends on are created first.
+    pub fn insert_neighbor(&mut self, node: NodeId, side: Side) -> NodeId {
+        // To help improve readability, we use the term "subject" to refer to the not-yet-created neighbor node, since the term.
+        // "neighbor" is already used in many other places.
 
-        // Select the side along the canonical path from the origin to this node. Future work: make
-        // this the parent to reduce the number of concepts.
-        let (path_side, predecessor) = shorter_neighbors
-            .clone()
-            .chain(Some((side, parent)))
-            .min_by_key(|&(side, _)| side)
-            .unwrap();
+        // An assumption made by this function is that `side` is not a descender of `node`. This is a safe assumption to make
+        // because a node cannot be constructed before its shorter neighbors. The call to `populate_shorter_neighbors_of_neighbor`
+        // guarantees this.
+        let shorter_neighbors_of_subject = self.populate_shorter_neighbors_of_subject(node, side);
+
+        // Select the side along the canonical path from the origin to this node. This is guaranteed
+        // to be the first entry of the `shorter_neighbors_of_subject` iterator.
+        let (parent_side, parent) = shorter_neighbors_of_subject.clone().next().unwrap();
         let mut hasher = Hasher::new();
-        hasher.update(&predecessor.0.to_le_bytes());
-        hasher.update(&[path_side as u8]);
+        hasher.update(&parent.0.to_le_bytes());
+        hasher.update(&[parent_side as u8]);
         let mut xof = hasher.finalize_xof();
         let mut hash = [0; 16];
         xof.fill(&mut hash);
         let id = NodeId(u128::from_le_bytes(hash));
 
-        let length = self.nodes[&parent].length + 1;
+        let length = self.nodes[&node].length + 1;
         self.nodes
-            .insert(id, NodeContainer::new(Some(side), length));
-        self.link_neighbors(id, parent, side);
-        for (side, neighbor) in shorter_neighbors {
+            .insert(id, NodeContainer::new(Some(parent_side), length));
+        for (side, neighbor) in shorter_neighbors_of_subject {
             self.link_neighbors(id, neighbor, side);
         }
         self.fresh.push(id);
@@ -231,27 +211,47 @@ impl Graph {
         NodeId(hash)
     }
 
-    /// Ensure all shorter neighbors of a not-yet-created child node exist and return them, excluding the given parent node
-    fn populate_shorter_neighbors_of_child(
+    /// Ensure all shorter neighbors of a not-yet-created neighbor node (which we call the "subject") exist, and return them
+    /// (including the given node) in the form of ordered pairs containing the side they share with this not-yet-created
+    /// neighbor node, and their node ID. These ordered pairs will be sorted by side, based on enum order.
+    fn populate_shorter_neighbors_of_subject(
         &mut self,
-        parent: NodeId,
-        parent_side: Side,
+        node: NodeId,
+        side: Side,
     ) -> impl Iterator<Item = (Side, NodeId)> + Clone {
-        let mut neighbors = [None; 2]; // Maximum number of shorter neighbors other than the given parent is 2
+        let mut shorter_neighbors_of_subject = [None; 3]; // Maximum number of shorter neighbors is 3
         let mut count = 0;
-        for neighbor_side in Side::iter() {
-            if neighbor_side == parent_side
-                || !neighbor_side.adjacent_to(parent_side)
-                || !self.is_near_side(parent, neighbor_side)
+        for candidate_descender in Side::iter() {
+            if candidate_descender == side {
+                // The given node is included in the list of returned nodes.
+                shorter_neighbors_of_subject[count] = Some((side, node));
+                count += 1;
+            } else if candidate_descender.adjacent_to(side)
+                && self.is_descender(node, candidate_descender)
             {
-                continue;
+                // This branch covers shorter neighbors of the subject other than the given node.
+                // This is non-obvious, as it relies on the fact that a side is a descender of the subject
+                // exactly when it is a descender of the given node. This is not true in general, but it is true
+                // when the descender in question is adjacent to the side shared by the given node and the subject.
+                // That is what allows the `self.is_near_side(node, candidate_descender_side)` condition to behave as desired.
+
+                // We would like to return (and recursively create if needed) the shorter neighbor of the subject. This means that
+                // if we label the shared side A and the descender B, the path we would like to follow from the given node is AB,
+                // since A will take us to the subject, and then B will take us to its shorter neighbor. However, taking
+                // the path AB is impossible because it would require the subject to already be in the graph. Fortuantely,
+                // we can take the path BA instead because that will reach the same node, thanks to the fact that each edge
+                // is shared by 4 dodecas.
+                let shorter_neighbor_of_node = self.neighbor(node, candidate_descender).unwrap();
+                let shorter_neighbor_of_subject =
+                    self.ensure_neighbor(shorter_neighbor_of_node, side);
+                shorter_neighbors_of_subject[count] =
+                    Some((candidate_descender, shorter_neighbor_of_subject));
+                count += 1;
+            } else {
+                // The `candidate_descender_side` is not a descender of the subject, so no action is necessary.
             }
-            let x = self.nodes[&parent].neighbors[neighbor_side as usize].unwrap();
-            let neighbor = self.ensure_neighbor(x, parent_side);
-            neighbors[count] = Some((neighbor_side, neighbor));
-            count += 1;
         }
-        (0..2).filter_map(move |i| neighbors[i])
+        shorter_neighbors_of_subject.into_iter().flatten()
     }
 
     /// Register `a` and `b` as adjacent along `side`
@@ -288,10 +288,6 @@ impl NodeContainer {
             length,
             neighbors: [None; SIDE_COUNT],
         }
-    }
-
-    fn parent(&self) -> Option<NodeId> {
-        Some(self.neighbors[self.parent_side? as usize].expect("parent edge unpopulated"))
     }
 }
 
@@ -350,7 +346,7 @@ mod tests {
     use approx::*;
 
     #[test]
-    fn parent_child_relationships() {
+    fn shorter_longer_neighbor_relationships() {
         let mut graph = Graph::new(1);
         assert_eq!(graph.len(), 1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
@@ -370,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn children_have_common_neighbor() {
+    fn longer_nodes_have_common_neighbor() {
         let mut graph = Graph::new(1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         let b = graph.ensure_neighbor(NodeId::ROOT, Side::B);
@@ -418,7 +414,7 @@ mod tests {
         ensure_nearby(&mut a, &Position::origin(), 3.0);
         let mut b = Graph::new(1);
         for (side, parent) in a.tree() {
-            b.insert_child(parent, side);
+            b.insert_neighbor(parent, side);
         }
         assert_eq!(a.len(), b.len());
         for (c, d) in a.tree().zip(b.tree()) {

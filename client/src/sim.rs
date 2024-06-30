@@ -372,7 +372,7 @@ impl Sim {
             metrics::declare_ready_for_profiling();
         }
         for node in &msg.nodes {
-            self.graph.insert_child(node.parent, node.side);
+            self.graph.insert_neighbor(node.parent, node.side);
         }
         populate_fresh_nodes(&mut self.graph);
         for block_update in msg.block_updates.into_iter() {
