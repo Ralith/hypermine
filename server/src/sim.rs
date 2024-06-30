@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use common::dodeca::Vertex;
+use common::dodeca::{Side, Vertex};
 use common::node::VoxelData;
 use common::proto::{BlockUpdate, Inventory, SerializedVoxelData};
 use common::world::Material;
@@ -69,6 +69,9 @@ impl Sim {
             .load_all_voxels(save)
             .expect("save file must be of a valid format");
         result
+            .load_all_entities(save)
+            .expect("save file must be of a valid format");
+        result
     }
 
     pub fn save(&mut self, save: &mut save::Save) -> Result<(), save::DbError> {
@@ -106,6 +109,105 @@ impl Sim {
 
         drop(writer);
         tx.commit()?;
+        Ok(())
+    }
+
+    fn load_all_entities(&mut self, save: &save::Save) -> anyhow::Result<()> {
+        let mut read = save.read()?;
+        for node_hash in read.get_all_entity_node_ids()? {
+            let Some(entity_node) = read.get_entity_node(node_hash)? else {
+                continue;
+            };
+            let node_id = self.graph.from_hash(node_hash);
+            for entity_bytes in entity_node.entities {
+                let save_entity: SaveEntity = postcard::from_bytes(&entity_bytes)?;
+                self.load_entity(&mut read, node_id, save_entity)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn load_entity(
+        &mut self,
+        read: &mut save::Reader,
+        node: NodeId,
+        save_entity: SaveEntity,
+    ) -> anyhow::Result<()> {
+        let entity_id = EntityId::from_bits(u64::from_le_bytes(save_entity.entity));
+        let mut entity_builder = EntityBuilder::new();
+        entity_builder.add(entity_id);
+        for (component_type, component_bytes) in save_entity.components {
+            self.load_component(
+                read,
+                &mut entity_builder,
+                node,
+                ComponentType::try_from(component_type as i32).unwrap(),
+                component_bytes,
+            )?;
+        }
+        let entity = self.world.spawn(entity_builder.build());
+        self.graph_entities.insert(node, entity);
+        self.entity_ids.insert(entity_id, entity);
+        Ok(())
+    }
+
+    fn load_component(
+        &mut self,
+        read: &mut save::Reader,
+        entity_builder: &mut EntityBuilder,
+        node: NodeId,
+        component_type: ComponentType,
+        component_bytes: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        match component_type {
+            ComponentType::Position => {
+                let column_slice: [f32; 16] = postcard::from_bytes(&component_bytes)?;
+                entity_builder.add(Position {
+                    node,
+                    local: na::Matrix4::from_column_slice(&column_slice),
+                });
+            }
+            ComponentType::Name => {
+                let name = String::from_utf8(component_bytes)?;
+                // Ensure that every node occupied by a character is generated.
+                if let Some(character) = read.get_character(&name)? {
+                    let mut current_node = NodeId::ROOT;
+                    for side in character
+                        .path
+                        .into_iter()
+                        .map(|side| Side::from_index(side as usize))
+                    {
+                        current_node = self.graph.ensure_neighbor(current_node, side);
+                    }
+                    if current_node != node {
+                        // Skip loading named entities that are in the wrong place. This can happen
+                        // when there are multiple entities with the same name, which has been possible
+                        // in the past.
+                        return Ok(());
+                    }
+                } else {
+                    // Skip loading named entities that lack path information.
+                    return Ok(());
+                }
+                // Prepare all relevant components that are needed to support ComponentType::Name
+                entity_builder.add(Character {
+                    name,
+                    state: CharacterState {
+                        active: false,
+                        velocity: na::Vector3::zeros(),
+                        on_ground: false,
+                        orientation: na::UnitQuaternion::identity(),
+                    },
+                });
+                entity_builder.add(CharacterInput {
+                    movement: na::Vector3::zeros(),
+                    jump: false,
+                    no_clip: false,
+                    block_update: None,
+                });
+                entity_builder.add(Inventory { contents: vec![] });
+            }
+        }
         Ok(())
     }
 
@@ -185,7 +287,15 @@ impl Sim {
         save::VoxelNode { chunks }
     }
 
-    pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
+    pub fn activate_or_spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
+        for (entity, (entity_id, character)) in
+            self.world.query::<(&EntityId, &mut Character)>().iter()
+        {
+            if character.name == hello.name {
+                character.state.active = true;
+                return (*entity_id, entity);
+            }
+        }
         let position = Position {
             node: NodeId::ROOT,
             local: math::translate_along(&(na::Vector3::y() * 1.4)),
@@ -193,6 +303,7 @@ impl Sim {
         let character = Character {
             name: hello.name,
             state: CharacterState {
+                active: true,
                 orientation: na::one(),
                 velocity: na::Vector3::zeros(),
                 on_ground: false,
@@ -206,6 +317,12 @@ impl Sim {
             block_update: None,
         };
         self.spawn((position, character, inventory, initial_input))
+    }
+
+    pub fn deactivate_character(&mut self, entity: Entity) {
+        if let Ok(mut character) = self.world.get::<&mut Character>(entity) {
+            character.state.active = false;
+        }
     }
 
     fn spawn(&mut self, bundle: impl DynamicBundle) -> (EntityId, Entity) {
@@ -290,7 +407,12 @@ impl Sim {
         let _guard = span.enter();
 
         // Extend graph structure
-        for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
+        for (_, (position, character)) in
+            self.world.query::<(&mut Position, &mut Character)>().iter()
+        {
+            if !character.state.active {
+                continue;
+            }
             ensure_nearby(&mut self.graph, position, self.cfg.view_distance);
         }
 
@@ -321,7 +443,10 @@ impl Sim {
 
         // Load all chunks around entities corresponding to clients, which correspond to entities
         // with a "Character" component.
-        for (_, (position, _)) in self.world.query::<(&Position, &Character)>().iter() {
+        for (_, (position, character)) in self.world.query::<(&Position, &Character)>().iter() {
+            if !character.state.active {
+                continue;
+            }
             let nodes = nearby_nodes(&self.graph, position, chunk_generation_distance);
             for &(node, _) in &nodes {
                 for vertex in dodeca::Vertex::iter() {
@@ -349,6 +474,9 @@ impl Sim {
             .query::<(&mut Position, &mut Character, &CharacterInput)>()
             .iter()
         {
+            if !character.state.active {
+                continue;
+            }
             let prev_node = position.node;
             character_controller::run_character_step(
                 &self.cfg,

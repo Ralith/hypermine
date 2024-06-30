@@ -482,6 +482,9 @@ impl Draw {
                         .expect("positionless entity in graph");
                     if let Some(character_model) = self.loader.get(self.character_model) {
                         if let Ok(ch) = sim.world.get::<&Character>(entity) {
+                            if !ch.state.active {
+                                continue;
+                            }
                             let transform = transform
                                 * pos.local
                                 * na::Matrix4::new_scaling(sim.cfg().meters_to_absolute)

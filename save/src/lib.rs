@@ -138,6 +138,16 @@ impl Reader {
             .map(|n| Ok(n.map_err(GetError::from)?.0.value()))
             .collect()
     }
+
+    /// Temporary function to load all entity-related save data at once.
+    /// TODO: Replace this implementation with a streaming implementation
+    /// that does not require loading everything at once
+    pub fn get_all_entity_node_ids(&self) -> Result<Vec<u128>, GetError> {
+        self.entity_nodes
+            .iter()?
+            .map(|n| Ok(n.map_err(GetError::from)?.0.value()))
+            .collect()
+    }
 }
 
 fn decompress(
