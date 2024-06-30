@@ -66,7 +66,7 @@ pub struct Command {
     pub orientation: na::UnitQuaternion<f32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CharacterInput {
     /// Relative to the character's current position, excluding orientation
     pub movement: na::Vector3<f32>,
@@ -113,4 +113,13 @@ pub struct Character {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Inventory {
     pub contents: Vec<EntityId>,
+}
+
+pub mod connection_error_codes {
+    use quinn::VarInt;
+
+    pub const CONNECTION_LOST: VarInt = VarInt::from_u32(0);
+    pub const STREAM_ERROR: VarInt = VarInt::from_u32(1);
+    pub const BAD_CLIENT_COMMAND: VarInt = VarInt::from_u32(2);
+    pub const NAME_CONFLICT: VarInt = VarInt::from_u32(3);
 }

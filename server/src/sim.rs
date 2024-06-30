@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use common::dodeca::Vertex;
+use common::dodeca::{Side, Vertex};
+use common::math::MIsometry;
 use common::node::VoxelData;
 use common::proto::{BlockUpdate, Inventory, SerializedVoxelData};
 use common::world::Material;
@@ -11,6 +12,7 @@ use hecs::{DynamicBundle, Entity, EntityBuilder};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use save::ComponentType;
+use serde::{Deserialize, Serialize};
 use tracing::{error, error_span, info, trace};
 
 use common::{
@@ -69,6 +71,9 @@ impl Sim {
             .load_all_voxels(save)
             .expect("save file must be of a valid format");
         result
+            .load_all_entities(save)
+            .expect("save file must be of a valid format");
+        result
     }
 
     pub fn save(&mut self, save: &mut save::Save) -> Result<(), save::DbError> {
@@ -106,6 +111,99 @@ impl Sim {
 
         drop(writer);
         tx.commit()?;
+        Ok(())
+    }
+
+    fn load_all_entities(&mut self, save: &save::Save) -> anyhow::Result<()> {
+        let mut read = save.read()?;
+        for node_hash in read.get_all_entity_node_ids()? {
+            let Some(entity_node) = read.get_entity_node(node_hash)? else {
+                continue;
+            };
+            let node_id = self.graph.from_hash(node_hash);
+            for entity_bytes in entity_node.entities {
+                let save_entity: SaveEntity = postcard::from_bytes(&entity_bytes)?;
+                self.load_entity(&mut read, node_id, save_entity)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn load_entity(
+        &mut self,
+        read: &mut save::Reader,
+        node: NodeId,
+        save_entity: SaveEntity,
+    ) -> anyhow::Result<()> {
+        let entity_id = EntityId::from_bits(u64::from_le_bytes(save_entity.entity));
+        let mut entity_builder = EntityBuilder::new();
+        entity_builder.add(entity_id);
+        for (component_type, component_bytes) in save_entity.components {
+            self.load_component(
+                read,
+                &mut entity_builder,
+                node,
+                ComponentType::try_from(component_type as i32).unwrap(),
+                component_bytes,
+            )?;
+        }
+        let entity = self.world.spawn(entity_builder.build());
+        self.graph_entities.insert(node, entity);
+        self.entity_ids.insert(entity_id, entity);
+        Ok(())
+    }
+
+    fn load_component(
+        &mut self,
+        read: &mut save::Reader,
+        entity_builder: &mut EntityBuilder,
+        node: NodeId,
+        component_type: ComponentType,
+        component_bytes: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        match component_type {
+            ComponentType::Position => {
+                let column_slice: [f32; 16] = postcard::from_bytes(&component_bytes)?;
+                entity_builder.add(Position {
+                    node,
+                    local: MIsometry::from_column_slice_unchecked(&column_slice),
+                });
+            }
+            ComponentType::Name => {
+                let name = String::from_utf8(component_bytes)?;
+                // Ensure that every node occupied by a character is generated.
+                let Some(character) = read.get_character(&name)? else {
+                    // Skip loading named entities that lack path information.
+                    error!("Entity {} will not be loaded because their node path information is missing.", name);
+                    return Ok(());
+                };
+                let mut current_node = NodeId::ROOT;
+                for side in character
+                    .path
+                    .into_iter()
+                    .map(|side| Side::from_index(side as usize))
+                {
+                    current_node = self.graph.ensure_neighbor(current_node, side);
+                }
+                if current_node != node {
+                    // Skip loading named entities that are in the wrong place. This can happen
+                    // when there are multiple entities with the same name, which has been possible
+                    // in previous versions of Hypermine.
+                    error!("Entity {} will not be loaded because their node path information is incorrect.", name);
+                    return Ok(());
+                }
+                // Prepare all relevant components that are needed to support ComponentType::Name
+                entity_builder.add(InactiveCharacter(Character {
+                    name,
+                    state: CharacterState {
+                        velocity: na::Vector3::zeros(),
+                        on_ground: false,
+                        orientation: na::UnitQuaternion::identity(),
+                    },
+                }));
+                entity_builder.add(Inventory { contents: vec![] });
+            }
+        }
         Ok(())
     }
 
@@ -149,7 +247,11 @@ impl Sim {
                     postcard::to_stdvec(&pos.local.as_ref()).unwrap(),
                 ));
             }
-            if let Some(ch) = entity.get::<&Character>() {
+            if let Some(ch) = entity.get::<&Character>().or_else(|| {
+                entity
+                    .get::<&InactiveCharacter>()
+                    .map(|ich| hecs::Ref::map(ich, |ich| &ich.0)) // Extract Ref<Character> from Ref<InactiveCharacter>
+            }) {
                 components.push((ComponentType::Name as u64, ch.name.as_bytes().into()));
             }
             let mut repr = Vec::new();
@@ -185,13 +287,46 @@ impl Sim {
         save::VoxelNode { chunks }
     }
 
-    pub fn spawn_character(&mut self, hello: ClientHello) -> (EntityId, Entity) {
+    /// Activates or spawns a character with a given name, or returns None if there is already an active
+    /// character with that name
+    pub fn activate_or_spawn_character(
+        &mut self,
+        hello: &ClientHello,
+    ) -> Option<(EntityId, Entity)> {
+        // Check for conflicting characters
+        if self
+            .world
+            .query::<&Character>()
+            .iter()
+            .any(|(_, character)| character.name == hello.name)
+        {
+            return None;
+        }
+
+        // Check for matching characters
+        let matching_character = self
+            .world
+            .query::<(&EntityId, &InactiveCharacter)>()
+            .iter()
+            .find(|(_, (_, inactive_character))| inactive_character.0.name == hello.name)
+            .map(|(entity, (entity_id, _))| (*entity_id, entity));
+        if let Some((entity_id, entity)) = matching_character {
+            info!(id = %entity_id, name = %hello.name, "activating character");
+            let inactive_character = self.world.remove_one::<InactiveCharacter>(entity).unwrap();
+            self.world
+                .insert(entity, (inactive_character.0, CharacterInput::default()))
+                .unwrap();
+            self.accumulated_changes.spawns.push(entity);
+            return Some((entity_id, entity));
+        }
+
+        // Spawn entirely new character
         let position = Position {
             node: NodeId::ROOT,
             local: math::translate_along(&(na::Vector3::y() * 1.4)),
         };
         let character = Character {
-            name: hello.name,
+            name: hello.name.clone(),
             state: CharacterState {
                 orientation: na::one(),
                 velocity: na::Vector3::zeros(),
@@ -199,13 +334,20 @@ impl Sim {
             },
         };
         let inventory = Inventory { contents: vec![] };
-        let initial_input = CharacterInput {
-            movement: na::Vector3::zeros(),
-            jump: false,
-            no_clip: true,
-            block_update: None,
-        };
-        self.spawn((position, character, inventory, initial_input))
+        let initial_input = CharacterInput::default();
+        Some(self.spawn((position, character, inventory, initial_input)))
+    }
+
+    pub fn deactivate_character(&mut self, entity: Entity) {
+        let entity_id = *self.world.get::<&EntityId>(entity).unwrap();
+        let (character, _) = self
+            .world
+            .remove::<(Character, CharacterInput)>(entity)
+            .unwrap();
+        self.world
+            .insert_one(entity, InactiveCharacter(character))
+            .unwrap();
+        self.accumulated_changes.despawns.push(entity_id);
     }
 
     fn spawn(&mut self, bundle: impl DynamicBundle) -> (EntityId, Entity) {
@@ -225,7 +367,10 @@ impl Sim {
         }
 
         self.entity_ids.insert(id, entity);
-        self.accumulated_changes.spawns.push(entity);
+
+        if !self.world.satisfies::<&InactiveCharacter>(entity).unwrap() {
+            self.accumulated_changes.spawns.push(entity);
+        }
 
         (id, entity)
     }
@@ -249,7 +394,10 @@ impl Sim {
             self.graph_entities.remove(position.node, entity);
         }
         self.world.despawn(entity).unwrap();
-        self.accumulated_changes.despawns.push(id);
+
+        if !self.world.satisfies::<&InactiveCharacter>(entity).unwrap() {
+            self.accumulated_changes.despawns.push(id);
+        }
     }
 
     /// Collect information about all entities, for transmission to new clients
@@ -268,7 +416,10 @@ impl Sim {
             inventory_additions: Vec::new(),
             inventory_removals: Vec::new(),
         };
-        for (entity, &id) in &mut self.world.query::<&EntityId>() {
+        for (entity, &id) in &mut self
+            .world
+            .query::<hecs::Without<&EntityId, &InactiveCharacter>>()
+        {
             spawns.spawns.push((id, dump_entity(&self.world, entity)));
         }
         for &chunk_id in self.modified_chunks.iter() {
@@ -487,7 +638,12 @@ impl Sim {
     }
 }
 
+/// Collect all information about a particular entity for transmission to clients.
 fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
+    assert!(
+        !world.satisfies::<&InactiveCharacter>(entity).unwrap(),
+        "Inactive characters should not be sent to clients"
+    );
     let mut components = Vec::new();
     if let Ok(x) = world.get::<&Position>(entity) {
         components.push(Component::Position(*x));
@@ -503,6 +659,9 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     }
     components
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct InactiveCharacter(pub Character);
 
 /// Stores changes that the server has canonically done but hasn't yet broadcast to clients
 #[derive(Default)]

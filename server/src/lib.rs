@@ -16,7 +16,11 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tracing::{debug, error, error_span, info, trace};
 
-use common::{codec, proto, SimConfig};
+use common::{
+    codec,
+    proto::{self, connection_error_codes},
+    SimConfig,
+};
 use input_queue::InputQueue;
 use save::Save;
 use sim::Sim;
@@ -138,9 +142,10 @@ impl Server {
         }
         for client_id in overran {
             error!("dropping slow client {:?}", client_id.0);
-            self.clients[client_id]
-                .conn
-                .close(1u32.into(), b"client reading too slowly");
+            self.clients[client_id].conn.close(
+                connection_error_codes::STREAM_ERROR,
+                b"client reading too slowly",
+            );
             self.cleanup_client(client_id);
         }
 
@@ -161,7 +166,14 @@ impl Server {
             ClientEvent::Hello(hello) => {
                 assert!(client.handles.is_none());
                 let snapshot = Arc::new(self.sim.snapshot());
-                let (id, entity) = self.sim.spawn_character(hello);
+                let Some((id, entity)) = self.sim.activate_or_spawn_character(&hello) else {
+                    error!("could not spawn {} due to name conflict", hello.name);
+                    client
+                        .conn
+                        .close(connection_error_codes::NAME_CONFLICT, b"name conflict");
+                    self.cleanup_client(client_id);
+                    return;
+                };
                 let (ordered_send, ordered_recv) = mpsc::channel(32);
                 ordered_send.try_send(snapshot).unwrap();
                 let (unordered_send, unordered_recv) = mpsc::channel(32);
@@ -183,7 +195,9 @@ impl Server {
             }
             ClientEvent::Lost(e) => {
                 error!("lost: {:#}", e);
-                client.conn.close(0u32.into(), b"");
+                client
+                    .conn
+                    .close(connection_error_codes::CONNECTION_LOST, b"");
                 self.cleanup_client(client_id);
             }
             ClientEvent::Command(cmd) => {
@@ -199,7 +213,7 @@ impl Server {
 
     fn cleanup_client(&mut self, client: ClientId) {
         if let Some(ref x) = self.clients[client].handles {
-            self.sim.destroy(x.character);
+            self.sim.deactivate_character(x.character);
         }
         self.clients.remove(client);
     }
@@ -249,7 +263,10 @@ async fn drive_recv(
                     // we want to drop the client. We close the connection, which will cause `drive_recv` to
                     // return eventually.
                     tracing::error!("Error when parsing unordered stream from client: {e}");
-                    connection.close(2u32.into(), b"could not process stream");
+                    connection.close(
+                        connection_error_codes::BAD_CLIENT_COMMAND,
+                        b"could not process stream",
+                    );
                 }
                 Ok(msg) => {
                     let _ = send.send((id, ClientEvent::Command(msg))).await;
