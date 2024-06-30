@@ -19,8 +19,8 @@ use common::{
     math,
     node::{populate_fresh_nodes, Chunk},
     proto::{
-        Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
-        Position, Spawns, StateDelta,
+        Blinker, Character, CharacterInput, CharacterState, ClientHello, Command, Component,
+        FreshNode, Position, Spawns, StateDelta,
     },
     traversal::{ensure_nearby, nearby_nodes},
     worldgen::ChunkParams,
@@ -203,6 +203,7 @@ impl Sim {
             movement: na::Vector3::zeros(),
             jump: false,
             no_clip: true,
+            debug_spawn_blinker: false,
             block_update: None,
         };
         self.spawn((position, character, inventory, initial_input))
@@ -289,6 +290,16 @@ impl Sim {
         let span = error_span!("step", step = self.step);
         let _guard = span.enter();
 
+        for (_entity, blinker) in self.world.query::<&mut Blinker>().iter() {
+            blinker.on = !blinker.on;
+
+            if blinker.on {
+                tracing::info!("Blinked ON");
+            } else {
+                tracing::info!("Blinked OFF");
+            }
+        }
+
         // Extend graph structure
         for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
             ensure_nearby(&mut self.graph, position, self.cfg.view_distance);
@@ -341,6 +352,7 @@ impl Sim {
             }
         }
 
+        let mut pending_blinker_spawns: Vec<(Position, Blinker)> = Vec::new();
         let mut pending_block_updates: Vec<(Entity, BlockUpdate)> = vec![];
 
         // Simulate
@@ -350,6 +362,10 @@ impl Sim {
             .iter()
         {
             let prev_node = position.node;
+            if input.debug_spawn_blinker {
+                let blinker: Blinker = Blinker { on: false };
+                pending_blinker_spawns.push((*position, blinker));
+            }
             character_controller::run_character_step(
                 &self.cfg,
                 &self.graph,
@@ -368,6 +384,10 @@ impl Sim {
                 self.graph_entities.insert(position.node, entity);
             }
             self.dirty_nodes.insert(position.node);
+        }
+
+        for (position, blinker) in pending_blinker_spawns {
+            self.spawn((position, blinker));
         }
 
         for (entity, block_update) in pending_block_updates {
@@ -396,6 +416,12 @@ impl Sim {
                 .query::<(&EntityId, &Character)>()
                 .iter()
                 .map(|(_, (&id, ch))| (id, ch.state.clone()))
+                .collect(),
+            blinker_states: self
+                .world
+                .query::<(&EntityId, &Blinker)>()
+                .iter()
+                .map(|(_, (&id, blinker))| (id, blinker.clone()))
                 .collect(),
         };
 
@@ -494,6 +520,9 @@ fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     }
     if let Ok(x) = world.get::<&Character>(entity) {
         components.push(Component::Character((*x).clone()));
+    }
+    if let Ok(x) = world.get::<&Blinker>(entity) {
+        components.push(Component::Blinker((*x).clone()));
     }
     if let Ok(x) = world.get::<&Inventory>(entity) {
         components.push(Component::Inventory((*x).clone()));

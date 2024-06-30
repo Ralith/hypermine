@@ -38,6 +38,7 @@ pub struct StateDelta {
     pub latest_input: u16,
     pub positions: Vec<(EntityId, Position)>,
     pub character_states: Vec<(EntityId, CharacterState)>,
+    pub blinker_states: Vec<(EntityId, Blinker)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +73,7 @@ pub struct CharacterInput {
     pub movement: na::Vector3<f32>,
     pub jump: bool,
     pub no_clip: bool,
+    pub debug_spawn_blinker: bool,
     pub block_update: Option<BlockUpdate>,
 }
 
@@ -93,6 +95,7 @@ pub struct SerializedVoxelData {
 pub enum Component {
     Character(Character),
     Position(Position),
+    Blinker(Blinker),
     Material(Material),
     Inventory(Inventory),
 }
@@ -108,6 +111,11 @@ pub struct FreshNode {
 pub struct Character {
     pub name: String,
     pub state: CharacterState,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Blinker {
+    pub on: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

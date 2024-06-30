@@ -15,7 +15,7 @@ use common::{
     graph_ray_casting,
     node::{populate_fresh_nodes, ChunkId, VoxelData},
     proto::{
-        self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
+        self, Blinker, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
         Inventory, Position,
     },
     sanitize_motion_input,
@@ -64,6 +64,7 @@ pub struct Sim {
     no_clip: bool,
     /// Whether no_clip will be toggled next step
     toggle_no_clip: bool,
+    debug_spawn_blinker: bool,
     /// Whether the current step starts with a jump
     is_jumping: bool,
     /// Whether the jump button has been pressed since the last step
@@ -101,6 +102,7 @@ impl Sim {
             average_movement_input: na::zero(),
             no_clip: true,
             toggle_no_clip: false,
+            debug_spawn_blinker: false,
             is_jumping: false,
             jump_pressed: false,
             jump_held: false,
@@ -143,6 +145,11 @@ impl Sim {
         // there would be a discontinuity when predicting the player's position within a given step,
         // causing an undesirable jolt.
         self.toggle_no_clip = true;
+    }
+
+    pub fn debug_spawn_blinker(&mut self) {
+        // Note: the blinker currently does nothing but update internal state
+        self.debug_spawn_blinker = true;
     }
 
     pub fn set_jump_held(&mut self, jump_held: bool) {
@@ -287,6 +294,9 @@ impl Sim {
                 for &(id, ref new_state) in &msg.character_states {
                     self.update_character_state(id, new_state);
                 }
+                for &(id, ref new_blinker) in &msg.blinker_states {
+                    self.update_blinker_state(id, new_blinker);
+                }
                 self.reconcile_prediction(msg.latest_input);
             }
         }
@@ -317,6 +327,20 @@ impl Sim {
                 }
                 Err(e) => {
                     error!(%id, "character state update error: {}", e)
+                }
+            },
+        }
+    }
+
+    fn update_blinker_state(&mut self, id: EntityId, new_blinker: &Blinker) {
+        match self.entity_ids.get(&id) {
+            None => debug!(%id, "blinker state update for unknown entity"),
+            Some(&entity) => match self.world.get::<&mut Blinker>(entity) {
+                Ok(mut blinker) => {
+                    *blinker = new_blinker.clone();
+                }
+                Err(e) => {
+                    error!(%id, "blinker state update error: {}", e)
                 }
             },
         }
@@ -424,6 +448,9 @@ impl Sim {
                     node = Some(x.node);
                     builder.add(x);
                 }
+                Blinker(x) => {
+                    builder.add(x);
+                }
                 Inventory(x) => {
                     builder.add(x);
                 }
@@ -455,6 +482,7 @@ impl Sim {
             movement: sanitize_motion_input(orientation * self.average_movement_input),
             jump: self.is_jumping,
             no_clip: self.no_clip,
+            debug_spawn_blinker: self.debug_spawn_blinker,
             block_update: self.get_local_character_block_update(),
         };
         let generation = self
@@ -467,6 +495,7 @@ impl Sim {
             character_input,
             orientation: self.local_character_controller.orientation(),
         });
+        self.debug_spawn_blinker = false;
     }
 
     fn update_view_position(&mut self) {
@@ -488,6 +517,7 @@ impl Sim {
                 / (self.since_input_sent.as_secs_f32() / self.cfg.step_interval.as_secs_f32()),
             jump: self.is_jumping,
             no_clip: self.no_clip,
+            debug_spawn_blinker: self.debug_spawn_blinker,
             block_update: None,
         };
         character_controller::run_character_step(
