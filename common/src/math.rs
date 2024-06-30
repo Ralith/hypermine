@@ -117,6 +117,12 @@ impl<N: RealField + Copy> MIsometry<N> {
     pub fn from_columns_unchecked(columns: &[MVector<N>; 4]) -> Self {
         Self(na::Matrix4::from_columns(&(*columns).map(|x| x.0)))
     }
+    /// Creates an `MIsometry` with its elements filled with the components provided by a slice in column-major order.
+    /// It is the caller's responsibility to ensure that the resulting matrix is a valid isometry.
+    #[inline]
+    pub fn from_column_slice_unchecked(data: &[N]) -> Self {
+        Self(na::Matrix4::from_column_slice(data))
+    }
     /// Minkowski transpose. Inverse for hyperbolic isometries
     #[rustfmt::skip]
     pub fn mtranspose(self) -> Self {

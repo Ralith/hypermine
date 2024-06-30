@@ -4,7 +4,10 @@ use anyhow::{anyhow, Error, Result};
 use quinn::rustls;
 use tokio::sync::mpsc;
 
-use common::{codec, proto};
+use common::{
+    codec,
+    proto::{self, connection_error_codes},
+};
 
 use crate::Config;
 
@@ -126,7 +129,10 @@ async fn handle_unordered(incoming: mpsc::UnboundedSender<Message>, connection: 
             match codec::recv_whole::<proto::StateDelta>(2usize.pow(16), stream).await {
                 Err(e) => {
                     tracing::error!("Error when parsing unordered stream from server: {e}");
-                    connection.close(1u32.into(), b"could not process stream");
+                    connection.close(
+                        connection_error_codes::STREAM_ERROR,
+                        b"could not process stream",
+                    );
                 }
                 Ok(msg) => {
                     let _ = incoming.send(Message::StateDelta(msg));
