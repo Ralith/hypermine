@@ -42,6 +42,7 @@ pub struct StateDelta {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterState {
+    pub active: bool,
     pub velocity: na::Vector3<f32>,
     pub on_ground: bool,
     pub orientation: na::UnitQuaternion<f32>,
