@@ -6,6 +6,7 @@ use crate::{
     node::{ChunkId, Coords},
     world::Material,
     EntityId, SimConfig, Step,
+    math,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,14 +23,14 @@ pub struct ServerHello {
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub struct Position {
     pub node: NodeId,
-    pub local: na::Matrix4<f32>,
+    pub local: math::MIsometry<f32>,
 }
 
 impl Position {
     pub fn origin() -> Self {
         Self {
             node: NodeId::ROOT,
-            local: na::Matrix4::identity(),
+            local: math::MIsometry::identity(),
         }
     }
 }

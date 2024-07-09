@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crate::math;
+use crate::math::{MVector,MIsometry};
 
 /// Sides of a right dodecahedron
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -45,21 +46,21 @@ impl Side {
 
     /// Outward normal vector of this side
     #[inline]
-    pub fn normal(self) -> &'static na::Vector4<f64> {
+    pub fn normal(self) -> &'static MVector<f64> {
         &SIDE_NORMALS[self as usize]
     }
 
     /// Reflection across this side
     #[inline]
-    pub fn reflection(self) -> &'static na::Matrix4<f64> {
+    pub fn reflection(self) -> &'static MIsometry<f64> {
         &REFLECTIONS[self as usize]
     }
 
     /// Whether `p` is opposite the dodecahedron across the plane containing `self`
     #[inline]
-    pub fn is_facing<N: na::RealField + Copy>(self, p: &na::Vector4<N>) -> bool {
+    pub fn is_facing<N: na::RealField + Copy>(self, p: &MVector<N>) -> bool {
         let r = na::convert::<_, na::RowVector4<N>>(self.reflection().row(3).clone_owned());
-        (r * p).x < p.w
+        (r * *p).x < p.w
     }
 }
 
@@ -139,21 +140,21 @@ impl Vertex {
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node(self) -> na::Matrix4<f64> {
-        self.dual_to_node() * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
+        <MIsometry<f64> as Into<na::Matrix4<f64>>>::into(*self.dual_to_node()) * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk(self) -> na::Matrix4<f64> {
-        na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * self.node_to_dual()
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * <MIsometry<f64> as Into<na::Matrix4<f64>>>::into(*self.node_to_dual())
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
-    pub fn dual_to_node(self) -> &'static na::Matrix4<f64> {
+    pub fn dual_to_node(self) -> &'static MIsometry<f64> {
         &DUAL_TO_NODE[self as usize]
     }
 
     /// Transform from dodeca-centric coordinates to cube-centric coordinates
-    pub fn node_to_dual(self) -> &'static na::Matrix4<f64> {
+    pub fn node_to_dual(self) -> &'static MIsometry<f64> {
         &NODE_TO_DUAL[self as usize]
     }
 
@@ -173,7 +174,7 @@ impl Vertex {
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
     pub fn parity(self) -> bool {
-        CHUNK_TO_NODE_PARITY[self as usize]
+        DUAL_TO_NODE_PARITY[self as usize]
     }
 }
 
@@ -197,11 +198,11 @@ lazy_static! {
     };
 
     /// Vector corresponding to the outer normal of each side
-    static ref SIDE_NORMALS: [na::Vector4<f64>; SIDE_COUNT] = {
+    static ref SIDE_NORMALS: [MVector<f64>; SIDE_COUNT] = {
         let phi = libm::sqrt(1.25) + 0.5; // golden ratio
-        let f = math::lorentz_normalize(&na::Vector4::new(1.0, phi, 0.0, libm::sqrt(phi)));
+        let f = MVector::new(1.0, phi, 0.0, libm::sqrt(phi)).lorentz_normalize();
 
-        let mut result: [na::Vector4<f64>; SIDE_COUNT] = [na::zero(); SIDE_COUNT];
+        let mut result: [MVector<f64>; SIDE_COUNT] = [MVector::zero(); SIDE_COUNT];
         let mut i = 0;
         for (x, y, z, w) in [
             (f.x, f.y, f.z, f.w),
@@ -211,7 +212,7 @@ lazy_static! {
         ]
         {
             for (x, y, z, w) in [(x, y, z, w), (y, z, x, w), (z, x, y, w)] {
-                result[i] = na::Vector4::new(x, y, z, w);
+                result[i] = MVector::new(x, y, z, w);
                 i += 1;
             }
         }
@@ -219,8 +220,8 @@ lazy_static! {
     };
 
     /// Transform that moves from a neighbor to a reference node, for each side
-    static ref REFLECTIONS: [na::Matrix4<f64>; SIDE_COUNT] = {
-        SIDE_NORMALS.map(|r| math::reflect(&r))
+    static ref REFLECTIONS: [MIsometry<f64>; SIDE_COUNT] = {
+        SIDE_NORMALS.map(|r| r.reflect())
     };
 
     /// Sides incident to a vertex, in canonical order
@@ -267,22 +268,21 @@ lazy_static! {
     };
 
     /// Transform that converts from cube-centric coordinates to dodeca-centric coordinates
-    static ref DUAL_TO_NODE: [na::Matrix4<f64>; VERTEX_COUNT] = {
-        let mip_origin_normal = math::mip(&math::origin(), &SIDE_NORMALS[0]); // This value is the same for every side
-        let mut result = [na::zero(); VERTEX_COUNT];
+    static ref DUAL_TO_NODE: [MIsometry<f64>; VERTEX_COUNT] = {
+        let mip_origin_normal = MVector::origin().mip(&SIDE_NORMALS[0]); // This value is the same for every side
+        let mut result = [MIsometry::identity(); VERTEX_COUNT];
         for i in 0..VERTEX_COUNT {
             let [a, b, c] = VERTEX_SIDES[i];
-            let vertex_position = math::lorentz_normalize(
-                &(math::origin() - (a.normal() + b.normal() + c.normal()) * mip_origin_normal),
-            );
-            result[i] = na::Matrix4::from_columns(&[-a.normal(), -b.normal(), -c.normal(), vertex_position]);
+            let vertex_position = (MVector::origin() - (*a.normal() + *b.normal() + *c.normal()) * mip_origin_normal).lorentz_normalize();
+            result[i] = MIsometry::from_columns_unchecked(&[-*a.normal(), -*b.normal(), -*c.normal(), vertex_position]);
         }
         result
+
     };
 
     /// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
-    static ref NODE_TO_DUAL: [na::Matrix4<f64>; VERTEX_COUNT] = {
-        DUAL_TO_NODE.map(|m| math::mtranspose(&m))
+    static ref NODE_TO_DUAL: [MIsometry<f64>; VERTEX_COUNT] = {
+        DUAL_TO_NODE.map(|m| m.mtranspose())
     };
 
     static ref DUAL_TO_CHUNK_FACTOR: f64 = (2.0 + 5.0f64.sqrt()).sqrt();
@@ -317,11 +317,11 @@ lazy_static! {
     };
 
     /// Whether the determinant of the cube-to-node transform is negative
-    static ref CHUNK_TO_NODE_PARITY: [bool; VERTEX_COUNT] = {
+    static ref DUAL_TO_NODE_PARITY: [bool; VERTEX_COUNT] = {
         let mut result = [false; VERTEX_COUNT];
 
         for v in Vertex::iter() {
-            result[v as usize] = math::parity(&v.chunk_to_node());
+            result[v as usize] = v.dual_to_node().parity();
         }
 
         result
@@ -364,17 +364,17 @@ mod tests {
     #[test]
     fn side_is_facing() {
         for side in Side::iter() {
-            assert!(!side.is_facing::<f32>(&math::origin()));
-            assert!(side.is_facing(&(side.reflection() * math::origin())));
+            assert!(!side.is_facing::<f32>(&MVector::origin()));
+            assert!(side.is_facing(&(side.reflection() * MVector::origin())));
         }
     }
 
     #[test]
     fn radius() {
-        let corner = Vertex::A.chunk_to_node() * math::origin();
+        let corner = Vertex::A.chunk_to_node() * MVector::origin();
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS,
-            math::distance(&corner, &math::origin()),
+            math::distance(&corner, &MVector::origin()),
             epsilon = 1e-10
         );
         let phi = (1.0 + 5.0f64.sqrt()) / 2.0; // Golden ratio

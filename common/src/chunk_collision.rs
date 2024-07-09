@@ -1,6 +1,7 @@
 use crate::{
     collision_math::Ray,
     math,
+    math::MVector,
     node::{ChunkLayout, Coords, VoxelAABB, VoxelData},
     world::Material,
 };
@@ -11,7 +12,7 @@ pub struct ChunkCastHit {
 
     /// Represents the normal vector of the hit surface in the dual coordinate system of the chunk.
     /// To get the actual normal vector, project it so that it is orthogonal to the endpoint in Lorentz space.
-    pub normal: na::Vector4<f32>,
+    pub normal: MVector<f32>,
 }
 
 /// Performs sphere casting (swept collision query) against the voxels in the chunk with the given `voxel_data`
@@ -92,10 +93,10 @@ fn find_face_collision(
     for t in bounding_box.grid_planes(t_axis) {
         // Find a normal to the grid plane. Note that (t, 0, 0, x) is a normal of the plane whose closest point
         // to the origin is (x, 0, 0, t), and we use that fact here.
-        let normal = math::lorentz_normalize(&math::tuv_to_xyz(
+        let normal = math::tuv_to_xyz(
             t_axis,
-            na::Vector4::new(1.0, 0.0, 0.0, layout.grid_to_dual(t)),
-        ));
+            MVector::new(1.0, 0.0, 0.0, layout.grid_to_dual(t)),
+                                                            ).lorentz_normalize();
 
         let Some(new_tanh_distance) =
             ray.solve_sphere_plane_intersection(&normal, collider_radius.sinh())
@@ -111,7 +112,7 @@ fn find_face_collision(
         // Which side we approach the plane from affects which voxel we want to use for hit detection.
         // If exiting a chunk via a chunk boundary, hit detection is handled by a different chunk.
         // We also want to adjust the normal vector to always face outward from the hit block
-        let (normal, voxel_t) = if math::mip(&ray.direction, &normal) < 0.0 {
+        let (normal, voxel_t) = if ray.direction.mip(&normal) < 0.0 {
             if t == 0 {
                 continue;
             }
@@ -124,7 +125,7 @@ fn find_face_collision(
         };
 
         let ray_endpoint = ray.ray_point(new_tanh_distance);
-        let contact_point = ray_endpoint - normal * math::mip(&ray_endpoint, &normal);
+        let contact_point = ray_endpoint - normal * ray_endpoint.mip(&normal);
 
         // Compute the u and v-coordinates of the voxels at the contact point
         let Some(voxel_u) = layout.dual_to_voxel(contact_point[u_axis] / contact_point.w) else {
@@ -171,18 +172,18 @@ fn find_edge_collision(
     // Loop through all grid lines overlapping the bounding box
     for (u, v) in bounding_box.grid_lines(u_axis, v_axis) {
         // Compute vectors Lorentz-orthogonal to the edge and to each other
-        let edge_normal0 = math::lorentz_normalize(&math::tuv_to_xyz(
+        let edge_normal0 = math::tuv_to_xyz(
             t_axis,
-            na::Vector4::new(0.0, 1.0, 0.0, layout.grid_to_dual(u)),
-        ));
+            MVector::new(0.0, 1.0, 0.0, layout.grid_to_dual(u)),
+        ).lorentz_normalize();
 
         let edge_normal1 = math::tuv_to_xyz(
             t_axis,
-            na::Vector4::new(0.0, 0.0, 1.0, layout.grid_to_dual(v)),
+            MVector::new(0.0, 0.0, 1.0, layout.grid_to_dual(v)),
         );
-        let edge_normal1 = math::lorentz_normalize(
-            &(edge_normal1 - edge_normal0 * math::mip(&edge_normal0, &edge_normal1)),
-        );
+        let edge_normal1 =
+            (edge_normal1 - edge_normal0 * edge_normal0.mip(&edge_normal1))
+        .lorentz_normalize();
 
         let Some(new_tanh_distance) = ray.solve_sphere_line_intersection(
             &edge_normal0,
@@ -199,8 +200,8 @@ fn find_edge_collision(
 
         let ray_endpoint = ray.ray_point(new_tanh_distance);
         let contact_point = ray_endpoint
-            - edge_normal0 * math::mip(&ray_endpoint, &edge_normal0)
-            - edge_normal1 * math::mip(&ray_endpoint, &edge_normal1);
+            - edge_normal0 * ray_endpoint.mip(&edge_normal0)
+            - edge_normal1 * ray_endpoint.mip(&edge_normal1);
 
         // Compute the t-coordinate of the voxels at the contact point
         let Some(voxel_t) = layout.dual_to_voxel(contact_point[t_axis] / contact_point.w) else {
@@ -256,19 +257,20 @@ fn find_vertex_collision(
 
         // Compute vectors Lorentz-orthogonal to the vertex and to each other
         let vertex_normal0 =
-            math::lorentz_normalize(&na::Vector4::new(1.0, 0.0, 0.0, layout.grid_to_dual(x)));
+            MVector::new(1.0, 0.0, 0.0, layout.grid_to_dual(x))
+        .lorentz_normalize();
 
-        let vertex_normal1 = na::Vector4::new(0.0, 1.0, 0.0, layout.grid_to_dual(y));
-        let vertex_normal1 = math::lorentz_normalize(
-            &(vertex_normal1 - vertex_normal0 * math::mip(&vertex_normal0, &vertex_normal1)),
-        );
+        let vertex_normal1 = MVector::new(0.0, 1.0, 0.0, layout.grid_to_dual(y));
+        let vertex_normal1 =
+            (vertex_normal1 - vertex_normal0 * vertex_normal0.mip(&vertex_normal1))
+        .lorentz_normalize();
 
-        let vertex_normal2 = na::Vector4::new(0.0, 0.0, 1.0, layout.grid_to_dual(z));
-        let vertex_normal2 = math::lorentz_normalize(
-            &(vertex_normal2
-                - vertex_normal0 * math::mip(&vertex_normal0, &vertex_normal2)
-                - vertex_normal1 * math::mip(&vertex_normal1, &vertex_normal2)),
-        );
+        let vertex_normal2 = MVector::new(0.0, 0.0, 1.0, layout.grid_to_dual(z));
+        let vertex_normal2 =
+            (vertex_normal2
+                - vertex_normal0 * vertex_normal0.mip(&vertex_normal2)
+                - vertex_normal1 * vertex_normal1.mip(&vertex_normal2))
+        .lorentz_normalize();
 
         let Some(new_tanh_distance) = ray.solve_sphere_point_intersection(
             &vertex_normal0,
@@ -285,12 +287,12 @@ fn find_vertex_collision(
         }
 
         // Determine the cube-centric coordinates of the vertex
-        let vertex_position = math::lorentz_normalize(&na::Vector4::new(
+        let vertex_position = MVector::new(
             layout.grid_to_dual(x),
             layout.grid_to_dual(y),
             layout.grid_to_dual(z),
             1.0,
-        ));
+        ).lorentz_normalize();
 
         // A collision was found. Update the hit.
         let ray_endpoint = ray.ray_point(new_tanh_distance);
@@ -358,29 +360,28 @@ mod tests {
         ray_end_grid_coords: [f32; 3],
         wrapped_fn: impl FnOnce(&Ray, f32),
     ) {
-        let ray_start = math::lorentz_normalize(&na::Vector4::new(
+        let ray_start = MVector::new(
             ray_start_grid_coords[0] / ctx.layout.dual_to_grid_factor(),
             ray_start_grid_coords[1] / ctx.layout.dual_to_grid_factor(),
             ray_start_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
-        ));
+        ).lorentz_normalize();
 
-        let ray_end = math::lorentz_normalize(&na::Vector4::new(
+        let ray_end = MVector::new(
             ray_end_grid_coords[0] / ctx.layout.dual_to_grid_factor(),
             ray_end_grid_coords[1] / ctx.layout.dual_to_grid_factor(),
             ray_end_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
-        ));
+        ).lorentz_normalize();
 
         let ray = Ray::new(
             ray_start,
-            math::lorentz_normalize(
-                &((ray_end - ray_start)
-                    + ray_start * math::mip(&ray_start, &(ray_end - ray_start))),
-            ),
+                ((ray_end - ray_start)
+                    + ray_start * ray_start.mip(&(ray_end - ray_start)))
+                .lorentz_normalize(),
         );
 
-        let tanh_distance = (-math::mip(&ray_start, &ray_end)).acosh();
+        let tanh_distance = (-ray_start.mip(&ray_end)).acosh();
 
         wrapped_fn(&ray, tanh_distance)
     }
@@ -520,16 +521,16 @@ mod tests {
         // The ray we care about is after its start point has moved to the contact point.
         let ray = math::translate(
             &ray.position,
-            &math::lorentz_normalize(&ray.ray_point(hit.tanh_distance)),
+            &ray.ray_point(hit.tanh_distance).lorentz_normalize(),
         ) * ray;
 
         // Project normal to be perpendicular to the ray's position
-        let corrected_normal = math::lorentz_normalize(
-            &(hit.normal + ray.position * math::mip(&hit.normal, &ray.position)),
-        );
+        let corrected_normal =
+            (hit.normal + ray.position * hit.normal.mip(&ray.position))
+        .lorentz_normalize();
 
         // Check that the normal and ray are pointing opposite directions
-        assert!(math::mip(&corrected_normal, &ray.direction) < 0.0);
+        assert!(corrected_normal.mip(&ray.direction) < 0.0);
     }
 
     /// Tests that a suitable collision is found when approaching a single voxel from various angles and that

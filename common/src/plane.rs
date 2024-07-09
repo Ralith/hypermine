@@ -2,13 +2,13 @@ use std::ops::{Mul, Neg};
 
 use crate::{
     dodeca::{Side, Vertex},
-    math::{lorentz_normalize, mip},
+    math::{MVector, MIsometry},
 };
 
 /// A hyperbolic plane
 #[derive(Debug, Copy, Clone)]
 pub struct Plane<N: na::RealField> {
-    normal: na::Vector4<N>,
+    normal: MVector<N>,
 }
 
 impl From<Side> for Plane<f64> {
@@ -24,7 +24,7 @@ impl<N: na::RealField + Copy> From<na::Unit<na::Vector3<N>>> for Plane<N> {
     /// A plane passing through the origin
     fn from(x: na::Unit<na::Vector3<N>>) -> Self {
         Self {
-            normal: x.into_inner().push(na::zero()),
+            normal: MVector::from(x),
         }
     }
 }
@@ -46,24 +46,24 @@ impl Mul<Plane<f64>> for Side {
     }
 }
 
-impl<'a, N: na::RealField + Copy> Mul<Plane<N>> for &'a na::Matrix4<N> {
+impl<'a, N: na::RealField + Copy> Mul<Plane<N>> for &'a MIsometry<N> {
     type Output = Plane<N>;
     fn mul(self, rhs: Plane<N>) -> Plane<N> {
         Plane {
-            normal: lorentz_normalize(&(self * rhs.normal)),
+            normal: (*self * rhs.normal).lorentz_normalize(),
         }
     }
 }
 
 impl<N: na::RealField + Copy> Plane<N> {
     /// Hyperbolic normal vector identifying the plane
-    pub fn normal(&self) -> &na::Vector4<N> {
+    pub fn normal(&self) -> &MVector<N> {
         &self.normal
     }
 
     /// Shortest distance between the plane and a point
-    pub fn distance_to(&self, point: &na::Vector4<N>) -> N {
-        let mip_value = mip(&self.normal, point);
+    pub fn distance_to(&self, point: &MVector<N>) -> N {
+        let mip_value = &self.normal.mip(point);
         // Workaround for bug fixed in rust PR #72486
         mip_value.abs().asinh() * mip_value.signum()
     }
@@ -72,7 +72,7 @@ impl<N: na::RealField + Copy> Plane<N> {
 impl Plane<f64> {
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
-        let pos = lorentz_normalize(&(chunk.chunk_to_node() * coord.push(1.0)));
+        let pos = (MVector::<f64>::from(chunk.chunk_to_node() * coord.push(1.0))).lorentz_normalize();
         self.distance_to(&pos)
     }
 }
@@ -80,7 +80,7 @@ impl Plane<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::math::{origin, translate_along};
+    use crate::math::translate_along;
     use approx::*;
 
     #[test]
@@ -94,7 +94,7 @@ mod tests {
                 let plane = Plane::from(axis);
                 assert_abs_diff_eq!(
                     plane.distance_to(
-                        &(translate_along(&(axis.into_inner() * distance)) * origin())
+                        &(translate_along(&(axis.into_inner() * distance)) * MVector::origin())
                     ),
                     distance
                 );

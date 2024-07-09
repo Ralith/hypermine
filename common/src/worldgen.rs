@@ -5,6 +5,7 @@ use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     math,
+    math::MVector,
     node::{ChunkId, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,
@@ -119,8 +120,8 @@ impl NodeState {
         }
     }
 
-    pub fn up_direction(&self) -> na::Vector4<f32> {
-        self.surface.normal().cast()
+    pub fn up_direction(&self) -> MVector<f32> {
+        self.surface.normal().to_f32()
     }
 }
 

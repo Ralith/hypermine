@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dodeca::{Side, SIDE_COUNT},
     math,
+    math::{MIsometry,MVector},
     node::{ChunkId, ChunkLayout, Node},
 };
 
@@ -123,10 +124,10 @@ impl Graph {
     pub fn normalize_transform<T: na::RealField + Copy>(
         &self,
         mut reference: NodeId,
-        original: &na::Matrix4<T>,
-    ) -> (NodeId, na::Matrix4<T>) {
-        let mut transform = na::Matrix4::identity();
-        let mut location = original * math::origin();
+        original: &MIsometry<T>,
+    ) -> (NodeId, MIsometry<T>) {
+        let mut transform = MIsometry::identity();
+        let mut location = *original * MVector::origin();
         'outer: loop {
             for side in Side::iter() {
                 if !side.is_facing(&location) {
@@ -402,9 +403,9 @@ mod tests {
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
             let (node, xf) =
-                graph.normalize_transform::<f32>(NodeId::ROOT, &na::Matrix4::identity());
+                graph.normalize_transform::<f32>(NodeId::ROOT, &MIsometry::identity());
             assert_eq!(node, NodeId::ROOT);
-            assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
+            assert_abs_diff_eq!(xf, MIsometry::identity(), epsilon = 1e-5);
         }
         {
             let (node, xf) = graph.normalize_transform(NodeId::ROOT, Side::A.reflection());

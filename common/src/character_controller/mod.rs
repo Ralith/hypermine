@@ -47,7 +47,7 @@ pub fn run_character_step(
     }
 
     // Renormalize
-    position.local = math::renormalize_isometry(&position.local);
+    position.local = position.local.renormalize_isometry();
     let (next_node, transition_xf) = graph.normalize_transform(position.node, &position.local);
     if next_node != position.node {
         position.node = next_node;

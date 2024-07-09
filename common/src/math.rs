@@ -3,62 +3,409 @@
 //! Vector4 values are assumed to be homogeneous Klein model coordinates unless otherwise
 //! stated. Note that Minkowski model coordinates are valid Klein coordinates, but not vis versa.
 
+// all the inline functions are basically just wrappers around corresponding nalgebra functions
+
 use na::{RealField, Scalar};
 use serde::{Deserialize, Serialize};
+use std::ops::*;
 
-/// A point on the surface of the 3D hyperboloid in Minkowski coordinates with an implicit w
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize,PartialEq)]
 #[repr(C)]
-pub struct HPoint<N: Scalar>(na::Vector3<N>);
+pub struct MVector<N: Scalar>(na::Vector4<N>);
 
-impl<N: Scalar> HPoint<N> {
-    pub fn new(x: N, y: N, z: N) -> Self {
-        Self(na::Vector3::new(x, y, z))
+#[derive(Debug, Copy, Clone, Serialize, Deserialize,PartialEq)]
+#[repr(C)]
+pub struct MIsometry<N: Scalar>(na::Matrix4<N>);
+
+#[cfg(test)]
+impl<N: RealField> approx::AbsDiffEq<MIsometry<N>> for MIsometry<N>
+{
+    type Epsilon = N;
+    #[inline]
+    fn default_epsilon() -> Self::Epsilon
+    {
+        na::Matrix4::<N>::default_epsilon()
     }
-
-    /// Construct from Minkowski coordinates
-    pub fn from_homogeneous(v: &na::Vector4<N>) -> Self {
-        Self(v.xyz())
+    #[inline]
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool
+    {
+        self.abs_diff_eq(other, epsilon)
     }
 }
 
-impl<N: RealField + Copy> HPoint<N> {
-    pub fn origin() -> Self {
-        Self::new(na::zero(), na::zero(), na::zero())
+#[cfg(test)]
+impl<N: RealField> approx::AbsDiffEq<MVector<N>> for MVector<N>
+{
+    type Epsilon = N;
+    #[inline]
+    fn default_epsilon() -> Self::Epsilon
+    {
+        na::Vector4::<N>::default_epsilon()
     }
+    #[inline]
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool
+    {
+        self.abs_diff_eq(other, epsilon)
+    }
+}
 
-    /// Convert to Minkowski coordinates
-    pub fn to_homogeneous(self) -> na::Vector4<N> {
+impl<N: RealField> From<na::Unit<na::Vector3<N>>> for MVector<N>
+{
+    fn from(value: na::Unit<na::Vector3<N>>) -> Self
+    {
+        Self(value.into_inner().push(na::zero()))
+    }
+}
+
+impl<N: Scalar> From<na::Vector4<N>> for MVector<N>
+{
+    fn from(value: na::Vector4<N>) -> Self
+    {
+        Self(value)
+    }
+}
+
+impl<N: Scalar> Deref for MVector<N>
+{
+    type Target = na::coordinates::XYZW<N>;
+    #[inline]
+    fn deref(&self) -> &Self::Target
+    {
+        self.0.deref()
+    }
+}
+
+impl<N: Scalar> DerefMut for MVector<N> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target
+    {
+        self.0.deref_mut()
+    }
+}
+
+impl<N: Scalar> Deref for MIsometry<N> {
+    type Target = na::coordinates::M4x4<N>;
+    #[inline]
+    fn deref(&self) -> &Self::Target
+    {
+        self.0.deref()
+    }
+}
+
+impl<N: Scalar> Into<na::Matrix4<N>> for MIsometry<N>
+{
+    fn into(self) -> na::Matrix4<N>
+    {
+        self.0
+    }
+}
+
+
+impl MIsometry<f32>
+{
+    pub fn to_f64(self) -> MIsometry<f64>
+    {
+        MIsometry(self.0.cast::<f64>())
+    }
+}
+
+impl MIsometry<f64>
+{
+    pub fn to_f32(self) -> MIsometry<f32>
+    {
+        MIsometry(self.0.cast::<f32>())
+    }
+}
+
+impl MVector<f32>
+{
+    pub fn to_f64(self) -> MVector<f64>
+    {
+        MVector(self.0.cast::<f64>())
+    }
+}
+
+impl MVector<f64>
+{
+    pub fn to_f32(self) -> MVector<f32>
+    {
+        MVector(self.0.cast::<f32>())
+    }
+}
+
+impl<N: RealField + Copy> MIsometry<N>
+{
+    #[inline]
+    pub fn row(self, i: usize) -> na::Vector4<N>
+    {
+        self.row(i)
+    }
+    #[inline]
+    pub fn identity() -> Self
+    {
+        Self(na::Matrix4::identity())
+    }
+    #[inline]
+    pub fn map<N2: Scalar, F: FnMut(N) -> N2>(&self, mut f: F) -> MIsometry<N2>
+    {
+        MIsometry(self.0.map(f))
+    }
+    #[inline]
+    pub fn from_columns_unchecked(columns: &[MVector<N>;4]) -> Self
+    {
+        Self(na::Matrix4::from_columns(&(*columns).map(|x| x.0)))
+    }
+    /// Minkowski transpose. Inverse for hyperbolic isometries
+    #[rustfmt::skip]
+    pub fn mtranspose(self) -> Self {
+        MIsometry(
+            na::Matrix4::new(
+                self.0.m11,  self.0.m21,  self.0.m31, -self.0.m41,
+                self.0.m12,  self.0.m22,  self.0.m32, -self.0.m42,
+                self.0.m13,  self.0.m23,  self.0.m33, -self.0.m43,
+                -self.0.m14, -self.0.m24, -self.0.m34,  self.0.m44,
+            )
+        )
+    }
+    /// Whether an isometry reverses winding with respect to the norm
+    pub fn parity(self) -> bool {
+        self.0.fixed_view::<3, 3>(0, 0).determinant() < na::zero::<N>()
+    }
+    pub fn renormalize_isometry(self) -> MIsometry<N>
+    {
+        let boost = translate(&MVector::origin(), &MVector(self.0.index((.., 3)).into()).lorentz_normalize());
+        let inverse_boost = boost.mtranspose();
+        let rotation = renormalize_rotation_reflection(
+            &((inverse_boost * self).0).fixed_view::<3, 3>(0, 0).clone_owned(),
+        );
+        MIsometry(boost.0 * rotation.to_homogeneous())
+    }
+    /*pub fn cast<N2: Scalar>(self) -> MIsometry<N2> where N: simba::scalar::SubsetOf<N2>
+    {
+        Self(self.0.cast::<N2>())
+    }*/
+}
+
+impl<N: RealField + Copy> MVector<N> {
+    pub fn lorentz_normalize(self: &MVector<N>) -> Self {
+        let sf2 = self.mip(self);
+        if sf2 == na::zero() {
+            return MVector::origin();
+        }
+        let sf = sf2.abs().sqrt();
+        *self / sf
+    }
+    /// Point or plane reflection around point or normal `p`
+    pub fn reflect(self) -> MIsometry<N> {
+        MIsometry(na::Matrix4::<N>::identity()
+            - self.minkowski_outer_product(&self) * na::convert::<_, N>(2.0) / self.mip(&self))
+    }
+    /// Minkowski inner product, aka <a, b>_h
+    pub fn mip(self, other: &Self) -> N
+    {
+        self.0.x * other.0.x + self.0.y * other.0.y + self.0.z * other.0.z - self.0.w * other.0.w
+    }
+    pub fn minkowski_outer_product(self, other: &Self) -> na::Matrix4<N>
+    {
+        ((self).0) * na::RowVector4::new(other.0.x, other.0.y, other.0.z, -other.0.w)
+    }
+    pub fn from_gans(gans: &na::Vector3<N>) -> Self
+    {
         // x^2 + y^2 + z^2 - w^2 = -1
         // sqrt(x^2 + y^2 + z^2 + 1) = w
-        let w = (sqr(self.0.x) + sqr(self.0.y) + sqr(self.0.z) + na::one()).sqrt();
-        na::Vector4::new(self.0.x, self.0.y, self.0.z, w)
+        let w = (sqr(gans.x) + sqr(gans.y) + sqr(gans.z) + na::one()).sqrt();
+        MVector(na::Vector4::new(gans.x, gans.y, gans.z, w))
+    }
+    #[inline]
+    pub fn zero() -> Self
+    {
+        Self(na::zero())
+    }
+    pub fn origin() -> Self
+    {
+        Self(na::Vector4::new(na::zero(),na::zero(),na::zero(),na::one()))
+    }
+    #[inline]
+    pub fn normalize(self) -> Self
+    {
+        Self(self.0.normalize())
+    }
+    #[inline]
+    pub fn x() -> Self
+    {
+        Self(na::Vector4::x())
+    }
+    #[inline]
+    pub fn y() -> Self
+    {
+        Self(na::Vector4::y())
+    }
+    #[inline]
+    pub fn z() -> Self
+    {
+        Self(na::Vector4::z())
+    }
+    #[inline]
+    pub fn w() -> Self
+    {
+        Self(na::Vector4::w())
+    }
+    #[inline]
+    pub fn new(x: N, y: N, z: N, w: N) -> Self
+    {
+        MVector(na::Vector4::new(x,y,z,w))
+    }
+    #[inline]
+    pub fn xyz(self) -> na::Vector3<N>
+    {
+        self.0.xyz()
     }
 }
 
-/// Point or plane reflection around point or normal `p`
-pub fn reflect<N: RealField + Copy>(p: &na::Vector4<N>) -> na::Matrix4<N> {
-    na::Matrix4::<N>::identity()
-        - minkowski_outer_product(p, p) * na::convert::<_, N>(2.0) / mip(p, p)
+impl<N: RealField> Mul<MIsometry<N>> for MIsometry<N>
+{
+    type Output = MIsometry<N>;
+    #[inline]
+    fn mul(self, rhs: MIsometry<N>) -> Self::Output
+    {
+        MIsometry(self.0 * rhs.0)
+    }
+}
+
+impl<N: RealField> Mul<N> for MVector<N>
+{
+    type Output = MVector<N>;
+    #[inline]
+    fn mul(self, rhs: N) -> Self::Output
+    {
+        MVector(self.0 * rhs)
+    }
+}
+
+impl<N: RealField> Div<N> for MVector<N>
+{
+    type Output = MVector<N>;
+    #[inline]
+    fn div(self, rhs: N) -> Self::Output
+    {
+        MVector(self.0 / rhs)
+    }
+}
+
+impl<N: RealField> Add for MVector<N>
+{
+    type Output = Self;
+    #[inline]
+    fn add(self, other: Self) -> Self
+    {
+        Self(self.0 + other.0)
+    }
+}
+
+impl<N: RealField> Sub for MVector<N>
+{
+    type Output = Self;
+    #[inline]
+    fn sub(self, other: Self) -> Self
+    {
+        Self(self.0 - other.0)
+    }
+}
+
+impl<N: RealField> Neg for MVector<N>
+{
+    type Output = Self;
+    #[inline]
+    fn neg(self) -> Self
+    {
+        Self(-self.0)
+    }
+}
+
+impl<N: RealField> Mul<MVector<N>> for MIsometry<N>
+{
+    type Output = MVector<N>;
+    #[inline]
+    fn mul(self, rhs: MVector<N>) -> Self::Output
+    {
+        MVector(self.0 * rhs.0)
+    }
+}
+
+impl<N: Scalar> MulAssign<N> for MVector<N>
+{
+    #[inline]
+    fn mul_assign(&mut self, rhs: N)
+    {
+        *self *= rhs;
+    }
+}
+
+impl<N: Scalar> std::ops::AddAssign for MVector<N>
+{
+    #[inline]
+    fn add_assign(&mut self, other: Self)
+    {
+        *self += other;
+    }
+}
+
+
+impl<N: Scalar> MulAssign<N> for MIsometry<N>
+{
+    #[inline]
+    fn mul_assign(&mut self, rhs: N)
+    {
+        *self *= rhs;
+    }
+}
+
+impl<N: Scalar> Index<usize> for MVector<N>
+{
+    type Output = N;
+    #[inline]
+    fn index(&self, i: usize) -> &Self::Output
+    {
+        &self.0[i]
+    }
+}
+
+impl<N: Scalar> IndexMut<usize> for MVector<N>
+{
+    #[inline]
+    fn index_mut(&mut self, i: usize) -> &mut N
+    {
+        &mut self.0[i]
+    }
+}
+
+impl<N: Scalar> Index<(usize,usize)> for MIsometry<N>
+{
+    type Output = N;
+    #[inline]
+    fn index(&self, ij: (usize, usize)) -> &Self::Output
+    {
+        &self.0[ij]
+    }
 }
 
 /// Transform that translates `a` to `b` given that `a` and `b` are Lorentz normalized pointlike vectors
-pub fn translate<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Matrix4<N> {
-    let a_plus_b = a + b;
-    na::Matrix4::<N>::identity() - minkowski_outer_product(b, a) * na::convert::<_, N>(2.0)
-        + minkowski_outer_product(&a_plus_b, &a_plus_b) / (N::one() - mip(a, b))
+pub fn translate<N: RealField + Copy>(a: &MVector<N>, b: &MVector<N>) -> MIsometry<N> {
+    let a_plus_b = *a + *b;
+    MIsometry(na::Matrix4::<N>::identity() - (b.minkowski_outer_product(a) * na::convert::<_, N>(2.0))
+        + a_plus_b.minkowski_outer_product(&a_plus_b) / (N::one() - a.mip(b)))
 }
 
 /// Transform that translates the origin in the direction of the given vector with distance equal to its magnitude
-pub fn translate_along<N: RealField + Copy>(v: &na::Vector3<N>) -> na::Matrix4<N> {
+pub fn translate_along<N: RealField + Copy>(v: &na::Vector3<N>) -> MIsometry<N> {
     let norm = v.norm();
     if norm == na::zero() {
-        return na::Matrix4::identity();
+        return MIsometry::identity();
     }
     // g = Lorentz gamma factor
     let g = norm.cosh();
     let bgc = norm.sinhc();
-    translate(&origin(), &(v * bgc).insert_row(3, g))
+    translate(&MVector::origin(), &MVector(((v * bgc)).insert_row(3, g)))
 }
 
 /// 4D reflection around a normal vector; length is not significant (so long as it's nonzero)
@@ -66,34 +413,12 @@ pub fn euclidean_reflect<N: RealField + Copy>(v: &na::Vector4<N>) -> na::Matrix4
     na::Matrix4::identity() - v * v.transpose() * (na::convert::<_, N>(2.0) / v.norm_squared())
 }
 
-pub fn midpoint<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> na::Vector4<N> {
-    a * (mip(b, b) * mip(a, b)).sqrt() + b * (mip(a, a) * mip(a, b)).sqrt()
+pub fn midpoint<N: RealField + Copy>(a: &MVector<N>, b: &MVector<N>) -> MVector<N> {
+    *a * (b.mip(b) * a.mip(b)).sqrt() + *b * (a.mip(a) * a.mip(b)).sqrt()
 }
 
-pub fn distance<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
-    (sqr(mip(a, b)) / (mip(a, a) * mip(b, b))).sqrt().acosh()
-}
-
-pub fn origin<N: RealField + Copy>() -> na::Vector4<N> {
-    na::Vector4::new(na::zero(), na::zero(), na::zero(), na::one())
-}
-
-pub fn lorentz_normalize<N: RealField + Copy>(v: &na::Vector4<N>) -> na::Vector4<N> {
-    let sf2 = mip(v, v);
-    if sf2 == na::zero() {
-        return origin();
-    }
-    let sf = sf2.abs().sqrt();
-    v / sf
-}
-
-pub fn renormalize_isometry<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
-    let boost = translate(&origin(), &lorentz_normalize(&m.index((.., 3)).into()));
-    let inverse_boost = mtranspose(&boost);
-    let rotation = renormalize_rotation_reflection(
-        &(inverse_boost * m).fixed_view::<3, 3>(0, 0).clone_owned(),
-    );
-    boost * rotation.to_homogeneous()
+pub fn distance<N: RealField + Copy>(a: &MVector<N>, b: &MVector<N>) -> N {
+    (sqr(a.mip(b)) / (a.mip(a) * b.mip(b))).sqrt().acosh()
 }
 
 #[rustfmt::skip]
@@ -110,31 +435,11 @@ fn renormalize_rotation_reflection<N: RealField + Copy>(m: &na::Matrix3<N>) -> n
     )
 }
 
-/// Whether an isometry reverses winding with respect to the norm
-pub fn parity<N: RealField + Copy>(m: &na::Matrix4<N>) -> bool {
-    m.fixed_view::<3, 3>(0, 0).determinant() < na::zero::<N>()
-}
-
-/// Minkowski inner product, aka <a, b>_h
-pub fn mip<N: RealField + Copy>(a: &na::Vector4<N>, b: &na::Vector4<N>) -> N {
-    a.x * b.x + a.y * b.y + a.z * b.z - a.w * b.w
-}
-
 #[inline]
 pub fn sqr<N: RealField + Copy>(x: N) -> N {
     x * x
 }
 
-/// Minkowski transpose. Inverse for hyperbolic isometries
-#[rustfmt::skip]
-pub fn mtranspose<N: RealField + Copy>(m: &na::Matrix4<N>) -> na::Matrix4<N> {
-    na::Matrix4::new(
-         m.m11,  m.m21,  m.m31, -m.m41,
-         m.m12,  m.m22,  m.m32, -m.m42,
-         m.m13,  m.m23,  m.m33, -m.m43,
-        -m.m14, -m.m24, -m.m34,  m.m44,
-    )
-}
 
 /// Updates `subject` by moving it along the line determined by `projection_direction` so that
 /// its dot product with `normal` is `distance`. This effectively projects vectors onto the plane
@@ -180,10 +485,10 @@ pub fn tuv_to_xyz<T: std::ops::IndexMut<usize, Output = N>, N: Copy>(t_axis: usi
 }
 
 fn minkowski_outer_product<N: RealField + Copy>(
-    a: &na::Vector4<N>,
-    b: &na::Vector4<N>,
+    a: &MVector<N>,
+    b: &MVector<N>,
 ) -> na::Matrix4<N> {
-    *a * na::RowVector4::new(b.x, b.y, b.z, -b.w)
+    ((*a).0) * na::RowVector4::new(b.0.x, b.0.y, b.0.z, -b.0.w)
 }
 
 #[cfg(test)]
@@ -191,16 +496,19 @@ mod tests {
     use super::*;
     use approx::*;
 
+
     #[test]
     #[rustfmt::skip]
     fn reflect_example() {
         assert_abs_diff_eq!(
-            reflect(&lorentz_normalize(&na::Vector4::new(0.5, 0.0, 0.0, 1.0))),
-            na::Matrix4::new(
-                1.666, 0.0, 0.0, -1.333,
-                0.0  , 1.0, 0.0,  0.0,
-                0.0  , 0.0, 1.0,  0.0,
-                1.333, 0.0, 0.0, -1.666
+            MVector::new(0.5, 0.0, 0.0, 1.0).lorentz_normalize().reflect(),
+            MIsometry(
+                na::Matrix4::new(
+                    1.666, 0.0, 0.0, -1.333,
+                    0.0  , 1.0, 0.0,  0.0,
+                    0.0  , 0.0, 1.0,  0.0,
+                    1.333, 0.0, 0.0, -1.666
+                )
             ),
             epsilon = 1e-3
         );
@@ -211,14 +519,16 @@ mod tests {
     fn translate_example() {
         assert_abs_diff_eq!(
             translate(
-                &lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0)),
-                &lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0))
+                &MVector::new(-0.5, -0.5, 0.0, 1.0).lorentz_normalize(),
+                &MVector::new(0.3, -0.7, 0.0, 1.0).lorentz_normalize()
             ),
-            na::Matrix4::new(
-                 1.676, 0.814, 0.0,  1.572,
-                -1.369, 0.636, 0.0, -1.130,
-                 0.0,   0.0,   1.0,  0.0,
-                 1.919, 0.257, 0.0,  2.179,
+            MIsometry(
+                na::Matrix4::new(
+                    1.676, 0.814, 0.0,  1.572,
+                    -1.369, 0.636, 0.0, -1.130,
+                    0.0,   0.0,   1.0,  0.0,
+                    1.919, 0.257, 0.0,  2.179,
+                )
             ),
             epsilon = 1e-3
         );
@@ -226,9 +536,9 @@ mod tests {
 
     #[test]
     fn translate_identity() {
-        let a = lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0));
-        let b = lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0));
-        let o = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
+        let a = MVector::new(-0.5, -0.5, 0.0, 1.0).lorentz_normalize();
+        let b = MVector::new(0.3, -0.7, 0.0, 1.0).lorentz_normalize();
+        let o = MVector::new(0.0, 0.0, 0.0, 1.0);
         assert_abs_diff_eq!(
             translate(&a, &b),
             translate(&o, &a) * translate(&o, &(translate(&a, &o) * b)) * translate(&a, &o),
@@ -238,9 +548,9 @@ mod tests {
 
     #[test]
     fn translate_equivalence() {
-        let a = lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0));
-        let o = na::Vector4::new(0.0, 0.0, 0.0, 1.0);
-        let direction = a.xyz().normalize();
+        let a = MVector::new(-0.5, -0.5, 0.0, 1.0).lorentz_normalize();
+        let o = MVector::new(0.0, 0.0, 0.0, 1.0);
+        let direction = a.0.xyz().normalize();
         let distance = dbg!(distance(&o, &a));
         assert_abs_diff_eq!(
             translate(&o, &a),
@@ -253,28 +563,28 @@ mod tests {
     fn translate_distance() {
         let dx = 2.3;
         let xf = translate_along(&(na::Vector3::x() * dx));
-        assert_abs_diff_eq!(dx, distance(&origin(), &(xf * origin())));
+        assert_abs_diff_eq!(dx, distance(&MVector::origin(), &(xf * MVector::origin())));
     }
 
     #[test]
     fn distance_example() {
-        let a = na::Vector4::new(0.2, 0.0, 0.0, 1.0);
-        let b = na::Vector4::new(-0.5, -0.5, 0.0, 1.0);
+        let a = MVector::new(0.2, 0.0, 0.0, 1.0);
+        let b = MVector::new(-0.5, -0.5, 0.0, 1.0);
         // Paper doubles distances for reasons unknown
         assert_abs_diff_eq!(distance(&a, &b), 2.074 / 2.0, epsilon = 1e-3);
     }
 
     #[test]
     fn distance_commutative() {
-        let p = HPoint::new(-1.0, -1.0, 0.0).to_homogeneous();
-        let q = HPoint::new(1.0, -1.0, 0.0).to_homogeneous();
+        let p = MVector::from_gans(&na::Vector3::new(-1.0, -1.0, 0.0));
+        let q = MVector::from_gans(&na::Vector3::new(1.0, -1.0, 0.0));
         assert_abs_diff_eq!(distance(&p, &q), distance(&q, &p));
     }
 
     #[test]
     fn midpoint_distance() {
-        let p = HPoint::new(-1.0, -1.0, 0.0).to_homogeneous();
-        let q = HPoint::new(1.0, -1.0, 0.0).to_homogeneous();
+        let p = MVector::from_gans(&na::Vector3::new(-1.0, -1.0, 0.0));
+        let q = MVector::from_gans(&na::Vector3::new(1.0, -1.0, 0.0));
         let m = midpoint(&p, &q);
         assert_abs_diff_eq!(distance(&p, &m), distance(&m, &q), epsilon = 1e-5);
         assert_abs_diff_eq!(distance(&p, &m) * 2.0, distance(&p, &q), epsilon = 1e-5);
@@ -283,44 +593,44 @@ mod tests {
     #[test]
     fn renormalize_translation() {
         let mat = translate(
-            &lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0)),
-            &lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0)),
+            &MVector::new(-0.5, -0.5, 0.0, 1.0).lorentz_normalize(),
+            &MVector::new(0.3, -0.7, 0.0, 1.0).lorentz_normalize(),
         );
-        assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
+        assert_abs_diff_eq!(mat.renormalize_isometry(), mat, epsilon = 1e-5);
     }
 
     #[test]
     #[rustfmt::skip]
     fn renormalize_reflection() {
-        let mat = na::Matrix4::new(-1.0, 0.0, 0.0, 0.0,
+        let mat = MIsometry(na::Matrix4::new(-1.0, 0.0, 0.0, 0.0,
                                    0.0, 1.0, 0.0, 0.0,
                                    0.0, 0.0, 1.0, 0.0,
-                                   0.0, 0.0, 0.0, 1.0);
-        assert_abs_diff_eq!(renormalize_isometry(&mat), mat, epsilon = 1e-5);
+                                   0.0, 0.0, 0.0, 1.0));
+        assert_abs_diff_eq!(mat.renormalize_isometry(), mat, epsilon = 1e-5);
     }
 
     #[test]
     #[rustfmt::skip]
     fn renormalize_normalizes_matrix() {
         // Matrix chosen with random entries between -1 and 1
-        let error = na::Matrix4::new(
+        let error = MIsometry(na::Matrix4::new(
             -0.77, -0.21,  0.57, -0.59,
              0.49, -0.68,  0.36,  0.68,
             -0.75, -0.54, -0.13, -0.59,
-            -0.57, -0.80,  0.00, -0.53);
+            -0.57, -0.80,  0.00, -0.53));
 
         // translation with some error
-        let mat = translate(
-            &lorentz_normalize(&na::Vector4::new(-0.5, -0.5, 0.0, 1.0)),
-            &lorentz_normalize(&na::Vector4::new(0.3, -0.7, 0.0, 1.0)),
-        ) + error * 0.05;
+        let mat = MIsometry(translate(
+            &MVector::new(-0.5, -0.5, 0.0, 1.0),
+            &MVector::new(0.3, -0.7, 0.0, 1.0),
+        ).0 + error.0 * 0.05);
 
-        let normalized_mat = renormalize_isometry(&mat);
+        let normalized_mat = mat.renormalize_isometry();
 
         // Check that the matrix is actually normalized
         assert_abs_diff_eq!(
-            mtranspose(&normalized_mat) * normalized_mat,
-            na::Matrix4::identity(),
+            normalized_mat.mtranspose() * normalized_mat,
+            MIsometry(na::Matrix4::identity()),
             epsilon = 1e-5
         );
     }
