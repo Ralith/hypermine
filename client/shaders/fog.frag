@@ -16,12 +16,6 @@ void main() {
     float view_length = length(view_pos);
     // Convert to true hyperbolic distance, taking care to respect atanh's domain
     float dist = view_length >= 1.0 ? INFINITY : atanh(view_length);
-    if (dot(scaled_view_pos.xy, scaled_view_pos.xy) < 0.0001) {
-        // Temporary code to add a cursor in the center of the window for placing/breaking blocks
-        // TODO: Replace with a UI element when UI exists
-        fog = vec4(0.0, 0.0, 0.0, 0.0);
-    } else {
-        // Exponential^k fog
-        fog = vec4(0.5, 0.65, 0.9, exp(-pow(dist * fog_density, 5)));
-    }
+    // Exponential^k fog
+    fog = vec4(0.5, 0.65, 0.9, exp(-pow(dist * fog_density, 5)));
 }

@@ -8,7 +8,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 fn write() {
     let mut rng = SmallRng::from_entropy();
     let file = tempfile::NamedTempFile::new().unwrap();
-    let mut save = Save::open(file.path(), 12).unwrap();
+    let save = Save::open(file.path(), 12).unwrap();
     let node = save::VoxelNode {
         chunks: vec![save::Chunk {
             vertex: 0,

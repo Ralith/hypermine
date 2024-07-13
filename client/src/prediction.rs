@@ -138,15 +138,15 @@ mod tests {
             )
         };
 
-        pred.generation = u16::max_value() - 1;
+        pred.generation = u16::MAX - 1;
 
-        assert_eq!(push(&mut pred), u16::max_value());
+        assert_eq!(push(&mut pred), u16::MAX);
         assert_eq!(push(&mut pred), 0);
         assert_eq!(pred.log.len(), 2);
 
-        reconcile(&mut pred, u16::max_value() - 1);
+        reconcile(&mut pred, u16::MAX - 1);
         assert_eq!(pred.log.len(), 2);
-        reconcile(&mut pred, u16::max_value());
+        reconcile(&mut pred, u16::MAX);
         assert_eq!(pred.log.len(), 1);
         reconcile(&mut pred, 0);
         assert_eq!(pred.log.len(), 0);

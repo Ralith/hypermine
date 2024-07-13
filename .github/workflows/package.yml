@@ -3,7 +3,6 @@ name: Package
 on:
   push:
     branches: ['master']
-  pull_request:
 
 jobs:
   package-windows:
@@ -18,7 +17,7 @@ jobs:
           lfs: true
       - name: Cache Vulkan SDK
         id: cache-vulkan
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ${{ env.VULKAN_SDK }}
           key: vulkan-${{ env.VULKAN_VERSION }}
@@ -26,7 +25,7 @@ jobs:
         if: steps.cache-vulkan.outputs.cache-hit != 'true'
         run: |
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/VulkanSDK-${{ env.VULKAN_VERSION }}-Installer.exe" -OutFile vulkan.exe
-          7z x -aoa vulkan.exe "-o$env:VULKAN_SDK" Lib
+          7z x -aoa vulkan.exe "-o$env:VULKAN_SDK" Lib share/vulkan/registry/vk.xml
 
       - uses: actions-rs/toolchain@v1
         with:

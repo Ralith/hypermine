@@ -10,6 +10,7 @@ use std::{net::UdpSocket, sync::Arc, time::Instant};
 use anyhow::{Context, Error, Result};
 use futures::{select, StreamExt};
 use hecs::Entity;
+use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
@@ -21,8 +22,8 @@ use save::Save;
 use sim::Sim;
 
 pub struct NetParams {
-    pub certificate_chain: Vec<rustls::Certificate>,
-    pub private_key: rustls::PrivateKey,
+    pub certificate_chain: Vec<CertificateDer<'static>>,
+    pub private_key: PrivateKeyDer<'static>,
     pub socket: UdpSocket,
 }
 
@@ -114,20 +115,15 @@ impl Server {
 
         // Step the simulation
         let (spawns, delta) = self.sim.step();
-        let spawns = Arc::new(spawns);
+        let spawns = spawns.map(Arc::new);
         let mut overran = Vec::new();
         for (client_id, client) in &mut self.clients {
             if let Some(ref mut handles) = client.handles {
                 let mut delta = delta.clone();
                 delta.latest_input = client.latest_input_processed;
                 let r1 = handles.unordered.try_send(delta);
-                let r2 = if !spawns.spawns.is_empty()
-                    || !spawns.despawns.is_empty()
-                    || !spawns.nodes.is_empty()
-                    || !spawns.block_updates.is_empty()
-                    || !spawns.voxel_data.is_empty()
-                {
-                    handles.ordered.try_send(spawns.clone())
+                let r2 = if let Some(spawns) = spawns.as_ref() {
+                    handles.ordered.try_send(Arc::clone(spawns))
                 } else {
                     Ok(())
                 };
@@ -191,8 +187,7 @@ impl Server {
                 self.cleanup_client(client_id);
             }
             ClientEvent::Command(cmd) => {
-                if cmd.generation.wrapping_sub(client.latest_input_received) < u16::max_value() / 2
-                {
+                if cmd.generation.wrapping_sub(client.latest_input_received) < u16::MAX / 2 {
                     client.latest_input_received = cmd.generation;
                     client.inputs.push(cmd, Instant::now());
                 } else {

@@ -19,7 +19,7 @@ impl Save {
         let meta = {
             let tx = db.begin_read().map_err(redb::Error::from)?;
             // Intermediate variable to make borrowck happy
-            let meta = match tx.open_table(META_TABLE) {
+            match tx.open_table(META_TABLE) {
                 Ok(meta) => {
                     let Some(value) = meta.get(&[][..]).map_err(redb::Error::from)? else {
                         return Err(OpenError::MissingMeta);
@@ -39,8 +39,7 @@ impl Save {
                     defaults
                 }
                 Err(e) => return Err(OpenError::Db(DbError(e.into()))),
-            };
-            meta
+            }
         };
         Ok(Self { meta, db })
     }
@@ -50,12 +49,18 @@ impl Save {
         &self.meta
     }
 
-    pub fn read(&self) -> Result<ReaderGuard<'_>, DbError> {
+    pub fn read(&self) -> Result<Reader, DbError> {
         let tx = self.db.begin_read().map_err(redb::Error::from)?;
-        Ok(ReaderGuard { tx })
+        Ok(Reader {
+            voxel_nodes: tx.open_table(VOXEL_NODE_TABLE)?,
+            entity_nodes: tx.open_table(ENTITY_NODE_TABLE)?,
+            characters: tx.open_table(CHARACTERS_BY_NAME_TABLE)?,
+            dctx: dctx(),
+            accum: Vec::new(),
+        })
     }
 
-    pub fn write(&mut self) -> Result<WriterGuard<'_>, DbError> {
+    pub fn write(&self) -> Result<WriterGuard, DbError> {
         let tx = self.db.begin_write().map_err(redb::Error::from)?;
         Ok(WriterGuard { tx })
     }
@@ -78,22 +83,6 @@ fn init_meta_table(db: &Database, value: &Meta) -> Result<(), redb::Error> {
     Ok(())
 }
 
-pub struct ReaderGuard<'a> {
-    tx: redb::ReadTransaction<'a>,
-}
-
-impl ReaderGuard<'_> {
-    pub fn get(&self) -> Result<Reader<'_>, DbError> {
-        Ok(Reader {
-            voxel_nodes: self.tx.open_table(VOXEL_NODE_TABLE)?,
-            entity_nodes: self.tx.open_table(ENTITY_NODE_TABLE)?,
-            characters: self.tx.open_table(CHARACTERS_BY_NAME_TABLE)?,
-            dctx: dctx(),
-            accum: Vec::new(),
-        })
-    }
-}
-
 fn dctx() -> zstd::DCtx<'static> {
     let mut dctx = zstd::DCtx::create();
     dctx.set_parameter(zstd::DParameter::Format(zstd::FrameFormat::Magicless))
@@ -101,15 +90,15 @@ fn dctx() -> zstd::DCtx<'static> {
     dctx
 }
 
-pub struct Reader<'a> {
-    voxel_nodes: redb::ReadOnlyTable<'a, u128, &'static [u8]>,
-    entity_nodes: redb::ReadOnlyTable<'a, u128, &'static [u8]>,
-    characters: redb::ReadOnlyTable<'a, &'static str, &'static [u8]>,
+pub struct Reader {
+    voxel_nodes: redb::ReadOnlyTable<u128, &'static [u8]>,
+    entity_nodes: redb::ReadOnlyTable<u128, &'static [u8]>,
+    characters: redb::ReadOnlyTable<&'static str, &'static [u8]>,
     dctx: zstd::DCtx<'static>,
     accum: Vec<u8>,
 }
 
-impl Reader<'_> {
+impl Reader {
     pub fn get_voxel_node(&mut self, node_id: u128) -> Result<Option<VoxelNode>, GetError> {
         let Some(node) = self.voxel_nodes.get(&node_id)? else {
             return Ok(None);
@@ -158,12 +147,12 @@ fn decompress(
 ) -> Result<(), &'static str> {
     dctx.init().map_err(zstd::get_error_name)?;
     let mut input = zstd::InBuffer::around(compressed);
-    let mut out = zstd::OutBuffer::around(out);
     let out_size = zstd::DCtx::out_size();
     loop {
-        if out.dst.len() + out_size > out.dst.capacity() {
-            out.dst.reserve(out_size);
+        if out.len() + out_size > out.capacity() {
+            out.reserve(out_size);
         }
+        let mut out = zstd::OutBuffer::around_pos(out, out.len());
         let n = dctx
             .decompress_stream(&mut out, &mut input)
             .map_err(zstd::get_error_name)?;
@@ -173,12 +162,12 @@ fn decompress(
     }
 }
 
-pub struct WriterGuard<'a> {
-    tx: redb::WriteTransaction<'a>,
+pub struct WriterGuard {
+    tx: redb::WriteTransaction,
 }
 
-impl<'a> WriterGuard<'a> {
-    pub fn get(&mut self) -> Result<Writer<'a, '_>, DbError> {
+impl WriterGuard {
+    pub fn get(&mut self) -> Result<Writer<'_>, DbError> {
         Ok(Writer {
             voxel_nodes: self
                 .tx
@@ -213,16 +202,16 @@ fn cctx() -> zstd::CCtx<'static> {
     cctx
 }
 
-pub struct Writer<'save, 'guard> {
-    voxel_nodes: redb::Table<'save, 'guard, u128, &'static [u8]>,
-    entity_nodes: redb::Table<'save, 'guard, u128, &'static [u8]>,
-    characters: redb::Table<'save, 'guard, &'static str, &'static [u8]>,
+pub struct Writer<'guard> {
+    voxel_nodes: redb::Table<'guard, u128, &'static [u8]>,
+    entity_nodes: redb::Table<'guard, u128, &'static [u8]>,
+    characters: redb::Table<'guard, &'static str, &'static [u8]>,
     cctx: zstd::CCtx<'static>,
     plain: Vec<u8>,
     compressed: Vec<u8>,
 }
 
-impl Writer<'_, '_> {
+impl Writer<'_> {
     pub fn put_voxel_node(&mut self, node_id: u128, state: &VoxelNode) -> Result<(), DbError> {
         prepare(&mut self.cctx, &mut self.plain, &mut self.compressed, state);
         self.voxel_nodes.insert(node_id, &*self.compressed)?;

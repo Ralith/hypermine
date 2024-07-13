@@ -1,12 +1,17 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
+<<<<<<< HEAD
     dodeca,
     graph::NodeId,
     node::{ChunkId, Coords},
     world::Material,
     EntityId, SimConfig, Step,
     math,
+=======
+    dodeca, graph::NodeId, node::ChunkId, voxel_math::Coords, world::Material, EntityId, SimConfig,
+    Step,
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,6 +64,8 @@ pub struct Spawns {
     pub nodes: Vec<FreshNode>,
     pub block_updates: Vec<BlockUpdate>,
     pub voxel_data: Vec<(ChunkId, SerializedVoxelData)>,
+    pub inventory_additions: Vec<(EntityId, EntityId)>,
+    pub inventory_removals: Vec<(EntityId, EntityId)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,6 +89,7 @@ pub struct BlockUpdate {
     pub chunk_id: ChunkId,
     pub coords: Coords,
     pub new_material: Material,
+    pub consumed_entity: Option<EntityId>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,6 +102,8 @@ pub struct SerializedVoxelData {
 pub enum Component {
     Character(Character),
     Position(Position),
+    Material(Material),
+    Inventory(Inventory),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -107,4 +117,9 @@ pub struct FreshNode {
 pub struct Character {
     pub name: String,
     pub state: CharacterState,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Inventory {
+    pub contents: Vec<EntityId>,
 }

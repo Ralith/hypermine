@@ -4,8 +4,12 @@ use rand_distr::Normal;
 use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
+<<<<<<< HEAD
     math,
     math::MVector,
+=======
+    margins, math,
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
     node::{ChunkId, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,
@@ -247,6 +251,7 @@ impl ChunkParams {
             self.generate_trees(&mut voxels, &mut rng);
         }
 
+        margins::initialize_margins(self.dimension, &mut voxels);
         voxels
     }
 
@@ -694,7 +699,7 @@ mod test {
 
         let enviros =
             chunk_incident_enviro_factors(&g, ChunkId::new(NodeId::ROOT, Vertex::A)).unwrap();
-        for (i, max_elevation) in enviros.max_elevations.iter().cloned().enumerate() {
+        for (i, max_elevation) in enviros.max_elevations.into_iter().enumerate() {
             println!("{i}, {max_elevation}");
             assert_abs_diff_eq!(max_elevation, (i + 1) as f64, epsilon = 1e-8);
         }

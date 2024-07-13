@@ -12,11 +12,13 @@ license = "Apache-2.0 OR Zlib"
 common = { path = "../common" }
 server = { path = "../server" }
 tracing = "0.1.10"
-ash = { version = "0.37.1", features = ["loaded"] }
-lahar = { git = "https://github.com/Ralith/lahar", rev = "88abd75e41d04c3a4199d95f581cb135f5962844" }
-winit = "0.28.1"
-ash-window = "0.12.0"
-raw-window-handle = "0.5.0"
+ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
+lahar = { git = "https://github.com/Ralith/lahar", rev = "7963ae5750ea61fa0a894dbb73d3be0ac77255d2" }
+yakui = { git = "https://github.com/SecondHalfGames/yakui", rev = "273a4a1020803066b84ac69a7646893419c31385" }
+yakui-vulkan = { git = "https://github.com/SecondHalfGames/yakui", rev = "273a4a1020803066b84ac69a7646893419c31385" }
+winit = "0.29.10"
+ash-window = "0.13"
+raw-window-handle = "0.6"
 directories = "5.0.1"
 vk-shader-macros = "0.2.5"
 nalgebra = { workspace = true }
@@ -31,13 +33,12 @@ fxhash = "0.2.1"
 downcast-rs = "1.1.1"
 quinn = { workspace = true }
 futures-util = "0.3.1"
-rustls = { version = "0.21.7", features = ["dangerous_configuration"] }
 webpki = "0.22.0"
 hecs = { workspace = true }
-rcgen = { version = "0.11.0", default-features = false }
+rcgen = { version = "0.13.1", default-features = false, features = ["ring"] }
 memoffset = "0.9"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
-metrics = { version = "0.21.0" }
+metrics = "0.23.0"
 hdrhistogram = { version = "7", default-features = false }
 save = { path = "../save" }
 
@@ -48,7 +49,7 @@ use-repo-assets = []
 [dev-dependencies]
 approx = "0.5.1"
 bencher = "0.1.5"
-renderdoc = "0.11.0"
+renderdoc = "0.12.1"
 
 [[bench]]
 name = "surface_extraction"

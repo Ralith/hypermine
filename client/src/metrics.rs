@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex, OnceLock, RwLock},
     time::Duration,
 };
 
@@ -11,7 +11,7 @@ pub fn init() -> Arc<Recorder> {
     let recorder = Arc::new(Recorder {
         histograms: RwLock::new(HashMap::new()),
     });
-    metrics::set_boxed_recorder(Box::new(ArcRecorder(recorder.clone()))).unwrap();
+    metrics::set_global_recorder(ArcRecorder(recorder.clone())).unwrap();
     recorder
 }
 
@@ -24,6 +24,9 @@ impl Recorder {
         // metrics crate documentation assures us that Key's interior mutability does not affect the hash code.
         #[allow(clippy::mutable_key_type)]
         let histograms = &*self.histograms.read().unwrap();
+        // Sort histogram entries before displaying them
+        let mut histograms = histograms.iter().collect::<Vec<_>>();
+        histograms.sort_unstable_by_key(|(key, _)| *key);
         for (key, histogram) in histograms {
             let histogram = histogram.lock().unwrap();
             info!(
@@ -68,15 +71,27 @@ impl metrics::Recorder for ArcRecorder {
         todo!()
     }
 
-    fn register_counter(&self, _key: &metrics::Key) -> metrics::Counter {
+    fn register_counter(
+        &self,
+        _key: &metrics::Key,
+        _metadata: &metrics::Metadata<'_>,
+    ) -> metrics::Counter {
         todo!()
     }
 
-    fn register_gauge(&self, _key: &metrics::Key) -> metrics::Gauge {
+    fn register_gauge(
+        &self,
+        _key: &metrics::Key,
+        _metadata: &metrics::Metadata<'_>,
+    ) -> metrics::Gauge {
         todo!()
     }
 
-    fn register_histogram(&self, key: &metrics::Key) -> metrics::Histogram {
+    fn register_histogram(
+        &self,
+        key: &metrics::Key,
+        _metadata: &metrics::Metadata<'_>,
+    ) -> metrics::Histogram {
         metrics::Histogram::from_arc(Arc::new(Handle {
             recorder: self.0.clone(),
             key: key.clone(),
@@ -91,6 +106,11 @@ struct Handle {
 
 impl metrics::HistogramFn for Handle {
     fn record(&self, value: f64) {
+        if !is_ready_for_profiling() {
+            // We include an extra check here to avoid profiling when there is
+            // nothing to render.
+            return;
+        }
         let mut histograms = self.recorder.histograms.read().unwrap();
         let mut histogram = match histograms.get(&self.key) {
             Some(x) => x.lock().unwrap(),
@@ -107,4 +127,16 @@ impl metrics::HistogramFn for Handle {
         };
         histogram.record((value * 1e9) as u64).unwrap();
     }
+}
+
+static PROFILING_LOCK: OnceLock<()> = OnceLock::new();
+
+/// This function will keep returning false until `declare_ready_for_profiling is called`
+fn is_ready_for_profiling() -> bool {
+    PROFILING_LOCK.get().is_some()
+}
+
+/// Once this function is called, calls to "histogram!" will be effective.
+pub fn declare_ready_for_profiling() {
+    let _ = PROFILING_LOCK.set(());
 }

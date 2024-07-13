@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ash::vk;
-use common::traversal::nearby_nodes;
+use common::traversal;
 use lahar::Staged;
 use metrics::histogram;
 
@@ -44,9 +44,12 @@ pub struct Draw {
     fog: Fog,
 
     /// Reusable storage for barriers that prevent races between image upload and read
-    image_barriers: Vec<vk::ImageMemoryBarrier>,
+    image_barriers: Vec<vk::ImageMemoryBarrier<'static>>,
     /// Reusable storage for barriers that prevent races between buffer upload and read
-    buffer_barriers: Vec<vk::BufferMemoryBarrier>,
+    buffer_barriers: Vec<vk::BufferMemoryBarrier<'static>>,
+
+    /// Yakui Vulkan context
+    yakui_vulkan: yakui_vulkan::YakuiVulkan,
 
     /// Miscellany
     character_model: Asset<GltfScene>,
@@ -63,7 +66,7 @@ impl Draw {
             // Allocate a command buffer for each frame state
             let cmd_pool = device
                 .create_command_pool(
-                    &vk::CommandPoolCreateInfo::builder()
+                    &vk::CommandPoolCreateInfo::default()
                         .queue_family_index(gfx.queue_family)
                         .flags(
                             vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER
@@ -74,7 +77,7 @@ impl Draw {
                 .unwrap();
             let cmds = device
                 .allocate_command_buffers(
-                    &vk::CommandBufferAllocateInfo::builder()
+                    &vk::CommandBufferAllocateInfo::default()
                         .command_pool(cmd_pool)
                         .command_buffer_count(2 * PIPELINE_DEPTH),
                 )
@@ -82,7 +85,7 @@ impl Draw {
 
             let timestamp_pool = device
                 .create_query_pool(
-                    &vk::QueryPoolCreateInfo::builder()
+                    &vk::QueryPoolCreateInfo::default()
                         .query_type(vk::QueryType::TIMESTAMP)
                         .query_count(TIMESTAMPS_PER_FRAME * PIPELINE_DEPTH),
                     None,
@@ -92,7 +95,7 @@ impl Draw {
 
             let common_pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder().set_layouts(&[gfx.common_layout]),
+                    &vk::PipelineLayoutCreateInfo::default().set_layouts(&[gfx.common_layout]),
                     None,
                 )
                 .unwrap();
@@ -101,7 +104,7 @@ impl Draw {
             // uniforms)
             let common_descriptor_pool = device
                 .create_descriptor_pool(
-                    &vk::DescriptorPoolCreateInfo::builder()
+                    &vk::DescriptorPoolCreateInfo::default()
                         .max_sets(PIPELINE_DEPTH)
                         .pool_sizes(&[
                             vk::DescriptorPoolSize {
@@ -118,7 +121,7 @@ impl Draw {
                 .unwrap();
             let common_ds = device
                 .allocate_descriptor_sets(
-                    &vk::DescriptorSetAllocateInfo::builder()
+                    &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(common_descriptor_pool)
                         .set_layouts(&vec![gfx.common_layout; PIPELINE_DEPTH as usize]),
                 )
@@ -137,7 +140,7 @@ impl Draw {
                         vk::BufferUsageFlags::UNIFORM_BUFFER,
                     );
                     device.update_descriptor_sets(
-                        &[vk::WriteDescriptorSet::builder()
+                        &[vk::WriteDescriptorSet::default()
                             .dst_set(common_ds)
                             .dst_binding(0)
                             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -145,8 +148,7 @@ impl Draw {
                                 buffer: uniforms.buffer(),
                                 offset: 0,
                                 range: vk::WHOLE_SIZE,
-                            }])
-                            .build()],
+                            }])],
                         &[],
                     );
                     let x = State {
@@ -156,7 +158,7 @@ impl Draw {
                         image_acquired: device.create_semaphore(&Default::default(), None).unwrap(),
                         fence: device
                             .create_fence(
-                                &vk::FenceCreateInfo::builder()
+                                &vk::FenceCreateInfo::default()
                                     .flags(vk::FenceCreateFlags::SIGNALED),
                                 None,
                             )
@@ -181,6 +183,17 @@ impl Draw {
             let fog = Fog::new(&gfx);
 
             gfx.save_pipeline_cache();
+
+            let mut yakui_vulkan_options = yakui_vulkan::Options::default();
+            yakui_vulkan_options.render_pass = gfx.render_pass;
+            yakui_vulkan_options.subpass = 1;
+            let mut yakui_vulkan = yakui_vulkan::YakuiVulkan::new(
+                &yakui_vulkan::VulkanContext::new(device, gfx.queue, gfx.memory_properties),
+                yakui_vulkan_options,
+            );
+            for _ in 0..PIPELINE_DEPTH {
+                yakui_vulkan.transfers_submitted();
+            }
 
             let character_model = loader.load(
                 "character model",
@@ -209,6 +222,8 @@ impl Draw {
                 buffer_barriers: Vec::new(),
                 image_barriers: Vec::new(),
 
+                yakui_vulkan,
+
                 character_model,
             }
         }
@@ -236,6 +251,12 @@ impl Draw {
         let device = &*self.gfx.device;
         let state = &mut self.states[self.next_state];
         device.wait_for_fences(&[state.fence], true, !0).unwrap();
+        self.yakui_vulkan
+            .transfers_finished(&yakui_vulkan::VulkanContext::new(
+                device,
+                self.gfx.queue,
+                self.gfx.memory_properties,
+            ));
         state.in_flight = false;
     }
 
@@ -254,9 +275,11 @@ impl Draw {
     ///
     /// Submits commands that wait on `image_acquired` before writing to `framebuffer`'s color
     /// attachment.
+    #[allow(clippy::too_many_arguments)] // Every argument is of a different type, making this less of a problem.
     pub unsafe fn draw(
         &mut self,
         mut sim: Option<&mut Sim>,
+        yakui_paint_dom: &yakui::paint::PaintDom,
         framebuffer: vk::Framebuffer,
         depth_view: vk::ImageView,
         extent: vk::Extent2D,
@@ -274,6 +297,9 @@ impl Draw {
         let state = &mut self.states[self.next_state];
         let cmd = state.cmd;
 
+        let yakui_vulkan_context =
+            yakui_vulkan::VulkanContext::new(device, self.gfx.queue, self.gfx.memory_properties);
+
         // We're using this state again, so put the fence back in the unsignaled state and compute
         // the next frame to use
         device.reset_fences(&[state.fence]).unwrap();
@@ -281,7 +307,7 @@ impl Draw {
 
         // Set up framebuffer attachments
         device.update_descriptor_sets(
-            &[vk::WriteDescriptorSet::builder()
+            &[vk::WriteDescriptorSet::default()
                 .dst_set(state.common_ds)
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
@@ -289,8 +315,7 @@ impl Draw {
                     sampler: vk::Sampler::null(),
                     image_view: depth_view,
                     image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-                }])
-                .build()],
+                }])],
             &[],
         );
 
@@ -305,7 +330,6 @@ impl Draw {
                 .get_query_pool_results(
                     self.timestamp_pool,
                     first_query,
-                    TIMESTAMPS_PER_FRAME,
                     &mut queries,
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 )
@@ -314,21 +338,21 @@ impl Draw {
                 self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[1] - queries[0]) as f64;
             let after_seconds =
                 self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[2] - queries[1]) as f64;
-            histogram!("frame.gpu.draw", draw_seconds);
-            histogram!("frame.gpu.after_draw", after_seconds);
+            histogram!("frame.gpu.draw").record(draw_seconds);
+            histogram!("frame.gpu.after_draw").record(after_seconds);
         }
 
         device
             .begin_command_buffer(
                 cmd,
-                &vk::CommandBufferBeginInfo::builder()
+                &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
         device
             .begin_command_buffer(
                 state.post_cmd,
-                &vk::CommandBufferBeginInfo::builder()
+                &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .unwrap();
@@ -343,24 +367,35 @@ impl Draw {
         );
         timestamp_index += 1;
 
+        self.yakui_vulkan
+            .transfer(yakui_paint_dom, &yakui_vulkan_context, cmd);
+
         // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
         // before submitting the command buffer so time-sensitive values can be set with minimum
         // latency.
         state.uniforms.record_transfer(device, cmd);
         self.buffer_barriers.push(
-            vk::BufferMemoryBarrier::builder()
+            vk::BufferMemoryBarrier::default()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .dst_access_mask(vk::AccessFlags::UNIFORM_READ)
                 .buffer(state.uniforms.buffer())
-                .size(vk::WHOLE_SIZE)
-                .build(),
+                .size(vk::WHOLE_SIZE),
         );
+
+        let nearby_nodes_started = Instant::now();
+        let nearby_nodes = if let Some(sim) = sim.as_deref() {
+            traversal::nearby_nodes(&sim.graph, &view, self.cfg.local_simulation.view_distance)
+        } else {
+            vec![]
+        };
+        histogram!("frame.cpu.nearby_nodes").record(nearby_nodes_started.elapsed());
 
         if let (Some(voxels), Some(sim)) = (self.voxels.as_mut(), sim.as_mut()) {
             voxels.prepare(
                 device,
                 state.voxels.as_mut().unwrap(),
                 sim,
+                &nearby_nodes,
                 state.post_cmd,
                 frustum,
             );
@@ -381,7 +416,7 @@ impl Draw {
 
         device.cmd_begin_render_pass(
             cmd,
-            &vk::RenderPassBeginInfo::builder()
+            &vk::RenderPassBeginInfo::default()
                 .render_pass(self.gfx.render_pass)
                 .framebuffer(framebuffer)
                 .render_area(vk::Rect2D {
@@ -435,11 +470,7 @@ impl Draw {
         }
 
         if let Some(sim) = sim.as_deref() {
-            for (node, transform) in nearby_nodes(
-                &sim.graph,
-                &view,
-                f64::from(self.cfg.local_simulation.view_distance),
-            ) {
+            for (node, transform) in nearby_nodes {
                 for &entity in sim.graph_entities.get(node) {
                     if sim.local_character == Some(entity) {
                         // Don't draw ourself
@@ -468,6 +499,9 @@ impl Draw {
         device.cmd_next_subpass(cmd, vk::SubpassContents::INLINE);
 
         self.fog.draw(device, state.common_ds, cmd);
+
+        self.yakui_vulkan
+            .paint(yakui_paint_dom, &yakui_vulkan_context, cmd, extent);
 
         // Finish up
         device.cmd_end_render_pass(cmd);
@@ -501,22 +535,20 @@ impl Draw {
             .queue_submit(
                 self.gfx.queue,
                 &[
-                    vk::SubmitInfo::builder()
+                    vk::SubmitInfo::default()
                         .command_buffers(&[cmd])
                         .wait_semaphores(&[state.image_acquired])
                         .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                        .signal_semaphores(&[present])
-                        .build(),
-                    vk::SubmitInfo::builder()
-                        .command_buffers(&[state.post_cmd])
-                        .build(),
+                        .signal_semaphores(&[present]),
+                    vk::SubmitInfo::default().command_buffers(&[state.post_cmd]),
                 ],
                 state.fence,
             )
             .unwrap();
+        self.yakui_vulkan.transfers_submitted();
         state.used = true;
         state.in_flight = true;
-        histogram!("frame.cpu", draw_started.elapsed());
+        histogram!("frame.cpu").record(draw_started.elapsed());
     }
 
     /// Wait for all drawing to complete
@@ -548,6 +580,7 @@ impl Drop for Draw {
                     voxels.destroy(device);
                 }
             }
+            self.yakui_vulkan.cleanup(&self.gfx.device);
             device.destroy_command_pool(self.cmd_pool, None);
             device.destroy_query_pool(self.timestamp_pool, None);
             device.destroy_descriptor_pool(self.common_descriptor_pool, None);

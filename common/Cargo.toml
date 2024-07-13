@@ -15,7 +15,6 @@ nalgebra = { workspace = true, features = ["rand", "serde-serialize"] }
 bincode = "1.2.1"
 anyhow = "1.0.26"
 quinn = { workspace = true }
-lazy_static = "1.4.0"
 libm = "0.2.6"
 fxhash = "0.2.1"
 tracing = "0.1.10"

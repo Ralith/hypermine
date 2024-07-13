@@ -4,9 +4,10 @@ use std::{
 };
 
 use client::{graphics, metrics, net, Config};
+use quinn::rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use save::Save;
 
-use ash::extensions::khr;
+use ash::khr;
 use tracing::{error, error_span, info};
 
 fn main() {
@@ -23,12 +24,12 @@ fn main() {
             UdpSocket::bind("[::1]:0".parse::<SocketAddr>().unwrap()).expect("binding socket");
         config.server = Some(socket.local_addr().unwrap());
 
-        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let key = cert.serialize_private_key_der();
-        let cert = cert.serialize_der().unwrap();
+        let certified_key = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let key = certified_key.key_pair.serialize_der();
+        let cert = certified_key.cert.der().to_vec();
         let sim_cfg = config.local_simulation.clone();
 
-        let save = dirs.data_local_dir().join("default.save");
+        let save = dirs.data_local_dir().join(&config.save);
         info!("using save file {}", save.display());
         std::fs::create_dir_all(save.parent().unwrap()).unwrap();
         let save = match Save::open(&save, config.local_simulation.chunk_size) {
@@ -44,8 +45,8 @@ fn main() {
             let _guard = span.enter();
             if let Err(e) = server::run(
                 server::NetParams {
-                    certificate_chain: vec![rustls::Certificate(cert)],
-                    private_key: rustls::PrivateKey(key),
+                    certificate_chain: vec![CertificateDer::from(cert)],
+                    private_key: PrivatePkcs8KeyDer::from(key).into(),
                     socket,
                 },
                 sim_cfg,
@@ -74,7 +75,7 @@ fn main() {
         graphics::Base::new(
             core,
             Some(dirs.cache_dir().join("pipeline_cache")),
-            &[khr::Swapchain::name()],
+            &[khr::swapchain::NAME],
             |physical, queue_family| window.supports(physical, queue_family),
         )
         .unwrap(),

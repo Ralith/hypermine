@@ -13,6 +13,7 @@ use crate::{
 };
 
 /// Ensure all nodes within `distance` of `start` exist
+<<<<<<< HEAD
 pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f64) {
     let mut pending = Vec::<(NodeId, MIsometry<f64>)>::new();
     let mut visited = FxHashSet::<NodeId>::default();
@@ -20,20 +21,38 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f64) {
     pending.push((start.node, MIsometry::identity()));
     visited.insert(start.node);
     let start_p = start.local.map(|x| x as f64) * MVector::origin();
+=======
+pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
+    // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
+    // minimal path to each node. This greatly helps prevent error from accumulating due to
+    // hundreds of transformations being composed.
+    let mut pending = VecDeque::<(NodeId, na::Matrix4<f32>)>::new();
+    let mut visited = FxHashSet::<NodeId>::default();
 
-    while let Some((node, current_transform)) = pending.pop() {
+    pending.push_back((start.node, na::Matrix4::identity()));
+    visited.insert(start.node);
+    let start_p = start.local * math::origin();
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
+
+    while let Some((node, current_transform)) = pending.pop_front() {
         for side in Side::iter() {
             let neighbor = graph.ensure_neighbor(node, side);
             if visited.contains(&neighbor) {
                 continue;
             }
             visited.insert(neighbor);
+<<<<<<< HEAD
             let neighbor_transform = current_transform * *side.reflection();
             let neighbor_p = neighbor_transform * MVector::origin();
             if math::distance(&start_p, &neighbor_p) > distance {
+=======
+            let neighbor_transform = current_transform * side.reflection();
+            let neighbor_p = neighbor_transform * math::origin();
+            if -math::mip(&start_p, &neighbor_p) > distance.cosh() {
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
                 continue;
             }
-            pending.push((neighbor, neighbor_transform));
+            pending.push_back((neighbor, neighbor_transform));
         }
     }
 }
@@ -43,6 +62,7 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f64) {
 pub fn nearby_nodes(
     graph: &Graph,
     start: &Position,
+<<<<<<< HEAD
     distance: f64,
 ) -> Vec<(NodeId, MIsometry<f32>)> {
     struct PendingNode {
@@ -54,16 +74,39 @@ pub fn nearby_nodes(
     let mut pending = Vec::<PendingNode>::new();
     let mut visited = FxHashSet::<NodeId>::default();
     let start_p = start.local.map(|x| x as f64) * MVector::origin();
+=======
+    distance: f32,
+) -> Vec<(NodeId, na::Matrix4<f32>)> {
+    struct PendingNode {
+        id: NodeId,
+        transform: na::Matrix4<f32>,
+    }
 
-    pending.push(PendingNode {
+    let mut result = Vec::new();
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
+
+    // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
+    // minimal path to each node. This greatly helps prevent error from accumulating due to
+    // hundreds of transformations being composed.
+    let mut pending = VecDeque::<PendingNode>::new();
+    let mut visited = FxHashSet::<NodeId>::default();
+    let start_p = start.local * math::origin();
+
+    pending.push_back(PendingNode {
         id: start.node,
         transform: MIsometry::identity(),
     });
     visited.insert(start.node);
 
+<<<<<<< HEAD
     while let Some(current) = pending.pop() {
         let current_p = current.transform * MVector::origin();
         if math::distance(&start_p, &current_p) > distance {
+=======
+    while let Some(current) = pending.pop_front() {
+        let current_p = current.transform * math::origin();
+        if -math::mip(&start_p, &current_p) > distance.cosh() {
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
             continue;
         }
         result.push((current.id, current.transform.to_f32()));
@@ -76,7 +119,7 @@ pub fn nearby_nodes(
             if visited.contains(&neighbor) {
                 continue;
             }
-            pending.push(PendingNode {
+            pending.push_back(PendingNode {
                 id: neighbor,
                 transform: current.transform * *side.reflection(),
             });
@@ -107,8 +150,12 @@ impl<'a> RayTraverser<'a> {
         let mut closest_vertex = Vertex::A;
         let mut closest_vertex_cosh_distance = f32::INFINITY;
         for vertex in Vertex::iter() {
+<<<<<<< HEAD
             let vertex_cosh_distance =
                 (vertex.node_to_dual().to_f32() * position.local * MVector::origin()).w;
+=======
+            let vertex_cosh_distance = (vertex.node_to_dual() * position.local * math::origin()).w;
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
             if vertex_cosh_distance < closest_vertex_cosh_distance {
                 closest_vertex = vertex;
                 closest_vertex_cosh_distance = vertex_cosh_distance;
@@ -124,8 +171,7 @@ impl<'a> RayTraverser<'a> {
         // Precalculate the chunk boundaries for collision purposes. If the collider goes outside these bounds,
         // the corresponding neighboring chunk will also be used for collision checking.
         let klein_lower_boundary = radius.tanh();
-        let klein_upper_boundary =
-            ((Vertex::chunk_to_dual_factor() as f32).atanh() - radius).tanh();
+        let klein_upper_boundary = (Vertex::chunk_to_dual_factor().atanh() - radius).tanh();
 
         Self {
             graph,
@@ -147,7 +193,11 @@ impl<'a> RayTraverser<'a> {
                 // Combine node and vertex, and convert node transform to chunk transform
                 return Some((
                     node.map(|node| ChunkId::new(node, vertex)),
+<<<<<<< HEAD
                     vertex.node_to_dual().to_f32() * node_transform,
+=======
+                    vertex.node_to_dual() * node_transform,
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
                 ));
             }
 
@@ -158,7 +208,11 @@ impl<'a> RayTraverser<'a> {
                 continue;
             };
 
+<<<<<<< HEAD
             let local_ray = vertex.node_to_dual().to_f32() * node_transform * self.ray;
+=======
+            let local_ray = vertex.node_to_dual() * node_transform * self.ray;
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
 
             // Compute the Klein-Beltrami coordinates of the ray segment's endpoints. To check whether neighboring chunks
             // are needed, we need to check whether the endpoints of the line segments lie outside the boundaries of the square
@@ -174,15 +228,18 @@ impl<'a> RayTraverser<'a> {
                     || klein_ray_end[axis] <= self.klein_lower_boundary
                 {
                     let side = vertex.canonical_sides()[axis];
+<<<<<<< HEAD
                     let next_node_transform = side.reflection().to_f32() * node_transform;
+=======
+                    let next_node_transform = side.reflection() * node_transform;
+>>>>>>> d49df99d371ca6354789deefff6900b1eea46533
                     // Crude check to ensure that the neighboring chunk's node can be in the path of the ray. For simplicity, this
                     // check treats each node as a sphere and assumes the ray is pointed directly towards its center. The check is
                     // needed because chunk generation uses this approximation, and this check is not guaranteed to pass near corners
                     // because the AABB check can have false positives.
                     let ray_node_distance = (next_node_transform * self.ray.position).w.acosh();
                     let ray_length = tanh_distance.atanh();
-                    if ray_node_distance - ray_length - self.radius
-                        > dodeca::BOUNDING_SPHERE_RADIUS as f32
+                    if ray_node_distance - ray_length - self.radius > dodeca::BOUNDING_SPHERE_RADIUS
                     {
                         // Ray cannot intersect node
                         continue;
@@ -215,5 +272,28 @@ impl<'a> RayTraverser<'a> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_abs_diff_eq;
+
+    use super::*;
+
+    // Make sure that ensure_nearby and nearby_nodes finish even for a relatively large radius
+    // and traverse the expected number of nodes
+    #[test]
+    fn traversal_functions_example() {
+        let mut graph = Graph::new(1);
+        ensure_nearby(&mut graph, &Position::origin(), 6.0);
+        assert_abs_diff_eq!(graph.len(), 502079, epsilon = 50);
+
+        // TODO: nearby_nodes has a stricter interpretation of distance than
+        // ensure_nearby, resulting in far fewer nodes. Getting these two
+        // functions to align may be a future performance improvement
+        // opportunity.
+        let nodes = nearby_nodes(&graph, &Position::origin(), 6.0);
+        assert_abs_diff_eq!(nodes.len(), 60137, epsilon = 5);
     }
 }

@@ -22,7 +22,6 @@ use common::{
     lru_slab::SlotId,
     math,
     node::{Chunk, ChunkId, VoxelData},
-    traversal::nearby_nodes,
     LruSlab,
 };
 
@@ -89,6 +88,7 @@ impl Voxels {
         device: &Device,
         frame: &mut Frame,
         sim: &mut Sim,
+        nearby_nodes: &[(NodeId, na::Matrix4<f32>)],
         cmd: vk::CommandBuffer,
         frustum: &Frustum,
     ) {
@@ -101,7 +101,7 @@ impl Voxels {
         }
         while let Some(chunk) = self.worldgen.poll() {
             let chunk_id = ChunkId::new(chunk.node, chunk.chunk);
-            sim.graph.populate_chunk(chunk_id, chunk.voxels, false);
+            sim.graph.populate_chunk(chunk_id, chunk.voxels);
 
             // Now that the block is populated, we can apply any pending block updates the server
             // provided that the client couldn't apply.
@@ -120,32 +120,15 @@ impl Voxels {
             // there's no point trying to draw.
             return;
         }
-        let graph_traversal_started = Instant::now();
-        let mut nodes = nearby_nodes(
-            &sim.graph,
-            &view,
-            f64::from(self.config.local_simulation.view_distance),
-        );
-        histogram!(
-            "frame.cpu.voxels.graph_traversal",
-            graph_traversal_started.elapsed()
-        );
-        // Sort nodes by distance to the view to prioritize loading closer data and improve early Z
-        // performance
-        let view_pos = view.local * math::origin();
-        nodes.sort_unstable_by(|&(_, ref xf_a), &(_, ref xf_b)| {
-            math::distance(&view_pos, &(xf_a * math::origin()))
-                .partial_cmp(&math::distance(&view_pos, &(xf_b * math::origin())))
-                .unwrap_or(std::cmp::Ordering::Less)
-        });
         let node_scan_started = Instant::now();
         let frustum_planes = frustum.planes();
         let local_to_view = math::mtranspose(&view.local);
         let mut extractions = Vec::new();
-        for &(node, ref node_transform) in &nodes {
+        let mut workqueue_is_full = false;
+        for &(node, ref node_transform) in nearby_nodes {
             let node_to_view = local_to_view * node_transform;
             let origin = node_to_view * math::origin();
-            if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS as f32) {
+            if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS) {
                 // Don't bother generating or drawing chunks from nodes that are wholly outside the
                 // frustum.
                 continue;
@@ -162,6 +145,10 @@ impl Voxels {
                 {
                     Generating => continue,
                     Fresh => {
+                        // Don't bother trying to generate fresh nodes if the work queue is full
+                        if workqueue_is_full {
+                            continue;
+                        }
                         // Generate voxel data
                         if let Some(params) = common::worldgen::ChunkParams::new(
                             self.surfaces.dimension() as u8,
@@ -170,6 +157,8 @@ impl Voxels {
                         ) {
                             if self.worldgen.load(ChunkDesc { node, params }).is_ok() {
                                 sim.graph[chunk] = Generating;
+                            } else {
+                                workqueue_is_full = true;
                             }
                         }
                         continue;
@@ -178,7 +167,6 @@ impl Voxels {
                         ref mut surface,
                         ref mut old_surface,
                         ref voxels,
-                        ..
                     } => {
                         if let Some(slot) = surface.or(*old_surface) {
                             // Render an already-extracted surface
@@ -186,7 +174,7 @@ impl Voxels {
                             frame.drawn.push(slot);
                             // Transfer transform
                             frame.surface.transforms_mut()[slot.0 as usize] =
-                                node_transform * vertex.chunk_to_node().map(|x| x as f32);
+                                node_transform * vertex.chunk_to_node();
                         }
                         if let (None, &VoxelData::Dense(ref data)) = (&surface, voxels) {
                             // Extract a surface so it can be drawn in future frames
@@ -252,7 +240,7 @@ impl Voxels {
             cmd,
             &extractions,
         );
-        histogram!("frame.cpu.voxels.node_scan", node_scan_started.elapsed());
+        histogram!("frame.cpu.voxels.node_scan").record(node_scan_started.elapsed());
     }
 
     pub unsafe fn draw(
@@ -277,7 +265,7 @@ impl Voxels {
         for chunk in &frame.drawn {
             self.draw.draw(device, cmd, &self.surfaces, chunk.0);
         }
-        histogram!("frame.cpu.voxels.draw", started.elapsed());
+        histogram!("frame.cpu.voxels.draw").record(started.elapsed());
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {

@@ -2,19 +2,20 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{f32, os::raw::c_char};
 
-use ash::{extensions::khr, vk};
+use ash::{khr, vk};
 use lahar::DedicatedImage;
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use tracing::{error, info};
+use winit::event::KeyEvent;
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{
     dpi::PhysicalSize,
-    event::{
-        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
-    },
-    event_loop::{ControlFlow, EventLoop},
+    event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent},
+    event_loop::EventLoop,
     window::{CursorGrabMode, Window as WinitWindow, WindowBuilder},
 };
 
+use super::gui::GuiState;
 use super::{Base, Core, Draw, Frustum};
 use crate::Net;
 use crate::{net, Config, Sim};
@@ -27,7 +28,7 @@ pub struct EarlyWindow {
 
 impl EarlyWindow {
     pub fn new() -> Self {
-        let event_loop = EventLoop::new();
+        let event_loop = EventLoop::new().unwrap();
         let window = WindowBuilder::new()
             .with_title("hypermine")
             .build(&event_loop)
@@ -37,8 +38,10 @@ impl EarlyWindow {
 
     /// Identify the Vulkan extension needed to render to this window
     pub fn required_extensions(&self) -> &'static [*const c_char] {
-        ash_window::enumerate_required_extensions(self.event_loop.raw_display_handle())
-            .expect("unsupported platform")
+        ash_window::enumerate_required_extensions(
+            self.event_loop.display_handle().unwrap().as_raw(),
+        )
+        .expect("unsupported platform")
     }
 }
 
@@ -49,12 +52,14 @@ pub struct Window {
     config: Arc<Config>,
     metrics: Arc<crate::metrics::Recorder>,
     event_loop: Option<EventLoop<()>>,
-    surface_fn: khr::Surface,
+    surface_fn: khr::surface::Instance,
     surface: vk::SurfaceKHR,
     swapchain: Option<SwapchainMgr>,
     swapchain_needs_update: bool,
     draw: Option<Draw>,
     sim: Option<Sim>,
+    gui_state: GuiState,
+    yak: yakui::Yakui,
     net: Net,
 }
 
@@ -71,13 +76,13 @@ impl Window {
             ash_window::create_surface(
                 &core.entry,
                 &core.instance,
-                early.window.raw_display_handle(),
-                early.window.raw_window_handle(),
+                early.window.display_handle().unwrap().as_raw(),
+                early.window.window_handle().unwrap().as_raw(),
                 None,
             )
             .unwrap()
         };
-        let surface_fn = khr::Surface::new(&core.entry, &core.instance);
+        let surface_fn = khr::surface::Instance::new(&core.entry, &core.instance);
 
         Self {
             _core: core,
@@ -91,6 +96,8 @@ impl Window {
             swapchain_needs_update: false,
             draw: None,
             sim: None,
+            gui_state: GuiState::new(),
+            yak: yakui::Yakui::new(),
             net,
         }
     }
@@ -105,7 +112,7 @@ impl Window {
     }
 
     /// Run the event loop until process exit
-    pub fn run(mut self, gfx: Arc<Base>) -> ! {
+    pub fn run(mut self, gfx: Arc<Base>) {
         // Allocate the presentable images we'll be rendering to
         self.swapchain = Some(SwapchainMgr::new(
             &self,
@@ -128,34 +135,9 @@ impl Window {
         self.event_loop
             .take()
             .unwrap()
-            .run(move |event, _, control_flow| match event {
-                Event::MainEventsCleared => {
-                    while let Ok(msg) = self.net.incoming.try_recv() {
-                        self.handle_net(msg);
-                    }
-
-                    if let Some(sim) = self.sim.as_mut() {
-                        let this_frame = Instant::now();
-                        let dt = this_frame - last_frame;
-                        sim.set_movement_input(na::Vector3::new(
-                            right as u8 as f32 - left as u8 as f32,
-                            up as u8 as f32 - down as u8 as f32,
-                            back as u8 as f32 - forward as u8 as f32,
-                        ));
-                        sim.set_jump_held(jump);
-
-                        sim.look(
-                            0.0,
-                            0.0,
-                            2.0 * (anticlockwise as u8 as f32 - clockwise as u8 as f32)
-                                * dt.as_secs_f32(),
-                        );
-
-                        sim.step(dt, &mut self.net);
-                        last_frame = this_frame;
-                    }
-
-                    self.draw();
+            .run(move |event, window_target| match event {
+                Event::AboutToWait => {
+                    self.window.request_redraw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
                     DeviceEvent::MouseMotion { delta } if mouse_captured => {
@@ -171,6 +153,34 @@ impl Window {
                     _ => {}
                 },
                 Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::RedrawRequested => {
+                        while let Ok(msg) = self.net.incoming.try_recv() {
+                            self.handle_net(msg);
+                        }
+
+                        if let Some(sim) = self.sim.as_mut() {
+                            let this_frame = Instant::now();
+                            let dt = this_frame - last_frame;
+                            sim.set_movement_input(na::Vector3::new(
+                                right as u8 as f32 - left as u8 as f32,
+                                up as u8 as f32 - down as u8 as f32,
+                                back as u8 as f32 - forward as u8 as f32,
+                            ));
+                            sim.set_jump_held(jump);
+
+                            sim.look(
+                                0.0,
+                                0.0,
+                                2.0 * (anticlockwise as u8 as f32 - clockwise as u8 as f32)
+                                    * dt.as_secs_f32(),
+                            );
+
+                            sim.step(dt, &mut self.net);
+                            last_frame = this_frame;
+                        }
+
+                        self.draw();
+                    }
                     WindowEvent::Resized(_) => {
                         // Some environments may not emit the vulkan signals that recommend or
                         // require surface reconstruction, so we need to check for messages from the
@@ -180,7 +190,7 @@ impl Window {
                     }
                     WindowEvent::CloseRequested => {
                         info!("exiting due to closed window");
-                        *control_flow = ControlFlow::Exit;
+                        window_target.exit();
                     }
                     WindowEvent::MouseInput {
                         button: MouseButton::Left,
@@ -211,39 +221,39 @@ impl Window {
                         }
                     }
                     WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
                                 state,
-                                virtual_keycode: Some(key),
+                                physical_key: PhysicalKey::Code(key),
                                 ..
                             },
                         ..
                     } => match key {
-                        VirtualKeyCode::W => {
+                        KeyCode::KeyW => {
                             forward = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::A => {
+                        KeyCode::KeyA => {
                             left = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::S => {
+                        KeyCode::KeyS => {
                             back = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::D => {
+                        KeyCode::KeyD => {
                             right = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::Q => {
+                        KeyCode::KeyQ => {
                             anticlockwise = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::E => {
+                        KeyCode::KeyE => {
                             clockwise = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::R => {
+                        KeyCode::KeyR => {
                             up = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::F => {
+                        KeyCode::KeyF => {
                             down = state == ElementState::Pressed;
                         }
-                        VirtualKeyCode::Space => {
+                        KeyCode::Space => {
                             if let Some(sim) = self.sim.as_mut() {
                                 if !jump && state == ElementState::Pressed {
                                     sim.set_jump_pressed_true();
@@ -251,12 +261,15 @@ impl Window {
                                 jump = state == ElementState::Pressed;
                             }
                         }
-                        VirtualKeyCode::V if state == ElementState::Pressed => {
+                        KeyCode::KeyV if state == ElementState::Pressed => {
                             if let Some(sim) = self.sim.as_mut() {
                                 sim.toggle_no_clip();
                             }
                         }
-                        VirtualKeyCode::Escape => {
+                        KeyCode::F1 if state == ElementState::Pressed => {
+                            self.gui_state.toggle_gui();
+                        }
+                        KeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
                             mouse_captured = false;
@@ -280,11 +293,12 @@ impl Window {
                     }
                     _ => {}
                 },
-                Event::LoopDestroyed => {
+                Event::LoopExiting => {
                     self.metrics.report();
                 }
                 _ => {}
-            });
+            })
+            .unwrap();
     }
 
     fn handle_net(&mut self, msg: net::Message) {
@@ -339,16 +353,30 @@ impl Window {
                     }
                 }
             };
-            let aspect_ratio =
-                swapchain.state.extent.width as f32 / swapchain.state.extent.height as f32;
+            let extent = swapchain.state.extent;
+            let aspect_ratio = extent.width as f32 / extent.height as f32;
             let frame = &swapchain.state.frames[frame_id as usize];
             let frustum = Frustum::from_vfov(f32::consts::FRAC_PI_4 * 1.2, aspect_ratio);
+            // Render the GUI
+            self.yak
+                .set_surface_size([extent.width as f32, extent.height as f32].into());
+            self.yak
+                .set_unscaled_viewport(yakui::geometry::Rect::from_pos_size(
+                    Default::default(),
+                    [extent.width as f32, extent.height as f32].into(),
+                ));
+            self.yak.start();
+            if let Some(sim) = self.sim.as_ref() {
+                self.gui_state.run(sim);
+            }
+            self.yak.finish();
             // Render the frame
             draw.draw(
                 self.sim.as_mut(),
+                self.yak.paint(),
                 frame.buffer,
                 frame.depth_view,
-                swapchain.state.extent,
+                extent,
                 frame.present,
                 &frustum,
             );
@@ -364,18 +392,18 @@ impl Window {
     }
 }
 
-fn number_key_to_index(key: VirtualKeyCode) -> Option<usize> {
+fn number_key_to_index(key: KeyCode) -> Option<usize> {
     match key {
-        VirtualKeyCode::Key1 => Some(0),
-        VirtualKeyCode::Key2 => Some(1),
-        VirtualKeyCode::Key3 => Some(2),
-        VirtualKeyCode::Key4 => Some(3),
-        VirtualKeyCode::Key5 => Some(4),
-        VirtualKeyCode::Key6 => Some(5),
-        VirtualKeyCode::Key7 => Some(6),
-        VirtualKeyCode::Key8 => Some(7),
-        VirtualKeyCode::Key9 => Some(8),
-        VirtualKeyCode::Key0 => Some(9),
+        KeyCode::Digit1 => Some(0),
+        KeyCode::Digit2 => Some(1),
+        KeyCode::Digit3 => Some(2),
+        KeyCode::Digit4 => Some(3),
+        KeyCode::Digit5 => Some(4),
+        KeyCode::Digit6 => Some(5),
+        KeyCode::Digit7 => Some(6),
+        KeyCode::Digit8 => Some(7),
+        KeyCode::Digit9 => Some(8),
+        KeyCode::Digit0 => Some(9),
         _ => None,
     }
 }
@@ -399,7 +427,7 @@ impl SwapchainMgr {
     /// Construct a swapchain manager for a certain window
     fn new(window: &Window, gfx: Arc<Base>, fallback_size: PhysicalSize<u32>) -> Self {
         let device = &*gfx.device;
-        let swapchain_fn = khr::Swapchain::new(&gfx.core.instance, device);
+        let swapchain_fn = khr::swapchain::Device::new(&gfx.core.instance, device);
         let surface_formats = unsafe {
             window
                 .surface_fn
@@ -445,7 +473,7 @@ impl SwapchainMgr {
     /// - There must be no operations scheduled that access the current swapchain
     unsafe fn update(
         &mut self,
-        surface_fn: &khr::Surface,
+        surface_fn: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
         fallback_size: PhysicalSize<u32>,
     ) {
@@ -464,7 +492,7 @@ impl SwapchainMgr {
     unsafe fn acquire_next_image(&self, signal: vk::Semaphore) -> Result<(u32, bool), vk::Result> {
         self.state.swapchain_fn.acquire_next_image(
             self.state.handle,
-            std::u64::MAX,
+            u64::MAX,
             signal,
             vk::Fence::null(),
         )
@@ -474,7 +502,7 @@ impl SwapchainMgr {
     unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> {
         self.state.swapchain_fn.queue_present(
             self.state.gfx.queue,
-            &vk::PresentInfoKHR::builder()
+            &vk::PresentInfoKHR::default()
                 .wait_semaphores(&[self.state.frames[index as usize].present])
                 .swapchains(&[self.state.handle])
                 .image_indices(&[index]),
@@ -485,7 +513,7 @@ impl SwapchainMgr {
 /// Data that's replaced when the swapchain is updated
 struct SwapchainState {
     gfx: Arc<Base>,
-    swapchain_fn: khr::Swapchain,
+    swapchain_fn: khr::swapchain::Device,
     extent: vk::Extent2D,
     handle: vk::SwapchainKHR,
     frames: Vec<Frame>,
@@ -493,8 +521,8 @@ struct SwapchainState {
 
 impl SwapchainState {
     unsafe fn new(
-        surface_fn: &khr::Surface,
-        swapchain_fn: khr::Swapchain,
+        surface_fn: &khr::surface::Instance,
+        swapchain_fn: khr::swapchain::Device,
         gfx: Arc<Base>,
         surface: vk::SurfaceKHR,
         format: vk::SurfaceFormatKHR,
@@ -541,7 +569,7 @@ impl SwapchainState {
 
         let handle = swapchain_fn
             .create_swapchain(
-                &vk::SwapchainCreateInfoKHR::builder()
+                &vk::SwapchainCreateInfoKHR::default()
                     .surface(surface)
                     .min_image_count(image_count)
                     .image_color_space(format.color_space)
@@ -566,7 +594,7 @@ impl SwapchainState {
             .map(|image| {
                 let view = device
                     .create_image_view(
-                        &vk::ImageViewCreateInfo::builder()
+                        &vk::ImageViewCreateInfo::default()
                             .view_type(vk::ImageViewType::TYPE_2D)
                             .format(format.format)
                             .subresource_range(vk::ImageSubresourceRange {
@@ -584,7 +612,7 @@ impl SwapchainState {
                 let depth = DedicatedImage::new(
                     device,
                     &gfx.memory_properties,
-                    &vk::ImageCreateInfo::builder()
+                    &vk::ImageCreateInfo::default()
                         .image_type(vk::ImageType::TYPE_2D)
                         .format(vk::Format::D32_SFLOAT)
                         .extent(vk::Extent3D {
@@ -604,7 +632,7 @@ impl SwapchainState {
                 gfx.set_name(depth.memory, cstr!("depth"));
                 let depth_view = device
                     .create_image_view(
-                        &vk::ImageViewCreateInfo::builder()
+                        &vk::ImageViewCreateInfo::default()
                             .image(depth.handle)
                             .view_type(vk::ImageViewType::TYPE_2D)
                             .format(vk::Format::D32_SFLOAT)
@@ -627,7 +655,7 @@ impl SwapchainState {
                     depth_view,
                     buffer: device
                         .create_framebuffer(
-                            &vk::FramebufferCreateInfo::builder()
+                            &vk::FramebufferCreateInfo::default()
                                 .render_pass(gfx.render_pass)
                                 .attachments(&[view, depth_view])
                                 .width(extent.width)

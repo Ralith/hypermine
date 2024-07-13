@@ -18,20 +18,20 @@ impl Fog {
         unsafe {
             // Construct the shader modules
             let vert = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(VERT), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(VERT), None)
                 .unwrap();
             // Note that these only need to live until the pipeline itself is constructed
             let v_guard = defer(|| device.destroy_shader_module(vert, None));
 
             let frag = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(FRAG), None)
+                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(FRAG), None)
                 .unwrap();
             let f_guard = defer(|| device.destroy_shader_module(frag, None));
 
             // Define the outward-facing interface of the shaders, incl. uniforms, samplers, etc.
             let pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder().set_layouts(&[gfx.common_layout]),
+                    &vk::PipelineLayoutCreateInfo::default().set_layouts(&[gfx.common_layout]),
                     None,
                 )
                 .unwrap();
@@ -40,7 +40,7 @@ impl Fog {
             let mut pipelines = device
                 .create_graphics_pipelines(
                     gfx.pipeline_cache,
-                    &[vk::GraphicsPipelineCreateInfo::builder()
+                    &[vk::GraphicsPipelineCreateInfo::default()
                         .stages(&[
                             vk::PipelineShaderStageCreateInfo {
                                 stage: vk::ShaderStageFlags::VERTEX,
@@ -57,31 +57,31 @@ impl Fog {
                         ])
                         .vertex_input_state(&vk::PipelineVertexInputStateCreateInfo::default())
                         .input_assembly_state(
-                            &vk::PipelineInputAssemblyStateCreateInfo::builder()
+                            &vk::PipelineInputAssemblyStateCreateInfo::default()
                                 .topology(vk::PrimitiveTopology::TRIANGLE_LIST),
                         )
                         .viewport_state(
-                            &vk::PipelineViewportStateCreateInfo::builder()
+                            &vk::PipelineViewportStateCreateInfo::default()
                                 .scissor_count(1)
                                 .viewport_count(1),
                         )
                         .rasterization_state(
-                            &vk::PipelineRasterizationStateCreateInfo::builder()
+                            &vk::PipelineRasterizationStateCreateInfo::default()
                                 .cull_mode(vk::CullModeFlags::NONE)
                                 .polygon_mode(vk::PolygonMode::FILL)
                                 .line_width(1.0),
                         )
                         .multisample_state(
-                            &vk::PipelineMultisampleStateCreateInfo::builder()
+                            &vk::PipelineMultisampleStateCreateInfo::default()
                                 .rasterization_samples(vk::SampleCountFlags::TYPE_1),
                         )
                         .depth_stencil_state(
-                            &vk::PipelineDepthStencilStateCreateInfo::builder()
+                            &vk::PipelineDepthStencilStateCreateInfo::default()
                                 .depth_test_enable(false)
                                 .depth_write_enable(false),
                         )
                         .color_blend_state(
-                            &vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[
+                            &vk::PipelineColorBlendStateCreateInfo::default().attachments(&[
                                 vk::PipelineColorBlendAttachmentState {
                                     blend_enable: vk::TRUE,
                                     src_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
@@ -95,15 +95,14 @@ impl Fog {
                             ]),
                         )
                         .dynamic_state(
-                            &vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&[
+                            &vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&[
                                 vk::DynamicState::VIEWPORT,
                                 vk::DynamicState::SCISSOR,
                             ]),
                         )
                         .layout(pipeline_layout)
                         .render_pass(gfx.render_pass)
-                        .subpass(1)
-                        .build()],
+                        .subpass(1)],
                     None,
                 )
                 .unwrap()

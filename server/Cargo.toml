@@ -18,8 +18,8 @@ quinn = { workspace = true }
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = { workspace = true }
 anyhow = "1.0.26"
-rcgen = { version = "0.11.0", default-features = false }
-hostname = "0.3.0"
+rcgen = { version = "0.13.1", default-features = false, features = ["ring"] }
+hostname = "0.4.0"
 futures = "0.3.1"
 hecs = { workspace = true }
 rand = { version = "0.8.5", features = ["small_rng"] }
@@ -27,6 +27,5 @@ fxhash = "0.2.1"
 nalgebra = { workspace = true }
 libm = "0.2.6"
 slotmap = "1.0.6"
-rustls = "0.21.7"
-rustls-pemfile = "1.0.0"
+rustls-pemfile = "2.1.2"
 save = { path = "../save" }

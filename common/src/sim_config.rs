@@ -13,6 +13,8 @@ pub struct SimConfigRaw {
     /// Maximum distance at which anything can be seen in meters
     pub view_distance: Option<f32>,
     pub input_queue_size_ms: Option<u16>,
+    /// Whether gameplay-like restrictions exist, such as limited inventory
+    pub gameplay_enabled: Option<bool>,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: Option<u8>,
     /// Approximate length of the edge of a voxel in meters
@@ -34,9 +36,14 @@ pub struct SimConfigRaw {
 pub struct SimConfig {
     /// Amount of time between each step. Inverse of the rate
     pub step_interval: Duration,
+    /// Maximum distance at which anything can be seen in absolute units
     pub view_distance: f32,
     pub input_queue_size: Duration,
+    /// Whether gameplay-like restrictions exist, such as limited inventory
+    pub gameplay_enabled: bool,
+    /// Number of voxels along the edge of a chunk
     pub chunk_size: u8,
+    /// Static configuration information relevant to character physics
     pub character: CharacterConfig,
     /// Scaling factor converting meters to absolute units
     pub meters_to_absolute: f32,
@@ -48,9 +55,10 @@ impl SimConfig {
         let voxel_size = x.voxel_size.unwrap_or(1.0);
         let meters_to_absolute = meters_to_absolute(chunk_size, voxel_size);
         SimConfig {
-            step_interval: Duration::from_secs(1) / x.rate.unwrap_or(10) as u32,
+            step_interval: Duration::from_secs(1) / x.rate.unwrap_or(30) as u32,
             view_distance: x.view_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
+            gameplay_enabled: x.gameplay_enabled.unwrap_or(false),
             chunk_size,
             character: CharacterConfig::from_raw(&x.character, meters_to_absolute),
             meters_to_absolute,
@@ -64,8 +72,8 @@ fn meters_to_absolute(chunk_size: u8, voxel_size: f32) -> f32 {
     let a = MVector::<f64>::from(dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(1.0, 0.5, 0.5, 1.0));
     let b = MVector::<f64>::from(dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(0.0, 0.5, 0.5, 1.0));
     let minimum_chunk_face_separation = math::distance(&a, &b);
-    let absolute_voxel_size = minimum_chunk_face_separation / f64::from(chunk_size);
-    absolute_voxel_size as f32 / voxel_size
+    let absolute_voxel_size = minimum_chunk_face_separation / f32::from(chunk_size);
+    absolute_voxel_size / voxel_size
 }
 
 /// Static configuration information relevant to character physics as provided in configuration files
@@ -89,28 +97,41 @@ pub struct CharacterConfigRaw {
     pub air_resistance: Option<f32>,
     /// How fast the player jumps off the ground in m/s
     pub jump_speed: Option<f32>,
-    /// How far away the player needs to be from the ground in meters to be considered in the air
+    /// How far away the player needs to be from the ground in meters to be considered in the air in meters
     pub ground_distance_tolerance: Option<f32>,
     /// Radius of the character in meters
     pub character_radius: Option<f32>,
-    /// How far a character can reach when placing blocks
+    /// How far a character can reach when placing blocks in meters
     pub block_reach: Option<f32>,
 }
 
-/// Static configuration information relevant to character physics
+/// Static configuration information relevant to character physics. Most fields are based on
+/// absolute units and seconds.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterConfig {
+    /// Character movement speed in units/s during no-clip
     pub no_clip_movement_speed: f32,
+    /// Character maximumum movement speed while on the ground in units/s
     pub max_ground_speed: f32,
+    /// Character artificial speed cap to avoid overloading the server in units/s
     pub speed_cap: f32,
+    /// Maximum ground slope (0=horizontal, 1=45 degrees)
     pub max_ground_slope: f32,
+    /// Character acceleration while on the ground in units/s^2
     pub ground_acceleration: f32,
+    /// Character acceleration while in the air in units/s^2
     pub air_acceleration: f32,
+    /// Acceleration of gravity in units/s^2
     pub gravity_acceleration: f32,
+    /// Air resistance in (units/s^2) per (units/s); scales linearly with respect to speed
     pub air_resistance: f32,
+    /// How fast the player jumps off the ground in units/s
     pub jump_speed: f32,
+    /// How far away the player needs to be from the ground in meters to be considered in the air in absolute units
     pub ground_distance_tolerance: f32,
+    /// Radius of the character in absolute units
     pub character_radius: f32,
+    /// How far a character can reach when placing blocks in absolute units
     pub block_reach: f32,
 }
 

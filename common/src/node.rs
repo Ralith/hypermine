@@ -9,9 +9,10 @@ use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
+use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
 use crate::worldgen::NodeState;
-use crate::{math, Chunks};
+use crate::{margins, math, Chunks};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChunkId {
@@ -47,14 +48,14 @@ impl Graph {
         &self,
         chunk: ChunkId,
         coord_axis: CoordAxis,
-        coord_direction: CoordDirection,
+        coord_sign: CoordSign,
     ) -> Option<ChunkId> {
-        match coord_direction {
-            CoordDirection::Plus => Some(ChunkId::new(
+        match coord_sign {
+            CoordSign::Plus => Some(ChunkId::new(
                 chunk.node,
                 chunk.vertex.adjacent_vertices()[coord_axis as usize],
             )),
-            CoordDirection::Minus => Some(ChunkId::new(
+            CoordSign::Minus => Some(ChunkId::new(
                 self.neighbor(
                     chunk.node,
                     chunk.vertex.canonical_sides()[coord_axis as usize],
@@ -69,77 +70,69 @@ impl Graph {
         mut chunk: ChunkId,
         mut coords: Coords,
         coord_axis: CoordAxis,
-        coord_direction: CoordDirection,
+        coord_sign: CoordSign,
     ) -> Option<(ChunkId, Coords)> {
-        if coords[coord_axis] == self.layout().dimension - 1
-            && coord_direction == CoordDirection::Plus
-        {
-            let new_vertex = chunk.vertex.adjacent_vertices()[coord_axis as usize];
-            // Permute coordinates based on differences in the canonical orders between the old
-            // and new vertex
-            let [coord_plane0, coord_plane1] = coord_axis.other_axes();
-            let mut new_coords = Coords([0; 3]);
-            for current_axis in CoordAxis::iter() {
-                if new_vertex.canonical_sides()[current_axis as usize]
-                    == chunk.vertex.canonical_sides()[coord_plane0 as usize]
-                {
-                    new_coords[current_axis] = coords[coord_plane0];
-                } else if new_vertex.canonical_sides()[current_axis as usize]
-                    == chunk.vertex.canonical_sides()[coord_plane1 as usize]
-                {
-                    new_coords[current_axis] = coords[coord_plane1];
-                } else {
-                    new_coords[current_axis] = coords[coord_axis];
+        if coords[coord_axis] == Coords::boundary_coord(self.layout().dimension, coord_sign) {
+            match coord_sign {
+                CoordSign::Plus => {
+                    coords = chunk.vertex.chunk_axis_permutations()[coord_axis as usize] * coords;
+                    chunk.vertex = chunk.vertex.adjacent_vertices()[coord_axis as usize];
+                }
+                CoordSign::Minus => {
+                    chunk.node = self.neighbor(
+                        chunk.node,
+                        chunk.vertex.canonical_sides()[coord_axis as usize],
+                    )?;
                 }
             }
-            coords = new_coords;
-            chunk.vertex = new_vertex;
-        } else if coords[coord_axis] == 0 && coord_direction == CoordDirection::Minus {
-            chunk.node = self.neighbor(
-                chunk.node,
-                chunk.vertex.canonical_sides()[coord_axis as usize],
-            )?;
         } else {
-            coords[coord_axis] = coords[coord_axis].wrapping_add_signed(coord_direction as i8);
+            coords[coord_axis] = coords[coord_axis].wrapping_add_signed(coord_sign as i8);
         }
 
         Some((chunk, coords))
     }
 
-    /// Populates a chunk with the given voxel data and ensures that margins are correctly cleared if necessary.
-    pub fn populate_chunk(&mut self, chunk: ChunkId, mut new_data: VoxelData, modified: bool) {
-        // New solid chunks should have their margin cleared if they are adjacent to any modified chunks.
-        // See the function description of VoxelData::clear_margin for why this is necessary.
-        if new_data.is_solid() {
-            // Loop through all six potential chunk neighbors. If any are modified, the `new_data` should have
-            // its margin cleared.
-            'outer: for coord_axis in CoordAxis::iter() {
-                for coord_direction in CoordDirection::iter() {
-                    if let Some(chunk_id) =
-                        self.get_chunk_neighbor(chunk, coord_axis, coord_direction)
-                    {
-                        if let Chunk::Populated { modified: true, .. } = self[chunk_id] {
-                            new_data.clear_margin(self.layout().dimension);
-                            break 'outer;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Existing adjacent solid chunks should have their margins cleared if the chunk we're populating is modified.
-        // See the function description of VoxelData::clear_margin for why this is necessary.
-        if modified {
-            self.clear_adjacent_solid_chunk_margins(chunk);
+    /// Populates a chunk with the given voxel data and ensures that margins are correctly fixed up.
+    pub fn populate_chunk(&mut self, chunk: ChunkId, mut voxels: VoxelData) {
+        let dimension = self.layout().dimension;
+        // Fix up margins for the chunk we're inserting along with any neighboring chunks
+        for chunk_direction in ChunkDirection::iter() {
+            let Some(Chunk::Populated {
+                voxels: neighbor_voxels,
+                surface: neighbor_surface,
+                old_surface: neighbor_old_surface,
+            }) = self
+                .get_chunk_neighbor(chunk, chunk_direction.axis, chunk_direction.sign)
+                .map(|chunk_id| &mut self[chunk_id])
+            else {
+                continue;
+            };
+            margins::fix_margins(
+                dimension,
+                chunk.vertex,
+                &mut voxels,
+                chunk_direction,
+                neighbor_voxels,
+            );
+            *neighbor_old_surface = neighbor_surface.take().or(*neighbor_old_surface);
         }
 
         // After clearing any margins we needed to clear, we can now insert the data into the graph
         *self.get_chunk_mut(chunk).unwrap() = Chunk::Populated {
-            voxels: new_data,
-            modified,
+            voxels,
             surface: None,
             old_surface: None,
         };
+    }
+
+    /// Returns the material at the specified coordinates of the specified chunk, if the chunk is generated
+    pub fn get_material(&self, chunk_id: ChunkId, coords: Coords) -> Option<Material> {
+        let dimension = self.layout().dimension;
+
+        let Some(Chunk::Populated { voxels, .. }) = self.get_chunk(chunk_id) else {
+            return None;
+        };
+        Some(voxels.get(coords.to_index(dimension)))
     }
 
     /// Tries to update the block at the given position to the given material.
@@ -151,63 +144,27 @@ impl Graph {
         // Update the block
         let Some(Chunk::Populated {
             voxels,
-            modified,
             surface,
             old_surface,
         }) = self.get_chunk_mut(block_update.chunk_id)
         else {
             return false;
         };
-        if voxels.is_solid() {
-            voxels.clear_margin(dimension);
-        }
         let voxel = voxels
             .data_mut(dimension)
             .get_mut(block_update.coords.to_index(dimension))
             .expect("coords are in-bounds");
 
         *voxel = block_update.new_material;
-        *modified = true;
         *old_surface = surface.take().or(*old_surface);
 
-        self.clear_adjacent_solid_chunk_margins(block_update.chunk_id);
-        true
-    }
-
-    /// Clears margins from any populated and solid adjacent chunks. When a chunk is modified, this function should
-    /// be called on that chunk to ensure that adjacent chunks are rendered, since they can no longer be assumed to be
-    /// hidden by world generation.
-    fn clear_adjacent_solid_chunk_margins(&mut self, chunk: ChunkId) {
-        for coord_axis in CoordAxis::iter() {
-            for coord_direction in CoordDirection::iter() {
-                if let Some(chunk_id) = self.get_chunk_neighbor(chunk, coord_axis, coord_direction)
-                {
-                    // We only need to clear margins from populated chunks.
-                    let _ = self.clear_solid_chunk_margin(chunk_id);
-                }
-            }
-        }
-    }
-
-    /// Tries to clear the margins of the given chunk. Fails and returns false if the
-    /// chunk is not populated yet. Succeeds and returns true if the chunk is not Solid, as the
-    /// chunk is assumed to have empty margins already.
-    #[must_use]
-    fn clear_solid_chunk_margin(&mut self, chunk: ChunkId) -> bool {
-        let dimension = self.layout().dimension;
-        let Some(Chunk::Populated {
-            voxels,
-            surface,
-            old_surface,
-            ..
-        }) = self.get_chunk_mut(chunk)
-        else {
-            return false;
-        };
-
-        if voxels.is_solid() {
-            voxels.clear_margin(dimension);
-            *old_surface = surface.take().or(*old_surface);
+        for chunk_direction in ChunkDirection::iter() {
+            margins::reconcile_margin_voxels(
+                self,
+                block_update.chunk_id,
+                block_update.coords,
+                chunk_direction,
+            )
         }
         true
     }
@@ -227,34 +184,6 @@ impl IndexMut<ChunkId> for Graph {
     }
 }
 
-/// Coordinates for a discrete voxel within a chunk, not including margins
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Coords(pub [u8; 3]);
-
-impl Coords {
-    /// Returns the array index in `VoxelData` corresponding to these coordinates
-    pub fn to_index(&self, chunk_size: u8) -> usize {
-        let chunk_size_with_margin = chunk_size as usize + 2;
-        (self.0[0] as usize + 1)
-            + (self.0[1] as usize + 1) * chunk_size_with_margin
-            + (self.0[2] as usize + 1) * chunk_size_with_margin.pow(2)
-    }
-}
-
-impl Index<CoordAxis> for Coords {
-    type Output = u8;
-
-    fn index(&self, coord_axis: CoordAxis) -> &u8 {
-        self.0.index(coord_axis as usize)
-    }
-}
-
-impl IndexMut<CoordAxis> for Coords {
-    fn index_mut(&mut self, coord_axis: CoordAxis) -> &mut u8 {
-        self.0.index_mut(coord_axis as usize)
-    }
-}
-
 pub struct Node {
     pub state: NodeState,
     /// We can only populate chunks which lie within a cube of populated nodes, so nodes on the edge
@@ -269,7 +198,6 @@ pub enum Chunk {
     Generating,
     Populated {
         voxels: VoxelData,
-        modified: bool,
         surface: Option<SlotId>,
         old_surface: Option<SlotId>,
     },
@@ -295,27 +223,6 @@ impl VoxelData {
         match *self {
             VoxelData::Dense(ref d) => d[index],
             VoxelData::Solid(mat) => mat,
-        }
-    }
-
-    /// Replaces all voxels in the margin of this chunk with the "Void" material. This function is a coarse
-    /// way to ensure that chunks are fully rendered when they need to be, avoiding a rendering bug caused
-    /// by a voxel's surface failing to render because of a margin being solid.
-    /// Until margins are fully implemented, any solid chunk produced by world generation should have its
-    /// margins cleared if it, or any chunk adjacent to it, is edited, since otherwise, the margins could
-    /// be inaccurate.
-    pub fn clear_margin(&mut self, dimension: u8) {
-        let data = self.data_mut(dimension);
-        let lwm = usize::from(dimension) + 2;
-        for z in 0..lwm {
-            for y in 0..lwm {
-                for x in 0..lwm {
-                    if x == 0 || x == lwm - 1 || y == 0 || y == lwm - 1 || z == 0 || z == lwm - 1 {
-                        // The current coordinates correspond to a margin point. Set it to void.
-                        data[x + y * lwm + z * lwm.pow(2)] = Material::Void;
-                    }
-                }
-            }
         }
     }
 
@@ -383,7 +290,7 @@ impl ChunkLayout {
     pub fn new(dimension: u8) -> Self {
         ChunkLayout {
             dimension,
-            dual_to_grid_factor: Vertex::dual_to_chunk_factor() as f32 * dimension as f32,
+            dual_to_grid_factor: Vertex::dual_to_chunk_factor() * dimension as f32,
         }
     }
 
@@ -447,66 +354,6 @@ fn populate_node(graph: &mut Graph, node: NodeId) {
             .unwrap_or_else(NodeState::root),
         chunks: Chunks::default(),
     });
-}
-
-/// Represents a particular axis in a voxel grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CoordAxis {
-    X = 0,
-    Y = 1,
-    Z = 2,
-}
-
-/// Trying to convert a `usize` to a `CoordAxis` returns this struct if the provided
-/// `usize` is out-of-bounds
-#[derive(Debug, Clone, Copy)]
-pub struct CoordAxisOutOfBounds;
-
-impl CoordAxis {
-    /// Iterates through the the axes in ascending order
-    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        [Self::X, Self::Y, Self::Z].iter().copied()
-    }
-
-    /// Returns the pair axes orthogonal to the current axis
-    pub fn other_axes(self) -> [Self; 2] {
-        match self {
-            Self::X => [Self::Y, Self::Z],
-            Self::Y => [Self::Z, Self::X],
-            Self::Z => [Self::X, Self::Y],
-        }
-    }
-}
-
-impl TryFrom<usize> for CoordAxis {
-    type Error = CoordAxisOutOfBounds;
-
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::X),
-            1 => Ok(Self::Y),
-            2 => Ok(Self::Z),
-            _ => Err(CoordAxisOutOfBounds),
-        }
-    }
-}
-
-/// Represents a direction in a particular axis. This struct is meant to be used with a coordinate axis,
-/// so when paired with the X-axis, it represents the postitive X-direction when set to Plus and the
-/// negative X-direction when set to Minus.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CoordDirection {
-    Plus = 1,
-    Minus = -1,
-}
-
-impl CoordDirection {
-    /// Iterates through the two possible coordinate directions
-    pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        [CoordDirection::Plus, CoordDirection::Minus]
-            .iter()
-            .copied()
-    }
 }
 
 /// Represents a discretized region in the voxel grid contained by an axis-aligned bounding box.

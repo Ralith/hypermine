@@ -4,7 +4,7 @@ let
   nixpkgs = import <nixpkgs> { overlays = [ moz_overlay ]; };
 in with nixpkgs;
 let
-  dlopen-libs = with xorg; [ vulkan-loader libX11 libXcursor libXrandr libXi ];
+  dlopen-libs = with xorg; [ vulkan-loader libX11 libXcursor libXrandr libXi libxkbcommon ];
 in mkShell.override {
   stdenv = pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv;
 } {

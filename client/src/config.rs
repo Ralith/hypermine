@@ -13,6 +13,7 @@ use common::{SimConfig, SimConfigRaw};
 pub struct Config {
     pub name: Arc<str>,
     pub data_dirs: Vec<PathBuf>,
+    pub save: PathBuf,
     pub chunk_load_parallelism: u32,
     pub server: Option<SocketAddr>,
     pub local_simulation: SimConfig,
@@ -26,6 +27,7 @@ impl Config {
         let RawConfig {
             name,
             data_dir,
+            save,
             local_simulation,
             chunk_load_parallelism,
             server,
@@ -75,6 +77,7 @@ impl Config {
         Config {
             name: name.unwrap_or_else(|| whoami::username().into()),
             data_dirs,
+            save: save.unwrap_or("default.save".into()),
             chunk_load_parallelism: chunk_load_parallelism.unwrap_or(256),
             server,
             local_simulation: SimConfig::from_raw(&local_simulation),
@@ -99,6 +102,7 @@ impl Config {
 struct RawConfig {
     name: Option<Arc<str>>,
     data_dir: Option<PathBuf>,
+    save: Option<PathBuf>,
     chunk_load_parallelism: Option<u32>,
     server: Option<SocketAddr>,
     #[serde(default)]

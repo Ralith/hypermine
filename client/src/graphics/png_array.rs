@@ -84,7 +84,7 @@ impl Loadable for PngArray {
                 let image = DedicatedImage::new(
                     &handle.gfx.device,
                     &handle.gfx.memory_properties,
-                    &vk::ImageCreateInfo::builder()
+                    &vk::ImageCreateInfo::default()
                         .image_type(vk::ImageType::TYPE_2D)
                         .format(vk::Format::R8G8B8A8_SRGB)
                         .extent(vk::Extent3D {
@@ -119,15 +119,14 @@ impl Loadable for PngArray {
                             vk::DependencyFlags::default(),
                             &[],
                             &[],
-                            &[vk::ImageMemoryBarrier::builder()
+                            &[vk::ImageMemoryBarrier::default()
                                 .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                                 .old_layout(vk::ImageLayout::UNDEFINED)
                                 .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                                 .image(dst)
-                                .subresource_range(range)
-                                .build()],
+                                .subresource_range(range)],
                         );
                         xf.device.cmd_copy_buffer_to_image(
                             cmd,
@@ -152,7 +151,7 @@ impl Loadable for PngArray {
                         );
                         xf.stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
                         xf.image_barriers.push(
-                            vk::ImageMemoryBarrier::builder()
+                            vk::ImageMemoryBarrier::default()
                                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
                                 .src_queue_family_index(xf.queue_family)
@@ -160,8 +159,7 @@ impl Loadable for PngArray {
                                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .image(dst)
-                                .subresource_range(range)
-                                .build(),
+                                .subresource_range(range),
                         );
                     })
                     .await?;

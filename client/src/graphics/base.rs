@@ -1,9 +1,10 @@
 //! Common state shared throughout the graphics system
 
+use ash::ext::debug_utils;
 use std::ffi::{c_char, CStr};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{fs, io, ptr};
+use std::{fs, io};
 use tracing::{error, info, trace, warn};
 
 use ash::{vk, Device};
@@ -34,6 +35,7 @@ pub struct Base {
     pub limits: vk::PhysicalDeviceLimits,
     pub timestamp_bits: u32,
     pipeline_cache_path: Option<PathBuf>,
+    debug_utils: Option<debug_utils::Device>,
 }
 
 unsafe impl Send for Base {}
@@ -133,12 +135,15 @@ impl Base {
                 instance
                     .create_device(
                         physical,
-                        &vk::DeviceCreateInfo::builder()
-                            .queue_create_infos(&[vk::DeviceQueueCreateInfo::builder()
+                        &vk::DeviceCreateInfo::default()
+                            .queue_create_infos(&[vk::DeviceQueueCreateInfo::default()
                                 .queue_family_index(queue_family_index)
-                                .queue_priorities(&[1.0])
-                                .build()])
-                            .enabled_extension_names(&device_exts),
+                                .queue_priorities(&[1.0])])
+                            .enabled_extension_names(&device_exts)
+                            .push_next(
+                                &mut vk::PhysicalDeviceVulkan12Features::default()
+                                    .descriptor_binding_partially_bound(true),
+                            ),
                         None,
                     )
                     .unwrap(),
@@ -147,14 +152,14 @@ impl Base {
             let memory_properties = instance.get_physical_device_memory_properties(physical);
             let pipeline_cache = device
                 .create_pipeline_cache(
-                    &vk::PipelineCacheCreateInfo::builder().initial_data(&pipeline_cache_data),
+                    &vk::PipelineCacheCreateInfo::default().initial_data(&pipeline_cache_data),
                     None,
                 )
                 .unwrap();
 
             let render_pass = device
                 .create_render_pass(
-                    &vk::RenderPassCreateInfo::builder()
+                    &vk::RenderPassCreateInfo::default()
                         .attachments(&[
                             vk::AttachmentDescription {
                                 format: COLOR_FORMAT,
@@ -176,7 +181,7 @@ impl Base {
                             },
                         ])
                         .subpasses(&[
-                            vk::SubpassDescription::builder()
+                            vk::SubpassDescription::default()
                                 .color_attachments(&[vk::AttachmentReference {
                                     attachment: 0,
                                     layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -185,9 +190,8 @@ impl Base {
                                     attachment: 1,
                                     layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                                 })
-                                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                                .build(),
-                            vk::SubpassDescription::builder()
+                                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS),
+                            vk::SubpassDescription::default()
                                 .color_attachments(&[vk::AttachmentReference {
                                     attachment: 0,
                                     layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -196,26 +200,31 @@ impl Base {
                                     attachment: 1,
                                     layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
                                 }])
-                                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                                .build(),
+                                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS),
                         ])
                         .dependencies(&[
                             vk::SubpassDependency {
                                 src_subpass: vk::SUBPASS_EXTERNAL,
                                 dst_subpass: 0,
-                                src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                                dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+                                dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
                                 dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ
-                                    | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                                    | vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
                                 ..Default::default()
                             },
                             vk::SubpassDependency {
                                 src_subpass: 0,
                                 dst_subpass: 1,
-                                src_stage_mask: vk::PipelineStageFlags::LATE_FRAGMENT_TESTS, // depth write
-                                dst_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS, // depth read
+                                src_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS, // depth write
+                                dst_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER, // subpass input
+
                                 src_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                                dst_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+                                dst_access_mask: vk::AccessFlags::INPUT_ATTACHMENT_READ,
                                 dependency_flags: vk::DependencyFlags::BY_REGION,
                             },
                         ]),
@@ -225,7 +234,7 @@ impl Base {
 
             let linear_sampler = device
                 .create_sampler(
-                    &vk::SamplerCreateInfo::builder()
+                    &vk::SamplerCreateInfo::default()
                         .min_filter(vk::Filter::LINEAR)
                         .mag_filter(vk::Filter::LINEAR)
                         .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
@@ -238,7 +247,7 @@ impl Base {
 
             let common_layout = device
                 .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
+                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
                         // Uniforms
                         vk::DescriptorSetLayoutBinding {
                             binding: 0,
@@ -246,7 +255,7 @@ impl Base {
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::VERTEX
                                 | vk::ShaderStageFlags::FRAGMENT,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                         // Depth buffer
                         vk::DescriptorSetLayoutBinding {
@@ -254,12 +263,16 @@ impl Base {
                             descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::FRAGMENT,
-                            p_immutable_samplers: ptr::null(),
+                            ..Default::default()
                         },
                     ]),
                     None,
                 )
                 .unwrap();
+            let debug_utils = core
+                .debug_utils
+                .as_ref()
+                .map(|_| debug_utils::Device::new(&core.instance, &device));
 
             Some(Self {
                 core,
@@ -275,6 +288,7 @@ impl Base {
                 pipeline_cache_path,
                 limits: physical_properties.properties.limits,
                 timestamp_bits: queue_family_properties.timestamp_valid_bits,
+                debug_utils,
             })
         }
     }
@@ -301,15 +315,12 @@ impl Base {
 
     /// Set an object's name for use in diagnostics
     pub unsafe fn set_name<T: vk::Handle>(&self, object: T, name: &CStr) {
-        let ex = match self.core.debug_utils.as_ref() {
-            Some(x) => x,
-            None => return,
+        let Some(ref ex) = self.debug_utils else {
+            return;
         };
         ex.set_debug_utils_object_name(
-            self.device.handle(),
-            &vk::DebugUtilsObjectNameInfoEXT::builder()
-                .object_type(T::TYPE)
-                .object_handle(object.as_raw())
+            &vk::DebugUtilsObjectNameInfoEXT::default()
+                .object_handle(object)
                 .object_name(name),
         )
         .unwrap();

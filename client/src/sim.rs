@@ -5,7 +5,8 @@ use hecs::Entity;
 use tracing::{debug, error, trace};
 
 use crate::{
-    local_character_controller::LocalCharacterController, net, prediction::PredictedMotion, Net,
+    local_character_controller::LocalCharacterController, metrics, net,
+    prediction::PredictedMotion, Net,
 };
 use common::{
     character_controller,
@@ -14,7 +15,8 @@ use common::{
     graph_ray_casting,
     node::{populate_fresh_nodes, ChunkId, VoxelData},
     proto::{
-        self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component, Position,
+        self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
+        Inventory, Position,
     },
     sanitize_motion_input,
     world::Material,
@@ -158,6 +160,52 @@ impl Sim {
 
     pub fn select_material(&mut self, idx: usize) {
         self.selected_material = *MATERIAL_PALETTE.get(idx).unwrap_or(&MATERIAL_PALETTE[0]);
+    }
+
+    pub fn selected_material(&self) -> Material {
+        self.selected_material
+    }
+
+    /// Returns an EntityId in the inventory with the given material
+    pub fn get_any_inventory_entity_matching_material(
+        &self,
+        material: Material,
+    ) -> Option<EntityId> {
+        self.world
+            .get::<&Inventory>(self.local_character?)
+            .ok()?
+            .contents
+            .iter()
+            .copied()
+            .find(|e| {
+                self.entity_ids.get(e).is_some_and(|&entity| {
+                    self.world
+                        .get::<&Material>(entity)
+                        .is_ok_and(|m| *m == material)
+                })
+            })
+    }
+
+    /// Returns the number of entities in the inventory with the given material
+    pub fn count_inventory_entities_matching_material(&self, material: Material) -> usize {
+        let Some(local_character) = self.local_character else {
+            return 0;
+        };
+        let Ok(inventory) = self.world.get::<&Inventory>(local_character) else {
+            return 0;
+        };
+        inventory
+            .contents
+            .iter()
+            .copied()
+            .filter(|e| {
+                self.entity_ids.get(e).is_some_and(|&entity| {
+                    self.world
+                        .get::<&Material>(entity)
+                        .is_ok_and(|m| *m == material)
+                })
+            })
+            .count()
     }
 
     pub fn set_break_block_pressed_true(&mut self) {
@@ -318,6 +366,9 @@ impl Sim {
         }
         if !msg.nodes.is_empty() {
             trace!(count = msg.nodes.len(), "adding nodes");
+            // The first "Spawns" message from the server populates the graph and allows CPU/GPU metrics
+            // to be accurate instead of measuring thousands of no-op frames
+            metrics::declare_ready_for_profiling();
         }
         for node in &msg.nodes {
             self.graph.insert_child(node.parent, node.side);
@@ -336,7 +387,21 @@ impl Sim {
                 tracing::error!("Voxel data received from server is of incorrect dimension");
                 continue;
             };
-            self.graph.populate_chunk(chunk_id, voxel_data, true);
+            self.graph.populate_chunk(chunk_id, voxel_data);
+        }
+        for (subject, new_entity) in msg.inventory_additions {
+            self.world
+                .get::<&mut Inventory>(*self.entity_ids.get(&subject).unwrap())
+                .unwrap()
+                .contents
+                .push(new_entity);
+        }
+        for (subject, removed_entity) in msg.inventory_removals {
+            self.world
+                .get::<&mut Inventory>(*self.entity_ids.get(&subject).unwrap())
+                .unwrap()
+                .contents
+                .retain(|&id| id != removed_entity);
         }
     }
 
@@ -357,6 +422,12 @@ impl Sim {
                 }
                 Position(x) => {
                     node = Some(x.node);
+                    builder.add(x);
+                }
+                Inventory(x) => {
+                    builder.add(x);
+                }
+                Material(x) => {
                     builder.add(x);
                 }
             };
@@ -495,7 +566,7 @@ impl Sim {
                 hit.chunk,
                 hit.voxel_coords,
                 hit.face_axis,
-                hit.face_direction,
+                hit.face_sign,
             )?
         } else {
             (hit.chunk, hit.voxel_coords)
@@ -507,10 +578,17 @@ impl Sim {
             Material::Void
         };
 
+        let consumed_entity = if placing && self.cfg.gameplay_enabled {
+            Some(self.get_any_inventory_entity_matching_material(material)?)
+        } else {
+            None
+        };
+
         Some(BlockUpdate {
             chunk_id: block_pos.0,
             coords: block_pos.1,
             new_material: material,
+            consumed_entity,
         })
     }
 }

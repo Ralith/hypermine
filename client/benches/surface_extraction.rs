@@ -19,14 +19,14 @@ fn extract(bench: &mut Bencher) {
     unsafe {
         let cmd_pool = device
             .create_command_pool(
-                &vk::CommandPoolCreateInfo::builder().queue_family_index(gfx.queue_family),
+                &vk::CommandPoolCreateInfo::default().queue_family_index(gfx.queue_family),
                 None,
             )
             .unwrap();
 
         let cmd = device
             .allocate_command_buffers(
-                &vk::CommandBufferAllocateInfo::builder()
+                &vk::CommandBufferAllocateInfo::default()
                     .command_pool(cmd_pool)
                     .command_buffer_count(1),
             )
@@ -59,7 +59,7 @@ fn extract(bench: &mut Bencher) {
             device
                 .queue_submit(
                     gfx.queue,
-                    &[vk::SubmitInfo::builder().command_buffers(&[cmd]).build()],
+                    &[vk::SubmitInfo::default().command_buffers(&[cmd])],
                     vk::Fence::null(),
                 )
                 .unwrap();

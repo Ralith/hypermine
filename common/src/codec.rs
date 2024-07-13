@@ -18,7 +18,7 @@ pub async fn send<T: Serialize + ?Sized>(stream: &mut quinn::SendStream, msg: &T
 pub async fn recv<T: DeserializeOwned>(stream: &mut quinn::RecvStream) -> Result<Option<T>> {
     let mut tag = [0; 4];
     match stream.read_exact(&mut tag[0..3]).await {
-        Err(quinn::ReadExactError::FinishedEarly) => return Ok(None),
+        Err(quinn::ReadExactError::FinishedEarly(_)) => return Ok(None),
         Err(quinn::ReadExactError::ReadError(e)) => return Err(e.into()),
         Ok(()) => {}
     }
@@ -26,7 +26,7 @@ pub async fn recv<T: DeserializeOwned>(stream: &mut quinn::RecvStream) -> Result
     let len = u32::from_le_bytes(tag) as usize;
     let mut buf = vec![0; len];
     match stream.read_exact(&mut buf).await {
-        Err(quinn::ReadExactError::FinishedEarly) => return Ok(None),
+        Err(quinn::ReadExactError::FinishedEarly(_)) => return Ok(None),
         Err(quinn::ReadExactError::ReadError(e)) => return Err(e.into()),
         Ok(()) => {}
     }
@@ -40,7 +40,6 @@ pub async fn send_whole<T: Serialize + ?Sized>(
 ) -> std::result::Result<(), quinn::WriteError> {
     let buf = bincode::serialize(msg).unwrap();
     stream.write_all(&buf).await?;
-    stream.finish().await?;
     Ok(())
 }
 
