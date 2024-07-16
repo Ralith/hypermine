@@ -172,15 +172,9 @@ mod tests {
             // Find the transform of the chosen chunk
             let chosen_chunk_transform: MIsometry<f32> =
                 self.chosen_voxel.node_path.iter().fold(
-<<<<<<< HEAD
                     MIsometry::identity(),
                     |transform: MIsometry<f32>, side| transform * side.reflection().to_f32(),
                 ) * self.chosen_voxel.vertex.dual_to_node().to_f32();
-=======
-                    na::Matrix4::identity(),
-                    |transform: na::Matrix4<f32>, side| transform * side.reflection(),
-                ) * self.chosen_voxel.vertex.dual_to_node();
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
 
             let dual_to_grid_factor = graph.layout().dual_to_grid_factor();
             let ray_target = chosen_chunk_transform
@@ -191,13 +185,8 @@ mod tests {
                     1.0,
                 ).lorentz_normalize();
 
-<<<<<<< HEAD
             let ray_position = Vertex::A.dual_to_node().to_f32()
                 * MVector::new(
-=======
-            let ray_position = Vertex::A.dual_to_node()
-                * math::lorentz_normalize(&na::Vector4::new(
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
                     self.start_chunk_relative_grid_ray_start[0] / dual_to_grid_factor,
                     self.start_chunk_relative_grid_ray_start[1] / dual_to_grid_factor,
                     self.start_chunk_relative_grid_ray_start[2] / dual_to_grid_factor,
@@ -444,11 +433,7 @@ mod tests {
         }
 
         // The node coordinates of the corner of the missing node
-<<<<<<< HEAD
         let vertex_pos = Vertex::A.dual_to_node().to_f32() * MVector::origin();
-=======
-        let vertex_pos = Vertex::A.dual_to_node() * math::origin();
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
 
         // Use a ray starting from the origin. The direction vector is vertex_pos with the w coordinate
         // set to 0 and normalized

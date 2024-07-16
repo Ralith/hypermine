@@ -1,13 +1,9 @@
 use crate::{
     collision_math::Ray,
     math,
-<<<<<<< HEAD
     math::MVector,
-    node::{ChunkLayout, Coords, VoxelAABB, VoxelData},
-=======
     node::{ChunkLayout, VoxelAABB, VoxelData},
     voxel_math::Coords,
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
     world::Material,
 };
 

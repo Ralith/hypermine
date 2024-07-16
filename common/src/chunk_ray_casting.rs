@@ -1,13 +1,9 @@
 use crate::{
     collision_math::Ray,
     math,
-<<<<<<< HEAD
     math::MVector,
-    node::{ChunkLayout, CoordAxis, CoordDirection, Coords, VoxelAABB, VoxelData},
-=======
     node::{ChunkLayout, VoxelAABB, VoxelData},
     voxel_math::{CoordAxis, CoordSign, Coords},
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
     world::Material,
 };
 
@@ -90,11 +86,7 @@ fn find_face_collision(
         // Which side we approach the plane from affects which voxel we want to use for hit detection.
         // If exiting a chunk via a chunk boundary, hit detection is handled by a different chunk.
         // We also want to retain this face_direction for reporting the hit result later.
-<<<<<<< HEAD
-        let (face_direction, voxel_t) = if ray.direction.mip(&normal) < 0.0 {
-=======
-        let (face_sign, voxel_t) = if math::mip(&ray.direction, &normal) < 0.0 {
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
+        let (face_sign, voxel_t) = if ray.direction.mip(&normal) < 0.0 {
             if t == 0 {
                 continue;
             }
@@ -133,8 +125,7 @@ fn find_face_collision(
             face_axis: CoordAxis::try_from(t_axis).unwrap(),
             face_sign,
         });
-    }
-
+    };
     hit
 }
 
@@ -207,10 +198,8 @@ mod tests {
 
         let ray = Ray::new(
             ray_start,
-            (
-                ((ray_end - ray_start)
-                    + ray_start * ray_start.mip(&(ray_end - ray_start))),
-            ).lorentz_normalize(),
+            ((ray_end - ray_start)
+                + ray_start * ray_start.mip(&(ray_end - ray_start))).lorentz_normalize(),
         );
 
         let tanh_distance = (- (ray_start.mip(&ray_end))).acosh();

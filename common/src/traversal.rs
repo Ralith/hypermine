@@ -13,26 +13,16 @@ use crate::{
 };
 
 /// Ensure all nodes within `distance` of `start` exist
-<<<<<<< HEAD
-pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f64) {
-    let mut pending = Vec::<(NodeId, MIsometry<f64>)>::new();
-    let mut visited = FxHashSet::<NodeId>::default();
-
-    pending.push((start.node, MIsometry::identity()));
-    visited.insert(start.node);
-    let start_p = start.local.map(|x| x as f64) * MVector::origin();
-=======
 pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
     // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
     // minimal path to each node. This greatly helps prevent error from accumulating due to
     // hundreds of transformations being composed.
-    let mut pending = VecDeque::<(NodeId, na::Matrix4<f32>)>::new();
+    let mut pending = VecDeque::<(NodeId, MIsometry<f32>)>::new();
     let mut visited = FxHashSet::<NodeId>::default();
 
-    pending.push_back((start.node, na::Matrix4::identity()));
+    pending.push_back((start.node, MIsometry::identity()));
     visited.insert(start.node);
-    let start_p = start.local * math::origin();
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
+    let start_p = start.local * MVector::origin();
 
     while let Some((node, current_transform)) = pending.pop_front() {
         for side in Side::iter() {
@@ -41,15 +31,9 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
                 continue;
             }
             visited.insert(neighbor);
-<<<<<<< HEAD
             let neighbor_transform = current_transform * *side.reflection();
             let neighbor_p = neighbor_transform * MVector::origin();
-            if math::distance(&start_p, &neighbor_p) > distance {
-=======
-            let neighbor_transform = current_transform * side.reflection();
-            let neighbor_p = neighbor_transform * math::origin();
-            if -math::mip(&start_p, &neighbor_p) > distance.cosh() {
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
+            if -(start_p.mip(&neighbor_p)) > distance.cosh() {
                 continue;
             }
             pending.push_back((neighbor, neighbor_transform));
@@ -62,35 +46,21 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
 pub fn nearby_nodes(
     graph: &Graph,
     start: &Position,
-<<<<<<< HEAD
-    distance: f64,
+    distance: f32,
 ) -> Vec<(NodeId, MIsometry<f32>)> {
     struct PendingNode {
         id: NodeId,
-        transform: MIsometry<f64>,
+        transform: MIsometry<f32>,
     }
 
     let mut result = Vec::new();
-    let mut pending = Vec::<PendingNode>::new();
-    let mut visited = FxHashSet::<NodeId>::default();
-    let start_p = start.local.map(|x| x as f64) * MVector::origin();
-=======
-    distance: f32,
-) -> Vec<(NodeId, na::Matrix4<f32>)> {
-    struct PendingNode {
-        id: NodeId,
-        transform: na::Matrix4<f32>,
-    }
-
-    let mut result = Vec::new();
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
 
     // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
     // minimal path to each node. This greatly helps prevent error from accumulating due to
     // hundreds of transformations being composed.
     let mut pending = VecDeque::<PendingNode>::new();
     let mut visited = FxHashSet::<NodeId>::default();
-    let start_p = start.local * math::origin();
+    let start_p = start.local * MVector::origin();
 
     pending.push_back(PendingNode {
         id: start.node,
@@ -98,15 +68,9 @@ pub fn nearby_nodes(
     });
     visited.insert(start.node);
 
-<<<<<<< HEAD
     while let Some(current) = pending.pop() {
         let current_p = current.transform * MVector::origin();
-        if math::distance(&start_p, &current_p) > distance {
-=======
-    while let Some(current) = pending.pop_front() {
-        let current_p = current.transform * math::origin();
-        if -math::mip(&start_p, &current_p) > distance.cosh() {
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
+        if -(start_p.mip(&current_p)) > distance.cosh() {
             continue;
         }
         result.push((current.id, current.transform.to_f32()));
@@ -150,12 +114,7 @@ impl<'a> RayTraverser<'a> {
         let mut closest_vertex = Vertex::A;
         let mut closest_vertex_cosh_distance = f32::INFINITY;
         for vertex in Vertex::iter() {
-<<<<<<< HEAD
-            let vertex_cosh_distance =
-                (vertex.node_to_dual().to_f32() * position.local * MVector::origin()).w;
-=======
-            let vertex_cosh_distance = (vertex.node_to_dual() * position.local * math::origin()).w;
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
+            let vertex_cosh_distance = (vertex.node_to_dual() * position.local * MVector::origin()).w;
             if vertex_cosh_distance < closest_vertex_cosh_distance {
                 closest_vertex = vertex;
                 closest_vertex_cosh_distance = vertex_cosh_distance;
@@ -193,11 +152,7 @@ impl<'a> RayTraverser<'a> {
                 // Combine node and vertex, and convert node transform to chunk transform
                 return Some((
                     node.map(|node| ChunkId::new(node, vertex)),
-<<<<<<< HEAD
-                    vertex.node_to_dual().to_f32() * node_transform,
-=======
                     vertex.node_to_dual() * node_transform,
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
                 ));
             }
 
@@ -208,11 +163,7 @@ impl<'a> RayTraverser<'a> {
                 continue;
             };
 
-<<<<<<< HEAD
-            let local_ray = vertex.node_to_dual().to_f32() * node_transform * self.ray;
-=======
             let local_ray = vertex.node_to_dual() * node_transform * self.ray;
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
 
             // Compute the Klein-Beltrami coordinates of the ray segment's endpoints. To check whether neighboring chunks
             // are needed, we need to check whether the endpoints of the line segments lie outside the boundaries of the square
@@ -228,11 +179,7 @@ impl<'a> RayTraverser<'a> {
                     || klein_ray_end[axis] <= self.klein_lower_boundary
                 {
                     let side = vertex.canonical_sides()[axis];
-<<<<<<< HEAD
-                    let next_node_transform = side.reflection().to_f32() * node_transform;
-=======
                     let next_node_transform = side.reflection() * node_transform;
->>>>>>> d49df99d371ca6354789deefff6900b1eea46533
                     // Crude check to ensure that the neighboring chunk's node can be in the path of the ray. For simplicity, this
                     // check treats each node as a sphere and assumes the ray is pointed directly towards its center. The check is
                     // needed because chunk generation uses this approximation, and this check is not guaranteed to pass near corners
