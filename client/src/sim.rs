@@ -18,6 +18,7 @@ use common::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
         Inventory, Position,
     },
+    math,
     sanitize_motion_input,
     world::Material,
     EntityId, GraphEntities, SimConfig, Step,
@@ -109,7 +110,7 @@ impl Sim {
             selected_material: Material::WoodPlanks,
             prediction: PredictedMotion::new(proto::Position {
                 node: NodeId::ROOT,
-                local: na::one(),
+                local: math::MIsometry::identity(),
             }),
             local_character_controller: LocalCharacterController::new(),
         }
@@ -550,7 +551,7 @@ impl Sim {
         let ray_casing_result = graph_ray_casting::ray_cast(
             &self.graph,
             &view_position,
-            &Ray::new(na::Vector4::w(), -na::Vector4::z()),
+            &Ray::new(math::MVector::w(), -math::MVector::z()),
             self.cfg.character.block_reach,
         );
 

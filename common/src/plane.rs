@@ -72,7 +72,7 @@ impl<N: na::RealField + Copy> Plane<N> {
 impl Plane<f64> {
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
-        let pos = (MVector::<f64>::from(chunk.chunk_to_node() * coord.push(1.0))).lorentz_normalize();
+        let pos = (MVector::<f64>::from(chunk.chunk_to_node_f64() * coord.push(1.0))).lorentz_normalize();
         self.distance_to(&pos)
     }
 }

@@ -3,7 +3,6 @@
 use data::*;
 use serde::{Deserialize, Serialize};
 
-use crate::math;
 use crate::math::{MVector,MIsometry};
 use crate::voxel_math::ChunkAxisPermutation;
 
@@ -70,9 +69,9 @@ impl Side {
 
     /// Whether `p` is opposite the dodecahedron across the plane containing `self`
     #[inline]
-    pub fn is_facing<N: na::RealField + Copy>(self, p: &MVector<N>) -> bool {
-        let r = na::convert::<_, na::RowVector4<N>>(self.reflection().row(3).clone_owned());
-        (r * *p).x < p.w
+    pub fn is_facing(self, p: &MVector<f32>) -> bool {
+        let r = na::convert::<_, na::RowVector4<f32>>(self.reflection().row(3).clone_owned());
+        (r * <MVector<f32> as Into<na::Vector4<f32>>>::into(*p)).x < p.w
     }
 }
 
@@ -188,13 +187,13 @@ impl Vertex {
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
-    pub fn node_to_chunk(self) -> na::Matrix4<f64> {
-        na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * <MIsometry<f64> as Into<na::Matrix4<f64>>>::into(*self.node_to_dual())
+    pub fn node_to_chunk(self) -> na::Matrix4<f32> {
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * <MIsometry<f32> as Into<na::Matrix4<f32>>>::into(*self.node_to_dual())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk_f64(self) -> na::Matrix4<f64> {
-        na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64()) * self.node_to_dual_f64()
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64()) * <MIsometry<f64> as Into<na::Matrix4<f64>>>::into(*self.node_to_dual_f64())
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
@@ -261,7 +260,6 @@ mod data {
     use std::sync::OnceLock;
 
     use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
-    use crate::math;
     use crate::math::{MVector,MIsometry};
     use crate::voxel_math::ChunkAxisPermutation;
 
@@ -602,14 +600,14 @@ mod tests {
     #[test]
     fn side_is_facing() {
         for side in Side::iter() {
-            assert!(!side.is_facing::<f32>(&MVector::origin()));
-            assert!(side.is_facing(&(side.reflection() * MVector::origin())));
+            assert!(!side.is_facing(&MVector::origin()));
+            assert!(side.is_facing(&(*side.reflection() * MVector::origin())));
         }
     }
 
     #[test]
     fn radius() {
-        let corner = Vertex::A.chunk_to_node() * MVector::origin();
+        let corner = *Vertex::A.dual_to_node() * MVector::origin();
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS,
             math::distance(&corner, &MVector::origin()),

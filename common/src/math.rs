@@ -29,7 +29,7 @@ impl<N: RealField> approx::AbsDiffEq<MIsometry<N>> for MIsometry<N>
     #[inline]
     fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool
     {
-        self.abs_diff_eq(other, epsilon)
+        self.0.abs_diff_eq(&other.0, epsilon)
     }
 }
 
@@ -45,7 +45,7 @@ impl<N: RealField> approx::AbsDiffEq<MVector<N>> for MVector<N>
     #[inline]
     fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool
     {
-        self.abs_diff_eq(other, epsilon)
+        self.0.abs_diff_eq(&other.0, epsilon)
     }
 }
 
@@ -100,6 +100,13 @@ impl<N: Scalar> Into<na::Matrix4<N>> for MIsometry<N>
     }
 }
 
+impl<N: Scalar> Into<na::Vector4<N>> for MVector<N>
+{
+    fn into(self) -> na::Vector4<N>
+    {
+        self.0
+    }
+}
 
 impl MIsometry<f32>
 {
@@ -136,9 +143,24 @@ impl MVector<f64>
 impl<N: RealField + Copy> MIsometry<N>
 {
     #[inline]
-    pub fn row(self, i: usize) -> na::Vector4<N>
+    pub fn as_ref(self) -> [[N;4];4]
     {
-        self.row(i)
+        *self.0.as_ref()
+    }
+    #[inline]
+    pub fn unit_quaternion_to_homogeneous(rotation: na::UnitQuaternion<N>) -> Self
+    {
+        MIsometry(rotation.to_homogeneous())
+    }
+    #[inline]
+    pub fn rotation_to_homogeneous(rotation: na::Rotation3<N>) -> Self
+    {
+        MIsometry(rotation.to_homogeneous())
+    }
+    #[inline]
+    pub fn row(self, i: usize) -> na::RowVector4<N>
+    {
+        self.0.row(i).into()
     }
     #[inline]
     pub fn identity() -> Self
@@ -146,7 +168,7 @@ impl<N: RealField + Copy> MIsometry<N>
         Self(na::Matrix4::identity())
     }
     #[inline]
-    pub fn map<N2: Scalar, F: FnMut(N) -> N2>(&self, mut f: F) -> MIsometry<N2>
+    pub fn map<N2: Scalar, F: FnMut(N) -> N2>(&self, f: F) -> MIsometry<N2>
     {
         MIsometry(self.0.map(f))
     }
@@ -332,33 +354,52 @@ impl<N: RealField> Mul<MVector<N>> for MIsometry<N>
     }
 }
 
-impl<N: Scalar> MulAssign<N> for MVector<N>
+impl<N: RealField> Mul<N> for MIsometry<N>
 {
+    type Output = MIsometry<N>;
     #[inline]
-    fn mul_assign(&mut self, rhs: N)
+    fn mul(self, rhs: N) -> Self::Output
     {
-        *self *= rhs;
+        MIsometry(self.0 * rhs)
     }
 }
 
-impl<N: Scalar> std::ops::AddAssign for MVector<N>
+impl<N: RealField + Copy> std::ops::AddAssign for MVector<N>
 {
     #[inline]
     fn add_assign(&mut self, other: Self)
     {
-        *self += other;
+        *self = *self + other;
     }
 }
 
-
-impl<N: Scalar> MulAssign<N> for MIsometry<N>
+impl<N: RealField + Copy> MulAssign<N> for MVector<N>
 {
     #[inline]
     fn mul_assign(&mut self, rhs: N)
     {
-        *self *= rhs;
+        *self = *self * rhs;
     }
 }
+
+impl<N: RealField + Copy> MulAssign<N> for MIsometry<N>
+{
+    #[inline]
+    fn mul_assign(&mut self, rhs: N)
+    {
+        *self = *self * rhs;
+    }
+}
+
+impl<N: RealField + Copy> MulAssign<MIsometry<N>> for MIsometry<N>
+{
+    #[inline]
+    fn mul_assign(&mut self, rhs: MIsometry<N>)
+    {
+        *self = *self * rhs;
+    }
+}
+
 
 impl<N: Scalar> Index<usize> for MVector<N>
 {

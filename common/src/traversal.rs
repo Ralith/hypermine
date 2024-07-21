@@ -68,12 +68,12 @@ pub fn nearby_nodes(
     });
     visited.insert(start.node);
 
-    while let Some(current) = pending.pop() {
+    while let Some(current) = pending.pop_front() {
         let current_p = current.transform * MVector::origin();
         if -(start_p.mip(&current_p)) > distance.cosh() {
             continue;
         }
-        result.push((current.id, current.transform.to_f32()));
+        result.push((current.id, current.transform));
 
         for side in Side::iter() {
             let neighbor = match graph.neighbor(current.id, side) {
@@ -114,7 +114,7 @@ impl<'a> RayTraverser<'a> {
         let mut closest_vertex = Vertex::A;
         let mut closest_vertex_cosh_distance = f32::INFINITY;
         for vertex in Vertex::iter() {
-            let vertex_cosh_distance = (vertex.node_to_dual() * position.local * MVector::origin()).w;
+            let vertex_cosh_distance = (*vertex.node_to_dual() * position.local * MVector::origin()).w;
             if vertex_cosh_distance < closest_vertex_cosh_distance {
                 closest_vertex = vertex;
                 closest_vertex_cosh_distance = vertex_cosh_distance;
@@ -152,7 +152,7 @@ impl<'a> RayTraverser<'a> {
                 // Combine node and vertex, and convert node transform to chunk transform
                 return Some((
                     node.map(|node| ChunkId::new(node, vertex)),
-                    vertex.node_to_dual() * node_transform,
+                    *vertex.node_to_dual() * node_transform,
                 ));
             }
 
@@ -163,14 +163,14 @@ impl<'a> RayTraverser<'a> {
                 continue;
             };
 
-            let local_ray = vertex.node_to_dual() * node_transform * self.ray;
+            let local_ray = *vertex.node_to_dual() * node_transform * self.ray;
 
             // Compute the Klein-Beltrami coordinates of the ray segment's endpoints. To check whether neighboring chunks
             // are needed, we need to check whether the endpoints of the line segments lie outside the boundaries of the square
             // bounded by `klein_lower_boundary` and `klein_upper_boundary`.
-            let klein_ray_start = na::Point3::from_homogeneous(local_ray.position).unwrap();
+            let klein_ray_start = na::Point3::from_homogeneous(local_ray.position.into()).unwrap();
             let klein_ray_end =
-                na::Point3::from_homogeneous(local_ray.ray_point(tanh_distance)).unwrap();
+                na::Point3::from_homogeneous(local_ray.ray_point(tanh_distance).into()).unwrap();
 
             // Add neighboring chunks as necessary based on a conservative AABB check, using one coordinate at a time.
             for axis in 0..3 {
@@ -179,7 +179,7 @@ impl<'a> RayTraverser<'a> {
                     || klein_ray_end[axis] <= self.klein_lower_boundary
                 {
                     let side = vertex.canonical_sides()[axis];
-                    let next_node_transform = side.reflection() * node_transform;
+                    let next_node_transform = *side.reflection() * node_transform;
                     // Crude check to ensure that the neighboring chunk's node can be in the path of the ray. For simplicity, this
                     // check treats each node as a sphere and assumes the ray is pointed directly towards its center. The check is
                     // needed because chunk generation uses this approximation, and this check is not guaranteed to pass near corners

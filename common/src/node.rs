@@ -8,6 +8,7 @@ use crate::collision_math::Ray;
 use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
+use crate::math::MVector;
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
@@ -374,8 +375,8 @@ impl VoxelAABB {
     ) -> Option<VoxelAABB> {
         // Convert the ray to grid coordinates
         let grid_start =
-            na::Point3::from_homogeneous(ray.position).unwrap() * layout.dual_to_grid_factor();
-        let grid_end = na::Point3::from_homogeneous(ray.ray_point(tanh_distance)).unwrap()
+            na::Point3::from_homogeneous(ray.position.into()).unwrap() * layout.dual_to_grid_factor();
+        let grid_end = na::Point3::from_homogeneous(ray.ray_point(tanh_distance).into()).unwrap()
             * layout.dual_to_grid_factor();
         // Convert the radius to grid coordinates using a crude conservative estimate
         let max_grid_radius = radius * layout.dual_to_grid_factor();
@@ -433,7 +434,7 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::math;
-    use crate::math::MVector;
+    use crate::math::{MVector,MIsometry};
 
     use super::*;
 
@@ -446,7 +447,7 @@ mod tests {
         let layout = ChunkLayout::new(dimension);
 
         // Pick an arbitrary ray by transforming the positive-x-axis ray.
-        let ray = na::Rotation3::from_axis_angle(&na::Vector3::z_axis(), 0.4).to_homogeneous()
+        let ray =  MIsometry::rotation_to_homogeneous(na::Rotation3::from_axis_angle(&na::Vector3::z_axis(), 0.4))
             * math::translate_along(&na::Vector3::new(0.2, 0.3, 0.1))
             * &Ray::new(MVector::w(), MVector::x());
 
@@ -501,7 +502,7 @@ mod tests {
 
             // For a given axis, all lines have the same direction, so set up the appropriate vector
             // in advance.
-            let mut line_direction = na::Vector4::zeros();
+            let mut line_direction = MVector::zero();
             line_direction[t_axis] = 1.0;
             let line_direction = line_direction;
 

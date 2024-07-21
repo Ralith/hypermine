@@ -101,12 +101,13 @@ impl PredictedMotion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::math::MIsometry;
 
     /// An arbitrary position
     fn pos() -> Position {
         Position {
             node: common::graph::NodeId::ROOT,
-            local: na::one(),
+            local: MIsometry::identity(),
         }
     }
 

@@ -146,7 +146,7 @@ impl Sim {
             if let Some(pos) = entity.get::<&Position>() {
                 components.push((
                     ComponentType::Position as u64,
-                    postcard::to_stdvec(pos.local.as_ref()).unwrap(),
+                    postcard::to_stdvec(&pos.local.as_ref()).unwrap(),
                 ));
             }
             if let Some(ch) = entity.get::<&Character>() {

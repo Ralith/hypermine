@@ -1,4 +1,5 @@
 use common::Plane;
+use common::math;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Frustum {
@@ -79,7 +80,7 @@ pub struct FrustumPlanes {
 }
 
 impl FrustumPlanes {
-    pub fn contain(&self, point: &na::Vector4<f32>, radius: f32) -> bool {
+    pub fn contain(&self, point: &math::MVector<f32>, radius: f32) -> bool {
         for &plane in &[&self.left, &self.right, &self.down, &self.up] {
             if plane.distance_to(point) < -radius {
                 return false;
@@ -92,20 +93,20 @@ impl FrustumPlanes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::math::{origin, translate_along};
+    use common::math::{translate_along, MVector};
     use std::f32;
 
     #[test]
     fn planes_sanity() {
         // 90 degree square
         let planes = Frustum::from_vfov(f32::consts::FRAC_PI_4, 1.0).planes();
-        assert!(planes.contain(&origin(), 0.1));
-        assert!(planes.contain(&(translate_along(&-na::Vector3::z()) * origin()), 0.0));
-        assert!(!planes.contain(&(translate_along(&na::Vector3::z()) * origin()), 0.0));
+        assert!(planes.contain(&MVector::origin(), 0.1));
+        assert!(planes.contain(&(translate_along(&-na::Vector3::z()) * MVector::origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&na::Vector3::z()) * MVector::origin()), 0.0));
 
-        assert!(!planes.contain(&(translate_along(&na::Vector3::x()) * origin()), 0.0));
-        assert!(!planes.contain(&(translate_along(&na::Vector3::y()) * origin()), 0.0));
-        assert!(!planes.contain(&(translate_along(&-na::Vector3::x()) * origin()), 0.0));
-        assert!(!planes.contain(&(translate_along(&-na::Vector3::y()) * origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&na::Vector3::x()) * MVector::origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&na::Vector3::y()) * MVector::origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&-na::Vector3::x()) * MVector::origin()), 0.0));
+        assert!(!planes.contain(&(translate_along(&-na::Vector3::y()) * MVector::origin()), 0.0));
     }
 }
