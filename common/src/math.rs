@@ -433,8 +433,8 @@ impl<N: Scalar> Index<(usize,usize)> for MIsometry<N>
 /// Transform that translates `a` to `b` given that `a` and `b` are Lorentz normalized pointlike vectors
 pub fn translate<N: RealField + Copy>(a: &MVector<N>, b: &MVector<N>) -> MIsometry<N> {
     let a_plus_b = *a + *b;
-    MIsometry(na::Matrix4::<N>::identity() - (b.minkowski_outer_product(a) * na::convert::<_, N>(2.0))
-        + a_plus_b.minkowski_outer_product(&a_plus_b) / (N::one() - a.mip(b)))
+    MIsometry((na::Matrix4::<N>::identity()) - (b.minkowski_outer_product(a)  * na::convert::<_, N>(2.0))
+         + ((a_plus_b.minkowski_outer_product(&a_plus_b)) / (N::one() - a.mip(b))))
 }
 
 /// Transform that translates the origin in the direction of the given vector with distance equal to its magnitude
@@ -523,13 +523,6 @@ pub fn tuv_to_xyz<T: std::ops::IndexMut<usize, Output = N>, N: Copy>(t_axis: usi
         result[(t_axis + 2) % 3],
     ) = (result[0], result[1], result[2]);
     result
-}
-
-fn minkowski_outer_product<N: RealField + Copy>(
-    a: &MVector<N>,
-    b: &MVector<N>,
-) -> na::Matrix4<N> {
-    ((*a).0) * na::RowVector4::new(b.0.x, b.0.y, b.0.z, -b.0.w)
 }
 
 #[cfg(test)]
@@ -662,8 +655,8 @@ mod tests {
 
         // translation with some error
         let mat = MIsometry(translate(
-            &MVector::new(-0.5, -0.5, 0.0, 1.0),
-            &MVector::new(0.3, -0.7, 0.0, 1.0),
+            &MVector::new(-0.5, -0.5, 0.0, 1.0).lorentz_normalize(),
+            &MVector::new(0.3, -0.7, 0.0, 1.0).lorentz_normalize(),
         ).0 + error.0 * 0.05);
 
         let normalized_mat = mat.renormalize_isometry();
@@ -671,7 +664,7 @@ mod tests {
         // Check that the matrix is actually normalized
         assert_abs_diff_eq!(
             normalized_mat.mtranspose() * normalized_mat,
-            MIsometry(na::Matrix4::identity()),
+            MIsometry::identity(),
             epsilon = 1e-5
         );
     }
