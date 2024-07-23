@@ -92,19 +92,19 @@ impl<N: Scalar> Deref for MIsometry<N> {
     }
 }
 
-impl<N: Scalar> Into<na::Matrix4<N>> for MIsometry<N>
+impl<N: Scalar> From<MIsometry<N>> for na::Matrix4<N>
 {
-    fn into(self) -> na::Matrix4<N>
+    fn from(value: MIsometry<N>) -> na::Matrix4<N>
     {
-        self.0
+        value.0
     }
 }
 
-impl<N: Scalar> Into<na::Vector4<N>> for MVector<N>
+impl<N: Scalar> From<MVector<N>> for na::Vector4<N>
 {
-    fn into(self) -> na::Vector4<N>
+    fn from(value: MVector<N>) -> na::Vector4<N>
     {
-        self.0
+        value.0
     }
 }
 
