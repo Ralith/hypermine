@@ -88,12 +88,12 @@ mod tests {
         collision_math::Ray,
         dodeca::{self, Side, Vertex},
         graph::{Graph, NodeId},
+        math::MIsometry,
         node::{populate_fresh_nodes, VoxelData},
         proto::Position,
         traversal::{ensure_nearby, nearby_nodes},
         voxel_math::Coords,
         world::Material,
-        math::MIsometry,
     };
 
     use super::*;
