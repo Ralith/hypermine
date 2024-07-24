@@ -72,7 +72,7 @@ impl Side {
     #[inline]
     pub fn is_facing(self, p: &MVector<f32>) -> bool {
         let r = na::convert::<_, na::RowVector4<f32>>(self.reflection().row(3).clone_owned());
-        (r * na::Vector4::<_>::from(*p)).x < p.w
+        (r * na::Vector4::from(*p)).x < p.w
     }
 }
 
@@ -179,26 +179,26 @@ impl Vertex {
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node(self) -> na::Matrix4<f32> {
-        na::Matrix4::<_>::from(*self.dual_to_node())
+        na::Matrix4::from(*self.dual_to_node())
             * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
     }
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node_f64(self) -> na::Matrix4<f64> {
-        na::Matrix4::<_>::from(*self.dual_to_node_f64())
+        na::Matrix4::from(*self.dual_to_node_f64())
             * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor_f64())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk(self) -> na::Matrix4<f32> {
         na::Matrix4::new_scaling(Self::dual_to_chunk_factor())
-            * na::Matrix4::<_>::from(*self.node_to_dual())
+            * na::Matrix4::from(*self.node_to_dual())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk_f64(self) -> na::Matrix4<f64> {
         na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64())
-            * na::Matrix4::<_>::from(*self.node_to_dual_f64())
+            * na::Matrix4::from(*self.node_to_dual_f64())
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
