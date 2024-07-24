@@ -608,9 +608,9 @@ mod tests {
 
     #[test]
     fn radius() {
-        let corner = *Vertex::A.dual_to_node() * MVector::origin();
+        let corner = *Vertex::A.dual_to_node_f64() * MVector::origin();
         assert_abs_diff_eq!(
-            BOUNDING_SPHERE_RADIUS,
+            BOUNDING_SPHERE_RADIUS_F64,
             math::distance(&corner, &MVector::origin()),
             epsilon = 1e-10
         );
