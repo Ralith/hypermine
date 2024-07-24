@@ -241,7 +241,7 @@ impl<N: RealField + Copy> MVector<N> {
     }
     pub fn origin() -> Self
     {
-        Self(na::Vector4::new(na::zero(),na::zero(),na::zero(),na::one()))
+        Self::w()
     }
     #[inline]
     pub fn normalize(self) -> Self
