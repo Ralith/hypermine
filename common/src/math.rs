@@ -202,10 +202,6 @@ impl<N: RealField + Copy> MIsometry<N>
         );
         MIsometry(boost.0 * rotation.to_homogeneous())
     }
-    /*pub fn cast<N2: Scalar>(self) -> MIsometry<N2> where N: simba::scalar::SubsetOf<N2>
-    {
-        Self(self.0.cast::<N2>())
-    }*/
 }
 
 impl<N: RealField + Copy> MVector<N> {
