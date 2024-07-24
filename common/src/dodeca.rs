@@ -62,6 +62,7 @@ impl Side {
         &reflections_f32()[self as usize]
     }
 
+    /// Reflection across this side
     #[inline]
     pub fn reflection_f64(self) -> &'static MIsometry<f64> {
         &reflections_f64()[self as usize]
