@@ -69,10 +69,8 @@ fn find_face_collision(
     for t in bounding_box.grid_planes(t_axis) {
         // Find a normal to the grid plane. Note that (t, 0, 0, x) is a normal of the plane whose closest point
         // to the origin is (x, 0, 0, t), and we use that fact here.
-        let normal = math::tuv_to_xyz(
-            t_axis,
-            MVector::new(1.0, 0.0, 0.0, layout.grid_to_dual(t)),
-        ).lorentz_normalize();
+        let normal = math::tuv_to_xyz(t_axis, MVector::new(1.0, 0.0, 0.0, layout.grid_to_dual(t)))
+            .lorentz_normalize();
 
         let Some(new_tanh_distance) = ray.solve_point_plane_intersection(&normal) else {
             continue;
@@ -125,7 +123,7 @@ fn find_face_collision(
             face_axis: CoordAxis::try_from(t_axis).unwrap(),
             face_sign,
         });
-    };
+    }
     hit
 }
 
@@ -187,22 +185,24 @@ mod tests {
             ray_start_grid_coords[1] / ctx.layout.dual_to_grid_factor(),
             ray_start_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
-        ).lorentz_normalize();
+        )
+        .lorentz_normalize();
 
         let ray_end = MVector::new(
             ray_end_grid_coords[0] / ctx.layout.dual_to_grid_factor(),
             ray_end_grid_coords[1] / ctx.layout.dual_to_grid_factor(),
             ray_end_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
-        ).lorentz_normalize();
+        )
+        .lorentz_normalize();
 
         let ray = Ray::new(
             ray_start,
-            ((ray_end - ray_start)
-                + ray_start * ray_start.mip(&(ray_end - ray_start))).lorentz_normalize(),
+            ((ray_end - ray_start) + ray_start * ray_start.mip(&(ray_end - ray_start)))
+                .lorentz_normalize(),
         );
 
-        let tanh_distance = (- (ray_start.mip(&ray_end))).acosh();
+        let tanh_distance = (-(ray_start.mip(&ray_end))).acosh();
 
         wrapped_fn(&ray, tanh_distance)
     }

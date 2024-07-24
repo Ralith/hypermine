@@ -3,7 +3,7 @@ use crate::{
     collision_math::Ray,
     graph::Graph,
     math,
-    math::{MVector, MIsometry},
+    math::{MIsometry, MVector},
     node::{Chunk, ChunkId},
     proto::Position,
     traversal::RayTraverser,
@@ -170,11 +170,14 @@ mod tests {
             }
 
             // Find the transform of the chosen chunk
-            let chosen_chunk_transform: MIsometry<f32> =
-                self.chosen_voxel.node_path.iter().fold(
-                    MIsometry::identity(),
-                    |transform: MIsometry<f32>, side| transform * *side.reflection(),
-                ) * *self.chosen_voxel.vertex.dual_to_node();
+            let chosen_chunk_transform: MIsometry<f32> = self
+                .chosen_voxel
+                .node_path
+                .iter()
+                .fold(MIsometry::identity(), |transform: MIsometry<f32>, side| {
+                    transform * *side.reflection()
+                })
+                * *self.chosen_voxel.vertex.dual_to_node();
 
             let dual_to_grid_factor = graph.layout().dual_to_grid_factor();
             let ray_target = chosen_chunk_transform
@@ -183,7 +186,8 @@ mod tests {
                     self.chosen_chunk_relative_grid_ray_end[1] / dual_to_grid_factor,
                     self.chosen_chunk_relative_grid_ray_end[2] / dual_to_grid_factor,
                     1.0,
-                ).lorentz_normalize();
+                )
+                .lorentz_normalize();
 
             let ray_position = *Vertex::A.dual_to_node()
                 * MVector::new(
@@ -191,17 +195,18 @@ mod tests {
                     self.start_chunk_relative_grid_ray_start[1] / dual_to_grid_factor,
                     self.start_chunk_relative_grid_ray_start[2] / dual_to_grid_factor,
                     1.0,
-                ).lorentz_normalize();
+                )
+                .lorentz_normalize();
             let ray_direction = ray_target - ray_position;
 
             let ray = Ray::new(
                 ray_position,
-                (ray_direction + ray_position * ray_position.mip(&ray_direction)).lorentz_normalize(),
+                (ray_direction + ray_position * ray_position.mip(&ray_direction))
+                    .lorentz_normalize(),
             );
 
-            let tanh_distance = ((-ray_position.mip(&ray_target)).acosh()
-                + self.ray_length_modifier)
-                .tanh();
+            let tanh_distance =
+                ((-ray_position.mip(&ray_target)).acosh() + self.ray_length_modifier).tanh();
 
             let hit = sphere_cast(
                 self.collider_radius,

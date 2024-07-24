@@ -3,7 +3,7 @@
 use data::*;
 use serde::{Deserialize, Serialize};
 
-use crate::math::{MVector,MIsometry};
+use crate::math::{MIsometry, MVector};
 use crate::voxel_math::ChunkAxisPermutation;
 
 /// Sides of a right dodecahedron
@@ -179,22 +179,26 @@ impl Vertex {
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node(self) -> na::Matrix4<f32> {
-        na::Matrix4::<_>::from(*self.dual_to_node()) * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
+        na::Matrix4::<_>::from(*self.dual_to_node())
+            * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
     }
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node_f64(self) -> na::Matrix4<f64> {
-        na::Matrix4::<_>::from(*self.dual_to_node_f64()) * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor_f64())
+        na::Matrix4::<_>::from(*self.dual_to_node_f64())
+            * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor_f64())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk(self) -> na::Matrix4<f32> {
-        na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * na::Matrix4::<_>::from(*self.node_to_dual())
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor())
+            * na::Matrix4::<_>::from(*self.node_to_dual())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk_f64(self) -> na::Matrix4<f64> {
-        na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64()) * na::Matrix4::<_>::from(*self.node_to_dual_f64())
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64())
+            * na::Matrix4::<_>::from(*self.node_to_dual_f64())
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
@@ -261,7 +265,7 @@ mod data {
     use std::sync::OnceLock;
 
     use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
-    use crate::math::{MVector,MIsometry};
+    use crate::math::{MIsometry, MVector};
     use crate::voxel_math::ChunkAxisPermutation;
 
     /// Whether two sides share an edge
@@ -407,9 +411,9 @@ mod data {
             let mut result = [MIsometry::identity(); VERTEX_COUNT];
             for (i, map) in result.iter_mut().enumerate() {
                 let [a, b, c] = vertex_sides()[i];
-                let vertex_position =
-                    (MVector::origin()
-                        - (*a.normal_f64() + *b.normal_f64() + *c.normal_f64()) * mip_origin_normal).lorentz_normalize();
+                let vertex_position = (MVector::origin()
+                    - (*a.normal_f64() + *b.normal_f64() + *c.normal_f64()) * mip_origin_normal)
+                    .lorentz_normalize();
                 *map = MIsometry::from_columns_unchecked(&[
                     -*a.normal_f64(),
                     -*b.normal_f64(),

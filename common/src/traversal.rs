@@ -7,7 +7,7 @@ use crate::{
     dodeca::{self, Side, Vertex},
     graph::{Graph, NodeId},
     math,
-    math::{MVector,MIsometry},
+    math::{MIsometry, MVector},
     node::ChunkId,
     proto::Position,
 };
@@ -114,7 +114,8 @@ impl<'a> RayTraverser<'a> {
         let mut closest_vertex = Vertex::A;
         let mut closest_vertex_cosh_distance = f32::INFINITY;
         for vertex in Vertex::iter() {
-            let vertex_cosh_distance = (*vertex.node_to_dual() * position.local * MVector::origin()).w;
+            let vertex_cosh_distance =
+                (*vertex.node_to_dual() * position.local * MVector::origin()).w;
             if vertex_cosh_distance < closest_vertex_cosh_distance {
                 closest_vertex = vertex;
                 closest_vertex_cosh_distance = vertex_cosh_distance;

@@ -1,5 +1,5 @@
 use crate::math;
-use crate::math::{MVector,MIsometry};
+use crate::math::{MIsometry, MVector};
 
 /// A ray in hyperbolic space. The fields must be lorentz normalized, with `mip(position, position) == -1`,
 /// `mip(direction, direction) == 1`, and `mip(position, direction) == 0`.
@@ -160,17 +160,14 @@ mod tests {
         let ray = math::translate_along(&na::Vector3::new(0.0, 0.0, -0.5))
             * &Ray::new(MVector::origin(), MVector::new(0.8, 0.0, 0.6, 0.0));
         let normal = -MVector::z();
-        let hit_point =
-        ray.ray_point(
-            ray.solve_sphere_plane_intersection(&normal, 0.2_f32.sinh())
-                .unwrap(),
-        ).lorentz_normalize();
+        let hit_point = ray
+            .ray_point(
+                ray.solve_sphere_plane_intersection(&normal, 0.2_f32.sinh())
+                    .unwrap(),
+            )
+            .lorentz_normalize();
 
-        assert_abs_diff_eq!(
-            hit_point.mip(&normal),
-            0.2_f32.sinh(),
-            epsilon = 1e-4
-        );
+        assert_abs_diff_eq!(hit_point.mip(&normal), 0.2_f32.sinh(), epsilon = 1e-4);
     }
 
     #[test]
@@ -221,16 +218,15 @@ mod tests {
             );
         let line_normal0 = MVector::x();
         let line_normal1 = MVector::z();
-        let hit_point =
-        ray.ray_point(
-            ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2_f32.sinh())
-                .unwrap(),
-        ).lorentz_normalize();
+        let hit_point = ray
+            .ray_point(
+                ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2_f32.sinh())
+                    .unwrap(),
+            )
+            .lorentz_normalize();
         // Measue the distance from hit_point to the line and ensure it's equal to the radius
         assert_abs_diff_eq!(
-            (hit_point.mip(&line_normal0).powi(2)
-                + hit_point.mip(&line_normal1).powi(2))
-            .sqrt(),
+            (hit_point.mip(&line_normal0).powi(2) + hit_point.mip(&line_normal1).powi(2)).sqrt(),
             0.2_f32.sinh(),
             epsilon = 1e-4
         );
@@ -313,18 +309,19 @@ mod tests {
         let point_normal0 = MVector::x();
         let point_normal1 = MVector::y();
         let point_normal2 = MVector::z();
-        let hit_point =
-        ray.ray_point(
-            ray.solve_sphere_point_intersection(
-                &point_normal0,
-                &point_normal1,
-                &point_normal2,
-                0.2_f32.sinh(),
+        let hit_point = ray
+            .ray_point(
+                ray.solve_sphere_point_intersection(
+                    &point_normal0,
+                    &point_normal1,
+                    &point_normal2,
+                    0.2_f32.sinh(),
+                )
+                .unwrap(),
             )
-            .unwrap(),
-        ).lorentz_normalize();
+            .lorentz_normalize();
         assert_abs_diff_eq!(
-            - hit_point.mip(&point_position),
+            -hit_point.mip(&point_position),
             0.2_f32.cosh(),
             epsilon = 1e-4
         );
@@ -395,7 +392,9 @@ mod tests {
         let ray = math::translate_along(&na::Vector3::new(0.0, 0.0, -0.5))
             * &Ray::new(MVector::origin(), MVector::new(0.8, 0.0, 0.6, 0.0));
         let normal = -MVector::z();
-        let hit_point = ray.ray_point(ray.solve_point_plane_intersection(&normal).unwrap()).lorentz_normalize();
+        let hit_point = ray
+            .ray_point(ray.solve_point_plane_intersection(&normal).unwrap())
+            .lorentz_normalize();
         assert_abs_diff_eq!(hit_point.mip(&normal), 0.0, epsilon = 1e-4);
     }
 

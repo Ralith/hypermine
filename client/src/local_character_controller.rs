@@ -25,7 +25,8 @@ impl LocalCharacterController {
     pub fn oriented_position(&self) -> Position {
         Position {
             node: self.position.node,
-            local: self.position.local * math::MIsometry::unit_quaternion_to_homogeneous(self.orientation),
+            local: self.position.local
+                * math::MIsometry::unit_quaternion_to_homogeneous(self.orientation),
         }
     }
 

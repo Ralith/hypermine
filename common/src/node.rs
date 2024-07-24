@@ -374,8 +374,8 @@ impl VoxelAABB {
         radius: f32,
     ) -> Option<VoxelAABB> {
         // Convert the ray to grid coordinates
-        let grid_start =
-            na::Point3::from_homogeneous(ray.position.into()).unwrap() * layout.dual_to_grid_factor();
+        let grid_start = na::Point3::from_homogeneous(ray.position.into()).unwrap()
+            * layout.dual_to_grid_factor();
         let grid_end = na::Point3::from_homogeneous(ray.ray_point(tanh_distance).into()).unwrap()
             * layout.dual_to_grid_factor();
         // Convert the radius to grid coordinates using a crude conservative estimate
@@ -434,7 +434,7 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::math;
-    use crate::math::{MVector,MIsometry};
+    use crate::math::{MIsometry, MVector};
 
     use super::*;
 
@@ -447,8 +447,10 @@ mod tests {
         let layout = ChunkLayout::new(dimension);
 
         // Pick an arbitrary ray by transforming the positive-x-axis ray.
-        let ray =  MIsometry::rotation_to_homogeneous(na::Rotation3::from_axis_angle(&na::Vector3::z_axis(), 0.4))
-            * math::translate_along(&na::Vector3::new(0.2, 0.3, 0.1))
+        let ray = MIsometry::rotation_to_homogeneous(na::Rotation3::from_axis_angle(
+            &na::Vector3::z_axis(),
+            0.4,
+        )) * math::translate_along(&na::Vector3::new(0.2, 0.3, 0.1))
             * &Ray::new(MVector::w(), MVector::x());
 
         let tanh_distance = 0.2;
@@ -460,7 +462,8 @@ mod tests {
         let num_ray_test_points = 20;
         let ray_test_points: Vec<_> = (0..num_ray_test_points)
             .map(|i| {
-                ray.ray_point(tanh_distance * (i as f32 / (num_ray_test_points - 1) as f32)).lorentz_normalize()
+                ray.ray_point(tanh_distance * (i as f32 / (num_ray_test_points - 1) as f32))
+                    .lorentz_normalize()
             })
             .collect();
 
@@ -548,7 +551,8 @@ mod tests {
                         layout.grid_to_dual(y),
                         layout.grid_to_dual(z),
                         1.0,
-                    ).lorentz_normalize();
+                    )
+                    .lorentz_normalize();
 
                     for test_point in &ray_test_points {
                         assert!(

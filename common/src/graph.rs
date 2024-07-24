@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dodeca::{Side, SIDE_COUNT},
     math,
-    math::{MIsometry,MVector},
+    math::{MIsometry, MVector},
     node::{ChunkId, ChunkLayout, Node},
 };
 
@@ -402,8 +402,7 @@ mod tests {
         let mut graph = Graph::new(1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
-            let (node, xf) =
-                graph.normalize_transform(NodeId::ROOT, &MIsometry::identity());
+            let (node, xf) = graph.normalize_transform(NodeId::ROOT, &MIsometry::identity());
             assert_eq!(node, NodeId::ROOT);
             assert_abs_diff_eq!(xf, MIsometry::identity(), epsilon = 1e-5);
         }

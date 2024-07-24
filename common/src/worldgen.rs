@@ -4,7 +4,8 @@ use rand_distr::Normal;
 use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
-    margins, math, math::MVector,
+    margins, math,
+    math::MVector,
     node::{ChunkId, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,

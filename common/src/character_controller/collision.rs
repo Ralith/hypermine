@@ -2,7 +2,13 @@
 
 use tracing::error;
 
-use crate::{collision_math::Ray, graph::Graph, graph_collision, math, math::{MVector,MIsometry}, proto::Position};
+use crate::{
+    collision_math::Ray,
+    graph::Graph,
+    graph_collision, math,
+    math::{MIsometry, MVector},
+    proto::Position,
+};
 
 /// Checks for collisions when a character moves with a character-relative displacement vector of `relative_displacement`.
 pub fn check_collision(
@@ -22,7 +28,10 @@ pub fn check_collision(
     let displacement_norm = displacement_sqr.sqrt();
     let displacement_normalized = relative_displacement / displacement_norm;
 
-    let ray = Ray::new(MVector::origin(), MVector::<f32>::from(displacement_normalized));
+    let ray = Ray::new(
+        MVector::origin(),
+        MVector::<f32>::from(displacement_normalized),
+    );
     let tanh_distance = displacement_norm.tanh();
 
     let cast_hit = graph_collision::sphere_cast(
