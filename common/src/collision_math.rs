@@ -1,4 +1,3 @@
-use crate::math;
 use crate::math::{MIsometry, MVector};
 
 /// A ray in hyperbolic space. The fields must be lorentz normalized, with `mip(position, position) == -1`,
@@ -153,6 +152,7 @@ mod tests {
     use approx::assert_abs_diff_eq;
 
     use super::*;
+    use crate::math;
 
     #[test]
     fn solve_sphere_plane_intersection_example() {

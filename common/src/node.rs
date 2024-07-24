@@ -8,12 +8,11 @@ use crate::collision_math::Ray;
 use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
 use crate::lru_slab::SlotId;
-use crate::math::MVector;
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
 use crate::worldgen::NodeState;
-use crate::{margins, math, Chunks};
+use crate::{margins, Chunks};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChunkId {

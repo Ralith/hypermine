@@ -6,7 +6,6 @@ use crate::{
     collision_math::Ray,
     dodeca::{self, Side, Vertex},
     graph::{Graph, NodeId},
-    math,
     math::{MIsometry, MVector},
     node::ChunkId,
     proto::Position,

@@ -2,8 +2,7 @@ use crate::{
     chunk_collision::chunk_sphere_cast,
     collision_math::Ray,
     graph::Graph,
-    math,
-    math::{MIsometry, MVector},
+    math::MVector,
     node::{Chunk, ChunkId},
     proto::Position,
     traversal::RayTraverser,
@@ -94,6 +93,7 @@ mod tests {
         traversal::{ensure_nearby, nearby_nodes},
         voxel_math::Coords,
         world::Material,
+        math::MIsometry,
     };
 
     use super::*;

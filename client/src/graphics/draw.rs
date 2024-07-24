@@ -9,7 +9,7 @@ use metrics::histogram;
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{Asset, Config, Loader, Sim};
 use common::proto::{Character, Position};
-use common::{math, SimConfig};
+use common::SimConfig;
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {

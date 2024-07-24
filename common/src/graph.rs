@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     dodeca::{Side, SIDE_COUNT},
-    math,
     math::{MIsometry, MVector},
     node::{ChunkId, ChunkLayout, Node},
 };
