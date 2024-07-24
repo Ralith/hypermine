@@ -307,28 +307,28 @@ impl<N: RealField> Mul<N> for MIsometry<N> {
 impl<N: RealField + Copy> std::ops::AddAssign for MVector<N> {
     #[inline]
     fn add_assign(&mut self, other: Self) {
-        *self = *self + other;
+        (*self).0 += other.0;
     }
 }
 
 impl<N: RealField + Copy> MulAssign<N> for MVector<N> {
     #[inline]
     fn mul_assign(&mut self, rhs: N) {
-        *self = *self * rhs;
+        (*self).0 *= rhs;
     }
 }
 
 impl<N: RealField + Copy> MulAssign<N> for MIsometry<N> {
     #[inline]
     fn mul_assign(&mut self, rhs: N) {
-        *self = *self * rhs;
+        (*self).0 *= rhs;
     }
 }
 
 impl<N: RealField + Copy> MulAssign<MIsometry<N>> for MIsometry<N> {
     #[inline]
     fn mul_assign(&mut self, rhs: MIsometry<N>) {
-        *self = *self * rhs;
+        (*self).0 *= rhs.0;
     }
 }
 
