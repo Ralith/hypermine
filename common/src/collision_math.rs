@@ -85,8 +85,8 @@ impl Ray {
     /// Finds the tanh of the distance a point will have to travel along a ray before it
     /// intersects the given plane.
     pub fn solve_point_plane_intersection(&self, plane_normal: &MVector<f32>) -> Option<f32> {
-        let mip_pos_a = &self.position.mip(plane_normal);
-        let mip_dir_a = &self.direction.mip(plane_normal);
+        let mip_pos_a = self.position.mip(plane_normal);
+        let mip_dir_a = self.direction.mip(plane_normal);
 
         let result = -mip_pos_a / mip_dir_a;
         if result.is_finite() && result > 0.0 {
