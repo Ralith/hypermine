@@ -69,7 +69,7 @@ pub fn nearby_nodes(
 
     while let Some(current) = pending.pop_front() {
         let current_p = current.transform * MVector::origin();
-        if -(start_p.mip(&current_p)) > distance.cosh() {
+        if -start_p.mip(&current_p) > distance.cosh() {
             continue;
         }
         result.push((current.id, current.transform));
