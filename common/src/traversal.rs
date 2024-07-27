@@ -32,7 +32,7 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
             visited.insert(neighbor);
             let neighbor_transform = current_transform * *side.reflection();
             let neighbor_p = neighbor_transform * MVector::origin();
-            if -(start_p.mip(&neighbor_p)) > distance.cosh() {
+            if -start_p.mip(&neighbor_p) > distance.cosh() {
                 continue;
             }
             pending.push_back((neighbor, neighbor_transform));
