@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dodeca, graph::NodeId, math, node::ChunkId, voxel_math::Coords, world::Material, EntityId,
+    dodeca, graph::NodeId, math::MIsometry, node::ChunkId, voxel_math::Coords, world::Material, EntityId,
     SimConfig, Step,
 };
 
@@ -19,14 +19,14 @@ pub struct ServerHello {
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub struct Position {
     pub node: NodeId,
-    pub local: math::MIsometry<f32>,
+    pub local: MIsometry<f32>,
 }
 
 impl Position {
     pub fn origin() -> Self {
         Self {
             node: NodeId::ROOT,
-            local: math::MIsometry::identity(),
+            local: MIsometry::identity(),
         }
     }
 }

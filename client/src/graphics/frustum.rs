@@ -1,4 +1,4 @@
-use common::math;
+use common::math::MVector;
 use common::Plane;
 
 #[derive(Debug, Copy, Clone)]
@@ -80,7 +80,7 @@ pub struct FrustumPlanes {
 }
 
 impl FrustumPlanes {
-    pub fn contain(&self, point: &math::MVector<f32>, radius: f32) -> bool {
+    pub fn contain(&self, point: &MVector<f32>, radius: f32) -> bool {
         for &plane in &[&self.left, &self.right, &self.down, &self.up] {
             if plane.distance_to(point) < -radius {
                 return false;
@@ -93,7 +93,7 @@ impl FrustumPlanes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::math::{translate_along, MVector};
+    use common::math::translate_along;
     use std::f32;
 
     #[test]

@@ -20,7 +20,7 @@ use common::{
     dodeca::Vertex,
     graph::NodeId,
     lru_slab::SlotId,
-    math,
+    math::{MIsometry,MVector},
     node::{Chunk, ChunkId, VoxelData},
     LruSlab,
 };
@@ -88,7 +88,7 @@ impl Voxels {
         device: &Device,
         frame: &mut Frame,
         sim: &mut Sim,
-        nearby_nodes: &[(NodeId, math::MIsometry<f32>)],
+        nearby_nodes: &[(NodeId, MIsometry<f32>)],
         cmd: vk::CommandBuffer,
         frustum: &Frustum,
     ) {
@@ -127,7 +127,7 @@ impl Voxels {
         let mut workqueue_is_full = false;
         for &(node, ref node_transform) in nearby_nodes {
             let node_to_view = local_to_view * *node_transform;
-            let origin = node_to_view * math::MVector::origin();
+            let origin = node_to_view * MVector::origin();
             if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS) {
                 // Don't bother generating or drawing chunks from nodes that are wholly outside the
                 // frustum.

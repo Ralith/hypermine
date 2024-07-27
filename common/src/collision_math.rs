@@ -302,10 +302,10 @@ mod tests {
         // Hit the origin with a radius of 0.2
         let ray = math::translate_along(&na::Vector3::new(0.0, 0.0, -0.5))
             * &Ray::new(
-                math::MVector::origin(),
+                MVector::origin(),
                 MVector::new(1.0, 2.0, 6.0, 0.0).normalize(),
             );
-        let point_position = math::MVector::origin();
+        let point_position = MVector::origin();
         let point_normal0 = MVector::x();
         let point_normal1 = MVector::y();
         let point_normal2 = MVector::z();
