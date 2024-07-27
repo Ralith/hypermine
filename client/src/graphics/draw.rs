@@ -482,8 +482,7 @@ impl Draw {
                         .expect("positionless entity in graph");
                     if let Some(character_model) = self.loader.get(self.character_model) {
                         if let Ok(ch) = sim.world.get::<&Character>(entity) {
-                            let transform = na::Matrix4::from(transform)
-                                * na::Matrix4::from(pos.local)
+                            let transform = na::Matrix4::from(transform * pos.local)
                                 * na::Matrix4::new_scaling(sim.cfg().meters_to_absolute)
                                 * ch.state.orientation.to_homogeneous();
                             for mesh in &character_model.0 {
