@@ -63,7 +63,7 @@ impl<N: na::RealField + Copy> Plane<N> {
 
     /// Shortest distance between the plane and a point
     pub fn distance_to(&self, point: &MVector<N>) -> N {
-        let mip_value = &self.normal.mip(point);
+        let mip_value = self.normal.mip(point);
         // Workaround for bug fixed in rust PR #72486
         mip_value.abs().asinh() * mip_value.signum()
     }
