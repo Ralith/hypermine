@@ -192,10 +192,10 @@ impl<N: RealField + Copy> MVector<N> {
     }
     /// Minkowski inner product, aka <a, b>_h
     pub fn mip(self, other: &Self) -> N {
-        self.0.x * other.0.x + self.0.y * other.0.y + self.0.z * other.0.z - self.0.w * other.0.w
+        self.x * other.x + self.y * other.y + self.z * other.z - self.w * other.w
     }
     pub fn minkowski_outer_product(self, other: &Self) -> na::Matrix4<N> {
-        ((self).0) * na::RowVector4::new(other.0.x, other.0.y, other.0.z, -other.0.w)
+        ((self).0) * na::RowVector4::new(other.x, other.y, other.z, -other.w)
     }
     pub fn from_gans(gans: &na::Vector3<N>) -> Self {
         // x^2 + y^2 + z^2 - w^2 = -1
