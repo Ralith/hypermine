@@ -20,7 +20,7 @@ use common::{
     dodeca::Vertex,
     graph::NodeId,
     lru_slab::SlotId,
-    math::{MIsometry,MVector},
+    math::{MIsometry, MVector},
     node::{Chunk, ChunkId, VoxelData},
     LruSlab,
 };
