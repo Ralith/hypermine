@@ -47,10 +47,10 @@ impl Ray {
         line_normal0: &MVector<f32>,
         sinh_radius: f32,
     ) -> Option<f32> {
-        let mip_pos_a = &self.position.mip(line_normal0);
-        let mip_dir_a = &self.direction.mip(line_normal0);
-        let mip_pos_b = &self.position.mip(line_normal1);
-        let mip_dir_b = &self.direction.mip(line_normal1);
+        let mip_pos_a = self.position.mip(line_normal0);
+        let mip_dir_a = self.direction.mip(line_normal0);
+        let mip_pos_b = self.position.mip(line_normal1);
+        let mip_dir_b = self.direction.mip(line_normal1);
 
         solve_quadratic(
             mip_pos_a.powi(2) + mip_pos_b.powi(2) - sinh_radius.powi(2),
