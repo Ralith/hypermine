@@ -207,6 +207,7 @@ impl<N: RealField + Copy> MVector<N> {
     pub fn zero() -> Self {
         Self(na::zero())
     }
+    #[inline]
     pub fn origin() -> Self {
         Self::w()
     }
