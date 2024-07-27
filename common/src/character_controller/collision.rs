@@ -67,7 +67,7 @@ pub fn check_collision(
             // This normal now represents a contact point at the origin, so we omit the w-coordinate
             // to ensure that it's orthogonal to the origin.
             normal: na::UnitVector3::new_normalize(
-                ((displacement_transform.mtranspose()) * hit.normal).xyz(),
+                (displacement_transform.mtranspose() * hit.normal).xyz(),
             ),
         }),
     }
