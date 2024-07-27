@@ -17,32 +17,6 @@ pub struct MVector<N: Scalar>(na::Vector4<N>);
 #[repr(C)]
 pub struct MIsometry<N: Scalar>(na::Matrix4<N>);
 
-#[cfg(test)]
-impl<N: RealField> approx::AbsDiffEq<MIsometry<N>> for MIsometry<N> {
-    type Epsilon = N;
-    #[inline]
-    fn default_epsilon() -> Self::Epsilon {
-        na::Matrix4::<N>::default_epsilon()
-    }
-    #[inline]
-    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
-        self.0.abs_diff_eq(&other.0, epsilon)
-    }
-}
-
-#[cfg(test)]
-impl<N: RealField> approx::AbsDiffEq<MVector<N>> for MVector<N> {
-    type Epsilon = N;
-    #[inline]
-    fn default_epsilon() -> Self::Epsilon {
-        na::Vector4::<N>::default_epsilon()
-    }
-    #[inline]
-    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
-        self.0.abs_diff_eq(&other.0, epsilon)
-    }
-}
-
 impl<N: RealField> From<na::Unit<na::Vector3<N>>> for MVector<N> {
     fn from(value: na::Unit<na::Vector3<N>>) -> Self {
         Self(value.into_inner().push(na::zero()))
@@ -450,6 +424,32 @@ pub fn tuv_to_xyz<T: std::ops::IndexMut<usize, Output = N>, N: Copy>(t_axis: usi
         result[(t_axis + 2) % 3],
     ) = (result[0], result[1], result[2]);
     result
+}
+
+#[cfg(test)]
+impl<N: RealField> approx::AbsDiffEq<MIsometry<N>> for MIsometry<N> {
+    type Epsilon = N;
+    #[inline]
+    fn default_epsilon() -> Self::Epsilon {
+        na::Matrix4::<N>::default_epsilon()
+    }
+    #[inline]
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+        self.0.abs_diff_eq(&other.0, epsilon)
+    }
+}
+
+#[cfg(test)]
+impl<N: RealField> approx::AbsDiffEq<MVector<N>> for MVector<N> {
+    type Epsilon = N;
+    #[inline]
+    fn default_epsilon() -> Self::Epsilon {
+        na::Vector4::<N>::default_epsilon()
+    }
+    #[inline]
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+        self.0.abs_diff_eq(&other.0, epsilon)
+    }
 }
 
 #[cfg(test)]
