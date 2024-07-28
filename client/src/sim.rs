@@ -13,7 +13,7 @@ use common::{
     collision_math::Ray,
     graph::{Graph, NodeId},
     graph_ray_casting, math,
-    math::{MVector, MIsometry},
+    math::{MIsometry, MVector},
     node::{populate_fresh_nodes, ChunkId, VoxelData},
     proto::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
