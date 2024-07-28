@@ -77,10 +77,10 @@ impl Sim {
     }
 
     pub fn save(&mut self, save: &mut save::Save) -> Result<(), save::DbError> {
-        fn path_from_origin(graph: &Graph, mut node: NodeId) -> Vec<u32> {
+        fn path_from_origin(graph: &Graph, mut node: NodeId) -> Vec<u8> {
             let mut result = Vec::new();
             while let Some(parent) = graph.parent(node) {
-                result.push(parent as u32);
+                result.push(parent as u8);
                 node = graph.neighbor(node, parent).unwrap();
             }
             result.reverse();
