@@ -10,8 +10,8 @@ pub struct Meta {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Character {
     /// Graph edges to traverse from the origin to find the node containing the character's entity
-    #[prost(uint32, repeated, tag = "1")]
-    pub path: ::prost::alloc::vec::Vec<u32>,
+    #[prost(bytes = "vec", tag = "1")]
+    pub path: ::prost::alloc::vec::Vec<u8>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
