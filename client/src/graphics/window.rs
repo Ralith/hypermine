@@ -7,13 +7,12 @@ use lahar::DedicatedImage;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use tracing::{error, info};
 use winit::event::KeyEvent;
-use winit::event_loop::EventLoopWindowTarget;
+use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{
     dpi::PhysicalSize,
     event::{DeviceEvent, ElementState, MouseButton, WindowEvent},
-    event_loop::EventLoop,
-    window::{CursorGrabMode, Window as WinitWindow, WindowBuilder},
+    window::{CursorGrabMode, Window as WinitWindow},
 };
 
 use super::gui::GuiState;
@@ -28,11 +27,10 @@ pub struct EarlyWindow {
 }
 
 impl EarlyWindow {
-    pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let window = WindowBuilder::new()
-            .with_title("hypermine")
-            .build(&event_loop)
-            .unwrap();
+    pub fn new(event_loop: &ActiveEventLoop) -> Self {
+        let mut attrs = WinitWindow::default_attributes();
+        attrs.title = "hypermine".into();
+        let window = event_loop.create_window(attrs).unwrap();
         Self {
             window,
             required_extensions: ash_window::enumerate_required_extensions(
@@ -111,7 +109,7 @@ impl Window {
     pub fn init_rendering(&mut self, gfx: Arc<Base>) {
         // Allocate the presentable images we'll be rendering to
         self.swapchain = Some(SwapchainMgr::new(
-            &self,
+            self,
             gfx.clone(),
             self.window.inner_size(),
         ));
@@ -135,7 +133,7 @@ impl Window {
         }
     }
 
-    pub fn handle_event(&mut self, event: WindowEvent, window_target: &EventLoopWindowTarget<()>) {
+    pub fn handle_event(&mut self, event: WindowEvent, event_loop: &ActiveEventLoop) {
         match event {
             WindowEvent::RedrawRequested => {
                 while let Ok(msg) = self.net.incoming.try_recv() {
@@ -165,7 +163,7 @@ impl Window {
             }
             WindowEvent::CloseRequested => {
                 info!("exiting due to closed window");
-                window_target.exit();
+                event_loop.exit();
             }
             WindowEvent::MouseInput {
                 button: MouseButton::Left,
