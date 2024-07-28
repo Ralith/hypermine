@@ -7,6 +7,7 @@ use lahar::DedicatedImage;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use tracing::{error, info};
 use winit::event::KeyEvent;
+use winit::event_loop::EventLoopWindowTarget;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{
     dpi::PhysicalSize,
@@ -22,26 +23,28 @@ use crate::{net, Config, Sim};
 
 /// OS window
 pub struct EarlyWindow {
-    event_loop: EventLoop<()>,
     window: WinitWindow,
+    required_extensions: &'static [*const c_char],
 }
 
 impl EarlyWindow {
-    pub fn new() -> Self {
-        let event_loop = EventLoop::new().unwrap();
+    pub fn new(event_loop: &EventLoop<()>) -> Self {
         let window = WindowBuilder::new()
             .with_title("hypermine")
             .build(&event_loop)
             .unwrap();
-        Self { event_loop, window }
+        Self {
+            window,
+            required_extensions: ash_window::enumerate_required_extensions(
+                event_loop.display_handle().unwrap().as_raw(),
+            )
+            .expect("unsupported platform"),
+        }
     }
 
     /// Identify the Vulkan extension needed to render to this window
     pub fn required_extensions(&self) -> &'static [*const c_char] {
-        ash_window::enumerate_required_extensions(
-            self.event_loop.display_handle().unwrap().as_raw(),
-        )
-        .expect("unsupported platform")
+        self.required_extensions
     }
 }
 
@@ -51,7 +54,6 @@ pub struct Window {
     window: WinitWindow,
     config: Arc<Config>,
     metrics: Arc<crate::metrics::Recorder>,
-    event_loop: Option<EventLoop<()>>,
     surface_fn: khr::surface::Instance,
     surface: vk::SurfaceKHR,
     swapchain: Option<SwapchainMgr>,
@@ -91,7 +93,6 @@ impl Window {
             window: early.window,
             config,
             metrics,
-            event_loop: Some(early.event_loop),
             surface,
             surface_fn,
             swapchain: None,
@@ -115,8 +116,7 @@ impl Window {
         }
     }
 
-    /// Run the event loop until process exit
-    pub fn run(mut self, gfx: Arc<Base>) {
+    pub fn init_rendering(&mut self, gfx: Arc<Base>) {
         // Allocate the presentable images we'll be rendering to
         self.swapchain = Some(SwapchainMgr::new(
             &self,
@@ -125,164 +125,163 @@ impl Window {
         ));
         // Construct the core rendering object
         self.draw = Some(Draw::new(gfx, self.config.clone()));
-        self.event_loop
-            .take()
-            .unwrap()
-            .run(move |event, window_target| match event {
-                Event::AboutToWait => {
-                    self.window.request_redraw();
-                }
-                Event::DeviceEvent { event, .. } => match event {
-                    DeviceEvent::MouseMotion { delta } if self.input.mouse_captured => {
-                        if let Some(sim) = self.sim.as_mut() {
-                            const SENSITIVITY: f32 = 2e-3;
-                            sim.look(
-                                -delta.0 as f32 * SENSITIVITY,
-                                -delta.1 as f32 * SENSITIVITY,
-                                0.0,
-                            );
-                        }
-                    }
-                    _ => {}
-                },
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::RedrawRequested => {
-                        while let Ok(msg) = self.net.incoming.try_recv() {
-                            self.handle_net(msg);
-                        }
+    }
 
-                        if let Some(sim) = self.sim.as_mut() {
-                            let this_frame = Instant::now();
-                            let dt = this_frame - self.last_frame.unwrap_or(this_frame);
-                            sim.set_movement_input(self.input.movement());
-                            sim.set_jump_held(self.input.jump);
-
-                            sim.look(0.0, 0.0, 2.0 * self.input.roll() * dt.as_secs_f32());
-
-                            sim.step(dt, &mut self.net);
-                            self.last_frame = Some(this_frame);
-                        }
-
-                        self.draw();
+    pub fn handle_event(&mut self, event: Event<()>, window_target: &EventLoopWindowTarget<()>) {
+        match event {
+            Event::AboutToWait => {
+                self.window.request_redraw();
+            }
+            Event::DeviceEvent { event, .. } => match event {
+                DeviceEvent::MouseMotion { delta } if self.input.mouse_captured => {
+                    if let Some(sim) = self.sim.as_mut() {
+                        const SENSITIVITY: f32 = 2e-3;
+                        sim.look(
+                            -delta.0 as f32 * SENSITIVITY,
+                            -delta.1 as f32 * SENSITIVITY,
+                            0.0,
+                        );
                     }
-                    WindowEvent::Resized(_) => {
-                        // Some environments may not emit the vulkan signals that recommend or
-                        // require surface reconstruction, so we need to check for messages from the
-                        // windowing system too. We defer actually performing the update until
-                        // drawing to avoid doing unnecessary work between frames.
-                        self.swapchain_needs_update = true;
-                    }
-                    WindowEvent::CloseRequested => {
-                        info!("exiting due to closed window");
-                        window_target.exit();
-                    }
-                    WindowEvent::MouseInput {
-                        button: MouseButton::Left,
-                        state: ElementState::Pressed,
-                        ..
-                    } => {
-                        if self.input.mouse_captured {
-                            if let Some(sim) = self.sim.as_mut() {
-                                sim.set_break_block_pressed_true();
-                            }
-                        }
-                        let _ = self
-                            .window
-                            .set_cursor_grab(CursorGrabMode::Confined)
-                            .or_else(|_e| self.window.set_cursor_grab(CursorGrabMode::Locked));
-                        self.window.set_cursor_visible(false);
-                        self.input.mouse_captured = true;
-                    }
-                    WindowEvent::MouseInput {
-                        button: MouseButton::Right,
-                        state: ElementState::Pressed,
-                        ..
-                    } => {
-                        if self.input.mouse_captured {
-                            if let Some(sim) = self.sim.as_mut() {
-                                sim.set_place_block_pressed_true();
-                            }
-                        }
-                    }
-                    WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                state,
-                                physical_key: PhysicalKey::Code(key),
-                                ..
-                            },
-                        ..
-                    } => match key {
-                        KeyCode::KeyW => {
-                            self.input.forward = state == ElementState::Pressed;
-                        }
-                        KeyCode::KeyA => {
-                            self.input.left = state == ElementState::Pressed;
-                        }
-                        KeyCode::KeyS => {
-                            self.input.back = state == ElementState::Pressed;
-                        }
-                        KeyCode::KeyD => {
-                            self.input.right = state == ElementState::Pressed;
-                        }
-                        KeyCode::KeyQ => {
-                            self.input.anticlockwise = state == ElementState::Pressed;
-                        }
-                        KeyCode::KeyE => {
-                            self.input.clockwise = state == ElementState::Pressed;
-                        }
-                        KeyCode::KeyR => {
-                            self.input.up = state == ElementState::Pressed;
-                        }
-                        KeyCode::KeyF => {
-                            self.input.down = state == ElementState::Pressed;
-                        }
-                        KeyCode::Space => {
-                            if let Some(sim) = self.sim.as_mut() {
-                                if !self.input.jump && state == ElementState::Pressed {
-                                    sim.set_jump_pressed_true();
-                                }
-                                self.input.jump = state == ElementState::Pressed;
-                            }
-                        }
-                        KeyCode::KeyV if state == ElementState::Pressed => {
-                            if let Some(sim) = self.sim.as_mut() {
-                                sim.toggle_no_clip();
-                            }
-                        }
-                        KeyCode::F1 if state == ElementState::Pressed => {
-                            self.gui_state.toggle_gui();
-                        }
-                        KeyCode::Escape => {
-                            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
-                            self.window.set_cursor_visible(true);
-                            self.input.mouse_captured = false;
-                        }
-                        _ => {
-                            if let Some(material_idx) = number_key_to_index(key) {
-                                if state == ElementState::Pressed {
-                                    if let Some(sim) = self.sim.as_mut() {
-                                        sim.select_material(material_idx);
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    WindowEvent::Focused(focused) => {
-                        if !focused {
-                            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
-                            self.window.set_cursor_visible(true);
-                            self.input.mouse_captured = false;
-                        }
-                    }
-                    _ => {}
-                },
-                Event::LoopExiting => {
-                    self.metrics.report();
                 }
                 _ => {}
-            })
-            .unwrap();
+            },
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::RedrawRequested => {
+                    while let Ok(msg) = self.net.incoming.try_recv() {
+                        self.handle_net(msg);
+                    }
+
+                    if let Some(sim) = self.sim.as_mut() {
+                        let this_frame = Instant::now();
+                        let dt = this_frame - self.last_frame.unwrap_or(this_frame);
+                        sim.set_movement_input(self.input.movement());
+                        sim.set_jump_held(self.input.jump);
+
+                        sim.look(0.0, 0.0, 2.0 * self.input.roll() * dt.as_secs_f32());
+
+                        sim.step(dt, &mut self.net);
+                        self.last_frame = Some(this_frame);
+                    }
+
+                    self.draw();
+                }
+                WindowEvent::Resized(_) => {
+                    // Some environments may not emit the vulkan signals that recommend or
+                    // require surface reconstruction, so we need to check for messages from the
+                    // windowing system too. We defer actually performing the update until
+                    // drawing to avoid doing unnecessary work between frames.
+                    self.swapchain_needs_update = true;
+                }
+                WindowEvent::CloseRequested => {
+                    info!("exiting due to closed window");
+                    window_target.exit();
+                }
+                WindowEvent::MouseInput {
+                    button: MouseButton::Left,
+                    state: ElementState::Pressed,
+                    ..
+                } => {
+                    if self.input.mouse_captured {
+                        if let Some(sim) = self.sim.as_mut() {
+                            sim.set_break_block_pressed_true();
+                        }
+                    }
+                    let _ = self
+                        .window
+                        .set_cursor_grab(CursorGrabMode::Confined)
+                        .or_else(|_e| self.window.set_cursor_grab(CursorGrabMode::Locked));
+                    self.window.set_cursor_visible(false);
+                    self.input.mouse_captured = true;
+                }
+                WindowEvent::MouseInput {
+                    button: MouseButton::Right,
+                    state: ElementState::Pressed,
+                    ..
+                } => {
+                    if self.input.mouse_captured {
+                        if let Some(sim) = self.sim.as_mut() {
+                            sim.set_place_block_pressed_true();
+                        }
+                    }
+                }
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            state,
+                            physical_key: PhysicalKey::Code(key),
+                            ..
+                        },
+                    ..
+                } => match key {
+                    KeyCode::KeyW => {
+                        self.input.forward = state == ElementState::Pressed;
+                    }
+                    KeyCode::KeyA => {
+                        self.input.left = state == ElementState::Pressed;
+                    }
+                    KeyCode::KeyS => {
+                        self.input.back = state == ElementState::Pressed;
+                    }
+                    KeyCode::KeyD => {
+                        self.input.right = state == ElementState::Pressed;
+                    }
+                    KeyCode::KeyQ => {
+                        self.input.anticlockwise = state == ElementState::Pressed;
+                    }
+                    KeyCode::KeyE => {
+                        self.input.clockwise = state == ElementState::Pressed;
+                    }
+                    KeyCode::KeyR => {
+                        self.input.up = state == ElementState::Pressed;
+                    }
+                    KeyCode::KeyF => {
+                        self.input.down = state == ElementState::Pressed;
+                    }
+                    KeyCode::Space => {
+                        if let Some(sim) = self.sim.as_mut() {
+                            if !self.input.jump && state == ElementState::Pressed {
+                                sim.set_jump_pressed_true();
+                            }
+                            self.input.jump = state == ElementState::Pressed;
+                        }
+                    }
+                    KeyCode::KeyV if state == ElementState::Pressed => {
+                        if let Some(sim) = self.sim.as_mut() {
+                            sim.toggle_no_clip();
+                        }
+                    }
+                    KeyCode::F1 if state == ElementState::Pressed => {
+                        self.gui_state.toggle_gui();
+                    }
+                    KeyCode::Escape => {
+                        let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+                        self.window.set_cursor_visible(true);
+                        self.input.mouse_captured = false;
+                    }
+                    _ => {
+                        if let Some(material_idx) = number_key_to_index(key) {
+                            if state == ElementState::Pressed {
+                                if let Some(sim) = self.sim.as_mut() {
+                                    sim.select_material(material_idx);
+                                }
+                            }
+                        }
+                    }
+                },
+                WindowEvent::Focused(focused) => {
+                    if !focused {
+                        let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+                        self.window.set_cursor_visible(true);
+                        self.input.mouse_captured = false;
+                    }
+                }
+                _ => {}
+            },
+            Event::LoopExiting => {
+                self.metrics.report();
+            }
+            _ => {}
+        }
     }
 
     fn handle_net(&mut self, msg: net::Message) {

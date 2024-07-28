@@ -9,6 +9,7 @@ use save::Save;
 
 use ash::khr;
 use tracing::{error, error_span, info};
+use winit::event_loop::EventLoop;
 
 fn main() {
     // Set up logging
@@ -60,7 +61,8 @@ fn main() {
     let config = Arc::new(config);
 
     // Create the OS window
-    let window = graphics::EarlyWindow::new();
+    let event_loop = EventLoop::new().unwrap();
+    let window = graphics::EarlyWindow::new(&event_loop);
     // Initialize Vulkan with the extensions needed to render to the window
     let core = Arc::new(graphics::Core::new(window.required_extensions()));
 
@@ -68,7 +70,7 @@ fn main() {
     let net = net::spawn(config.clone());
 
     // Finish creating the window, including the Vulkan resources used to render to it
-    let window = graphics::Window::new(window, core.clone(), config, metrics, net);
+    let mut window = graphics::Window::new(window, core.clone(), config, metrics, net);
 
     // Initialize widely-shared graphics resources
     let gfx = Arc::new(
@@ -81,6 +83,12 @@ fn main() {
         .unwrap(),
     );
 
+    window.init_rendering(gfx);
+
     // Run the window's event loop
-    window.run(gfx);
+    event_loop
+        .run(|event, window_target| {
+            window.handle_event(event, window_target);
+        })
+        .unwrap();
 }
