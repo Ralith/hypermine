@@ -20,7 +20,7 @@ use common::{
     dodeca::Vertex,
     graph::NodeId,
     lru_slab::SlotId,
-    math,
+    math::{MIsometry, MVector},
     node::{Chunk, ChunkId, VoxelData},
     LruSlab,
 };
@@ -88,7 +88,7 @@ impl Voxels {
         device: &Device,
         frame: &mut Frame,
         sim: &mut Sim,
-        nearby_nodes: &[(NodeId, na::Matrix4<f32>)],
+        nearby_nodes: &[(NodeId, MIsometry<f32>)],
         cmd: vk::CommandBuffer,
         frustum: &Frustum,
     ) {
@@ -122,12 +122,12 @@ impl Voxels {
         }
         let node_scan_started = Instant::now();
         let frustum_planes = frustum.planes();
-        let local_to_view = math::mtranspose(&view.local);
+        let local_to_view = view.local.mtranspose();
         let mut extractions = Vec::new();
         let mut workqueue_is_full = false;
         for &(node, ref node_transform) in nearby_nodes {
-            let node_to_view = local_to_view * node_transform;
-            let origin = node_to_view * math::origin();
+            let node_to_view = local_to_view * *node_transform;
+            let origin = node_to_view * MVector::origin();
             if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS) {
                 // Don't bother generating or drawing chunks from nodes that are wholly outside the
                 // frustum.
@@ -174,7 +174,7 @@ impl Voxels {
                             frame.drawn.push(slot);
                             // Transfer transform
                             frame.surface.transforms_mut()[slot.0 as usize] =
-                                node_transform * vertex.chunk_to_node();
+                                na::Matrix4::from(*node_transform) * vertex.chunk_to_node();
                         }
                         if let (None, &VoxelData::Dense(ref data)) = (&surface, voxels) {
                             // Extract a surface so it can be drawn in future frames

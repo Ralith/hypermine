@@ -9,7 +9,7 @@ use metrics::histogram;
 use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
 use crate::{Asset, Config, Loader, Sim};
 use common::proto::{Character, Position};
-use common::{math, SimConfig};
+use common::SimConfig;
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -289,7 +289,7 @@ impl Draw {
         let draw_started = Instant::now();
         let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
         let projection = frustum.projection(1.0e-4);
-        let view_projection = projection.matrix() * math::mtranspose(&view.local);
+        let view_projection = projection.matrix() * na::Matrix4::from(view.local.mtranspose());
         self.loader.drive();
 
         let device = &*self.gfx.device;
@@ -482,8 +482,7 @@ impl Draw {
                         .expect("positionless entity in graph");
                     if let Some(character_model) = self.loader.get(self.character_model) {
                         if let Ok(ch) = sim.world.get::<&Character>(entity) {
-                            let transform = transform
-                                * pos.local
+                            let transform = na::Matrix4::from(transform * pos.local)
                                 * na::Matrix4::new_scaling(sim.cfg().meters_to_absolute)
                                 * ch.state.orientation.to_homogeneous();
                             for mesh in &character_model.0 {

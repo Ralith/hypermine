@@ -12,7 +12,7 @@ use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
 use crate::worldgen::NodeState;
-use crate::{margins, math, Chunks};
+use crate::{margins, Chunks};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChunkId {
@@ -40,7 +40,7 @@ impl Graph {
     pub fn get_relative_up(&self, position: &Position) -> Option<na::UnitVector3<f32>> {
         let node = self.get(position.node).as_ref()?;
         Some(na::UnitVector3::new_normalize(
-            (math::mtranspose(&position.local) * node.state.up_direction()).xyz(),
+            (position.local.mtranspose() * node.state.up_direction()).xyz(),
         ))
     }
 
@@ -373,9 +373,9 @@ impl VoxelAABB {
         radius: f32,
     ) -> Option<VoxelAABB> {
         // Convert the ray to grid coordinates
-        let grid_start =
-            na::Point3::from_homogeneous(ray.position).unwrap() * layout.dual_to_grid_factor();
-        let grid_end = na::Point3::from_homogeneous(ray.ray_point(tanh_distance)).unwrap()
+        let grid_start = na::Point3::from_homogeneous(ray.position.into()).unwrap()
+            * layout.dual_to_grid_factor();
+        let grid_end = na::Point3::from_homogeneous(ray.ray_point(tanh_distance).into()).unwrap()
             * layout.dual_to_grid_factor();
         // Convert the radius to grid coordinates using a crude conservative estimate
         let max_grid_radius = radius * layout.dual_to_grid_factor();
@@ -433,6 +433,7 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::math;
+    use crate::math::{MIsometry, MVector};
 
     use super::*;
 
@@ -445,9 +446,11 @@ mod tests {
         let layout = ChunkLayout::new(dimension);
 
         // Pick an arbitrary ray by transforming the positive-x-axis ray.
-        let ray = na::Rotation3::from_axis_angle(&na::Vector3::z_axis(), 0.4).to_homogeneous()
-            * math::translate_along(&na::Vector3::new(0.2, 0.3, 0.1))
-            * &Ray::new(na::Vector4::w(), na::Vector4::x());
+        let ray = MIsometry::rotation_to_homogeneous(na::Rotation3::from_axis_angle(
+            &na::Vector3::z_axis(),
+            0.4,
+        )) * math::translate_along(&na::Vector3::new(0.2, 0.3, 0.1))
+            * &Ray::new(MVector::w(), MVector::x());
 
         let tanh_distance = 0.2;
         let radius = 0.1;
@@ -458,9 +461,8 @@ mod tests {
         let num_ray_test_points = 20;
         let ray_test_points: Vec<_> = (0..num_ray_test_points)
             .map(|i| {
-                math::lorentz_normalize(
-                    &ray.ray_point(tanh_distance * (i as f32 / (num_ray_test_points - 1) as f32)),
-                )
+                ray.ray_point(tanh_distance * (i as f32 / (num_ray_test_points - 1) as f32))
+                    .lorentz_normalize()
             })
             .collect();
 
@@ -480,14 +482,14 @@ mod tests {
                     continue;
                 }
 
-                let mut plane_normal = na::Vector4::zeros();
+                let mut plane_normal = MVector::zero();
                 plane_normal[t_axis] = 1.0;
                 plane_normal[3] = layout.grid_to_dual(t);
-                let plane_normal = math::lorentz_normalize(&plane_normal);
+                let plane_normal = plane_normal.lorentz_normalize();
 
                 for test_point in &ray_test_points {
                     assert!(
-                        math::mip(test_point, &plane_normal).abs() > radius.sinh(),
+                        test_point.mip(&plane_normal).abs() > radius.sinh(),
                         "Plane not covered: t_axis={t_axis}, t={t}, test_point={test_point:?}",
                     );
                 }
@@ -502,7 +504,7 @@ mod tests {
 
             // For a given axis, all lines have the same direction, so set up the appropriate vector
             // in advance.
-            let mut line_direction = na::Vector4::zeros();
+            let mut line_direction = MVector::zero();
             line_direction[t_axis] = 1.0;
             let line_direction = line_direction;
 
@@ -513,16 +515,16 @@ mod tests {
                         continue;
                     }
 
-                    let mut line_position = na::Vector4::zeros();
+                    let mut line_position = MVector::zero();
                     line_position[u_axis] = layout.grid_to_dual(u);
                     line_position[v_axis] = layout.grid_to_dual(v);
                     line_position[3] = 1.0;
-                    let line_position = math::lorentz_normalize(&line_position);
+                    let line_position = line_position.lorentz_normalize();
 
                     for test_point in &ray_test_points {
                         assert!(
-                            (math::mip(test_point, &line_position).powi(2)
-                                - math::mip(test_point, &line_direction).powi(2))
+                            (test_point.mip(&line_position).powi(2)
+                                - test_point.mip(&line_direction).powi(2))
                             .sqrt()
                                 > radius.cosh(),
                             "Line not covered: t_axis={t_axis}, u={u}, v={v}, test_point={test_point:?}",
@@ -543,16 +545,17 @@ mod tests {
                         continue;
                     }
 
-                    let point_position = math::lorentz_normalize(&na::Vector4::new(
+                    let point_position = MVector::new(
                         layout.grid_to_dual(x),
                         layout.grid_to_dual(y),
                         layout.grid_to_dual(z),
                         1.0,
-                    ));
+                    )
+                    .lorentz_normalize();
 
                     for test_point in &ray_test_points {
                         assert!(
-                            -math::mip(test_point, &point_position) > radius.cosh(),
+                            -test_point.mip(&point_position) > radius.cosh(),
                             "Point not covered: x={x}, y={y}, z={z}, test_point={test_point:?}",
                         );
                     }

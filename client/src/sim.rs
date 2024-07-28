@@ -12,7 +12,8 @@ use common::{
     character_controller,
     collision_math::Ray,
     graph::{Graph, NodeId},
-    graph_ray_casting,
+    graph_ray_casting, math,
+    math::{MIsometry, MVector},
     node::{populate_fresh_nodes, ChunkId, VoxelData},
     proto::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
@@ -109,7 +110,7 @@ impl Sim {
             selected_material: Material::WoodPlanks,
             prediction: PredictedMotion::new(proto::Position {
                 node: NodeId::ROOT,
-                local: na::one(),
+                local: MIsometry::identity(),
             }),
             local_character_controller: LocalCharacterController::new(),
         }
@@ -510,9 +511,8 @@ impl Sim {
     pub fn view(&self) -> Position {
         let mut pos = self.local_character_controller.oriented_position();
         let up = self.graph.get_relative_up(&pos).unwrap();
-        pos.local *= common::math::translate_along(
-            &(up.as_ref() * (self.cfg.character.character_radius - 1e-3)),
-        );
+        pos.local *=
+            math::translate_along(&(up.as_ref() * (self.cfg.character.character_radius - 1e-3)));
         pos
     }
 
@@ -550,7 +550,7 @@ impl Sim {
         let ray_casing_result = graph_ray_casting::ray_cast(
             &self.graph,
             &view_position,
-            &Ray::new(na::Vector4::w(), -na::Vector4::z()),
+            &Ray::new(MVector::w(), -MVector::z()),
             self.cfg.character.block_reach,
         );
 

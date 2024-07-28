@@ -1,6 +1,7 @@
 use crate::{
     collision_math::Ray,
     math,
+    math::MVector,
     node::{ChunkLayout, VoxelAABB, VoxelData},
     voxel_math::{CoordAxis, CoordSign, Coords},
     world::Material,
@@ -68,10 +69,8 @@ fn find_face_collision(
     for t in bounding_box.grid_planes(t_axis) {
         // Find a normal to the grid plane. Note that (t, 0, 0, x) is a normal of the plane whose closest point
         // to the origin is (x, 0, 0, t), and we use that fact here.
-        let normal = math::lorentz_normalize(&math::tuv_to_xyz(
-            t_axis,
-            na::Vector4::new(1.0, 0.0, 0.0, layout.grid_to_dual(t)),
-        ));
+        let normal = math::tuv_to_xyz(t_axis, MVector::new(1.0, 0.0, 0.0, layout.grid_to_dual(t)))
+            .lorentz_normalize();
 
         let Some(new_tanh_distance) = ray.solve_point_plane_intersection(&normal) else {
             continue;
@@ -85,7 +84,7 @@ fn find_face_collision(
         // Which side we approach the plane from affects which voxel we want to use for hit detection.
         // If exiting a chunk via a chunk boundary, hit detection is handled by a different chunk.
         // We also want to retain this face_direction for reporting the hit result later.
-        let (face_sign, voxel_t) = if math::mip(&ray.direction, &normal) < 0.0 {
+        let (face_sign, voxel_t) = if ray.direction.mip(&normal) < 0.0 {
             if t == 0 {
                 continue;
             }
@@ -98,7 +97,7 @@ fn find_face_collision(
         };
 
         let ray_endpoint = ray.ray_point(new_tanh_distance);
-        let contact_point = ray_endpoint - normal * math::mip(&ray_endpoint, &normal);
+        let contact_point = ray_endpoint - normal * ray_endpoint.mip(&normal);
 
         // Compute the u and v-coordinates of the voxels at the contact point
         let Some(voxel_u) = layout.dual_to_voxel(contact_point[u_axis] / contact_point.w) else {
@@ -125,7 +124,6 @@ fn find_face_collision(
             face_sign,
         });
     }
-
     hit
 }
 
@@ -182,29 +180,29 @@ mod tests {
         ray_end_grid_coords: [f32; 3],
         wrapped_fn: impl FnOnce(&Ray, f32),
     ) {
-        let ray_start = math::lorentz_normalize(&na::Vector4::new(
+        let ray_start = MVector::new(
             ray_start_grid_coords[0] / ctx.layout.dual_to_grid_factor(),
             ray_start_grid_coords[1] / ctx.layout.dual_to_grid_factor(),
             ray_start_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
-        ));
+        )
+        .lorentz_normalize();
 
-        let ray_end = math::lorentz_normalize(&na::Vector4::new(
+        let ray_end = MVector::new(
             ray_end_grid_coords[0] / ctx.layout.dual_to_grid_factor(),
             ray_end_grid_coords[1] / ctx.layout.dual_to_grid_factor(),
             ray_end_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
-        ));
+        )
+        .lorentz_normalize();
 
         let ray = Ray::new(
             ray_start,
-            math::lorentz_normalize(
-                &((ray_end - ray_start)
-                    + ray_start * math::mip(&ray_start, &(ray_end - ray_start))),
-            ),
+            ((ray_end - ray_start) + ray_start * ray_start.mip(&(ray_end - ray_start)))
+                .lorentz_normalize(),
         );
 
-        let tanh_distance = (-math::mip(&ray_start, &ray_end)).acosh();
+        let tanh_distance = (-(ray_start.mip(&ray_end))).acosh();
 
         wrapped_fn(&ray, tanh_distance)
     }

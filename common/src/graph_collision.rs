@@ -2,7 +2,7 @@ use crate::{
     chunk_collision::chunk_sphere_cast,
     collision_math::Ray,
     graph::Graph,
-    math,
+    math::MVector,
     node::{Chunk, ChunkId},
     proto::Position,
     traversal::RayTraverser,
@@ -56,7 +56,7 @@ pub fn sphere_cast(
             Some(GraphCastHit {
                 tanh_distance: hit.tanh_distance,
                 chunk,
-                normal: math::mtranspose(&transform) * hit.normal,
+                normal: transform.mtranspose() * hit.normal,
             })
         });
     }
@@ -79,7 +79,7 @@ pub struct GraphCastHit {
     /// Represents the normal vector of the hit surface in the original coordinate system
     /// of the sphere casting. To get the actual normal vector, project it so that it is orthogonal
     /// to the endpoint in Lorentz space.
-    pub normal: na::Vector4<f32>,
+    pub normal: MVector<f32>,
 }
 
 #[cfg(test)]
@@ -88,6 +88,7 @@ mod tests {
         collision_math::Ray,
         dodeca::{self, Side, Vertex},
         graph::{Graph, NodeId},
+        math::MIsometry,
         node::{populate_fresh_nodes, VoxelData},
         proto::Position,
         traversal::{ensure_nearby, nearby_nodes},
@@ -169,40 +170,43 @@ mod tests {
             }
 
             // Find the transform of the chosen chunk
-            let chosen_chunk_transform: na::Matrix4<f32> =
-                self.chosen_voxel.node_path.iter().fold(
-                    na::Matrix4::identity(),
-                    |transform: na::Matrix4<f32>, side| transform * side.reflection(),
-                ) * self.chosen_voxel.vertex.dual_to_node();
+            let chosen_chunk_transform: MIsometry<f32> = self
+                .chosen_voxel
+                .node_path
+                .iter()
+                .fold(MIsometry::identity(), |transform: MIsometry<f32>, side| {
+                    transform * *side.reflection()
+                })
+                * *self.chosen_voxel.vertex.dual_to_node();
 
             let dual_to_grid_factor = graph.layout().dual_to_grid_factor();
             let ray_target = chosen_chunk_transform
-                * math::lorentz_normalize(&na::Vector4::new(
+                * MVector::new(
                     self.chosen_chunk_relative_grid_ray_end[0] / dual_to_grid_factor,
                     self.chosen_chunk_relative_grid_ray_end[1] / dual_to_grid_factor,
                     self.chosen_chunk_relative_grid_ray_end[2] / dual_to_grid_factor,
                     1.0,
-                ));
+                )
+                .lorentz_normalize();
 
-            let ray_position = Vertex::A.dual_to_node()
-                * math::lorentz_normalize(&na::Vector4::new(
+            let ray_position = *Vertex::A.dual_to_node()
+                * MVector::new(
                     self.start_chunk_relative_grid_ray_start[0] / dual_to_grid_factor,
                     self.start_chunk_relative_grid_ray_start[1] / dual_to_grid_factor,
                     self.start_chunk_relative_grid_ray_start[2] / dual_to_grid_factor,
                     1.0,
-                ));
+                )
+                .lorentz_normalize();
             let ray_direction = ray_target - ray_position;
 
             let ray = Ray::new(
                 ray_position,
-                math::lorentz_normalize(
-                    &(ray_direction + ray_position * math::mip(&ray_position, &ray_direction)),
-                ),
+                (ray_direction + ray_position * ray_position.mip(&ray_direction))
+                    .lorentz_normalize(),
             );
 
-            let tanh_distance = ((-math::mip(&ray_position, &ray_target)).acosh()
-                + self.ray_length_modifier)
-                .tanh();
+            let tanh_distance =
+                ((-ray_position.mip(&ray_target)).acosh() + self.ray_length_modifier).tanh();
 
             let hit = sphere_cast(
                 self.collider_radius,
@@ -221,7 +225,7 @@ mod tests {
                     "collision occurred in wrong chunk"
                 );
                 assert!(
-                    math::mip(&hit.as_ref().unwrap().normal, &ray.direction) < 0.0,
+                    hit.as_ref().unwrap().normal.mip(&ray.direction) < 0.0,
                     "normal is facing the wrong way"
                 );
             } else {
@@ -434,13 +438,13 @@ mod tests {
         }
 
         // The node coordinates of the corner of the missing node
-        let vertex_pos = Vertex::A.dual_to_node() * math::origin();
+        let vertex_pos = *Vertex::A.dual_to_node() * MVector::origin();
 
         // Use a ray starting from the origin. The direction vector is vertex_pos with the w coordinate
         // set to 0 and normalized
         let ray = Ray::new(
-            math::origin(),
-            (vertex_pos - na::Vector4::w() * vertex_pos.w).normalize(),
+            MVector::origin(),
+            (vertex_pos - MVector::w() * vertex_pos.w).normalize(),
         );
         let sphere_radius = 0.1;
 

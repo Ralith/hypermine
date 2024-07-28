@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     dodeca::{Side, SIDE_COUNT},
-    math,
+    math::{MIsometry, MVector},
     node::{ChunkId, ChunkLayout, Node},
 };
 
@@ -120,13 +120,13 @@ impl Graph {
 
     /// Given a `transform` relative to a `reference` node, computes the node
     /// that it's closest to and the transform that moves it there
-    pub fn normalize_transform<T: na::RealField + Copy>(
+    pub fn normalize_transform(
         &self,
         mut reference: NodeId,
-        original: &na::Matrix4<T>,
-    ) -> (NodeId, na::Matrix4<T>) {
-        let mut transform = na::Matrix4::identity();
-        let mut location = original * math::origin();
+        original: &MIsometry<f32>,
+    ) -> (NodeId, MIsometry<f32>) {
+        let mut transform = MIsometry::identity();
+        let mut location = *original * MVector::origin();
         'outer: loop {
             for side in Side::iter() {
                 if !side.is_facing(&location) {
@@ -136,7 +136,7 @@ impl Graph {
                     None => continue,
                     Some(x) => x,
                 };
-                let mat = na::convert::<_, na::Matrix4<T>>(*side.reflection_f64());
+                let mat = *side.reflection();
                 location = mat * location;
                 transform = mat * transform;
                 continue 'outer;
@@ -401,10 +401,9 @@ mod tests {
         let mut graph = Graph::new(1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
         {
-            let (node, xf) =
-                graph.normalize_transform::<f32>(NodeId::ROOT, &na::Matrix4::identity());
+            let (node, xf) = graph.normalize_transform(NodeId::ROOT, &MIsometry::identity());
             assert_eq!(node, NodeId::ROOT);
-            assert_abs_diff_eq!(xf, na::Matrix4::identity(), epsilon = 1e-5);
+            assert_abs_diff_eq!(xf, MIsometry::identity(), epsilon = 1e-5);
         }
         {
             let (node, xf) = graph.normalize_transform(NodeId::ROOT, Side::A.reflection());

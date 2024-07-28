@@ -2,7 +2,13 @@
 
 use tracing::error;
 
-use crate::{collision_math::Ray, graph::Graph, graph_collision, math, proto::Position};
+use crate::{
+    collision_math::Ray,
+    graph::Graph,
+    graph_collision, math,
+    math::{MIsometry, MVector},
+    proto::Position,
+};
 
 /// Checks for collisions when a character moves with a character-relative displacement vector of `relative_displacement`.
 pub fn check_collision(
@@ -22,7 +28,10 @@ pub fn check_collision(
     let displacement_norm = displacement_sqr.sqrt();
     let displacement_normalized = relative_displacement / displacement_norm;
 
-    let ray = Ray::new(math::origin(), displacement_normalized);
+    let ray = Ray::new(
+        MVector::origin(),
+        MVector::<f32>::from(displacement_normalized),
+    );
     let tanh_distance = displacement_norm.tanh();
 
     let cast_hit = graph_collision::sphere_cast(
@@ -58,7 +67,7 @@ pub fn check_collision(
             // This normal now represents a contact point at the origin, so we omit the w-coordinate
             // to ensure that it's orthogonal to the origin.
             normal: na::UnitVector3::new_normalize(
-                (math::mtranspose(&displacement_transform) * hit.normal).xyz(),
+                (displacement_transform.mtranspose() * hit.normal).xyz(),
             ),
         }),
     }
@@ -77,7 +86,7 @@ pub struct CollisionCheckingResult {
 
     /// Multiplying the character's position by this matrix will move the character as far as it can up to its intended
     /// displacement until it hits the wall.
-    pub displacement_transform: na::Matrix4<f32>,
+    pub displacement_transform: MIsometry<f32>,
 
     pub collision: Option<Collision>,
 }
@@ -88,7 +97,7 @@ impl CollisionCheckingResult {
     pub fn stationary() -> CollisionCheckingResult {
         CollisionCheckingResult {
             displacement_vector: na::Vector3::zeros(),
-            displacement_transform: na::Matrix4::identity(),
+            displacement_transform: MIsometry::identity(),
             collision: None,
         }
     }

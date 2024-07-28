@@ -3,6 +3,7 @@
 use data::*;
 use serde::{Deserialize, Serialize};
 
+use crate::math::{MIsometry, MVector};
 use crate::voxel_math::ChunkAxisPermutation;
 
 /// Sides of a right dodecahedron
@@ -45,33 +46,33 @@ impl Side {
 
     /// Outward normal vector of this side
     #[inline]
-    pub fn normal(self) -> &'static na::Vector4<f32> {
+    pub fn normal(self) -> &'static MVector<f32> {
         &side_normals_f32()[self as usize]
     }
 
     /// Outward normal vector of this side
     #[inline]
-    pub fn normal_f64(self) -> &'static na::Vector4<f64> {
+    pub fn normal_f64(self) -> &'static MVector<f64> {
         &side_normals_f64()[self as usize]
     }
 
     /// Reflection across this side
     #[inline]
-    pub fn reflection(self) -> &'static na::Matrix4<f32> {
+    pub fn reflection(self) -> &'static MIsometry<f32> {
         &reflections_f32()[self as usize]
     }
 
     /// Reflection across this side
     #[inline]
-    pub fn reflection_f64(self) -> &'static na::Matrix4<f64> {
+    pub fn reflection_f64(self) -> &'static MIsometry<f64> {
         &reflections_f64()[self as usize]
     }
 
     /// Whether `p` is opposite the dodecahedron across the plane containing `self`
     #[inline]
-    pub fn is_facing<N: na::RealField + Copy>(self, p: &na::Vector4<N>) -> bool {
-        let r = na::convert::<_, na::RowVector4<N>>(self.reflection_f64().row(3).clone_owned());
-        (r * p).x < p.w
+    pub fn is_facing(self, p: &MVector<f32>) -> bool {
+        let r = na::convert::<_, na::RowVector4<f32>>(self.reflection().row(3).clone_owned());
+        (r * na::Vector4::from(*p)).x < p.w
     }
 }
 
@@ -178,41 +179,45 @@ impl Vertex {
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node(self) -> na::Matrix4<f32> {
-        self.dual_to_node() * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
+        na::Matrix4::from(*self.dual_to_node())
+            * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor())
     }
 
     /// Transform from euclidean chunk coordinates to hyperbolic node space
     pub fn chunk_to_node_f64(self) -> na::Matrix4<f64> {
-        self.dual_to_node_f64() * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor_f64())
+        na::Matrix4::from(*self.dual_to_node_f64())
+            * na::Matrix4::new_scaling(1.0 / Self::dual_to_chunk_factor_f64())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk(self) -> na::Matrix4<f32> {
-        na::Matrix4::new_scaling(Self::dual_to_chunk_factor()) * self.node_to_dual()
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor())
+            * na::Matrix4::from(*self.node_to_dual())
     }
 
     /// Transform from hyperbolic node space to euclidean chunk coordinates
     pub fn node_to_chunk_f64(self) -> na::Matrix4<f64> {
-        na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64()) * self.node_to_dual_f64()
+        na::Matrix4::new_scaling(Self::dual_to_chunk_factor_f64())
+            * na::Matrix4::from(*self.node_to_dual_f64())
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
-    pub fn dual_to_node(self) -> &'static na::Matrix4<f32> {
+    pub fn dual_to_node(self) -> &'static MIsometry<f32> {
         &dual_to_node_f32()[self as usize]
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
-    pub fn dual_to_node_f64(self) -> &'static na::Matrix4<f64> {
+    pub fn dual_to_node_f64(self) -> &'static MIsometry<f64> {
         &dual_to_node_f64()[self as usize]
     }
 
     /// Transform from dodeca-centric coordinates to cube-centric coordinates
-    pub fn node_to_dual(self) -> &'static na::Matrix4<f32> {
+    pub fn node_to_dual(self) -> &'static MIsometry<f32> {
         &node_to_dual_f32()[self as usize]
     }
 
     /// Transform from dodeca-centric coordinates to cube-centric coordinates
-    pub fn node_to_dual_f64(self) -> &'static na::Matrix4<f64> {
+    pub fn node_to_dual_f64(self) -> &'static MIsometry<f64> {
         &node_to_dual_f64()[self as usize]
     }
 
@@ -260,7 +265,7 @@ mod data {
     use std::sync::OnceLock;
 
     use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
-    use crate::math;
+    use crate::math::{MIsometry, MVector};
     use crate::voxel_math::ChunkAxisPermutation;
 
     /// Whether two sides share an edge
@@ -281,13 +286,13 @@ mod data {
     }
 
     /// Vector corresponding to the outer normal of each side
-    pub fn side_normals_f64() -> &'static [na::Vector4<f64>; SIDE_COUNT] {
-        static LOCK: OnceLock<[na::Vector4<f64>; SIDE_COUNT]> = OnceLock::new();
+    pub fn side_normals_f64() -> &'static [MVector<f64>; SIDE_COUNT] {
+        static LOCK: OnceLock<[MVector<f64>; SIDE_COUNT]> = OnceLock::new();
         LOCK.get_or_init(|| {
             let phi = libm::sqrt(1.25) + 0.5; // golden ratio
-            let f = math::lorentz_normalize(&na::Vector4::new(1.0, phi, 0.0, libm::sqrt(phi)));
+            let f = MVector::new(1.0, phi, 0.0, libm::sqrt(phi)).lorentz_normalize();
 
-            let mut result: [na::Vector4<f64>; SIDE_COUNT] = [na::zero(); SIDE_COUNT];
+            let mut result: [MVector<f64>; SIDE_COUNT] = [MVector::zero(); SIDE_COUNT];
             let mut i = 0;
             for (x, y, z, w) in [
                 (f.x, f.y, f.z, f.w),
@@ -296,7 +301,7 @@ mod data {
                 (-f.x, -f.y, f.z, f.w),
             ] {
                 for (x, y, z, w) in [(x, y, z, w), (y, z, x, w), (z, x, y, w)] {
-                    result[i] = na::Vector4::new(x, y, z, w);
+                    result[i] = MVector::new(x, y, z, w);
                     i += 1;
                 }
             }
@@ -305,9 +310,9 @@ mod data {
     }
 
     /// Transform that moves from a neighbor to a reference node, for each side
-    pub fn reflections_f64() -> &'static [na::Matrix4<f64>; SIDE_COUNT] {
-        static LOCK: OnceLock<[na::Matrix4<f64>; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| side_normals_f64().map(|r| math::reflect(&r)))
+    pub fn reflections_f64() -> &'static [MIsometry<f64>; SIDE_COUNT] {
+        static LOCK: OnceLock<[MIsometry<f64>; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| side_normals_f64().map(|r| r.reflect()))
     }
 
     /// Sides incident to a vertex, in canonical order
@@ -399,21 +404,20 @@ mod data {
     }
 
     /// Transform that converts from cube-centric coordinates to dodeca-centric coordinates
-    pub fn dual_to_node_f64() -> &'static [na::Matrix4<f64>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[na::Matrix4<f64>; VERTEX_COUNT]> = OnceLock::new();
+    pub fn dual_to_node_f64() -> &'static [MIsometry<f64>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[MIsometry<f64>; VERTEX_COUNT]> = OnceLock::new();
         LOCK.get_or_init(|| {
-            let mip_origin_normal = math::mip(&math::origin(), &side_normals_f64()[0]); // This value is the same for every side
-            let mut result = [na::zero(); VERTEX_COUNT];
+            let mip_origin_normal = MVector::origin().mip(&side_normals_f64()[0]); // This value is the same for every side
+            let mut result = [MIsometry::identity(); VERTEX_COUNT];
             for (i, map) in result.iter_mut().enumerate() {
                 let [a, b, c] = vertex_sides()[i];
-                let vertex_position = math::lorentz_normalize(
-                    &(math::origin()
-                        - (a.normal_f64() + b.normal_f64() + c.normal_f64()) * mip_origin_normal),
-                );
-                *map = na::Matrix4::from_columns(&[
-                    -a.normal_f64(),
-                    -b.normal_f64(),
-                    -c.normal_f64(),
+                let vertex_position = (MVector::origin()
+                    - (*a.normal_f64() + *b.normal_f64() + *c.normal_f64()) * mip_origin_normal)
+                    .lorentz_normalize();
+                *map = MIsometry::from_columns_unchecked(&[
+                    -*a.normal_f64(),
+                    -*b.normal_f64(),
+                    -*c.normal_f64(),
                     vertex_position,
                 ]);
             }
@@ -422,9 +426,9 @@ mod data {
     }
 
     /// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
-    pub fn node_to_dual_f64() -> &'static [na::Matrix4<f64>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[na::Matrix4<f64>; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| dual_to_node_f64().map(|m| math::mtranspose(&m)))
+    pub fn node_to_dual_f64() -> &'static [MIsometry<f64>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[MIsometry<f64>; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| dual_to_node_f64().map(|m| m.mtranspose()))
     }
 
     pub fn dual_to_chunk_factor_f64() -> f64 {
@@ -476,31 +480,30 @@ mod data {
             let mut result = [false; VERTEX_COUNT];
 
             for v in Vertex::iter() {
-                result[v as usize] = math::parity(&v.chunk_to_node_f64());
+                result[v as usize] = v.dual_to_node().parity();
             }
-
             result
         })
     }
 
-    pub fn side_normals_f32() -> &'static [na::Vector4<f32>; SIDE_COUNT] {
-        static LOCK: OnceLock<[na::Vector4<f32>; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| side_normals_f64().map(|n| n.cast()))
+    pub fn side_normals_f32() -> &'static [MVector<f32>; SIDE_COUNT] {
+        static LOCK: OnceLock<[MVector<f32>; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| side_normals_f64().map(|n| n.to_f32()))
     }
 
-    pub fn reflections_f32() -> &'static [na::Matrix4<f32>; SIDE_COUNT] {
-        static LOCK: OnceLock<[na::Matrix4<f32>; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| reflections_f64().map(|n| n.cast()))
+    pub fn reflections_f32() -> &'static [MIsometry<f32>; SIDE_COUNT] {
+        static LOCK: OnceLock<[MIsometry<f32>; SIDE_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| reflections_f64().map(|n| n.to_f32()))
     }
 
-    pub fn dual_to_node_f32() -> &'static [na::Matrix4<f32>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[na::Matrix4<f32>; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| dual_to_node_f64().map(|n| n.cast()))
+    pub fn dual_to_node_f32() -> &'static [MIsometry<f32>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[MIsometry<f32>; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| dual_to_node_f64().map(|n| n.to_f32()))
     }
 
-    pub fn node_to_dual_f32() -> &'static [na::Matrix4<f32>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[na::Matrix4<f32>; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| node_to_dual_f64().map(|n| n.cast()))
+    pub fn node_to_dual_f32() -> &'static [MIsometry<f32>; VERTEX_COUNT] {
+        static LOCK: OnceLock<[MIsometry<f32>; VERTEX_COUNT]> = OnceLock::new();
+        LOCK.get_or_init(|| node_to_dual_f64().map(|n| n.to_f32()))
     }
 
     pub fn dual_to_chunk_factor_f32() -> f32 {
@@ -602,17 +605,17 @@ mod tests {
     #[test]
     fn side_is_facing() {
         for side in Side::iter() {
-            assert!(!side.is_facing::<f32>(&math::origin()));
-            assert!(side.is_facing(&(side.reflection() * math::origin())));
+            assert!(!side.is_facing(&MVector::origin()));
+            assert!(side.is_facing(&(*side.reflection() * MVector::origin())));
         }
     }
 
     #[test]
     fn radius() {
-        let corner = Vertex::A.chunk_to_node_f64() * math::origin();
+        let corner = *Vertex::A.dual_to_node_f64() * MVector::origin();
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS_F64,
-            math::distance(&corner, &math::origin()),
+            math::distance(&corner, &MVector::origin()),
             epsilon = 1e-10
         );
         let phi = (1.0 + 5.0f64.sqrt()) / 2.0; // Golden ratio

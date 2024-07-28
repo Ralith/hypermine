@@ -1,4 +1,4 @@
-use common::{math, proto::Position};
+use common::{math, math::MIsometry, proto::Position};
 
 pub struct LocalCharacterController {
     /// The last extrapolated inter-frame view position, used for rendering and gravity-specific
@@ -25,7 +25,8 @@ impl LocalCharacterController {
     pub fn oriented_position(&self) -> Position {
         Position {
             node: self.position.node,
-            local: self.position.local * self.orientation.to_homogeneous(),
+            local: self.position.local
+                * MIsometry::unit_quaternion_to_homogeneous(self.orientation),
         }
     }
 
