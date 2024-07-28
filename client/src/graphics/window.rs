@@ -61,6 +61,8 @@ pub struct Window {
     gui_state: GuiState,
     yak: yakui::Yakui,
     net: Net,
+    input: InputState,
+    last_frame: Option<Instant>,
 }
 
 impl Window {
@@ -99,6 +101,8 @@ impl Window {
             gui_state: GuiState::new(),
             yak: yakui::Yakui::new(),
             net,
+            input: InputState::default(),
+            last_frame: None,
         }
     }
 
@@ -121,17 +125,6 @@ impl Window {
         ));
         // Construct the core rendering object
         self.draw = Some(Draw::new(gfx, self.config.clone()));
-        let mut forward = false;
-        let mut back = false;
-        let mut left = false;
-        let mut right = false;
-        let mut up = false;
-        let mut down = false;
-        let mut jump = false;
-        let mut clockwise = false;
-        let mut anticlockwise = false;
-        let mut last_frame = Instant::now();
-        let mut mouse_captured = false;
         self.event_loop
             .take()
             .unwrap()
@@ -140,7 +133,7 @@ impl Window {
                     self.window.request_redraw();
                 }
                 Event::DeviceEvent { event, .. } => match event {
-                    DeviceEvent::MouseMotion { delta } if mouse_captured => {
+                    DeviceEvent::MouseMotion { delta } if self.input.mouse_captured => {
                         if let Some(sim) = self.sim.as_mut() {
                             const SENSITIVITY: f32 = 2e-3;
                             sim.look(
@@ -160,23 +153,14 @@ impl Window {
 
                         if let Some(sim) = self.sim.as_mut() {
                             let this_frame = Instant::now();
-                            let dt = this_frame - last_frame;
-                            sim.set_movement_input(na::Vector3::new(
-                                right as u8 as f32 - left as u8 as f32,
-                                up as u8 as f32 - down as u8 as f32,
-                                back as u8 as f32 - forward as u8 as f32,
-                            ));
-                            sim.set_jump_held(jump);
+                            let dt = this_frame - self.last_frame.unwrap_or(this_frame);
+                            sim.set_movement_input(self.input.movement());
+                            sim.set_jump_held(self.input.jump);
 
-                            sim.look(
-                                0.0,
-                                0.0,
-                                2.0 * (anticlockwise as u8 as f32 - clockwise as u8 as f32)
-                                    * dt.as_secs_f32(),
-                            );
+                            sim.look(0.0, 0.0, 2.0 * self.input.roll() * dt.as_secs_f32());
 
                             sim.step(dt, &mut self.net);
-                            last_frame = this_frame;
+                            self.last_frame = Some(this_frame);
                         }
 
                         self.draw();
@@ -197,7 +181,7 @@ impl Window {
                         state: ElementState::Pressed,
                         ..
                     } => {
-                        if mouse_captured {
+                        if self.input.mouse_captured {
                             if let Some(sim) = self.sim.as_mut() {
                                 sim.set_break_block_pressed_true();
                             }
@@ -207,14 +191,14 @@ impl Window {
                             .set_cursor_grab(CursorGrabMode::Confined)
                             .or_else(|_e| self.window.set_cursor_grab(CursorGrabMode::Locked));
                         self.window.set_cursor_visible(false);
-                        mouse_captured = true;
+                        self.input.mouse_captured = true;
                     }
                     WindowEvent::MouseInput {
                         button: MouseButton::Right,
                         state: ElementState::Pressed,
                         ..
                     } => {
-                        if mouse_captured {
+                        if self.input.mouse_captured {
                             if let Some(sim) = self.sim.as_mut() {
                                 sim.set_place_block_pressed_true();
                             }
@@ -230,35 +214,35 @@ impl Window {
                         ..
                     } => match key {
                         KeyCode::KeyW => {
-                            forward = state == ElementState::Pressed;
+                            self.input.forward = state == ElementState::Pressed;
                         }
                         KeyCode::KeyA => {
-                            left = state == ElementState::Pressed;
+                            self.input.left = state == ElementState::Pressed;
                         }
                         KeyCode::KeyS => {
-                            back = state == ElementState::Pressed;
+                            self.input.back = state == ElementState::Pressed;
                         }
                         KeyCode::KeyD => {
-                            right = state == ElementState::Pressed;
+                            self.input.right = state == ElementState::Pressed;
                         }
                         KeyCode::KeyQ => {
-                            anticlockwise = state == ElementState::Pressed;
+                            self.input.anticlockwise = state == ElementState::Pressed;
                         }
                         KeyCode::KeyE => {
-                            clockwise = state == ElementState::Pressed;
+                            self.input.clockwise = state == ElementState::Pressed;
                         }
                         KeyCode::KeyR => {
-                            up = state == ElementState::Pressed;
+                            self.input.up = state == ElementState::Pressed;
                         }
                         KeyCode::KeyF => {
-                            down = state == ElementState::Pressed;
+                            self.input.down = state == ElementState::Pressed;
                         }
                         KeyCode::Space => {
                             if let Some(sim) = self.sim.as_mut() {
-                                if !jump && state == ElementState::Pressed {
+                                if !self.input.jump && state == ElementState::Pressed {
                                     sim.set_jump_pressed_true();
                                 }
-                                jump = state == ElementState::Pressed;
+                                self.input.jump = state == ElementState::Pressed;
                             }
                         }
                         KeyCode::KeyV if state == ElementState::Pressed => {
@@ -272,7 +256,7 @@ impl Window {
                         KeyCode::Escape => {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
-                            mouse_captured = false;
+                            self.input.mouse_captured = false;
                         }
                         _ => {
                             if let Some(material_idx) = number_key_to_index(key) {
@@ -288,7 +272,7 @@ impl Window {
                         if !focused {
                             let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                             self.window.set_cursor_visible(true);
-                            mouse_captured = false;
+                            self.input.mouse_captured = false;
                         }
                     }
                     _ => {}
@@ -706,4 +690,32 @@ struct Frame {
     buffer: vk::Framebuffer,
     /// Semaphore used to ensure the frame isn't presented until rendering completes
     present: vk::Semaphore,
+}
+
+#[derive(Default)]
+struct InputState {
+    forward: bool,
+    back: bool,
+    left: bool,
+    right: bool,
+    up: bool,
+    down: bool,
+    jump: bool,
+    clockwise: bool,
+    anticlockwise: bool,
+    mouse_captured: bool,
+}
+
+impl InputState {
+    fn movement(&self) -> na::Vector3<f32> {
+        na::Vector3::new(
+            self.right as u8 as f32 - self.left as u8 as f32,
+            self.up as u8 as f32 - self.down as u8 as f32,
+            self.back as u8 as f32 - self.forward as u8 as f32,
+        )
+    }
+
+    fn roll(&self) -> f32 {
+        self.anticlockwise as u8 as f32 - self.clockwise as u8 as f32
+    }
 }
