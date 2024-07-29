@@ -29,6 +29,9 @@ jobs:
         run: |
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/VulkanSDK-${{ env.VULKAN_VERSION }}-Installer.exe" -OutFile vulkan.exe
           ./vulkan.exe --accept-licenses --default-answer --confirm-command install
+      - name: Install mold
+        if: matrix.os == 'ubuntu-latest'
+        uses: rui314/setup-mold@v1
 
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
