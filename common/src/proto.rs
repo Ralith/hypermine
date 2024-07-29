@@ -47,7 +47,7 @@ pub struct CharacterState {
     pub orientation: na::UnitQuaternion<f32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Spawns {
     pub step: Step,
     pub spawns: Vec<(EntityId, Vec<Component>)>,
@@ -83,13 +83,13 @@ pub struct BlockUpdate {
     pub consumed_entity: Option<EntityId>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SerializedVoxelData {
     /// Dense 3D array of 16-bit material tags for all voxels in this chunk
     pub inner: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Component {
     Character(Character),
     Position(Position),
@@ -97,7 +97,7 @@ pub enum Component {
     Inventory(Inventory),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FreshNode {
     /// The side joining the new node to `parent`
     pub side: dodeca::Side,
