@@ -8,12 +8,10 @@ mod sim;
 use std::{net::UdpSocket, sync::Arc, time::Instant};
 
 use anyhow::{Context, Error, Result};
-use futures::{select, StreamExt};
 use hecs::Entity;
 use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tracing::{debug, error, error_span, info, trace};
 
 use common::{
@@ -64,15 +62,14 @@ impl Server {
     }
 
     pub async fn run(mut self) {
-        let mut ticks = IntervalStream::new(tokio::time::interval(self.cfg.step_interval)).fuse();
-        let mut incoming = ReceiverStream::new(self.handle_incoming()).fuse();
-        let (client_events_send, client_events) = mpsc::channel(128);
-        let mut client_events = ReceiverStream::new(client_events).fuse();
+        let mut ticks = tokio::time::interval(self.cfg.step_interval);
+        let mut incoming = self.handle_incoming();
+        let (client_events_send, mut client_events) = mpsc::channel(128);
         loop {
-            select! {
-                _ = ticks.next() => { self.on_step(); },
-                conn = incoming.select_next_some() => { self.on_connect(conn, client_events_send.clone()); }
-                e = client_events.select_next_some() => { self.on_client_event(e.0, e.1); }
+            tokio::select! {
+                _ = ticks.tick() => { self.on_step(); },
+                Some(conn) = incoming.recv() => { self.on_connect(conn, client_events_send.clone()); }
+                Some(e) = client_events.recv() => { self.on_client_event(e.0, e.1); }
             }
         }
     }
@@ -276,7 +273,7 @@ async fn drive_send(
     conn: quinn::Connection,
     hello: proto::ServerHello,
     unordered: mpsc::Receiver<Unordered>,
-    ordered: mpsc::Receiver<Ordered>,
+    mut ordered: mpsc::Receiver<Ordered>,
 ) -> Result<()> {
     let mut stream = conn.open_uni().await?;
     codec::send(&mut stream, &hello).await?;
@@ -286,8 +283,7 @@ async fn drive_send(
         let _ = drive_send_unordered(conn.clone(), unordered).await;
     });
 
-    let mut ordered = ReceiverStream::new(ordered);
-    while let Some(msg) = ordered.next().await {
+    while let Some(msg) = ordered.recv().await {
         codec::send(&mut stream, &msg).await?;
     }
 
@@ -296,10 +292,9 @@ async fn drive_send(
 
 async fn drive_send_unordered(
     conn: quinn::Connection,
-    msgs: mpsc::Receiver<Unordered>,
+    mut msgs: mpsc::Receiver<Unordered>,
 ) -> Result<()> {
-    let mut msgs = ReceiverStream::new(msgs);
-    while let Some(msg) = msgs.next().await {
+    while let Some(msg) = msgs.recv().await {
         let stream = conn.open_uni().await?;
         codec::send_whole(stream, &msg).await?;
     }
