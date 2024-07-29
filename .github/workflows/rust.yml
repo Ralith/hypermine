@@ -31,49 +31,27 @@ jobs:
           ./vulkan.exe --accept-licenses --default-answer --confirm-command install
 
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --workspace --all-targets
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --workspace --all-targets
+      - run: cargo test --workspace
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
           components: rustfmt, clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-      - uses: actions-rs/cargo@v1
-        if: always()
-        with:
-          command: clippy
-          args: --workspace --all-targets -- -D warnings
+      - run: cargo fmt --all -- --check
+      - if: always()
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   check-protos:
     name: Check protos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
+      - uses: dtolnay/rust-toolchain@stable
       - run: sudo apt update && sudo apt-get -y install protobuf-compiler
       - name: Generate Rust code from .proto files
         run: cargo run -p gen-protos
