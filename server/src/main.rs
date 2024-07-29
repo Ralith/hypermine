@@ -74,11 +74,11 @@ pub async fn run() -> Result<()> {
     let save = Save::open(&save, sim_cfg.chunk_size)?;
 
     let server = server::Server::new(
-        server::NetParams {
+        Some(server::NetParams {
             certificate_chain,
             private_key,
             socket: UdpSocket::bind(cfg.listen).context("binding socket")?,
-        },
+        }),
         sim_cfg,
         save,
     )?;

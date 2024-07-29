@@ -1,15 +1,12 @@
-use std::{
-    net::{SocketAddr, UdpSocket},
-    sync::Arc,
-};
+use std::{sync::Arc, thread};
 
 use client::{graphics, metrics, net, Config};
-use quinn::rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
+use common::proto;
 use save::Save;
 
 use ash::khr;
 use server::Server;
-use tracing::{error, error_span, info};
+use tracing::{debug, error, error_span, info, Instrument};
 use winit::{
     application::ApplicationHandler,
     event_loop::{ActiveEventLoop, EventLoop},
@@ -21,62 +18,58 @@ fn main() {
     let metrics = crate::metrics::init();
 
     let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
-    let mut config = Config::load(&dirs);
+    let config = Arc::new(Config::load(&dirs));
 
-    if config.server.is_none() {
-        // spawn an in-process server
-        let socket =
-            UdpSocket::bind("[::1]:0".parse::<SocketAddr>().unwrap()).expect("binding socket");
-        config.server = Some(socket.local_addr().unwrap());
+    let net = match config.server {
+        None => {
+            // spawn an in-process server
+            let sim_cfg = config.local_simulation.clone();
 
-        let certified_key = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let key = certified_key.key_pair.serialize_der();
-        let cert = certified_key.cert.der().to_vec();
-        let sim_cfg = config.local_simulation.clone();
+            let save = dirs.data_local_dir().join(&config.save);
+            info!("using save file {}", save.display());
+            std::fs::create_dir_all(save.parent().unwrap()).unwrap();
+            let save = match Save::open(&save, config.local_simulation.chunk_size) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("couldn't open save: {}", e);
+                    return;
+                }
+            };
 
-        let save = dirs.data_local_dir().join(&config.save);
-        info!("using save file {}", save.display());
-        std::fs::create_dir_all(save.parent().unwrap()).unwrap();
-        let save = match Save::open(&save, config.local_simulation.chunk_size) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("couldn't open save: {}", e);
-                return;
-            }
-        };
+            let mut server = match Server::new(None, sim_cfg, save) {
+                Ok(server) => server,
+                Err(e) => {
+                    eprintln!("{e:#}");
+                    std::process::exit(1);
+                }
+            };
 
-        let server = match Server::new(
-            server::NetParams {
-                certificate_chain: vec![CertificateDer::from(cert)],
-                private_key: PrivatePkcs8KeyDer::from(key).into(),
-                socket,
-            },
-            sim_cfg,
-            save,
-        ) {
-            Ok(server) => server,
-            Err(e) => {
-                eprintln!("{e:#}");
-                std::process::exit(1);
-            }
-        };
+            let (handle, backend) = server::Handle::loopback();
+            let name = (*config.name).into();
 
-        std::thread::spawn(move || {
-            #[tokio::main(flavor = "current_thread")]
-            async fn run_server(server: Server) {
-                server.run().await;
-            }
+            thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()
+                    .unwrap();
+                let _guard = runtime.enter();
+                server
+                    .connect(proto::ClientHello { name }, backend)
+                    .unwrap();
+                runtime.block_on(server.run().instrument(error_span!("server")));
+                debug!("server thread terminated");
+            });
 
-            let span = error_span!("server");
-            let _guard = span.enter();
-            run_server(server);
-        });
-    }
+            handle
+        }
+        Some(_) => net::spawn(config.clone()),
+    };
     let mut app = App {
-        config: Arc::new(config),
+        config,
         dirs,
         metrics,
         window: None,
+        net: Some(net),
     };
 
     let event_loop = EventLoop::new().unwrap();
@@ -89,6 +82,7 @@ struct App {
     dirs: directories::ProjectDirs,
     metrics: Arc<metrics::Recorder>,
     window: Option<graphics::Window>,
+    net: Option<server::Handle>,
 }
 
 impl ApplicationHandler for App {
@@ -98,11 +92,13 @@ impl ApplicationHandler for App {
         // Initialize Vulkan with the extensions needed to render to the window
         let core = Arc::new(graphics::Core::new(window.required_extensions()));
 
-        // Kick off networking
-        let net = net::spawn(self.config.clone());
-
         // Finish creating the window, including the Vulkan resources used to render to it
-        let mut window = graphics::Window::new(window, core.clone(), self.config.clone(), net);
+        let mut window = graphics::Window::new(
+            window,
+            core.clone(),
+            self.config.clone(),
+            self.net.take().unwrap(),
+        );
 
         // Initialize widely-shared graphics resources
         let gfx = Arc::new(
