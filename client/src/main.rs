@@ -8,6 +8,7 @@ use quinn::rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use save::Save;
 
 use ash::khr;
+use server::Server;
 use tracing::{error, error_span, info};
 use winit::{
     application::ApplicationHandler,
@@ -44,21 +45,31 @@ fn main() {
             }
         };
 
-        std::thread::spawn(move || {
-            let span = error_span!("server");
-            let _guard = span.enter();
-            if let Err(e) = server::run(
-                server::NetParams {
-                    certificate_chain: vec![CertificateDer::from(cert)],
-                    private_key: PrivatePkcs8KeyDer::from(key).into(),
-                    socket,
-                },
-                sim_cfg,
-                save,
-            ) {
+        let server = match Server::new(
+            server::NetParams {
+                certificate_chain: vec![CertificateDer::from(cert)],
+                private_key: PrivatePkcs8KeyDer::from(key).into(),
+                socket,
+            },
+            sim_cfg,
+            save,
+        ) {
+            Ok(server) => server,
+            Err(e) => {
                 eprintln!("{e:#}");
                 std::process::exit(1);
             }
+        };
+
+        std::thread::spawn(move || {
+            #[tokio::main(flavor = "current_thread")]
+            async fn run_server(server: Server) {
+                server.run().await;
+            }
+
+            let span = error_span!("server");
+            let _guard = span.enter();
+            run_server(server);
         });
     }
     let mut app = App {

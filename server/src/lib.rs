@@ -31,46 +31,41 @@ pub struct NetParams {
     pub socket: UdpSocket,
 }
 
-#[tokio::main]
-pub async fn run(net: NetParams, mut sim: SimConfig, save: Save) -> Result<()> {
-    sim.chunk_size = save.meta().chunk_size as u8;
-    let server_config =
-        quinn::ServerConfig::with_single_cert(net.certificate_chain, net.private_key)
-            .context("parsing certificate")?;
-    let endpoint = quinn::Endpoint::new(
-        quinn::EndpointConfig::default(),
-        Some(server_config),
-        net.socket,
-        quinn::default_runtime().unwrap(),
-    )?;
-    info!(address = %endpoint.local_addr().unwrap(), "listening");
-
-    let server = Server::new(sim, save);
-    server.run(endpoint).await;
-    Ok(())
-}
-
-struct Server {
+pub struct Server {
     cfg: Arc<SimConfig>,
     sim: Sim,
     clients: DenseSlotMap<ClientId, Client>,
     save: Save,
+    endpoint: quinn::Endpoint,
 }
 
 impl Server {
-    fn new(params: SimConfig, save: Save) -> Self {
-        let cfg = Arc::new(params);
-        Self {
+    pub fn new(net: NetParams, mut cfg: SimConfig, save: Save) -> Result<Self> {
+        cfg.chunk_size = save.meta().chunk_size as u8;
+        let server_config =
+            quinn::ServerConfig::with_single_cert(net.certificate_chain, net.private_key)
+                .context("parsing certificate")?;
+        let endpoint = quinn::Endpoint::new(
+            quinn::EndpointConfig::default(),
+            Some(server_config),
+            net.socket,
+            quinn::default_runtime().unwrap(),
+        )?;
+        info!(address = %endpoint.local_addr().unwrap(), "listening");
+
+        let cfg = Arc::new(cfg);
+        Ok(Self {
             sim: Sim::new(cfg.clone(), &save),
             cfg,
             clients: DenseSlotMap::default(),
             save,
-        }
+            endpoint,
+        })
     }
 
-    async fn run(mut self, endpoint: quinn::Endpoint) {
+    pub async fn run(mut self) {
         let mut ticks = IntervalStream::new(tokio::time::interval(self.cfg.step_interval)).fuse();
-        let mut incoming = ReceiverStream::new(self.handle_incoming(endpoint)).fuse();
+        let mut incoming = ReceiverStream::new(self.handle_incoming()).fuse();
         let (client_events_send, client_events) = mpsc::channel(128);
         let mut client_events = ReceiverStream::new(client_events).fuse();
         loop {
@@ -82,8 +77,9 @@ impl Server {
         }
     }
 
-    fn handle_incoming(&self, endpoint: quinn::Endpoint) -> mpsc::Receiver<quinn::Connection> {
+    fn handle_incoming(&self) -> mpsc::Receiver<quinn::Connection> {
         let (incoming_send, incoming_recv) = mpsc::channel(16);
+        let endpoint = self.endpoint.clone();
         tokio::spawn(async move {
             while let Some(conn) = endpoint.accept().await {
                 trace!(address = %conn.remote_address(), "connection incoming");
