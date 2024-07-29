@@ -13,6 +13,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      VULKAN_VERSION: "1.3.231.1"
+      VULKAN_SDK: "C:/VulkanSDK/1.3.231.1"
+
     steps:
       - name: Install shaderc
         if: matrix.os == 'ubuntu-latest'
@@ -20,9 +24,11 @@ jobs:
           wget -nv -r -nd -A install.tgz 'https://storage.googleapis.com/shaderc/badges/build_link_linux_clang_release.html'
           tar xf install.tgz
           export SHADERC_LIB_DIR="$PWD/install/lib"
-      - name: Install Ninja
+      - name: Install Vulkan SDK
         if: matrix.os == 'windows-latest'
-        run: choco install ninja
+        run: |
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/VulkanSDK-${{ env.VULKAN_VERSION }}-Installer.exe" -OutFile vulkan.exe
+          ./vulkan.exe --accept-licenses --default-answer --confirm-command install
 
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
