@@ -14,13 +14,12 @@ use crate::Config;
 pub struct Net {
     pub incoming: mpsc::UnboundedReceiver<Message>,
     pub outgoing: mpsc::UnboundedSender<proto::Command>,
-    pub thread: thread::JoinHandle<()>,
 }
 
 pub fn spawn(cfg: Arc<Config>) -> Net {
     let (incoming_send, incoming_recv) = mpsc::unbounded_channel();
     let (outgoing_send, outgoing_recv) = mpsc::unbounded_channel();
-    let thread = thread::spawn(move || {
+    thread::spawn(move || {
         if let Err(e) = run(cfg, incoming_send.clone(), outgoing_recv) {
             let _ = incoming_send.send(Message::ConnectionLost(e));
         }
@@ -28,7 +27,6 @@ pub fn spawn(cfg: Arc<Config>) -> Net {
     Net {
         incoming: incoming_recv,
         outgoing: outgoing_send,
-        thread,
     }
 }
 
