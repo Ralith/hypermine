@@ -15,17 +15,10 @@ jobs:
       - uses: actions/checkout@v3
         with:
           lfs: true
-      - name: Cache Vulkan SDK
-        id: cache-vulkan
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.VULKAN_SDK }}
-          key: vulkan-${{ env.VULKAN_VERSION }}
       - name: Install Vulkan SDK
-        if: steps.cache-vulkan.outputs.cache-hit != 'true'
         run: |
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/VulkanSDK-${{ env.VULKAN_VERSION }}-Installer.exe" -OutFile vulkan.exe
-          7z x -aoa vulkan.exe "-o$env:VULKAN_SDK" Lib share/vulkan/registry/vk.xml
+          ./vulkan.exe --accept-licenses --default-answer --confirm-command install
 
       - uses: actions-rs/toolchain@v1
         with:
