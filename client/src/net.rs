@@ -1,6 +1,6 @@
 use std::{sync::Arc, thread};
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Result};
 use quinn::rustls;
 use tokio::sync::mpsc;
 
@@ -8,15 +8,11 @@ use common::{
     codec,
     proto::{self, connection_error_codes},
 };
+use server::Message;
 
 use crate::Config;
 
-pub struct Net {
-    pub incoming: mpsc::UnboundedReceiver<Message>,
-    pub outgoing: mpsc::UnboundedSender<proto::Command>,
-}
-
-pub fn spawn(cfg: Arc<Config>) -> Net {
+pub fn spawn(cfg: Arc<Config>) -> server::Handle {
     let (incoming_send, incoming_recv) = mpsc::unbounded_channel();
     let (outgoing_send, outgoing_recv) = mpsc::unbounded_channel();
     thread::spawn(move || {
@@ -24,18 +20,10 @@ pub fn spawn(cfg: Arc<Config>) -> Net {
             let _ = incoming_send.send(Message::ConnectionLost(e));
         }
     });
-    Net {
+    server::Handle {
         incoming: incoming_recv,
         outgoing: outgoing_send,
     }
-}
-
-#[derive(Debug)]
-pub enum Message {
-    Hello(proto::ServerHello),
-    Spawns(proto::Spawns),
-    StateDelta(proto::StateDelta),
-    ConnectionLost(Error),
 }
 
 #[tokio::main(worker_threads = 1)]

@@ -17,8 +17,7 @@ use winit::{
 
 use super::gui::GuiState;
 use super::{Base, Core, Draw, Frustum};
-use crate::Net;
-use crate::{net, Config, Sim};
+use crate::{Config, Sim};
 
 /// OS window
 pub struct EarlyWindow {
@@ -59,14 +58,19 @@ pub struct Window {
     sim: Option<Sim>,
     gui_state: GuiState,
     yak: yakui::Yakui,
-    net: Net,
+    net: server::Handle,
     input: InputState,
     last_frame: Option<Instant>,
 }
 
 impl Window {
     /// Finish constructing a window
-    pub fn new(early: EarlyWindow, core: Arc<Core>, config: Arc<Config>, net: Net) -> Self {
+    pub fn new(
+        early: EarlyWindow,
+        core: Arc<Core>,
+        config: Arc<Config>,
+        net: server::Handle,
+    ) -> Self {
         let surface = unsafe {
             ash_window::create_surface(
                 &core.entry,
@@ -268,12 +272,12 @@ impl Window {
         }
     }
 
-    fn handle_net(&mut self, msg: net::Message) {
+    fn handle_net(&mut self, msg: server::Message) {
         match msg {
-            net::Message::ConnectionLost(e) => {
+            server::Message::ConnectionLost(e) => {
                 error!("connection lost: {}", e);
             }
-            net::Message::Hello(msg) => {
+            server::Message::Hello(msg) => {
                 let sim = Sim::new(msg.sim_config, msg.character);
                 if let Some(draw) = self.draw.as_mut() {
                     draw.configure(sim.cfg());

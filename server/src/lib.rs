@@ -346,3 +346,17 @@ enum ClientEvent {
 type Unordered = proto::StateDelta;
 
 type Ordered = Arc<proto::Spawns>;
+
+/// A client's view of a server
+pub struct Handle {
+    pub incoming: mpsc::UnboundedReceiver<Message>,
+    pub outgoing: mpsc::UnboundedSender<proto::Command>,
+}
+
+#[derive(Debug)]
+pub enum Message {
+    Hello(proto::ServerHello),
+    Spawns(proto::Spawns),
+    StateDelta(proto::StateDelta),
+    ConnectionLost(Error),
+}
