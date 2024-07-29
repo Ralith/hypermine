@@ -34,7 +34,7 @@ pub struct Server {
     sim: Sim,
     clients: DenseSlotMap<ClientId, Client>,
     save: Save,
-    endpoint: quinn::Endpoint,
+    endpoint: Option<quinn::Endpoint>,
 
     new_clients_send: mpsc::UnboundedSender<(quinn::Connection, proto::ClientHello)>,
     new_clients_recv: mpsc::UnboundedReceiver<(quinn::Connection, proto::ClientHello)>,
@@ -43,18 +43,23 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(net: NetParams, mut cfg: SimConfig, save: Save) -> Result<Self> {
+    pub fn new(net: Option<NetParams>, mut cfg: SimConfig, save: Save) -> Result<Self> {
         cfg.chunk_size = save.meta().chunk_size as u8;
-        let server_config =
-            quinn::ServerConfig::with_single_cert(net.certificate_chain, net.private_key)
-                .context("parsing certificate")?;
-        let endpoint = quinn::Endpoint::new(
-            quinn::EndpointConfig::default(),
-            Some(server_config),
-            net.socket,
-            quinn::default_runtime().unwrap(),
-        )?;
-        info!(address = %endpoint.local_addr().unwrap(), "listening");
+        let endpoint = net
+            .map(|net| {
+                let server_config =
+                    quinn::ServerConfig::with_single_cert(net.certificate_chain, net.private_key)
+                        .context("parsing certificate")?;
+                let endpoint = quinn::Endpoint::new(
+                    quinn::EndpointConfig::default(),
+                    Some(server_config),
+                    net.socket,
+                    quinn::default_runtime().unwrap(),
+                )?;
+                info!(address = %endpoint.local_addr().unwrap(), "listening");
+                Ok::<_, Error>(endpoint)
+            })
+            .transpose()?;
 
         let (new_clients_send, new_clients_recv) = mpsc::unbounded_channel();
         let (client_events_send, client_events_recv) = mpsc::channel(128);
@@ -143,7 +148,9 @@ impl Server {
 
     fn handle_incoming(&self) -> mpsc::Receiver<quinn::Connection> {
         let (incoming_send, incoming_recv) = mpsc::channel(16);
-        let endpoint = self.endpoint.clone();
+        let Some(endpoint) = self.endpoint.clone() else {
+            return incoming_recv;
+        };
         tokio::spawn(async move {
             while let Some(conn) = endpoint.accept().await {
                 trace!(address = %conn.remote_address(), "connection incoming");
