@@ -5,8 +5,7 @@ use hecs::Entity;
 use tracing::{debug, error, trace};
 
 use crate::{
-    local_character_controller::LocalCharacterController, metrics, net,
-    prediction::PredictedMotion, Net,
+    local_character_controller::LocalCharacterController, metrics, prediction::PredictedMotion,
 };
 use common::{
     character_controller,
@@ -217,7 +216,7 @@ impl Sim {
         &self.cfg
     }
 
-    pub fn step(&mut self, dt: Duration, net: &mut Net) {
+    pub fn step(&mut self, dt: Duration, net: &mut server::Handle) {
         self.local_character_controller.renormalize_orientation();
 
         let step_interval = self.cfg.step_interval;
@@ -269,8 +268,8 @@ impl Sim {
         }
     }
 
-    pub fn handle_net(&mut self, msg: net::Message) {
-        use net::Message::*;
+    pub fn handle_net(&mut self, msg: server::Message) {
+        use server::Message::*;
         match msg {
             ConnectionLost(_) | Hello(_) => {
                 unreachable!("Case already handled by caller");
@@ -446,7 +445,7 @@ impl Sim {
         }
     }
 
-    fn send_input(&mut self, net: &mut Net) {
+    fn send_input(&mut self, net: &mut server::Handle) {
         let orientation = if self.no_clip {
             self.local_character_controller.orientation()
         } else {

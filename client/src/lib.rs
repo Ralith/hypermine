@@ -25,4 +25,3 @@ pub use config::Config;
 pub use sim::Sim;
 
 use loader::{Asset, Loader};
-use net::Net;
