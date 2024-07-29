@@ -12,7 +12,7 @@ use hecs::Entity;
 use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use slotmap::DenseSlotMap;
 use tokio::sync::mpsc;
-use tracing::{debug, error, error_span, info, trace};
+use tracing::{debug, error, error_span, info, trace, warn};
 
 use common::{
     codec,
@@ -35,6 +35,9 @@ pub struct Server {
     clients: DenseSlotMap<ClientId, Client>,
     save: Save,
     endpoint: quinn::Endpoint,
+
+    new_clients_send: mpsc::UnboundedSender<(quinn::Connection, proto::ClientHello)>,
+    new_clients_recv: mpsc::UnboundedReceiver<(quinn::Connection, proto::ClientHello)>,
 }
 
 impl Server {
@@ -51,6 +54,8 @@ impl Server {
         )?;
         info!(address = %endpoint.local_addr().unwrap(), "listening");
 
+        let (new_clients_send, new_clients_recv) = mpsc::unbounded_channel();
+
         let cfg = Arc::new(cfg);
         Ok(Self {
             sim: Sim::new(cfg.clone(), &save),
@@ -58,6 +63,9 @@ impl Server {
             clients: DenseSlotMap::default(),
             save,
             endpoint,
+
+            new_clients_send,
+            new_clients_recv,
         })
     }
 
@@ -68,8 +76,9 @@ impl Server {
         loop {
             tokio::select! {
                 _ = ticks.tick() => { self.on_step(); },
-                Some(conn) = incoming.recv() => { self.on_connect(conn, client_events_send.clone()); }
-                Some(e) = client_events.recv() => { self.on_client_event(e.0, e.1); }
+                Some(conn) = incoming.recv() => { self.on_connect(conn); }
+                Some((id, event)) = client_events.recv() => { self.on_client_event(id, event); }
+                Some((conn, hello)) = self.new_clients_recv.recv() => { self.on_client(conn, hello, client_events_send.clone()); }
             }
         }
     }
@@ -100,12 +109,10 @@ impl Server {
         let now = Instant::now();
         // Apply queued inputs
         for (id, client) in &mut self.clients {
-            if let Some(ref handles) = client.handles {
-                if let Some(cmd) = client.inputs.pop(now, self.cfg.input_queue_size) {
-                    client.latest_input_processed = cmd.generation;
-                    if let Err(e) = self.sim.command(handles.character, cmd) {
-                        error!(client = ?id, "couldn't process command: {}", e);
-                    }
+            if let Some(cmd) = client.inputs.pop(now, self.cfg.input_queue_size) {
+                client.latest_input_processed = cmd.generation;
+                if let Err(e) = self.sim.command(client.character, cmd) {
+                    error!(client = ?id, "couldn't process command: {}", e);
                 }
             }
         }
@@ -115,22 +122,20 @@ impl Server {
         let spawns = spawns.map(Arc::new);
         let mut overran = Vec::new();
         for (client_id, client) in &mut self.clients {
-            if let Some(ref mut handles) = client.handles {
-                let mut delta = delta.clone();
-                delta.latest_input = client.latest_input_processed;
-                let r1 = handles.unordered.try_send(delta);
-                let r2 = if let Some(spawns) = spawns.as_ref() {
-                    handles.ordered.try_send(Arc::clone(spawns))
-                } else {
-                    Ok(())
-                };
-                use mpsc::error::TrySendError::Full;
-                match (r1, r2) {
-                    (Err(Full(_)), _) | (_, Err(Full(_))) => {
-                        overran.push(client_id);
-                    }
-                    _ => {}
+            let mut delta = delta.clone();
+            delta.latest_input = client.latest_input_processed;
+            let r1 = client.unordered.try_send(delta);
+            let r2 = if let Some(spawns) = spawns.as_ref() {
+                client.ordered.try_send(Arc::clone(spawns))
+            } else {
+                Ok(())
+            };
+            use mpsc::error::TrySendError::Full;
+            match (r1, r2) {
+                (Err(Full(_)), _) | (_, Err(Full(_))) => {
+                    overran.push(client_id);
                 }
+                _ => {}
             }
         }
         for client_id in overran {
@@ -156,36 +161,6 @@ impl Server {
             return;
         };
         match event {
-            ClientEvent::Hello(hello) => {
-                assert!(client.handles.is_none());
-                let snapshot = Arc::new(self.sim.snapshot());
-                let Some((id, entity)) = self.sim.activate_or_spawn_character(&hello) else {
-                    error!("could not spawn {} due to name conflict", hello.name);
-                    client
-                        .conn
-                        .close(connection_error_codes::NAME_CONFLICT, b"name conflict");
-                    self.cleanup_client(client_id);
-                    return;
-                };
-                let (ordered_send, ordered_recv) = mpsc::channel(32);
-                ordered_send.try_send(snapshot).unwrap();
-                let (unordered_send, unordered_recv) = mpsc::channel(32);
-                client.handles = Some(ClientHandles {
-                    character: entity,
-                    ordered: ordered_send,
-                    unordered: unordered_send,
-                });
-                let connection = client.conn.clone();
-                let server_hello = proto::ServerHello {
-                    character: id,
-                    sim_config: (*self.cfg).clone(),
-                };
-                tokio::spawn(async move {
-                    // Errors will be handled by recv task
-                    let _ =
-                        drive_send(connection, server_hello, unordered_recv, ordered_recv).await;
-                });
-            }
             ClientEvent::Lost(e) => {
                 error!("lost: {:#}", e);
                 client
@@ -205,25 +180,70 @@ impl Server {
     }
 
     fn cleanup_client(&mut self, client: ClientId) {
-        if let Some(ref x) = self.clients[client].handles {
-            self.sim.deactivate_character(x.character);
-        }
+        self.sim
+            .deactivate_character(self.clients[client].character);
         self.clients.remove(client);
     }
 
-    fn on_connect(
+    fn on_connect(&mut self, connection: quinn::Connection) {
+        let send = self.new_clients_send.clone();
+        tokio::spawn(async move {
+            let result: anyhow::Result<()> = async move {
+                let stream = connection.accept_uni().await.map_err(Error::msg)?;
+                let hello =
+                    codec::recv_whole::<proto::ClientHello>(MAX_CLIENT_MSG_SIZE, stream).await?;
+                _ = send.send((connection, hello));
+                Ok(())
+            }
+            .await;
+            if let Err(e) = result {
+                warn!("error reading client hello: {e:#}");
+            }
+        });
+    }
+
+    fn on_client(
         &mut self,
         connection: quinn::Connection,
+        hello: proto::ClientHello,
         mut send: mpsc::Sender<(ClientId, ClientEvent)>,
     ) {
-        let id = self.clients.insert(Client::new(connection.clone()));
-        info!(id = ?id.0, address = %connection.remote_address(), "connection established");
+        let snapshot = Arc::new(self.sim.snapshot());
+        let Some((id, entity)) = self.sim.activate_or_spawn_character(&hello) else {
+            error!("could not spawn {} due to name conflict", hello.name);
+            connection.close(connection_error_codes::NAME_CONFLICT, b"name conflict");
+            return;
+        };
+        let (ordered_send, ordered_recv) = mpsc::channel(32);
+        ordered_send.try_send(snapshot).unwrap();
+        let (unordered_send, unordered_recv) = mpsc::channel(32);
+        let client_id = self.clients.insert(Client {
+            conn: connection.clone(),
+            character: entity,
+            ordered: ordered_send,
+            unordered: unordered_send,
+            latest_input_received: 0,
+            latest_input_processed: 0,
+            inputs: InputQueue::new(),
+        });
+        info!(id = ?client_id.0, address = %connection.remote_address(), "connection established");
+        let server_hello = proto::ServerHello {
+            character: id,
+            sim_config: (*self.cfg).clone(),
+        };
+        tokio::spawn({
+            let connection = connection.clone();
+            async move {
+                // Errors will be handled by recv task
+                let _ = drive_send(connection, server_hello, unordered_recv, ordered_recv).await;
+            }
+        });
         tokio::spawn(async move {
-            if let Err(e) = drive_recv(id, connection, &mut send).await {
+            if let Err(e) = drive_recv(client_id, connection, &mut send).await {
                 // drive_recv returns an error when any connection-terminating issue occurs, so we
                 // send a `Lost` message to ensure the client is cleaned up. Note that this message may
                 // be redundant, as dropping a slow client also sends a `Lost` message.
-                let _ = send.send((id, ClientEvent::Lost(e))).await;
+                let _ = send.send((client_id, ClientEvent::Lost(e))).await;
             } else {
                 unreachable!("Graceful disconnects are not implemented.")
             }
@@ -238,10 +258,6 @@ async fn drive_recv(
     connection: quinn::Connection,
     send: &mut mpsc::Sender<(ClientId, ClientEvent)>,
 ) -> Result<()> {
-    let stream = connection.accept_uni().await.map_err(Error::msg)?;
-    let hello = codec::recv_whole::<proto::ClientHello>(MAX_CLIENT_MSG_SIZE, stream).await?;
-    let _ = send.send((id, ClientEvent::Hello(hello))).await;
-
     loop {
         let stream = connection.accept_uni().await.map_err(Error::msg)?;
         let send = send.clone();
@@ -307,33 +323,15 @@ slotmap::new_key_type! {
 
 struct Client {
     conn: quinn::Connection,
-    /// Filled in after receiving ClientHello
-    handles: Option<ClientHandles>,
+    character: Entity,
+    ordered: mpsc::Sender<Ordered>,
+    unordered: mpsc::Sender<Unordered>,
     latest_input_received: u16,
     latest_input_processed: u16,
     inputs: InputQueue,
 }
 
-impl Client {
-    fn new(conn: quinn::Connection) -> Self {
-        Self {
-            conn,
-            handles: None,
-            latest_input_received: 0,
-            latest_input_processed: 0,
-            inputs: InputQueue::new(),
-        }
-    }
-}
-
-struct ClientHandles {
-    character: Entity,
-    ordered: mpsc::Sender<Ordered>,
-    unordered: mpsc::Sender<Unordered>,
-}
-
 enum ClientEvent {
-    Hello(proto::ClientHello),
     Command(proto::Command),
     Lost(Error),
 }
