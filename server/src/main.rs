@@ -22,7 +22,8 @@ fn main() {
     }
 }
 
-pub fn run() -> Result<()> {
+#[tokio::main]
+pub async fn run() -> Result<()> {
     let cfg = match std::env::args_os().nth(1) {
         Some(path) => Config::load(Path::new(&path))?,
         None => Config::default(),
@@ -72,7 +73,7 @@ pub fn run() -> Result<()> {
     info!("using save file {}", save.display());
     let save = Save::open(&save, sim_cfg.chunk_size)?;
 
-    server::run(
+    let server = server::Server::new(
         server::NetParams {
             certificate_chain,
             private_key,
@@ -80,5 +81,7 @@ pub fn run() -> Result<()> {
         },
         sim_cfg,
         save,
-    )
+    )?;
+    server.run().await;
+    Ok(())
 }
