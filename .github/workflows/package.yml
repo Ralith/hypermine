@@ -20,23 +20,13 @@ jobs:
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/VulkanSDK-${{ env.VULKAN_VERSION }}-Installer.exe" -OutFile vulkan.exe
           ./vulkan.exe --accept-licenses --default-answer --confirm-command install
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Server
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --package server --release
+        run: cargo build --package server --release
 
       - name: Build Client
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --package client --release --no-default-features
+        run: cargo build --package client --release --no-default-features
 
       - name: Package Artifacts
         run: |
@@ -72,21 +62,13 @@ jobs:
           tar xf install.tgz
           echo "SHADERC_LIB_DIR=$PWD/install/lib" >> "$GITHUB_ENV"
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Server
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --package server --release
+        run: cargo build --package server --release
 
       - name: Build Client
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --package client --release
+        run: cargo build --package client --release --no-default-features
 
       - name: Strip
         run: |
