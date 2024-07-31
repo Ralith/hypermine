@@ -42,26 +42,15 @@ jobs:
 
   package-linux:
     name: Linux
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux2014_x86_64
+    # Oldest supported runner, for wide glibc compat
+    runs-on: ubuntu-20.04
     steps:
-      - name: Install Git LFS
-        run: |
-          yum install -y git-lfs
       - uses: actions/checkout@v4
         with:
           lfs: true
       - name: Install dependencies
-        run: |
-          yum install -y alsa-lib-devel vulkan-devel python3 fontconfig-devel
-
-      - name: Install shaderc
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          wget -nv -r -nd -A install.tgz 'https://storage.googleapis.com/shaderc/badges/build_link_linux_clang_release.html'
-          tar xf install.tgz
-          echo "SHADERC_LIB_DIR=$PWD/install/lib" >> "$GITHUB_ENV"
-
+        run: sudo apt update && sudo apt-get -y install libasound2-dev libvulkan-dev libfontconfig-dev
+      # No prebuilt shaderc, since the official binaries don't to be compatible with Ubuntu 20.04.
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Server
