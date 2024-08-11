@@ -73,6 +73,11 @@ impl Sim {
         result
             .load_all_entities(save)
             .expect("save file must be of a valid format");
+        // Loading entities can cause graph nodes to also be created, so we should populate them before returning.
+        result.populate_fresh_graph_nodes();
+        // As no players have logged in yet, and `snapshot` may be called before the first call of `step`,
+        // make sure that `accumulated_changes` is empty to avoid accidental double-spawns of anything.
+        result.accumulated_changes = AccumulatedChanges::default();
         result
     }
 
@@ -114,6 +119,10 @@ impl Sim {
         Ok(())
     }
 
+    /// Loads all entities from the given save file. Note that this must be called before any players
+    /// log in, as `accumulated_changes` will not properly reflect the entities that were loaded in.
+    /// It is also important to call `populate_fresh_graph_nodes` after calling this function to keep
+    /// `Sim` in a consistent state, as this function can expand the graph without populating the graph nodes.
     fn load_all_entities(&mut self, save: &save::Save) -> anyhow::Result<()> {
         let mut read = save.read()?;
         for node_hash in read.get_all_entity_node_ids()? {
@@ -445,21 +454,7 @@ impl Sim {
             ensure_nearby(&mut self.graph, position, self.cfg.view_distance);
         }
 
-        self.accumulated_changes.fresh_nodes = self.graph.fresh().to_vec();
-        populate_fresh_nodes(&mut self.graph);
-
-        for fresh_node in self.accumulated_changes.fresh_nodes.iter().copied() {
-            for vertex in Vertex::iter() {
-                let chunk = ChunkId::new(fresh_node, vertex);
-                if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
-                    self.accumulated_changes
-                        .fresh_voxel_data
-                        .push((chunk, voxel_data.serialize(self.cfg.chunk_size)));
-                    self.modified_chunks.insert(chunk);
-                    self.graph.populate_chunk(chunk, voxel_data)
-                }
-            }
-        }
+        self.populate_fresh_graph_nodes();
 
         // We want to load all chunks that a player can interact with in a single step, so chunk_generation_distance
         // is set up to cover that distance.
@@ -552,6 +547,29 @@ impl Sim {
 
         self.step += 1;
         (spawns, delta)
+    }
+
+    /// Should be called after any set of changes is made to the graph to ensure that the server
+    /// does not have any partially-initialized graph nodes.
+    fn populate_fresh_graph_nodes(&mut self) {
+        let fresh_nodes = self.graph.fresh().to_vec();
+        populate_fresh_nodes(&mut self.graph);
+
+        self.accumulated_changes
+            .fresh_nodes
+            .extend_from_slice(&fresh_nodes);
+        for fresh_node in fresh_nodes.iter().copied() {
+            for vertex in Vertex::iter() {
+                let chunk = ChunkId::new(fresh_node, vertex);
+                if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
+                    self.accumulated_changes
+                        .fresh_voxel_data
+                        .push((chunk, voxel_data.serialize(self.cfg.chunk_size)));
+                    self.modified_chunks.insert(chunk);
+                    self.graph.populate_chunk(chunk, voxel_data)
+                }
+            }
+        }
     }
 
     fn new_id(&mut self) -> EntityId {
