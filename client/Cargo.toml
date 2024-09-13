@@ -14,8 +14,8 @@ server = { path = "../server" }
 tracing = "0.1.10"
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
 lahar = { git = "https://github.com/Ralith/lahar", rev = "7963ae5750ea61fa0a894dbb73d3be0ac77255d2" }
-yakui = { git = "https://github.com/SecondHalfGames/yakui", rev = "273a4a1020803066b84ac69a7646893419c31385" }
-yakui-vulkan = { git = "https://github.com/SecondHalfGames/yakui", rev = "273a4a1020803066b84ac69a7646893419c31385" }
+yakui = { git = "https://github.com/SecondHalfGames/yakui", rev = "136f88d54f08fcb21a5215f422c8581f89d46dd2" }
+yakui-vulkan = { git = "https://github.com/SecondHalfGames/yakui", rev = "136f88d54f08fcb21a5215f422c8581f89d46dd2" }
 winit = "0.30.4"
 ash-window = "0.13"
 raw-window-handle = "0.6"
