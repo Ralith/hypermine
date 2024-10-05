@@ -36,4 +36,8 @@ enum ComponentType {
     POSITION = 0;
     // UTF-8 text
     NAME = 1;
+    // u16
+    MATERIAL = 2;
+    // List of u64
+    INVENTORY = 3;
 }
