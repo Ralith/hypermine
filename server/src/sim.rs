@@ -402,11 +402,10 @@ impl Sim {
         if let Ok(position) = self.world.get::<&Position>(entity) {
             self.graph_entities.remove(position.node, entity);
         }
-        self.world.despawn(entity).unwrap();
-
         if !self.world.satisfies::<&InactiveCharacter>(entity).unwrap() {
             self.accumulated_changes.despawns.push(id);
         }
+        self.world.despawn(entity).unwrap();
     }
 
     /// Collect information about all entities, for transmission to new clients
