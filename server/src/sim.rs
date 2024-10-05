@@ -210,7 +210,19 @@ impl Sim {
                         orientation: na::UnitQuaternion::identity(),
                     },
                 }));
-                entity_builder.add(Inventory { contents: vec![] });
+            }
+            ComponentType::Material => {
+                let material: u16 = u16::from_le_bytes(component_bytes.try_into().unwrap());
+                entity_builder.add(Material::try_from(material)?);
+            }
+            ComponentType::Inventory => {
+                let mut contents = vec![];
+                for chunk in component_bytes.chunks(8) {
+                    contents.push(EntityId::from_bits(u64::from_le_bytes(
+                        chunk.try_into().unwrap(),
+                    )));
+                }
+                entity_builder.add(Inventory { contents });
             }
         }
         Ok(())
@@ -242,40 +254,67 @@ impl Sim {
     fn snapshot_node(&self, node: NodeId) -> save::EntityNode {
         let mut entities = Vec::new();
         for &entity in self.graph_entities.get(node) {
-            let Ok(entity) = self.world.entity(entity) else {
-                error!("stale graph entity {:?}", entity);
-                continue;
-            };
-            let Some(id) = entity.get::<&EntityId>() else {
-                continue;
-            };
-            let mut components = Vec::new();
-            if let Some(pos) = entity.get::<&Position>() {
-                components.push((
-                    ComponentType::Position as u64,
-                    postcard::to_stdvec(&pos.local.as_ref()).unwrap(),
-                ));
-            }
-            if let Some(ch) = entity.get::<&Character>().or_else(|| {
-                entity
-                    .get::<&InactiveCharacter>()
-                    .map(|ich| hecs::Ref::map(ich, |ich| &ich.0)) // Extract Ref<Character> from Ref<InactiveCharacter>
-            }) {
-                components.push((ComponentType::Name as u64, ch.name.as_bytes().into()));
-            }
-            let mut repr = Vec::new();
-            postcard_helpers::serialize(
-                &SaveEntity {
-                    entity: id.to_bits().to_le_bytes(),
-                    components,
-                },
-                &mut repr,
-            )
-            .unwrap();
-            entities.push(repr);
+            let reprs = self.snapshot_entity_and_children(entity);
+            entities.extend_from_slice(&reprs);
         }
 
         save::EntityNode { entities }
+    }
+
+    fn snapshot_entity_and_children(&self, entity: Entity) -> Vec<Vec<u8>> {
+        let mut reprs = vec![];
+        let Ok(entity) = self.world.entity(entity) else {
+            error!("stale graph entity {:?}", entity);
+            return reprs;
+        };
+        let Some(id) = entity.get::<&EntityId>() else {
+            return reprs;
+        };
+        let mut components = Vec::new();
+        if let Some(pos) = entity.get::<&Position>() {
+            components.push((
+                ComponentType::Position as u64,
+                postcard::to_stdvec(&pos.local.as_ref()).unwrap(),
+            ));
+        }
+        if let Some(ch) = entity.get::<&Character>().or_else(|| {
+            entity
+                .get::<&InactiveCharacter>()
+                .map(|ich| hecs::Ref::map(ich, |ich| &ich.0)) // Extract Ref<Character> from Ref<InactiveCharacter>
+        }) {
+            components.push((ComponentType::Name as u64, ch.name.as_bytes().into()));
+        }
+        if let Some(material) = entity.get::<&Material>() {
+            components.push((
+                ComponentType::Material as u64,
+                (*material as u16).to_le_bytes().into(),
+            ));
+        }
+        if let Some(inventory) = entity.get::<&Inventory>() {
+            let mut serialized_inventory_contents = vec![];
+            for entity_id in &inventory.contents {
+                reprs.extend_from_slice(
+                    &self.snapshot_entity_and_children(self.entity_ids[entity_id]),
+                );
+                serialized_inventory_contents.extend_from_slice(&entity_id.to_bits().to_le_bytes());
+            }
+            components.push((
+                ComponentType::Inventory as u64,
+                serialized_inventory_contents,
+            ));
+        }
+        let mut repr = Vec::new();
+        postcard_helpers::serialize(
+            &SaveEntity {
+                entity: id.to_bits().to_le_bytes(),
+                components,
+            },
+            &mut repr,
+        )
+        .unwrap();
+
+        reprs.push(repr);
+        reprs
     }
 
     fn snapshot_voxel_node(&self, node: NodeId) -> save::VoxelNode {
