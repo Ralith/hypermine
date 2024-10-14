@@ -37,7 +37,7 @@ webpki = "0.22.0"
 hecs = { workspace = true }
 memoffset = "0.9"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
-metrics = "0.23.0"
+metrics = "0.24.0"
 hdrhistogram = { version = "7", default-features = false }
 save = { path = "../save" }
 
