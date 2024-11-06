@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 prost = "0.13.1"
 redb = "2.0"
-thiserror = "1.0.38"
+thiserror = "2.0.0"
 zstd = { package = "zstd-safe", version = "7.1.0", default-features = false, features = ["std", "experimental"] }
 
 [dev-dependencies]
