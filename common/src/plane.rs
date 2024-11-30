@@ -46,7 +46,7 @@ impl Mul<Plane<f64>> for Side {
     }
 }
 
-impl<'a, N: na::RealField + Copy> Mul<Plane<N>> for &'a MIsometry<N> {
+impl<N: na::RealField + Copy> Mul<Plane<N>> for &MIsometry<N> {
     type Output = Plane<N>;
     fn mul(self, rhs: Plane<N>) -> Plane<N> {
         Plane {
