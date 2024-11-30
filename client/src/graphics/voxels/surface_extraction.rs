@@ -110,7 +110,7 @@ impl SurfaceExtraction {
                 .map_entries(&specialization_map_entries)
                 .data(as_bytes(&WORKGROUP_SIZE));
 
-            let p_name = b"main\0".as_ptr() as *const c_char;
+            let p_name = c"main".as_ptr() as *const c_char;
             let mut pipelines = device
                 .create_compute_pipelines(
                     gfx.pipeline_cache,
@@ -651,5 +651,5 @@ const FACE_SIZE: vk::DeviceSize = 8;
 const WORKGROUP_SIZE: [u32; 3] = [4, 4, 4];
 
 fn round_up(value: vk::DeviceSize, alignment: vk::DeviceSize) -> vk::DeviceSize {
-    ((value + alignment - 1) / alignment) * alignment
+    value.div_ceil(alignment) * alignment
 }
