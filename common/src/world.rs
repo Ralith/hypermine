@@ -95,11 +95,25 @@ impl Material {
     ];
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MaterialOutOfBounds;
+
+impl std::fmt::Display for MaterialOutOfBounds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Integer input does not represent a valid material")
+    }
+}
+
+impl std::error::Error for MaterialOutOfBounds {}
+
 impl TryFrom<u16> for Material {
-    type Error = ();
+    type Error = MaterialOutOfBounds;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        Material::VALUES.get(value as usize).ok_or(()).copied()
+        Material::VALUES
+            .get(value as usize)
+            .ok_or(MaterialOutOfBounds)
+            .copied()
     }
 }
 
