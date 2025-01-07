@@ -30,7 +30,7 @@ whoami = "1.2.1"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = { workspace = true }
 fxhash = "0.2.1"
-downcast-rs = "1.1.1"
+downcast-rs = "2.0.0"
 quinn = { workspace = true }
 futures-util = "0.3.1"
 webpki = "0.22.0"
