@@ -19,7 +19,7 @@ yakui-vulkan = { git = "https://github.com/SecondHalfGames/yakui", rev = "136f88
 winit = "0.30.4"
 ash-window = "0.13"
 raw-window-handle = "0.6"
-directories = "5.0.1"
+directories = "6.0.0"
 vk-shader-macros = "0.2.5"
 nalgebra = { workspace = true }
 libm = "0.2.6"
