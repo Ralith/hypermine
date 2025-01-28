@@ -22,7 +22,7 @@ hecs = { workspace = true }
 tracing-subscriber = { version = "0.3.15", default-features = false, features = ["env-filter", "smallvec", "fmt", "ansi", "time", "parking_lot"] }
 rand = "0.8.5"
 rand_pcg = "0.3.1"
-rand_distr = "0.4.3"
+rand_distr = "0.5.0"
 
 [dev-dependencies]
 approx = "0.5.1"
