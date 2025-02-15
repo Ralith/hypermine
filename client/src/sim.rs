@@ -277,7 +277,7 @@ impl Sim {
             Spawns(msg) => self.handle_spawns(msg),
             StateDelta(msg) => {
                 // Discard out-of-order messages, taking care to account for step counter wrapping.
-                if self.step.map_or(false, |x| x.wrapping_sub(msg.step) >= 0) {
+                if self.step.is_some_and(|x| x.wrapping_sub(msg.step) >= 0) {
                     return;
                 }
                 self.step = Some(msg.step);
