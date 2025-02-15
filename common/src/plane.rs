@@ -116,7 +116,7 @@ mod tests {
     fn check_surface_on_plane() {
         assert_abs_diff_eq!(
             Plane::from(Side::A).distance_to_chunk(
-                Vertex::from_sides(Side::A, Side::B, Side::C).unwrap(),
+                Vertex::from_sides([Side::A, Side::B, Side::C]).unwrap(),
                 &na::Vector3::new(0.0, 0.7, 0.1), // The first 0.0 is important, the plane is the midplane of the cube in Side::A direction
             ),
             0.0,
@@ -126,13 +126,13 @@ mod tests {
 
     #[test]
     fn check_elevation_consistency() {
-        let abc = Vertex::from_sides(Side::A, Side::B, Side::C).unwrap();
+        let abc = Vertex::from_sides([Side::A, Side::B, Side::C]).unwrap();
 
         // A cube corner should have the same elevation seen from different cubes
         assert_abs_diff_eq!(
             Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, 1.0)),
             Plane::from(Side::A).distance_to_chunk(
-                Vertex::from_sides(Side::F, Side::H, Side::J).unwrap(),
+                Vertex::from_sides([Side::F, Side::H, Side::J]).unwrap(),
                 &na::Vector3::new(1.0, 1.0, 1.0),
             ),
             epsilon = 1e-8,

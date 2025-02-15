@@ -1,6 +1,5 @@
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
-use crate::dodeca::SIDE_COUNT;
 use crate::dodeca::{Side, Vertex};
 use crate::graph::{Graph, NodeId};
 use crate::node::ChunkId;
@@ -29,9 +28,9 @@ impl Cursor {
         // in both the dodecahedron sharing the face unique to the new vertex and that sharing the
         // face that the new vertex isn't incident to.
         let (a, b, c) = (self.a, self.b, self.c);
-        let a_prime = neighbors()[a as usize][b as usize][c as usize].unwrap();
-        let b_prime = neighbors()[b as usize][a as usize][c as usize].unwrap();
-        let c_prime = neighbors()[c as usize][b as usize][a as usize].unwrap();
+        let a_prime = NEIGHBORS[a as usize][b as usize][c as usize].unwrap();
+        let b_prime = NEIGHBORS[b as usize][a as usize][c as usize].unwrap();
+        let c_prime = NEIGHBORS[c as usize][b as usize][a as usize].unwrap();
         use Dir::*;
         let (sides, neighbor) = match dir {
             Left => ((a, b, c_prime), c),
@@ -54,7 +53,7 @@ impl Cursor {
     pub fn canonicalize(self, graph: &Graph) -> Option<ChunkId> {
         graph.canonicalize(ChunkId::new(
             self.node,
-            Vertex::from_sides(self.a, self.b, self.c).unwrap(),
+            Vertex::from_sides([self.a, self.b, self.c]).unwrap(),
         ))
     }
 }
@@ -105,32 +104,31 @@ impl std::ops::Neg for Dir {
 }
 
 /// Maps every (A, B, C) sharing a vertex to A', the side that shares edges with B and C but not A
-fn neighbors() -> &'static [[[Option<Side>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT] {
-    static LOCK: OnceLock<[[[Option<Side>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT]> = OnceLock::new();
-    LOCK.get_or_init(|| {
-        let mut result = [[[None; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT];
-        for a in Side::iter() {
-            for b in Side::iter() {
-                for c in Side::iter() {
-                    for s in Side::iter() {
-                        if s == a || s == b || s == c {
-                            continue;
-                        }
-                        let (opposite, shared) =
-                            match (s.adjacent_to(a), s.adjacent_to(b), s.adjacent_to(c)) {
-                                (false, true, true) => (a, (b, c)),
-                                (true, false, true) => (b, (a, c)),
-                                (true, true, false) => (c, (a, b)),
-                                _ => continue,
-                            };
-                        result[opposite as usize][shared.0 as usize][shared.1 as usize] = Some(s);
+static NEIGHBORS: LazyLock<
+    [[[Option<Side>; Side::VALUES.len()]; Side::VALUES.len()]; Side::VALUES.len()],
+> = LazyLock::new(|| {
+    let mut result = [[[None; Side::VALUES.len()]; Side::VALUES.len()]; Side::VALUES.len()];
+    for a in Side::iter() {
+        for b in Side::iter() {
+            for c in Side::iter() {
+                for s in Side::iter() {
+                    if s == a || s == b || s == c {
+                        continue;
                     }
+                    let (opposite, shared) =
+                        match (s.adjacent_to(a), s.adjacent_to(b), s.adjacent_to(c)) {
+                            (false, true, true) => (a, (b, c)),
+                            (true, false, true) => (b, (a, c)),
+                            (true, true, false) => (c, (a, b)),
+                            _ => continue,
+                        };
+                    result[opposite as usize][shared.0 as usize][shared.1 as usize] = Some(s);
                 }
             }
         }
-        result
-    })
-}
+    }
+    result
+});
 
 #[cfg(test)]
 mod tests {
@@ -142,8 +140,8 @@ mod tests {
         for v in Vertex::iter() {
             let [a, b, c] = v.canonical_sides();
             assert_eq!(
-                neighbors()[a as usize][b as usize][c as usize],
-                neighbors()[a as usize][c as usize][b as usize]
+                NEIGHBORS[a as usize][b as usize][c as usize],
+                NEIGHBORS[a as usize][c as usize][b as usize]
             );
         }
     }
