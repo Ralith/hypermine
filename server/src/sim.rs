@@ -191,7 +191,7 @@ impl Sim {
                 for side in character
                     .path
                     .into_iter()
-                    .map(|side| Side::from_index(side as usize))
+                    .map(|side| Side::VALUES[side as usize])
                 {
                     current_node = self.graph.ensure_neighbor(current_node, side);
                 }

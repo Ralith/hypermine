@@ -1,12 +1,22 @@
 //! Tools for processing the geometry of a right dodecahedron
 
-use data::*;
 use serde::{Deserialize, Serialize};
 
 use crate::math::{MIsometry, MVector};
 use crate::voxel_math::ChunkAxisPermutation;
 
 /// Sides of a right dodecahedron
+///
+/// These sides are arranged based on the following adjacency graph, although it
+/// is recommended not to hardcode side names in other code:
+/// ```nocode
+///          A
+/// (D-) I-E-B-C-D (-I)
+///  (K-) L-G-F-H-K (-L)
+///           J
+/// ```
+/// The above adjacency graph can be read as a map of a globe, where side A is
+/// at the north pole, and side J is at the south pole.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum Side {
     A,
@@ -24,16 +34,23 @@ pub enum Side {
 }
 
 impl Side {
-    #[inline]
-    pub fn from_index(x: usize) -> Self {
-        use Side::*;
-        const VALUES: [Side; SIDE_COUNT] = [A, B, C, D, E, F, G, H, I, J, K, L];
-        VALUES[x]
-    }
+    pub const VALUES: [Self; 12] = [
+        Self::A,
+        Self::B,
+        Self::C,
+        Self::D,
+        Self::E,
+        Self::F,
+        Self::G,
+        Self::H,
+        Self::I,
+        Self::J,
+        Self::K,
+        Self::L,
+    ];
 
     pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        use Side::*;
-        [A, B, C, D, E, F, G, H, I, J, K, L].into_iter()
+        Self::VALUES.iter().copied()
     }
 
     /// Whether `self` and `other` share an edge
@@ -41,31 +58,33 @@ impl Side {
     /// `false` when `self == other`.
     #[inline]
     pub fn adjacent_to(self, other: Side) -> bool {
-        adjacent()[self as usize][other as usize]
+        data::ADJACENT[self as usize][other as usize]
     }
 
     /// Outward normal vector of this side
     #[inline]
     pub fn normal(self) -> &'static MVector<f32> {
-        &side_normals_f32()[self as usize]
+        &data::SIDE_NORMALS_F32[self as usize]
     }
 
     /// Outward normal vector of this side
     #[inline]
     pub fn normal_f64(self) -> &'static MVector<f64> {
-        &side_normals_f64()[self as usize]
+        &data::SIDE_NORMALS_F64[self as usize]
     }
 
-    /// Reflection across this side
+    /// Reflection across this side. Using this matrix is the standard way to
+    /// switch between the coordinate systems between adjacent nodes.
     #[inline]
     pub fn reflection(self) -> &'static MIsometry<f32> {
-        &reflections_f32()[self as usize]
+        &data::REFLECTIONS_F32[self as usize]
     }
 
-    /// Reflection across this side
+    /// Reflection across this side. Using this matrix is the standard way to
+    /// switch between the coordinate systems between adjacent nodes.
     #[inline]
     pub fn reflection_f64(self) -> &'static MIsometry<f64> {
-        &reflections_f64()[self as usize]
+        &data::REFLECTIONS_F64[self as usize]
     }
 
     /// Whether `p` is opposite the dodecahedron across the plane containing `self`
@@ -77,6 +96,20 @@ impl Side {
 }
 
 /// Vertices of a right dodecahedron
+///
+/// In Hypermine, each dodecahedral node consists of 20 chunks, one for each
+/// vertex, shaped like an irregular cube. Each chunk can also be thought of as
+/// an eighth of a cube in the dual cubic tiling.
+///
+/// Each chunk can be given its own coordinate system, where its right-angled
+/// corner (or, in other words, the actual vertex of the dodecahedron) is at the
+/// origin, and the x, y, and z axes each run alongside an edge of the chunk
+/// orthogoal to the respective "canonical" side (See `canonical_sides`).
+///
+/// Since a vertex can be identified with a chunk, `Vertex` contains methods
+/// such as `node_to_dual` and `dual_to_node` that return matrices to allow one
+/// to freely swap between the coordinate system for the node and the coordinate
+/// system for the chunk.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Vertex {
     A,
@@ -102,17 +135,37 @@ pub enum Vertex {
 }
 
 impl Vertex {
+    pub const VALUES: [Self; 20] = [
+        Self::A,
+        Self::B,
+        Self::C,
+        Self::D,
+        Self::E,
+        Self::F,
+        Self::G,
+        Self::H,
+        Self::I,
+        Self::J,
+        Self::K,
+        Self::L,
+        Self::M,
+        Self::N,
+        Self::O,
+        Self::P,
+        Self::Q,
+        Self::R,
+        Self::S,
+        Self::T,
+    ];
+
     pub fn iter() -> impl ExactSizeIterator<Item = Self> {
-        use Vertex::*;
-        [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
-            .iter()
-            .cloned()
+        Self::VALUES.iter().copied()
     }
 
     /// Vertex shared by three sides, if any
     #[inline]
-    pub fn from_sides(a: Side, b: Side, c: Side) -> Option<Self> {
-        sides_to_vertex()[a as usize][b as usize][c as usize]
+    pub fn from_sides(sides: [Side; 3]) -> Option<Self> {
+        data::SIDES_TO_VERTEX[sides[0] as usize][sides[1] as usize][sides[2] as usize]
     }
 
     /// Sides incident to this vertex, in canonical order.
@@ -121,7 +174,7 @@ impl Vertex {
     /// corresponding to the vertex.
     #[inline]
     pub fn canonical_sides(self) -> [Side; 3] {
-        vertex_sides()[self as usize]
+        data::VERTEX_CANONICAL_SIDES[self as usize]
     }
 
     /// Vertices adjacent to this vertex in canonical order.
@@ -139,7 +192,7 @@ impl Vertex {
     /// `adjacent_vertices()[0]`.
     #[inline]
     pub fn adjacent_vertices(self) -> [Vertex; 3] {
-        adjacent_vertices()[self as usize]
+        data::ADJACENT_VERTICES[self as usize]
     }
 
     /// Chunk axes permutations for vertices adjacent to this vertex in
@@ -151,7 +204,7 @@ impl Vertex {
     /// function.
     #[inline]
     pub fn chunk_axis_permutations(self) -> &'static [ChunkAxisPermutation; 3] {
-        &chunk_axis_permutations()[self as usize]
+        &data::CHUNK_AXIS_PERMUTATIONS[self as usize]
     }
 
     /// For each vertex of the cube dual to this dodecahedral vertex, provides an iterator of at
@@ -203,318 +256,290 @@ impl Vertex {
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
     pub fn dual_to_node(self) -> &'static MIsometry<f32> {
-        &dual_to_node_f32()[self as usize]
+        &data::DUAL_TO_NODE_F32[self as usize]
     }
 
     /// Transform from cube-centric coordinates to dodeca-centric coordinates
     pub fn dual_to_node_f64(self) -> &'static MIsometry<f64> {
-        &dual_to_node_f64()[self as usize]
+        &data::DUAL_TO_NODE_F64[self as usize]
     }
 
     /// Transform from dodeca-centric coordinates to cube-centric coordinates
     pub fn node_to_dual(self) -> &'static MIsometry<f32> {
-        &node_to_dual_f32()[self as usize]
+        &data::NODE_TO_DUAL_F32[self as usize]
     }
 
     /// Transform from dodeca-centric coordinates to cube-centric coordinates
     pub fn node_to_dual_f64(self) -> &'static MIsometry<f64> {
-        &node_to_dual_f64()[self as usize]
+        &data::NODE_TO_DUAL_F64[self as usize]
     }
 
     /// Scale factor used in conversion from cube-centric coordinates to euclidean chunk coordinates.
     /// Scaling the x, y, and z components of a vector in cube-centric coordinates by this value
     /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
     pub fn dual_to_chunk_factor() -> f32 {
-        dual_to_chunk_factor_f32()
+        *data::DUAL_TO_CHUNK_FACTOR_F32
     }
 
     /// Scale factor used in conversion from cube-centric coordinates to euclidean chunk coordinates.
     /// Scaling the x, y, and z components of a vector in cube-centric coordinates by this value
     /// and dividing them by the w coordinate will yield euclidean chunk coordinates.
     pub fn dual_to_chunk_factor_f64() -> f64 {
-        dual_to_chunk_factor_f64()
+        *data::DUAL_TO_CHUNK_FACTOR_F64
     }
 
     /// Scale factor used in conversion from euclidean chunk coordinates to cube-centric coordinates.
     /// Scaling the x, y, and z components of a vector in homogeneous euclidean chunk coordinates by this value
     /// and lorentz-normalizing the result will yield cube-centric coordinates.
     pub fn chunk_to_dual_factor() -> f32 {
-        chunk_to_dual_factor_f32()
+        *data::CHUNK_TO_DUAL_FACTOR_F32
     }
 
     /// Scale factor used in conversion from euclidean chunk coordinates to cube-centric coordinates.
     /// Scaling the x, y, and z components of a vector in homogeneous euclidean chunk coordinates by this value
     /// and lorentz-normalizing the result will yield cube-centric coordinates.
     pub fn chunk_to_dual_factor_f64() -> f64 {
-        chunk_to_dual_factor_f64()
+        *data::CHUNK_TO_DUAL_FACTOR_F64
     }
 
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
     pub fn parity(self) -> bool {
-        chunk_to_node_parity()[self as usize]
+        data::CHUNK_TO_NODE_PARITY[self as usize]
     }
 }
 
-pub const VERTEX_COUNT: usize = 20;
-pub const SIDE_COUNT: usize = 12;
 pub const BOUNDING_SPHERE_RADIUS_F64: f64 = 1.2264568712514068;
 pub const BOUNDING_SPHERE_RADIUS: f32 = BOUNDING_SPHERE_RADIUS_F64 as f32;
 
 mod data {
     use std::array;
-    use std::sync::OnceLock;
+    use std::sync::LazyLock;
 
-    use crate::dodeca::{Side, Vertex, SIDE_COUNT, VERTEX_COUNT};
-    use crate::math::{MIsometry, MVector};
+    use crate::dodeca::{Side, Vertex};
+    use crate::math::{self, MIsometry, MVector};
     use crate::voxel_math::ChunkAxisPermutation;
 
     /// Whether two sides share an edge
-    pub fn adjacent() -> &'static [[bool; SIDE_COUNT]; SIDE_COUNT] {
-        static LOCK: OnceLock<[[bool; SIDE_COUNT]; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| {
-            let mut result = [[false; SIDE_COUNT]; SIDE_COUNT];
-            for (i, side) in result.iter_mut().enumerate() {
-                for (j, is_adjacent) in side.iter_mut().enumerate() {
-                    let cosh_distance = (reflections_f64()[i] * reflections_f64()[j])[(3, 3)];
-                    // Possile cosh_distances: 1, 4.23606 = 2+sqrt(5), 9.47213 = 5+2*sqrt(5), 12.70820 = 6+3*sqrt(5);
-                    // < 2.0 indicates identical faces; < 5.0 indicates adjacent faces; > 5.0 indicates non-adjacent faces
-                    *is_adjacent = (2.0..5.0).contains(&cosh_distance);
-                }
-            }
-            result
-        })
-    }
+    pub static ADJACENT: LazyLock<[[bool; Side::VALUES.len()]; Side::VALUES.len()]> =
+        LazyLock::new(|| {
+            Side::VALUES.map(|side0| {
+                Side::VALUES.map(|side1| {
+                    // Two sides can have the following values when taking the mip
+                    // of their normals:
+                    // - When identical: 1
+                    // - When adjacent: 0
+                    // - When two steps away: -1.618 = -phi
+                    // - When antipodal: -2.618 = -phi - 1
+                    // Therefore, the range (-0.5..0.5) only contains adjacent sides
+                    // and is robust to numerical precision limits.
+                    (-0.5..0.5).contains(&side0.normal_f64().mip(side1.normal_f64()))
+                })
+            })
+        });
 
     /// Vector corresponding to the outer normal of each side
-    pub fn side_normals_f64() -> &'static [MVector<f64>; SIDE_COUNT] {
-        static LOCK: OnceLock<[MVector<f64>; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| {
-            let phi = libm::sqrt(1.25) + 0.5; // golden ratio
-            let f = MVector::new(1.0, phi, 0.0, libm::sqrt(phi)).lorentz_normalize();
+    pub static SIDE_NORMALS_F64: LazyLock<[MVector<f64>; Side::VALUES.len()]> =
+        LazyLock::new(|| {
+            // In Euclidean geometry, the coordinates of a dodecahedron's sides'
+            // normals are the same as the coordinates of the vertices of an
+            // icosahedron centered at the origin. There is a formula for these
+            // vertices' coordinates based on the golden ratio, which we take
+            // advantage of here.
 
-            let mut result: [MVector<f64>; SIDE_COUNT] = [MVector::zero(); SIDE_COUNT];
-            let mut i = 0;
-            for (x, y, z, w) in [
-                (f.x, f.y, f.z, f.w),
-                (-f.x, f.y, -f.z, f.w),
-                (f.x, -f.y, -f.z, f.w),
-                (-f.x, -f.y, f.z, f.w),
-            ] {
-                for (x, y, z, w) in [(x, y, z, w), (y, z, x, w), (z, x, y, w)] {
-                    result[i] = MVector::new(x, y, z, w);
-                    i += 1;
-                }
-            }
-            result
-        })
-    }
+            // To set the w-coordinate of these normals, we add an additional
+            // constraint: The `mip` of two adjacent normals must be 0 (since this
+            // is a right-angled dodechadron). Solving for `w` gives us our
+            // `template_normal`. We also make sure to normalize it.
+
+            // All other normals are based on this template normal, with permuations
+            // and sign changes.
+            let phi = libm::sqrt(1.25) + 0.5; // golden ratio
+            let template_normal = MVector::new(1.0, phi, 0.0, libm::sqrt(phi)).lorentz_normalize();
+            let signed_template_normals = {
+                let n = template_normal;
+                [
+                    MVector::new(n.x, n.y, n.z, n.w),
+                    MVector::new(-n.x, n.y, -n.z, n.w),
+                    MVector::new(n.x, -n.y, -n.z, n.w),
+                    MVector::new(-n.x, -n.y, n.z, n.w),
+                ]
+            };
+
+            Side::VALUES.map(|side| {
+                let signed_template_normal = signed_template_normals[side as usize / 3];
+                math::tuv_to_xyz((3 - side as usize % 3) % 3, signed_template_normal)
+            })
+        });
 
     /// Transform that moves from a neighbor to a reference node, for each side
-    pub fn reflections_f64() -> &'static [MIsometry<f64>; SIDE_COUNT] {
-        static LOCK: OnceLock<[MIsometry<f64>; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| side_normals_f64().map(|r| r.reflect()))
-    }
+    pub static REFLECTIONS_F64: LazyLock<[MIsometry<f64>; Side::VALUES.len()]> =
+        LazyLock::new(|| SIDE_NORMALS_F64.map(|r| r.reflect()));
 
     /// Sides incident to a vertex, in canonical order
-    pub fn vertex_sides() -> &'static [[Side; 3]; VERTEX_COUNT] {
-        static LOCK: OnceLock<[[Side; 3]; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| {
-            let mut result = [[Side::A; 3]; VERTEX_COUNT];
-            let mut vertex = 0;
-            // Kind of a hack, but working this out by hand isn't any fun.
-            for a in 0..SIDE_COUNT {
-                for b in (a + 1)..SIDE_COUNT {
-                    for c in (b + 1)..SIDE_COUNT {
-                        if !adjacent()[a][b] || !adjacent()[b][c] || !adjacent()[c][a] {
+    pub static VERTEX_CANONICAL_SIDES: LazyLock<[[Side; 3]; Vertex::VALUES.len()]> =
+        LazyLock::new(|| {
+            let mut result: Vec<[Side; 3]> = Vec::new();
+
+            // Rather than trying to work this out mathematically or by hand, we
+            // take the brute force approach of checking every unique triplet of
+            // vertices, adding a new vertex to the list whenever a new triplet of
+            // mutually-adjacent sides is discovered.
+            for a in Side::VALUES.iter().copied() {
+                for b in Side::VALUES[a as usize + 1..].iter().copied() {
+                    for c in Side::VALUES[b as usize + 1..].iter().copied() {
+                        if !a.adjacent_to(b) || !b.adjacent_to(c) || !c.adjacent_to(a) {
                             continue;
                         }
-                        result[vertex] = [
-                            Side::from_index(a),
-                            Side::from_index(b),
-                            Side::from_index(c),
-                        ];
-                        vertex += 1;
+                        result.push([a, b, c]);
                     }
                 }
             }
-            assert_eq!(vertex, 20);
-            result
-        })
-    }
 
-    // Which vertices are adjacent to other vertices and opposite the canonical sides
-    pub fn adjacent_vertices() -> &'static [[Vertex; 3]; VERTEX_COUNT] {
-        static LOCK: OnceLock<[[Vertex; 3]; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| {
-            let mut result = [[Vertex::A; 3]; VERTEX_COUNT];
+            result.try_into().expect("exactly 20 vertices expected")
+        });
 
-            for (i, triple) in result.iter_mut().enumerate() {
-                for result_index in 0..3 {
-                    let mut test_sides = vertex_sides()[i];
-                    // Keep modifying the result_index'th element of test_sides until its three elements are all
-                    // adjacent to a single vertex. That vertex is the vertex we're looking for.
-                    for side in Side::iter() {
-                        if side == vertex_sides()[i][result_index] {
+    /// Which vertices are adjacent to other vertices and opposite the canonical sides
+    pub static ADJACENT_VERTICES: LazyLock<[[Vertex; 3]; Vertex::VALUES.len()]> =
+        LazyLock::new(|| {
+            Vertex::VALUES.map(|vertex| {
+                let canonical_sides = vertex.canonical_sides();
+                array::from_fn(|canonical_sides_index| {
+                    // Try every possible side to find an adjacent vertex.
+                    for test_side in Side::iter() {
+                        if test_side == canonical_sides[canonical_sides_index] {
                             continue;
                         }
-                        test_sides[result_index] = side;
-                        if let Some(adjacent_vertex) =
-                            Vertex::from_sides(test_sides[0], test_sides[1], test_sides[2])
-                        {
-                            triple[result_index] = adjacent_vertex;
+                        let mut test_sides = canonical_sides;
+                        test_sides[canonical_sides_index] = test_side;
+                        if let Some(adjacent_vertex) = Vertex::from_sides(test_sides) {
+                            return adjacent_vertex;
                         }
-                    }
-                }
-            }
-            result
-        })
-    }
-
-    // Which transformations have to be done after a reflection to switch reference frames from one vertex
-    // to one of its adjacent vertices (ordered similarly to ADJACENT_VERTICES)
-    pub fn chunk_axis_permutations() -> &'static [[ChunkAxisPermutation; 3]; VERTEX_COUNT] {
-        static LOCK: OnceLock<[[ChunkAxisPermutation; 3]; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| {
-            array::from_fn(|vertex| {
-                array::from_fn(|result_index| {
-                    let mut test_sides = vertex_sides()[vertex];
-                    // Keep modifying the result_index'th element of test_sides until its three elements are all
-                    // adjacent to a single vertex (determined using `Vertex::from_sides`).
-                    for side in Side::iter() {
-                        if side == vertex_sides()[vertex][result_index] {
-                            continue;
-                        }
-                        test_sides[result_index] = side;
-                        let Some(adjacent_vertex) =
-                            Vertex::from_sides(test_sides[0], test_sides[1], test_sides[2])
-                        else {
-                            continue;
-                        };
-                        // Compare the natural permutation of sides after a reflection from `vertex` to `adjacent_vertex`
-                        // to the canonical permutation of the sides for `adjacent_vertex`.
-                        return ChunkAxisPermutation::from_permutation(
-                            test_sides,
-                            adjacent_vertex.canonical_sides(),
-                        );
                     }
                     panic!("No suitable vertex found");
                 })
             })
+        });
+
+    /// Which transformations have to be done after a reflection to switch reference frames from one vertex
+    /// to one of its adjacent vertices (ordered similarly to ADJACENT_VERTICES)
+    pub static CHUNK_AXIS_PERMUTATIONS: LazyLock<
+        [[ChunkAxisPermutation; 3]; Vertex::VALUES.len()],
+    > = LazyLock::new(|| {
+        Vertex::VALUES.map(|vertex| {
+            let canonical_sides = vertex.canonical_sides();
+            array::from_fn(|canonical_sides_index| {
+                // Try every possible side to find an adjacent vertex.
+                for test_side in Side::iter() {
+                    if test_side == canonical_sides[canonical_sides_index] {
+                        continue;
+                    }
+                    let mut test_sides = canonical_sides;
+                    test_sides[canonical_sides_index] = test_side;
+                    let Some(adjacent_vertex) = Vertex::from_sides(test_sides) else {
+                        continue;
+                    };
+                    // Compare the natural permutation of sides after a reflection from `vertex` to `adjacent_vertex`
+                    // to the canonical permutation of the sides for `adjacent_vertex`.
+                    return ChunkAxisPermutation::from_permutation(
+                        test_sides,
+                        adjacent_vertex.canonical_sides(),
+                    );
+                }
+                panic!("No suitable vertex found");
+            })
         })
-    }
+    });
 
     /// Transform that converts from cube-centric coordinates to dodeca-centric coordinates
-    pub fn dual_to_node_f64() -> &'static [MIsometry<f64>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[MIsometry<f64>; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| {
-            let mip_origin_normal = MVector::origin().mip(&side_normals_f64()[0]); // This value is the same for every side
-            let mut result = [MIsometry::identity(); VERTEX_COUNT];
-            for (i, map) in result.iter_mut().enumerate() {
-                let [a, b, c] = vertex_sides()[i];
+    pub static DUAL_TO_NODE_F64: LazyLock<[MIsometry<f64>; Vertex::VALUES.len()]> =
+        LazyLock::new(|| {
+            let mip_origin_normal = MVector::origin().mip(Side::A.normal_f64()); // This value is the same for every side
+            Vertex::VALUES.map(|vertex| {
+                let [a, b, c] = vertex.canonical_sides();
+
+                // The matrix we want to produce is a change-of-basis matrix,
+                // consistint of four columns representing vectors with
+                // dodeca-centric coordinates, where each vector represents one of
+                // the basis vectors in cube-centric coordinates.
+
+                // Since adjacent normals are already orthogonal, we can use them
+                // as-is for the first three columns of this matrix. We just need to
+                // negate them so that they point towards the origin instead of away
+                // because the dodeca's origin has positive cube-centric
+                // coordinates.
+
+                // As for the last column of the change-of-basis matrix, that would
+                // be the cube-centric origin in dodeca-centric coordinates, or in
+                // other words, the vertex's location in dodeca-centric coordinates.
+                // To find this, we start at the origin and project the vector to be
+                // orthogonal to each of the three normals, one at a time. Because
+                // these three normals are orthogonal to each other, the resulting
+                // formula is simple.
+
+                // Note that part of the projection formula requires taking the
+                // `mip` of a normal vector and the origin, but this is a constant
+                // value that doesn't depend on the normal vector, so the formula
+                // used here takes advantage of that.
                 let vertex_position = (MVector::origin()
                     - (*a.normal_f64() + *b.normal_f64() + *c.normal_f64()) * mip_origin_normal)
                     .lorentz_normalize();
-                *map = MIsometry::from_columns_unchecked(&[
+                MIsometry::from_columns_unchecked(&[
                     -*a.normal_f64(),
                     -*b.normal_f64(),
                     -*c.normal_f64(),
                     vertex_position,
-                ]);
-            }
-            result
-        })
-    }
+                ])
+            })
+        });
 
     /// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
-    pub fn node_to_dual_f64() -> &'static [MIsometry<f64>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[MIsometry<f64>; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| dual_to_node_f64().map(|m| m.mtranspose()))
-    }
+    pub static NODE_TO_DUAL_F64: LazyLock<[MIsometry<f64>; Vertex::VALUES.len()]> =
+        LazyLock::new(|| DUAL_TO_NODE_F64.map(|m| m.mtranspose()));
 
-    pub fn dual_to_chunk_factor_f64() -> f64 {
-        static LOCK: OnceLock<f64> = OnceLock::new();
-        *LOCK.get_or_init(|| (2.0 + 5.0f64.sqrt()).sqrt())
-    }
+    pub static DUAL_TO_CHUNK_FACTOR_F64: LazyLock<f64> =
+        LazyLock::new(|| (2.0 + 5.0f64.sqrt()).sqrt());
 
-    pub fn chunk_to_dual_factor_f64() -> f64 {
-        static LOCK: OnceLock<f64> = OnceLock::new();
-        *LOCK.get_or_init(|| 1.0 / dual_to_chunk_factor_f64())
-    }
+    pub static CHUNK_TO_DUAL_FACTOR_F64: LazyLock<f64> =
+        LazyLock::new(|| 1.0 / *DUAL_TO_CHUNK_FACTOR_F64);
 
     /// Vertex shared by 3 sides
-    pub fn sides_to_vertex() -> &'static [[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT] {
-        static LOCK: OnceLock<[[[Option<Vertex>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT]> =
-            OnceLock::new();
-        LOCK.get_or_init(|| {
-            let mut result = [[[None; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT];
-            let mut vertex = Vertex::iter();
-            // Kind of a hack, but working this out by hand isn't any fun.
-            for a in 0..SIDE_COUNT {
-                for b in (a + 1)..SIDE_COUNT {
-                    for c in (b + 1)..SIDE_COUNT {
-                        if !Side::from_index(a).adjacent_to(Side::from_index(b))
-                            || !Side::from_index(b).adjacent_to(Side::from_index(c))
-                            || !Side::from_index(c).adjacent_to(Side::from_index(a))
-                        {
-                            continue;
-                        }
-                        let v = Some(vertex.next().unwrap());
-                        result[a][b][c] = v;
-                        result[a][c][b] = v;
-                        result[b][a][c] = v;
-                        result[b][c][a] = v;
-                        result[c][a][b] = v;
-                        result[c][b][a] = v;
-                    }
-                }
-            }
-            assert_eq!(vertex.next(), None);
-            result
-        })
-    }
+    pub static SIDES_TO_VERTEX: LazyLock<
+        [[[Option<Vertex>; Side::VALUES.len()]; Side::VALUES.len()]; Side::VALUES.len()],
+    > = LazyLock::new(|| {
+        let mut result = [[[None; Side::VALUES.len()]; Side::VALUES.len()]; Side::VALUES.len()];
+        for vertex in Vertex::iter() {
+            let [a, b, c] = vertex.canonical_sides().map(|side| side as usize);
+            result[a][b][c] = Some(vertex);
+            result[a][c][b] = Some(vertex);
+            result[b][a][c] = Some(vertex);
+            result[b][c][a] = Some(vertex);
+            result[c][a][b] = Some(vertex);
+            result[c][b][a] = Some(vertex);
+        }
+        result
+    });
 
-    /// Whether the determinant of the cube-to-node transform is negative
-    pub fn chunk_to_node_parity() -> &'static [bool; VERTEX_COUNT] {
-        static LOCK: OnceLock<[bool; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| {
-            let mut result = [false; VERTEX_COUNT];
+    /// Whether the determinant of the dual-to-node transform is negative
+    pub static CHUNK_TO_NODE_PARITY: LazyLock<[bool; Vertex::VALUES.len()]> =
+        LazyLock::new(|| Vertex::VALUES.map(|vertex| vertex.dual_to_node().parity()));
 
-            for v in Vertex::iter() {
-                result[v as usize] = v.dual_to_node().parity();
-            }
-            result
-        })
-    }
+    pub static SIDE_NORMALS_F32: LazyLock<[MVector<f32>; Side::VALUES.len()]> =
+        LazyLock::new(|| SIDE_NORMALS_F64.map(|n| n.to_f32()));
 
-    pub fn side_normals_f32() -> &'static [MVector<f32>; SIDE_COUNT] {
-        static LOCK: OnceLock<[MVector<f32>; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| side_normals_f64().map(|n| n.to_f32()))
-    }
+    pub static REFLECTIONS_F32: LazyLock<[MIsometry<f32>; Side::VALUES.len()]> =
+        LazyLock::new(|| REFLECTIONS_F64.map(|n| n.to_f32()));
 
-    pub fn reflections_f32() -> &'static [MIsometry<f32>; SIDE_COUNT] {
-        static LOCK: OnceLock<[MIsometry<f32>; SIDE_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| reflections_f64().map(|n| n.to_f32()))
-    }
+    pub static DUAL_TO_NODE_F32: LazyLock<[MIsometry<f32>; Vertex::VALUES.len()]> =
+        LazyLock::new(|| DUAL_TO_NODE_F64.map(|n| n.to_f32()));
 
-    pub fn dual_to_node_f32() -> &'static [MIsometry<f32>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[MIsometry<f32>; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| dual_to_node_f64().map(|n| n.to_f32()))
-    }
+    pub static NODE_TO_DUAL_F32: LazyLock<[MIsometry<f32>; Vertex::VALUES.len()]> =
+        LazyLock::new(|| NODE_TO_DUAL_F64.map(|n| n.to_f32()));
 
-    pub fn node_to_dual_f32() -> &'static [MIsometry<f32>; VERTEX_COUNT] {
-        static LOCK: OnceLock<[MIsometry<f32>; VERTEX_COUNT]> = OnceLock::new();
-        LOCK.get_or_init(|| node_to_dual_f64().map(|n| n.to_f32()))
-    }
+    pub static DUAL_TO_CHUNK_FACTOR_F32: LazyLock<f32> =
+        LazyLock::new(|| *DUAL_TO_CHUNK_FACTOR_F64 as f32);
 
-    pub fn dual_to_chunk_factor_f32() -> f32 {
-        static LOCK: OnceLock<f32> = OnceLock::new();
-        *LOCK.get_or_init(|| dual_to_chunk_factor_f64() as f32)
-    }
-
-    pub fn chunk_to_dual_factor_f32() -> f32 {
-        static LOCK: OnceLock<f32> = OnceLock::new();
-        *LOCK.get_or_init(|| chunk_to_dual_factor_f64() as f32)
-    }
+    pub static CHUNK_TO_DUAL_FACTOR_F32: LazyLock<f32> =
+        LazyLock::new(|| *CHUNK_TO_DUAL_FACTOR_F64 as f32);
 }
 
 #[cfg(test)]
@@ -526,15 +551,17 @@ mod tests {
     #[test]
     fn vertex_sides_consistent() {
         use std::collections::HashSet;
-        let triples = vertex_sides().iter().collect::<HashSet<_>>();
-        assert_eq!(triples.len(), VERTEX_COUNT);
-        for &triple in vertex_sides() {
+        let triples = Vertex::iter()
+            .map(|v| v.canonical_sides())
+            .collect::<HashSet<_>>();
+        assert_eq!(triples.len(), Vertex::VALUES.len());
+        for triple in Vertex::iter().map(|v| v.canonical_sides()) {
             let mut sorted = triple;
             sorted.sort_unstable();
             assert_eq!(triple, sorted);
-            assert!(adjacent()[triple[0] as usize][triple[1] as usize]);
-            assert!(adjacent()[triple[1] as usize][triple[2] as usize]);
-            assert!(adjacent()[triple[2] as usize][triple[0] as usize]);
+            assert!(triple[0].adjacent_to(triple[1]));
+            assert!(triple[1].adjacent_to(triple[2]));
+            assert!(triple[2].adjacent_to(triple[0]));
         }
     }
 
@@ -542,12 +569,12 @@ mod tests {
     fn sides_to_vertex() {
         for v in Vertex::iter() {
             let [a, b, c] = v.canonical_sides();
-            assert_eq!(v, Vertex::from_sides(a, b, c).unwrap());
-            assert_eq!(v, Vertex::from_sides(a, c, b).unwrap());
-            assert_eq!(v, Vertex::from_sides(b, a, c).unwrap());
-            assert_eq!(v, Vertex::from_sides(b, c, a).unwrap());
-            assert_eq!(v, Vertex::from_sides(c, a, b).unwrap());
-            assert_eq!(v, Vertex::from_sides(c, b, a).unwrap());
+            assert_eq!(v, Vertex::from_sides([a, b, c]).unwrap());
+            assert_eq!(v, Vertex::from_sides([a, c, b]).unwrap());
+            assert_eq!(v, Vertex::from_sides([b, a, c]).unwrap());
+            assert_eq!(v, Vertex::from_sides([b, c, a]).unwrap());
+            assert_eq!(v, Vertex::from_sides([c, a, b]).unwrap());
+            assert_eq!(v, Vertex::from_sides([c, b, a]).unwrap());
         }
     }
 
