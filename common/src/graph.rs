@@ -166,7 +166,7 @@ impl Graph {
     /// Whether `node`'s neighbor along `side` is closer than it to the origin
     fn is_descender(&self, node: NodeId, side: Side) -> bool {
         let v = &self.nodes[&node];
-        v.neighbors[side as usize].map_or(false, |x| self.nodes[&x].length < v.length)
+        v.neighbors[side as usize].is_some_and(|x| self.nodes[&x].length < v.length)
     }
 
     /// Inserts the neighbor of the given node at the given side into the graph, ensuring that all

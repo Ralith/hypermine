@@ -242,10 +242,7 @@ async fn load_geom(
         .read_normals()
         .ok_or_else(|| anyhow!("normals missing"))?;
     let vertex_count = positions.len();
-    if vertex_count != normals.len()
-        || texcoords
-            .as_ref()
-            .map_or(false, |x| vertex_count != x.len())
+    if vertex_count != normals.len() || texcoords.as_ref().is_some_and(|x| vertex_count != x.len())
     {
         bail!("inconsistent vertex attribute counts");
     }
