@@ -1,4 +1,4 @@
-use rand::{distributions::Uniform, Rng, SeedableRng};
+use rand::{distr::Uniform, Rng, SeedableRng};
 use rand_distr::Normal;
 
 use crate::{
@@ -387,13 +387,13 @@ impl ChunkParams {
     /// wood block as the ground block.
     fn generate_trees(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         // margins are added to keep voxels outside the chunk from being read/written
-        let random_position = Uniform::new(1, self.dimension - 1);
+        let random_position = Uniform::new(1, self.dimension - 1).unwrap();
 
         let rain = self.env.rainfalls[0];
         let tree_candidate_count =
             (u32::from(self.dimension - 2).pow(3) as f64 * (rain / 100.0).clamp(0.0, 0.5)) as usize;
         for _ in 0..tree_candidate_count {
-            let loc = na::Vector3::from_distribution(&random_position, rng);
+            let loc = na::Vector3::from_fn(|_, _| rng.sample(random_position));
             let voxel_of_interest_index = index(self.dimension, loc);
             let neighbor_data = self.voxel_neighbors(loc, voxels);
 
@@ -477,7 +477,7 @@ struct EnviroFactors {
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
-        let unif = Uniform::new_inclusive(-1.0, 1.0);
+        let unif = Uniform::new_inclusive(-1.0, 1.0).unwrap();
         let max_elevation = parent.max_elevation + rng.sample(Normal::new(0.0, 4.0).unwrap());
 
         Self {

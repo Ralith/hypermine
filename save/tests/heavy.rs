@@ -6,7 +6,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 #[test]
 fn write() {
-    let mut rng = SmallRng::from_entropy();
+    let mut rng = SmallRng::from_os_rng();
     let file = tempfile::NamedTempFile::new().unwrap();
     let save = Save::open(file.path(), 12).unwrap();
     let node = save::VoxelNode {
@@ -23,7 +23,7 @@ fn write() {
         let mut writer_guard = save.write().unwrap();
         let mut writer = writer_guard.get().unwrap();
         for _ in 0..NODES {
-            writer.put_voxel_node(rng.gen(), &node).unwrap();
+            writer.put_voxel_node(rng.random(), &node).unwrap();
         }
         drop(writer);
         writer_guard.commit().unwrap();

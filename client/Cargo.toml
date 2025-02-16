@@ -14,8 +14,8 @@ server = { path = "../server" }
 tracing = "0.1.10"
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
 lahar = { git = "https://github.com/Ralith/lahar", rev = "7963ae5750ea61fa0a894dbb73d3be0ac77255d2" }
-yakui = { git = "https://github.com/SecondHalfGames/yakui", rev = "136f88d54f08fcb21a5215f422c8581f89d46dd2" }
-yakui-vulkan = { git = "https://github.com/SecondHalfGames/yakui", rev = "136f88d54f08fcb21a5215f422c8581f89d46dd2" }
+yakui = "0.3.0"
+yakui-vulkan = "0.3.0"
 winit = "0.30.4"
 ash-window = "0.13"
 raw-window-handle = "0.6"
@@ -23,17 +23,17 @@ directories = "6.0.0"
 vk-shader-macros = "0.2.5"
 nalgebra = { workspace = true }
 libm = "0.2.6"
-tokio = { version = "1.18.2", features = ["rt-multi-thread", "sync", "macros"] }
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "sync", "macros"] }
 png = "0.17.5"
 anyhow = "1.0.26"
-whoami = "1.2.1"
+whoami = "1.5.2"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = { workspace = true }
 fxhash = "0.2.1"
 downcast-rs = "2.0.0"
 quinn = { workspace = true }
 futures-util = "0.3.1"
-webpki = "0.22.0"
+webpki = "0.22.4"
 hecs = { workspace = true }
 memoffset = "0.9"
 gltf = { version = "1.0.0", default-features = false, features = ["utils"] }

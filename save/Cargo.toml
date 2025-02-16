@@ -14,7 +14,7 @@ zstd = { package = "zstd-safe", version = "7.1.0", default-features = false, fea
 [dev-dependencies]
 tempfile = "3.4"
 criterion = "0.5"
-rand = { version = "0.8.5", features = ["small_rng"] }
+rand = { version = "0.9.0", features = ["small_rng"] }
 
 [[bench]]
 name = "bench"
