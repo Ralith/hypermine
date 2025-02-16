@@ -20,7 +20,7 @@ anyhow = "1.0.26"
 rcgen = { version = "0.13.1", default-features = false, features = ["ring"] }
 hostname = "0.4.0"
 hecs = { workspace = true }
-rand = { version = "0.8.5", features = ["small_rng"] }
+rand = { version = "0.9.0", features = ["small_rng"] }
 fxhash = "0.2.1"
 nalgebra = { workspace = true }
 libm = "0.2.6"

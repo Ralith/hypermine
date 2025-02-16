@@ -41,10 +41,10 @@ fn persist_character() {
     let save = Save::open(file.path(), 12).unwrap();
     let mut writer_guard = save.write().unwrap();
     let mut writer = writer_guard.get().unwrap();
-    let mut rng = SmallRng::from_entropy();
+    let mut rng = SmallRng::from_os_rng();
     let mut path = Vec::with_capacity(17000);
     for _ in 0..17000 {
-        path.push(rng.gen_range(0..12));
+        path.push(rng.random_range(0..12));
     }
     let ch = save::Character { path };
     writer.put_character("asdf", &ch).unwrap();

@@ -1,7 +1,7 @@
 #![allow(clippy::needless_borrowed_reference)]
 
 use rand::{
-    distributions::{Distribution, Standard},
+    distr::{Distribution, StandardUniform},
     Rng,
 };
 
@@ -49,9 +49,9 @@ impl std::fmt::Display for EntityId {
     }
 }
 
-impl Distribution<EntityId> for Standard {
+impl Distribution<EntityId> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityId {
-        EntityId(rng.gen())
+        EntityId(rng.random())
     }
 }
 
