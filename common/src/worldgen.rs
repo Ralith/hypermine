@@ -123,7 +123,7 @@ impl NodeState {
     }
 
     pub fn up_direction(&self) -> MVector<f32> {
-        self.surface.normal().to_f32()
+        self.surface.normal().cast()
     }
 }
 

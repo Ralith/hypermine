@@ -524,16 +524,16 @@ mod data {
         LazyLock::new(|| Vertex::VALUES.map(|vertex| vertex.dual_to_node().parity()));
 
     pub static SIDE_NORMALS_F32: LazyLock<[MVector<f32>; Side::VALUES.len()]> =
-        LazyLock::new(|| SIDE_NORMALS_F64.map(|n| n.to_f32()));
+        LazyLock::new(|| SIDE_NORMALS_F64.map(|n| n.cast()));
 
     pub static REFLECTIONS_F32: LazyLock<[MIsometry<f32>; Side::VALUES.len()]> =
-        LazyLock::new(|| REFLECTIONS_F64.map(|n| n.to_f32()));
+        LazyLock::new(|| REFLECTIONS_F64.map(|n| n.cast()));
 
     pub static DUAL_TO_NODE_F32: LazyLock<[MIsometry<f32>; Vertex::VALUES.len()]> =
-        LazyLock::new(|| DUAL_TO_NODE_F64.map(|n| n.to_f32()));
+        LazyLock::new(|| DUAL_TO_NODE_F64.map(|n| n.cast()));
 
     pub static NODE_TO_DUAL_F32: LazyLock<[MIsometry<f32>; Vertex::VALUES.len()]> =
-        LazyLock::new(|| NODE_TO_DUAL_F64.map(|n| n.to_f32()));
+        LazyLock::new(|| NODE_TO_DUAL_F64.map(|n| n.cast()));
 
     pub static DUAL_TO_CHUNK_FACTOR_F32: LazyLock<f32> =
         LazyLock::new(|| *DUAL_TO_CHUNK_FACTOR_F64 as f32);
