@@ -8,6 +8,7 @@
 
 use na::{RealField, Scalar};
 use serde::{Deserialize, Serialize};
+use simba::scalar::SupersetOf;
 use std::ops::*;
 
 /// A stack-allocated 4-dimensional column-vector in Minkowski space. Such
@@ -106,6 +107,12 @@ impl<N: RealField + Copy> MVector<N> {
         self.0 * na::RowVector4::new(other.x, other.y, other.z, -other.w)
     }
 
+    /// Cast the components of `self` to another type.
+    #[inline]
+    pub fn cast<N2: RealField + Copy + SupersetOf<N>>(self) -> MVector<N2> {
+        MVector(self.0.cast())
+    }
+
     /// The column vector with components `[0, 0, 0, 0]`.
     #[inline]
     pub fn zero() -> Self {
@@ -155,20 +162,6 @@ impl<N: RealField + Copy> MVector<N> {
     #[inline]
     pub fn xyz(self) -> na::Vector3<N> {
         self.0.xyz()
-    }
-}
-
-impl MVector<f32> {
-    /// Casts the components to an `f64`
-    pub fn to_f64(self) -> MVector<f64> {
-        MVector(self.0.cast::<f64>())
-    }
-}
-
-impl MVector<f64> {
-    /// Casts the components to an `f32`
-    pub fn to_f32(self) -> MVector<f32> {
-        MVector(self.0.cast::<f32>())
     }
 }
 
@@ -465,19 +458,11 @@ impl<N: RealField + Copy> MIsometry<N> {
         // orientation components.
         normalized_translation_component * normalized_orientation_component
     }
-}
 
-impl MIsometry<f32> {
-    /// Casts the components to an `f64`
-    pub fn to_f64(self) -> MIsometry<f64> {
-        MIsometry(self.0.cast::<f64>())
-    }
-}
-
-impl MIsometry<f64> {
-    /// Casts the components to an `f32`
-    pub fn to_f32(self) -> MIsometry<f32> {
-        MIsometry(self.0.cast::<f32>())
+    /// Cast the components of `self` to another type.
+    #[inline]
+    pub fn cast<N2: RealField + Copy + SupersetOf<N>>(self) -> MIsometry<N2> {
+        MIsometry(self.0.cast())
     }
 }
 
