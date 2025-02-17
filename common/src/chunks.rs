@@ -4,7 +4,8 @@ use crate::dodeca::Vertex;
 
 /// A table of chunks contained by a single node
 ///
-/// Each chunk is 1/8 of a cube whose vertices are at the centers of nodes.
+/// Each chunk is 1/8 of a cube whose vertices are at the centers of nodes. It
+/// can also be thought of as 1/20 of a node.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Chunks<T> {
     values: [T; 20],

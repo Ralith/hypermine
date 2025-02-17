@@ -37,6 +37,7 @@ impl Graph {
         &self.layout
     }
 
+    /// The number of nodes in the graph.
     #[inline]
     pub fn len(&self) -> u32 {
         self.nodes.len() as u32
@@ -113,6 +114,7 @@ impl Graph {
         self.nodes[&node].neighbors[which as usize]
     }
 
+    /// The number of steps required to get from the origin to the given node.
     #[inline]
     pub fn length(&self, node: NodeId) -> u32 {
         self.nodes[&node].length
@@ -151,7 +153,11 @@ impl Graph {
         self.nodes[&node].parent_side
     }
 
-    /// Iterate over every node and its parent except the root
+    /// Iterate over every node except the root via a breadth-first search in
+    /// the form of ordered pairs `(Side, NodeId)` where `NodeId` is the ID of
+    /// its parent node, and `Side` is the side shared by the node and the
+    /// parent node. This can be used to construct a copy of the graph with the
+    /// same set of nodes.
     pub fn tree(&self) -> TreeIter<'_> {
         TreeIter::new(self)
     }
@@ -233,7 +239,7 @@ impl Graph {
                 // This is non-obvious, as it relies on the fact that a side is a descender of the subject
                 // exactly when it is a descender of the given node. This is not true in general, but it is true
                 // when the descender in question is adjacent to the side shared by the given node and the subject.
-                // That is what allows the `self.is_near_side(node, candidate_descender_side)` condition to behave as desired.
+                // That is what allows the `self.is_descender(node, candidate_descender)` condition to behave as desired.
 
                 // We would like to return (and recursively create if needed) the shorter neighbor of the subject. This means that
                 // if we label the shared side A and the descender B, the path we would like to follow from the given node is AB,
@@ -248,7 +254,7 @@ impl Graph {
                     Some((candidate_descender, shorter_neighbor_of_subject));
                 count += 1;
             } else {
-                // The `candidate_descender_side` is not a descender of the subject, so no action is necessary.
+                // The `candidate_descender` is not a descender of the subject, so no action is necessary.
             }
         }
         shorter_neighbors_of_subject.into_iter().flatten()
@@ -265,6 +271,13 @@ impl Graph {
     }
 }
 
+/// Unique 128-bit identifier for a dodecahedral node in the graph. This ID
+/// depends entirely on the location of the node within the graph and is
+/// guaranteed not to depend on the order in which nodes are added to the graph.
+///
+/// A cryptographic hash function is used to ensure uniqueness, making it
+/// astronomically unlikely to be able to find two different nodes in the graph
+/// with the same ID.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct NodeId(u128);
 
