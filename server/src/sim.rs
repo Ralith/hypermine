@@ -18,7 +18,6 @@ use tracing::{error, error_span, info, trace};
 use common::{
     character_controller, dodeca,
     graph::{Graph, NodeId},
-    math,
     node::{populate_fresh_nodes, Chunk},
     proto::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
@@ -365,7 +364,7 @@ impl Sim {
         // Spawn entirely new character
         let position = Position {
             node: NodeId::ROOT,
-            local: math::translate_along(&(na::Vector3::y() * 1.4)),
+            local: MIsometry::translation_along(&(na::Vector3::y() * 1.4)),
         };
         let character = Character {
             name: hello.name.clone(),

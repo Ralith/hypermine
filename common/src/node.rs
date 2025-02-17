@@ -40,7 +40,7 @@ impl Graph {
     pub fn get_relative_up(&self, position: &Position) -> Option<na::UnitVector3<f32>> {
         let node = self.get(position.node).as_ref()?;
         Some(na::UnitVector3::new_normalize(
-            (position.local.mtranspose() * node.state.up_direction()).xyz(),
+            (position.local.inverse() * node.state.up_direction()).xyz(),
         ))
     }
 
@@ -432,7 +432,6 @@ impl VoxelAABB {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::math;
     use crate::math::{MIsometry, MVector};
 
     use super::*;
@@ -446,10 +445,8 @@ mod tests {
         let layout = ChunkLayout::new(dimension);
 
         // Pick an arbitrary ray by transforming the positive-x-axis ray.
-        let ray = MIsometry::rotation_to_homogeneous(na::Rotation3::from_axis_angle(
-            &na::Vector3::z_axis(),
-            0.4,
-        )) * math::translate_along(&na::Vector3::new(0.2, 0.3, 0.1))
+        let ray = MIsometry::from(na::Rotation3::from_axis_angle(&na::Vector3::z_axis(), 0.4))
+            * MIsometry::translation_along(&na::Vector3::new(0.2, 0.3, 0.1))
             * &Ray::new(MVector::w(), MVector::x());
 
         let tanh_distance = 0.2;
@@ -462,7 +459,7 @@ mod tests {
         let ray_test_points: Vec<_> = (0..num_ray_test_points)
             .map(|i| {
                 ray.ray_point(tanh_distance * (i as f32 / (num_ray_test_points - 1) as f32))
-                    .lorentz_normalize()
+                    .normalized()
             })
             .collect();
 
@@ -485,7 +482,7 @@ mod tests {
                 let mut plane_normal = MVector::zero();
                 plane_normal[t_axis] = 1.0;
                 plane_normal[3] = layout.grid_to_dual(t);
-                let plane_normal = plane_normal.lorentz_normalize();
+                let plane_normal = plane_normal.normalized();
 
                 for test_point in &ray_test_points {
                     assert!(
@@ -519,7 +516,7 @@ mod tests {
                     line_position[u_axis] = layout.grid_to_dual(u);
                     line_position[v_axis] = layout.grid_to_dual(v);
                     line_position[3] = 1.0;
-                    let line_position = line_position.lorentz_normalize();
+                    let line_position = line_position.normalized();
 
                     for test_point in &ray_test_points {
                         assert!(
@@ -551,7 +548,7 @@ mod tests {
                         layout.grid_to_dual(z),
                         1.0,
                     )
-                    .lorentz_normalize();
+                    .normalized();
 
                     for test_point in &ray_test_points {
                         assert!(

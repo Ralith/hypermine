@@ -56,7 +56,7 @@ pub fn sphere_cast(
             Some(GraphCastHit {
                 tanh_distance: hit.tanh_distance,
                 chunk,
-                normal: transform.mtranspose() * hit.normal,
+                normal: transform.inverse() * hit.normal,
             })
         });
     }
@@ -187,7 +187,7 @@ mod tests {
                     self.chosen_chunk_relative_grid_ray_end[2] / dual_to_grid_factor,
                     1.0,
                 )
-                .lorentz_normalize();
+                .normalized();
 
             let ray_position = *Vertex::A.dual_to_node()
                 * MVector::new(
@@ -196,13 +196,12 @@ mod tests {
                     self.start_chunk_relative_grid_ray_start[2] / dual_to_grid_factor,
                     1.0,
                 )
-                .lorentz_normalize();
+                .normalized();
             let ray_direction = ray_target - ray_position;
 
             let ray = Ray::new(
                 ray_position,
-                (ray_direction + ray_position * ray_position.mip(&ray_direction))
-                    .lorentz_normalize(),
+                (ray_direction + ray_position * ray_position.mip(&ray_direction)).normalized(),
             );
 
             let tanh_distance =
@@ -444,7 +443,7 @@ mod tests {
         // set to 0 and normalized
         let ray = Ray::new(
             MVector::origin(),
-            (vertex_pos - MVector::w() * vertex_pos.w).normalize(),
+            (vertex_pos - MVector::w() * vertex_pos.w).normalized(),
         );
         let sphere_radius = 0.1;
 

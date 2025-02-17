@@ -5,7 +5,7 @@ use tracing::error;
 use crate::{
     collision_math::Ray,
     graph::Graph,
-    graph_collision, math,
+    graph_collision,
     math::{MIsometry, MVector},
     proto::Position,
 };
@@ -56,7 +56,7 @@ pub fn check_collision(
         .atanh();
 
     let displacement_vector = displacement_normalized.xyz() * distance;
-    let displacement_transform = math::translate_along(&displacement_vector);
+    let displacement_transform = MIsometry::translation_along(&displacement_vector);
 
     CollisionCheckingResult {
         displacement_vector,
@@ -67,7 +67,7 @@ pub fn check_collision(
             // This normal now represents a contact point at the origin, so we omit the w-coordinate
             // to ensure that it's orthogonal to the origin.
             normal: na::UnitVector3::new_normalize(
-                (displacement_transform.mtranspose() * hit.normal).xyz(),
+                (displacement_transform.inverse() * hit.normal).xyz(),
             ),
         }),
     }

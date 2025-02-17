@@ -93,7 +93,8 @@ impl FrustumPlanes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::math::translate_along;
+
+    use common::math::MIsometry;
     use std::f32;
 
     #[test]
@@ -102,28 +103,27 @@ mod tests {
         let planes = Frustum::from_vfov(f32::consts::FRAC_PI_4, 1.0).planes();
         assert!(planes.contain(&MVector::origin(), 0.1));
         assert!(planes.contain(
-            &(translate_along(&-na::Vector3::z()) * MVector::origin()),
+            &(MIsometry::translation_along(&-na::Vector3::z()) * MVector::origin()),
             0.0
         ));
         assert!(!planes.contain(
-            &(translate_along(&na::Vector3::z()) * MVector::origin()),
-            0.0
-        ));
-
-        assert!(!planes.contain(
-            &(translate_along(&na::Vector3::x()) * MVector::origin()),
+            &(MIsometry::translation_along(&na::Vector3::z()) * MVector::origin()),
             0.0
         ));
         assert!(!planes.contain(
-            &(translate_along(&na::Vector3::y()) * MVector::origin()),
+            &(MIsometry::translation_along(&na::Vector3::x()) * MVector::origin()),
             0.0
         ));
         assert!(!planes.contain(
-            &(translate_along(&-na::Vector3::x()) * MVector::origin()),
+            &(MIsometry::translation_along(&na::Vector3::y()) * MVector::origin()),
             0.0
         ));
         assert!(!planes.contain(
-            &(translate_along(&-na::Vector3::y()) * MVector::origin()),
+            &(MIsometry::translation_along(&-na::Vector3::x()) * MVector::origin()),
+            0.0
+        ));
+        assert!(!planes.contain(
+            &(MIsometry::translation_along(&-na::Vector3::y()) * MVector::origin()),
             0.0
         ));
     }

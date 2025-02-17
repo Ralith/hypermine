@@ -11,7 +11,7 @@ use crate::{
         vector_bounds::{BoundedVectors, VectorBound},
     },
     graph::Graph,
-    math,
+    math::{self, MIsometry},
     proto::{CharacterInput, Position},
     sanitize_motion_input,
     sim_config::CharacterConfig,
@@ -47,7 +47,7 @@ pub fn run_character_step(
     }
 
     // Renormalize
-    position.local = position.local.renormalize_isometry();
+    position.local = position.local.renormalized();
     let (next_node, transition_xf) = graph.normalize_transform(position.node, &position.local);
     if next_node != position.node {
         position.node = next_node;
@@ -120,7 +120,7 @@ fn run_no_clip_character_step(
 ) {
     *velocity = ctx.movement_input * ctx.cfg.no_clip_movement_speed;
     *on_ground = false;
-    position.local *= math::translate_along(&(*velocity * ctx.dt_seconds));
+    position.local *= MIsometry::translation_along(&(*velocity * ctx.dt_seconds));
 }
 
 /// Returns the normal corresponding to the ground below the character, up to the `allowed_distance`. If
