@@ -280,8 +280,9 @@ fn handle_collision(
     // Collisions are divided into two categories: Ground collisions and wall collisions.
     // Ground collisions will only affect vertical movement of the character, while wall collisions will
     // push the character away from the wall in a perpendicular direction. If the character is on the ground,
-    // we have extra logic: Using a temporary bound to ensure that slanted wall collisions do not lift the
-    // character off the ground.
+    // we have extra logic: Using a temporary bound locking the character to the ground plane to ensure that
+    // slanted wall collisions do not lift the character off the ground (temporary because the ground plane
+    // can change after a ground collision, such as with uneven terrain).
     if is_ground(ctx, &collision.normal) {
         if !*ground_collision_handled {
             // Wall collisions can turn vertical momentum into unwanted horizontal momentum. This can

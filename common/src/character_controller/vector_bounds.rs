@@ -54,16 +54,16 @@ impl BoundedVectors {
         &self.bounds
     }
 
-    /// Constrains `vector` with `new_bound` while keeping the existing constraints satisfied. All projection
-    /// transformations applied to `vector` are also applied to `tagalong` to allow two vectors to be transformed consistently
+    /// Constrains `displacement` with `new_bound` while keeping the existing constraints satisfied. All projection
+    /// transformations applied to `displacement` are also applied to `velocity` to allow two vectors to be transformed consistently
     /// with each other.
     pub fn add_bound(&mut self, new_bound: VectorBound) {
         self.apply_bound(&new_bound);
         self.bounds.push(new_bound);
     }
 
-    /// Temporarily constrains `vector` with `new_bound` while keeping the existing constraints satisfied. All projection
-    /// transformations applied to `vector` are also applied to `tagalong` to allow two vectors to be transformed consistently
+    /// Temporarily constrains `displacement` with `new_bound` while keeping the existing constraints satisfied. All projection
+    /// transformations applied to `displacement` are also applied to `velocity` to allow two vectors to be transformed consistently
     /// with each other. Use `clear_temporary_bounds` to get rid of any existing temporary bounds
     pub fn add_temp_bound(&mut self, new_bound: VectorBound) {
         self.apply_bound(&new_bound);
@@ -124,7 +124,9 @@ impl BoundedVectors {
             }
         }
 
-        // If no choice satisfies all constraints, keep all bounds and set the vector to 0
+        // If no choice satisfies all constraints, it means that there are three
+        // bounds that need to be applied at the same time, so the resulting
+        // vector must be 0.
         self.displacement.set_zero();
         if let Some(ref mut velocity) = self.velocity {
             velocity.set_zero();

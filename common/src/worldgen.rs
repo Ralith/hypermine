@@ -62,6 +62,8 @@ impl NodeStateRoad {
     }
 }
 
+/// Contains all information about a node used for world generation. Most world
+/// generation logic uses this information as a starting point.
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane<f64>,

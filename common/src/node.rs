@@ -14,6 +14,7 @@ use crate::world::Material;
 use crate::worldgen::NodeState;
 use crate::{margins, Chunks};
 
+/// Unique identifier for a single chunk (1/20 of a dodecahedron) in the graph
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChunkId {
     pub node: NodeId,
@@ -44,6 +45,8 @@ impl Graph {
         ))
     }
 
+    /// Returns the ID of the chunk neighboring the given chunk on the specified
+    /// cube face side, or `None` if it's on a node the graph hasn't populated.
     pub fn get_chunk_neighbor(
         &self,
         chunk: ChunkId,
@@ -65,6 +68,8 @@ impl Graph {
         }
     }
 
+    /// Returns the block (voxel) neighboring the given block on the specified
+    /// cube face side, or `None` if it's on a node the graph hasn't populated.
     pub fn get_block_neighbor(
         &self,
         mut chunk: ChunkId,
@@ -184,6 +189,9 @@ impl IndexMut<ChunkId> for Graph {
     }
 }
 
+/// A single dodecahedral node in the graph. All information related to world
+/// generation and the blocks within the node, along with auxiliary information
+/// used for rendering, is stored here.
 pub struct Node {
     pub state: NodeState,
     /// We can only populate chunks which lie within a cube of populated nodes, so nodes on the edge
@@ -191,20 +199,55 @@ pub struct Node {
     pub chunks: Chunks<Chunk>,
 }
 
+/// Stores the actual voxel data of the chunk, along with metadata used for
+/// rendering. This is an enum type to account for chunks that have not been
+/// fully generated yet.
 #[derive(Default)]
 pub enum Chunk {
+    /// Worldgen has not started running on this chunk yet. This can be for
+    /// multiple reasons:
+    /// - It was just added to the graph and hasn't had time to be processed.
+    /// - All world generation threads are occupied, and it is not this chunk's
+    ///   turn yet.
+    /// - Not all nodes adjacent to this chunk are in the graph yet, so this
+    ///   chunk lacks information necessary for world generation to proceed.
     #[default]
     Fresh,
+
+    /// There is an active thread generating voxels for this chunk, but this
+    /// chunk has not yet received the results from this thread.
     Generating,
+
+    /// This chunk's voxels are fully generated and ready for use.
     Populated {
+        /// The voxels present in the chunk
         voxels: VoxelData,
+
+        /// A reference to the "mesh" used to render the chunk. Set to `None` if
+        /// this mesh needs to be computed or recomputed.
         surface: Option<SlotId>,
+
+        /// An outdated (but valid) reference to the "mesh" used to render the
+        /// chunk. This is used to allow the mesh to still be rendered while it
+        /// is being recomputed.
         old_surface: Option<SlotId>,
     },
 }
 
+/// The voxels present in a particular chunk, along a margin.
+///
+/// The margin consists of voxels of adjacent chunks, which is a necessary extra
+/// piece of data needed to properly compute the rendered surface of the chunk.
 pub enum VoxelData {
+    /// All voxels, including the margin, are the same material. This data type
+    /// is used to save storage space and processing, since such chunks do not
+    /// need to be rendered at all.
+    // TODO: This abstraction needs some work, as it doesn't account for areas
+    // underground with a mixed set of materials, such as dirt and stone.
     Solid(Material),
+
+    /// This chunk (or its margins) may consist of multiple materials, which are
+    /// represented in the given boxed slice.
     Dense(Box<[Material]>),
 }
 
