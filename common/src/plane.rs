@@ -24,7 +24,7 @@ impl<N: na::RealField + Copy> From<na::Unit<na::Vector3<N>>> for Plane<N> {
     /// A plane passing through the origin
     fn from(x: na::Unit<na::Vector3<N>>) -> Self {
         Self {
-            normal: MVector::from(x),
+            normal: MVector::from(x.into_inner().push(na::zero())),
         }
     }
 }
@@ -50,7 +50,7 @@ impl<N: na::RealField + Copy> Mul<Plane<N>> for &MIsometry<N> {
     type Output = Plane<N>;
     fn mul(self, rhs: Plane<N>) -> Plane<N> {
         Plane {
-            normal: (*self * rhs.normal).lorentz_normalize(),
+            normal: (*self * rhs.normal).normalized(),
         }
     }
 }
@@ -72,7 +72,7 @@ impl<N: na::RealField + Copy> Plane<N> {
 impl Plane<f64> {
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
-        let pos = (MVector::from(chunk.chunk_to_node_f64() * coord.push(1.0))).lorentz_normalize();
+        let pos = (MVector::from(chunk.chunk_to_node_f64() * coord.push(1.0))).normalized();
         self.distance_to(&pos)
     }
 }
@@ -80,7 +80,6 @@ impl Plane<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::math::translate_along;
     use approx::*;
 
     #[test]
@@ -94,7 +93,8 @@ mod tests {
                 let plane = Plane::from(axis);
                 assert_abs_diff_eq!(
                     plane.distance_to(
-                        &(translate_along(&(axis.into_inner() * distance)) * MVector::origin())
+                        &(MIsometry::translation_along(&(axis.into_inner() * distance))
+                            * MVector::origin())
                     ),
                     distance
                 );

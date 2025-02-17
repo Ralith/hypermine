@@ -90,7 +90,7 @@ impl Side {
     /// Whether `p` is opposite the dodecahedron across the plane containing `self`
     #[inline]
     pub fn is_facing(self, p: &MVector<f32>) -> bool {
-        let r = na::convert::<_, na::RowVector4<f32>>(self.reflection().row(3).clone_owned());
+        let r = self.reflection().row(3).clone_owned();
         (r * na::Vector4::from(*p)).x < p.w
     }
 }
@@ -354,7 +354,7 @@ mod data {
             // All other normals are based on this template normal, with permuations
             // and sign changes.
             let phi = libm::sqrt(1.25) + 0.5; // golden ratio
-            let template_normal = MVector::new(1.0, phi, 0.0, libm::sqrt(phi)).lorentz_normalize();
+            let template_normal = MVector::new(1.0, phi, 0.0, libm::sqrt(phi)).normalized();
             let signed_template_normals = {
                 let n = template_normal;
                 [
@@ -373,7 +373,7 @@ mod data {
 
     /// Transform that moves from a neighbor to a reference node, for each side
     pub static REFLECTIONS_F64: LazyLock<[MIsometry<f64>; Side::VALUES.len()]> =
-        LazyLock::new(|| SIDE_NORMALS_F64.map(|r| r.reflect()));
+        LazyLock::new(|| SIDE_NORMALS_F64.map(|r| MIsometry::reflection(&r)));
 
     /// Sides incident to a vertex, in canonical order
     pub static VERTEX_CANONICAL_SIDES: LazyLock<[[Side; 3]; Vertex::VALUES.len()]> =
@@ -482,7 +482,7 @@ mod data {
                 // used here takes advantage of that.
                 let vertex_position = (MVector::origin()
                     - (*a.normal_f64() + *b.normal_f64() + *c.normal_f64()) * mip_origin_normal)
-                    .lorentz_normalize();
+                    .normalized();
                 MIsometry::from_columns_unchecked(&[
                     -*a.normal_f64(),
                     -*b.normal_f64(),
@@ -494,7 +494,7 @@ mod data {
 
     /// Transform that converts from dodeca-centric coordinates to cube-centric coordinates
     pub static NODE_TO_DUAL_F64: LazyLock<[MIsometry<f64>; Vertex::VALUES.len()]> =
-        LazyLock::new(|| DUAL_TO_NODE_F64.map(|m| m.mtranspose()));
+        LazyLock::new(|| DUAL_TO_NODE_F64.map(|m| m.inverse()));
 
     pub static DUAL_TO_CHUNK_FACTOR_F64: LazyLock<f64> =
         LazyLock::new(|| (2.0 + 5.0f64.sqrt()).sqrt());
@@ -545,7 +545,6 @@ mod data {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::math;
     use approx::*;
 
     #[test]
@@ -642,7 +641,7 @@ mod tests {
         let corner = *Vertex::A.dual_to_node_f64() * MVector::origin();
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS_F64,
-            math::distance(&corner, &MVector::origin()),
+            corner.distance(&MVector::origin()),
             epsilon = 1e-10
         );
         let phi = (1.0 + 5.0f64.sqrt()) / 2.0; // Golden ratio

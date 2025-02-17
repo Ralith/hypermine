@@ -11,7 +11,7 @@ use common::{
     character_controller,
     collision_math::Ray,
     graph::{Graph, NodeId},
-    graph_ray_casting, math,
+    graph_ray_casting,
     math::{MIsometry, MVector},
     node::{populate_fresh_nodes, ChunkId, VoxelData},
     proto::{
@@ -510,8 +510,9 @@ impl Sim {
     pub fn view(&self) -> Position {
         let mut pos = self.local_character_controller.oriented_position();
         let up = self.graph.get_relative_up(&pos).unwrap();
-        pos.local *=
-            math::translate_along(&(up.as_ref() * (self.cfg.character.character_radius - 1e-3)));
+        pos.local *= MIsometry::translation_along(
+            &(up.as_ref() * (self.cfg.character.character_radius - 1e-3)),
+        );
         pos
     }
 

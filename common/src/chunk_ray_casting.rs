@@ -70,7 +70,7 @@ fn find_face_collision(
         // Find a normal to the grid plane. Note that (t, 0, 0, x) is a normal of the plane whose closest point
         // to the origin is (x, 0, 0, t), and we use that fact here.
         let normal = math::tuv_to_xyz(t_axis, MVector::new(1.0, 0.0, 0.0, layout.grid_to_dual(t)))
-            .lorentz_normalize();
+            .normalized();
 
         let Some(new_tanh_distance) = ray.solve_point_plane_intersection(&normal) else {
             continue;
@@ -186,7 +186,7 @@ mod tests {
             ray_start_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
         )
-        .lorentz_normalize();
+        .normalized();
 
         let ray_end = MVector::new(
             ray_end_grid_coords[0] / ctx.layout.dual_to_grid_factor(),
@@ -194,12 +194,12 @@ mod tests {
             ray_end_grid_coords[2] / ctx.layout.dual_to_grid_factor(),
             1.0,
         )
-        .lorentz_normalize();
+        .normalized();
 
         let ray = Ray::new(
             ray_start,
             ((ray_end - ray_start) + ray_start * ray_start.mip(&(ray_end - ray_start)))
-                .lorentz_normalize(),
+                .normalized(),
         );
 
         let tanh_distance = (-(ray_start.mip(&ray_end))).acosh();

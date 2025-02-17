@@ -122,7 +122,7 @@ impl Voxels {
         }
         let node_scan_started = Instant::now();
         let frustum_planes = frustum.planes();
-        let local_to_view = view.local.mtranspose();
+        let local_to_view = view.local.inverse();
         let mut extractions = Vec::new();
         let mut workqueue_is_full = false;
         for &(node, ref node_transform) in nearby_nodes {

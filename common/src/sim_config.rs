@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{dodeca, math, math::MVector};
+use crate::{dodeca, math::MVector};
 
 /// Manually specified simulation config parameters
 #[derive(Serialize, Deserialize, Default)]
@@ -69,9 +69,11 @@ impl SimConfig {
 /// Compute the scaling factor from meters to absolute units, given the number of voxels in a chunk
 /// and the approximate size of a voxel in meters.
 fn meters_to_absolute(chunk_size: u8, voxel_size: f32) -> f32 {
-    let a = MVector::from(dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(1.0, 0.5, 0.5, 1.0));
-    let b = MVector::from(dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(0.0, 0.5, 0.5, 1.0));
-    let minimum_chunk_face_separation = math::distance(&a, &b);
+    let a = MVector::from(dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(1.0, 0.5, 0.5, 1.0))
+        .normalized();
+    let b = MVector::from(dodeca::Vertex::A.chunk_to_node() * na::Vector4::new(0.0, 0.5, 0.5, 1.0))
+        .normalized();
+    let minimum_chunk_face_separation = a.distance(&b);
     let absolute_voxel_size = minimum_chunk_face_separation / f32::from(chunk_size);
     absolute_voxel_size / voxel_size
 }
