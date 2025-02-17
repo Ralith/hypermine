@@ -13,19 +13,128 @@ use std::ops::*;
 #[repr(C)]
 pub struct MVector<N: Scalar>(na::Vector4<N>);
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
-#[repr(C)]
-pub struct MIsometry<N: Scalar>(na::Matrix4<N>);
+impl<N: RealField + Copy> MVector<N> {
+    pub fn lorentz_normalize(self: &MVector<N>) -> Self {
+        let sf2 = self.mip(self);
+        if sf2 == na::zero() {
+            return MVector::origin();
+        }
+        let sf = sf2.abs().sqrt();
+        *self / sf
+    }
 
-impl<N: RealField> From<na::Unit<na::Vector3<N>>> for MVector<N> {
-    fn from(value: na::Unit<na::Vector3<N>>) -> Self {
-        Self(value.into_inner().push(na::zero()))
+    /// Point or plane reflection around point or normal `p`
+    pub fn reflect(self) -> MIsometry<N> {
+        MIsometry(
+            na::Matrix4::<N>::identity()
+                - self.minkowski_outer_product(&self) * na::convert::<_, N>(2.0) / self.mip(&self),
+        )
+    }
+
+    /// Minkowski inner product, aka <a, b>_h
+    pub fn mip(self, other: &Self) -> N {
+        self.x * other.x + self.y * other.y + self.z * other.z - self.w * other.w
+    }
+
+    pub fn minkowski_outer_product(self, other: &Self) -> na::Matrix4<N> {
+        ((self).0) * na::RowVector4::new(other.x, other.y, other.z, -other.w)
+    }
+
+    pub fn from_gans(gans: &na::Vector3<N>) -> Self {
+        // x^2 + y^2 + z^2 - w^2 = -1
+        // sqrt(x^2 + y^2 + z^2 + 1) = w
+        let w = (sqr(gans.x) + sqr(gans.y) + sqr(gans.z) + na::one()).sqrt();
+        MVector(na::Vector4::new(gans.x, gans.y, gans.z, w))
+    }
+
+    #[inline]
+    pub fn zero() -> Self {
+        Self(na::zero())
+    }
+
+    #[inline]
+    pub fn origin() -> Self {
+        Self::w()
+    }
+
+    #[inline]
+    pub fn normalize(self) -> Self {
+        Self(self.0.normalize())
+    }
+
+    #[inline]
+    pub fn x() -> Self {
+        Self(na::Vector4::x())
+    }
+
+    #[inline]
+    pub fn y() -> Self {
+        Self(na::Vector4::y())
+    }
+
+    #[inline]
+    pub fn z() -> Self {
+        Self(na::Vector4::z())
+    }
+
+    #[inline]
+    pub fn w() -> Self {
+        Self(na::Vector4::w())
+    }
+
+    #[inline]
+    pub fn new(x: N, y: N, z: N, w: N) -> Self {
+        MVector(na::Vector4::new(x, y, z, w))
+    }
+
+    #[inline]
+    pub fn xyz(self) -> na::Vector3<N> {
+        self.0.xyz()
+    }
+}
+
+impl MVector<f32> {
+    pub fn to_f64(self) -> MVector<f64> {
+        MVector(self.0.cast::<f64>())
+    }
+}
+
+impl MVector<f64> {
+    pub fn to_f32(self) -> MVector<f32> {
+        MVector(self.0.cast::<f32>())
+    }
+}
+
+impl<N: Scalar> Index<usize> for MVector<N> {
+    type Output = N;
+    #[inline]
+    fn index(&self, i: usize) -> &Self::Output {
+        &self.0[i]
+    }
+}
+
+impl<N: Scalar> IndexMut<usize> for MVector<N> {
+    #[inline]
+    fn index_mut(&mut self, i: usize) -> &mut N {
+        &mut self.0[i]
     }
 }
 
 impl<N: Scalar> From<na::Vector4<N>> for MVector<N> {
     fn from(value: na::Vector4<N>) -> Self {
         Self(value)
+    }
+}
+
+impl<N: Scalar> From<MVector<N>> for na::Vector4<N> {
+    fn from(value: MVector<N>) -> na::Vector4<N> {
+        value.0
+    }
+}
+
+impl<N: RealField> From<na::Unit<na::Vector3<N>>> for MVector<N> {
+    fn from(value: na::Unit<na::Vector3<N>>) -> Self {
+        Self(value.into_inner().push(na::zero()))
     }
 }
 
@@ -44,212 +153,18 @@ impl<N: Scalar> DerefMut for MVector<N> {
     }
 }
 
-impl<N: Scalar> Deref for MIsometry<N> {
-    type Target = na::coordinates::M4x4<N>;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
-    }
-}
-
-impl<N: Scalar> From<MIsometry<N>> for na::Matrix4<N> {
-    fn from(value: MIsometry<N>) -> na::Matrix4<N> {
-        value.0
-    }
-}
-
-impl<N: Scalar> From<MVector<N>> for na::Vector4<N> {
-    fn from(value: MVector<N>) -> na::Vector4<N> {
-        value.0
-    }
-}
-
-impl MIsometry<f32> {
-    pub fn to_f64(self) -> MIsometry<f64> {
-        MIsometry(self.0.cast::<f64>())
-    }
-}
-
-impl MIsometry<f64> {
-    pub fn to_f32(self) -> MIsometry<f32> {
-        MIsometry(self.0.cast::<f32>())
-    }
-}
-
-impl MVector<f32> {
-    pub fn to_f64(self) -> MVector<f64> {
-        MVector(self.0.cast::<f64>())
-    }
-}
-
-impl MVector<f64> {
-    pub fn to_f32(self) -> MVector<f32> {
-        MVector(self.0.cast::<f32>())
-    }
-}
-
-impl<N: RealField + Copy> MIsometry<N> {
-    #[inline]
-    pub fn as_ref(self) -> [[N; 4]; 4] {
-        *self.0.as_ref()
-    }
-    #[inline]
-    pub fn unit_quaternion_to_homogeneous(rotation: na::UnitQuaternion<N>) -> Self {
-        MIsometry(rotation.to_homogeneous())
-    }
-    #[inline]
-    pub fn rotation_to_homogeneous(rotation: na::Rotation3<N>) -> Self {
-        MIsometry(rotation.to_homogeneous())
-    }
-    #[inline]
-    pub fn row(self, i: usize) -> na::RowVector4<N> {
-        self.0.row(i).into()
-    }
-    #[inline]
-    pub fn identity() -> Self {
-        Self(na::Matrix4::identity())
-    }
-    #[inline]
-    pub fn map<N2: Scalar, F: FnMut(N) -> N2>(&self, f: F) -> MIsometry<N2> {
-        MIsometry(self.0.map(f))
-    }
-    #[inline]
-    pub fn from_columns_unchecked(columns: &[MVector<N>; 4]) -> Self {
-        Self(na::Matrix4::from_columns(&(*columns).map(|x| x.0)))
-    }
-    /// Creates an `MIsometry` with its elements filled with the components provided by a slice in column-major order.
-    /// It is the caller's responsibility to ensure that the resulting matrix is a valid isometry.
-    #[inline]
-    pub fn from_column_slice_unchecked(data: &[N]) -> Self {
-        Self(na::Matrix4::from_column_slice(data))
-    }
-    /// Minkowski transpose. Inverse for hyperbolic isometries
-    #[rustfmt::skip]
-    pub fn mtranspose(self) -> Self {
-        MIsometry(
-            na::Matrix4::new(
-                self.0.m11,  self.0.m21,  self.0.m31, -self.0.m41,
-                self.0.m12,  self.0.m22,  self.0.m32, -self.0.m42,
-                self.0.m13,  self.0.m23,  self.0.m33, -self.0.m43,
-                -self.0.m14, -self.0.m24, -self.0.m34,  self.0.m44,
-            )
-        )
-    }
-    /// Whether an isometry reverses winding with respect to the norm
-    pub fn parity(self) -> bool {
-        self.0.fixed_view::<3, 3>(0, 0).determinant() < na::zero::<N>()
-    }
-    pub fn renormalize_isometry(self) -> MIsometry<N> {
-        let boost = translate(
-            &MVector::origin(),
-            &MVector(self.0.index((.., 3)).into()).lorentz_normalize(),
-        );
-        let inverse_boost = boost.mtranspose();
-        let rotation = renormalize_rotation_reflection(
-            &((inverse_boost * self).0)
-                .fixed_view::<3, 3>(0, 0)
-                .clone_owned(),
-        );
-        MIsometry(boost.0 * rotation.to_homogeneous())
-    }
-}
-
-impl<N: RealField + Copy> MVector<N> {
-    pub fn lorentz_normalize(self: &MVector<N>) -> Self {
-        let sf2 = self.mip(self);
-        if sf2 == na::zero() {
-            return MVector::origin();
-        }
-        let sf = sf2.abs().sqrt();
-        *self / sf
-    }
-    /// Point or plane reflection around point or normal `p`
-    pub fn reflect(self) -> MIsometry<N> {
-        MIsometry(
-            na::Matrix4::<N>::identity()
-                - self.minkowski_outer_product(&self) * na::convert::<_, N>(2.0) / self.mip(&self),
-        )
-    }
-    /// Minkowski inner product, aka <a, b>_h
-    pub fn mip(self, other: &Self) -> N {
-        self.x * other.x + self.y * other.y + self.z * other.z - self.w * other.w
-    }
-    pub fn minkowski_outer_product(self, other: &Self) -> na::Matrix4<N> {
-        ((self).0) * na::RowVector4::new(other.x, other.y, other.z, -other.w)
-    }
-    pub fn from_gans(gans: &na::Vector3<N>) -> Self {
-        // x^2 + y^2 + z^2 - w^2 = -1
-        // sqrt(x^2 + y^2 + z^2 + 1) = w
-        let w = (sqr(gans.x) + sqr(gans.y) + sqr(gans.z) + na::one()).sqrt();
-        MVector(na::Vector4::new(gans.x, gans.y, gans.z, w))
-    }
-    #[inline]
-    pub fn zero() -> Self {
-        Self(na::zero())
-    }
-    #[inline]
-    pub fn origin() -> Self {
-        Self::w()
-    }
-    #[inline]
-    pub fn normalize(self) -> Self {
-        Self(self.0.normalize())
-    }
-    #[inline]
-    pub fn x() -> Self {
-        Self(na::Vector4::x())
-    }
-    #[inline]
-    pub fn y() -> Self {
-        Self(na::Vector4::y())
-    }
-    #[inline]
-    pub fn z() -> Self {
-        Self(na::Vector4::z())
-    }
-    #[inline]
-    pub fn w() -> Self {
-        Self(na::Vector4::w())
-    }
-    #[inline]
-    pub fn new(x: N, y: N, z: N, w: N) -> Self {
-        MVector(na::Vector4::new(x, y, z, w))
-    }
-    #[inline]
-    pub fn xyz(self) -> na::Vector3<N> {
-        self.0.xyz()
-    }
-}
-
-impl<N: RealField> Mul<MIsometry<N>> for MIsometry<N> {
-    type Output = MIsometry<N>;
-    #[inline]
-    fn mul(self, rhs: MIsometry<N>) -> Self::Output {
-        MIsometry(self.0 * rhs.0)
-    }
-}
-
-impl<N: RealField> Mul<N> for MVector<N> {
-    type Output = MVector<N>;
-    #[inline]
-    fn mul(self, rhs: N) -> Self::Output {
-        MVector(self.0 * rhs)
-    }
-}
-
-impl<N: RealField> Div<N> for MVector<N> {
-    type Output = MVector<N>;
-    #[inline]
-    fn div(self, rhs: N) -> Self::Output {
-        MVector(self.0 / rhs)
-    }
-}
-
 impl<N: RealField> Add for MVector<N> {
     type Output = Self;
     #[inline]
     fn add(self, other: Self) -> Self {
         Self(self.0 + other.0)
+    }
+}
+
+impl<N: RealField + Copy> std::ops::AddAssign for MVector<N> {
+    #[inline]
+    fn add_assign(&mut self, other: Self) {
+        self.0 += other.0;
     }
 }
 
@@ -269,6 +184,158 @@ impl<N: RealField> Neg for MVector<N> {
     }
 }
 
+impl<N: RealField> Mul<N> for MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn mul(self, rhs: N) -> Self::Output {
+        MVector(self.0 * rhs)
+    }
+}
+
+impl<N: RealField + Copy> MulAssign<N> for MVector<N> {
+    #[inline]
+    fn mul_assign(&mut self, rhs: N) {
+        self.0 *= rhs;
+    }
+}
+
+impl<N: RealField> Div<N> for MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn div(self, rhs: N) -> Self::Output {
+        MVector(self.0 / rhs)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(C)]
+pub struct MIsometry<N: Scalar>(na::Matrix4<N>);
+
+impl<N: RealField + Copy> MIsometry<N> {
+    #[inline]
+    pub fn as_ref(self) -> [[N; 4]; 4] {
+        *self.0.as_ref()
+    }
+
+    #[inline]
+    pub fn unit_quaternion_to_homogeneous(rotation: na::UnitQuaternion<N>) -> Self {
+        MIsometry(rotation.to_homogeneous())
+    }
+
+    #[inline]
+    pub fn rotation_to_homogeneous(rotation: na::Rotation3<N>) -> Self {
+        MIsometry(rotation.to_homogeneous())
+    }
+
+    #[inline]
+    pub fn row(self, i: usize) -> na::RowVector4<N> {
+        self.0.row(i).into()
+    }
+
+    #[inline]
+    pub fn identity() -> Self {
+        Self(na::Matrix4::identity())
+    }
+
+    #[inline]
+    pub fn map<N2: Scalar, F: FnMut(N) -> N2>(&self, f: F) -> MIsometry<N2> {
+        MIsometry(self.0.map(f))
+    }
+
+    #[inline]
+    pub fn from_columns_unchecked(columns: &[MVector<N>; 4]) -> Self {
+        Self(na::Matrix4::from_columns(&(*columns).map(|x| x.0)))
+    }
+
+    /// Creates an `MIsometry` with its elements filled with the components provided by a slice in column-major order.
+    /// It is the caller's responsibility to ensure that the resulting matrix is a valid isometry.
+    #[inline]
+    pub fn from_column_slice_unchecked(data: &[N]) -> Self {
+        Self(na::Matrix4::from_column_slice(data))
+    }
+
+    /// Minkowski transpose. Inverse for hyperbolic isometries
+    #[rustfmt::skip]
+    pub fn mtranspose(self) -> Self {
+        MIsometry(
+            na::Matrix4::new(
+                self.0.m11,  self.0.m21,  self.0.m31, -self.0.m41,
+                self.0.m12,  self.0.m22,  self.0.m32, -self.0.m42,
+                self.0.m13,  self.0.m23,  self.0.m33, -self.0.m43,
+                -self.0.m14, -self.0.m24, -self.0.m34,  self.0.m44,
+            )
+        )
+    }
+
+    /// Whether an isometry reverses winding with respect to the norm
+    pub fn parity(self) -> bool {
+        self.0.fixed_view::<3, 3>(0, 0).determinant() < na::zero::<N>()
+    }
+
+    pub fn renormalize_isometry(self) -> MIsometry<N> {
+        let boost = translate(
+            &MVector::origin(),
+            &MVector(self.0.index((.., 3)).into()).lorentz_normalize(),
+        );
+        let inverse_boost = boost.mtranspose();
+        let rotation = renormalize_rotation_reflection(
+            &((inverse_boost * self).0)
+                .fixed_view::<3, 3>(0, 0)
+                .clone_owned(),
+        );
+        MIsometry(boost.0 * rotation.to_homogeneous())
+    }
+}
+
+impl MIsometry<f32> {
+    pub fn to_f64(self) -> MIsometry<f64> {
+        MIsometry(self.0.cast::<f64>())
+    }
+}
+
+impl MIsometry<f64> {
+    pub fn to_f32(self) -> MIsometry<f32> {
+        MIsometry(self.0.cast::<f32>())
+    }
+}
+
+impl<N: Scalar> Index<(usize, usize)> for MIsometry<N> {
+    type Output = N;
+    #[inline]
+    fn index(&self, ij: (usize, usize)) -> &Self::Output {
+        &self.0[ij]
+    }
+}
+
+impl<N: Scalar> From<MIsometry<N>> for na::Matrix4<N> {
+    fn from(value: MIsometry<N>) -> na::Matrix4<N> {
+        value.0
+    }
+}
+
+impl<N: Scalar> Deref for MIsometry<N> {
+    type Target = na::coordinates::M4x4<N>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<N: RealField> Mul<MIsometry<N>> for MIsometry<N> {
+    type Output = MIsometry<N>;
+    #[inline]
+    fn mul(self, rhs: MIsometry<N>) -> Self::Output {
+        MIsometry(self.0 * rhs.0)
+    }
+}
+
+impl<N: RealField + Copy> MulAssign<MIsometry<N>> for MIsometry<N> {
+    #[inline]
+    fn mul_assign(&mut self, rhs: MIsometry<N>) {
+        self.0 *= rhs.0;
+    }
+}
+
 impl<N: RealField> Mul<MVector<N>> for MIsometry<N> {
     type Output = MVector<N>;
     #[inline]
@@ -285,54 +352,10 @@ impl<N: RealField> Mul<N> for MIsometry<N> {
     }
 }
 
-impl<N: RealField + Copy> std::ops::AddAssign for MVector<N> {
-    #[inline]
-    fn add_assign(&mut self, other: Self) {
-        self.0 += other.0;
-    }
-}
-
-impl<N: RealField + Copy> MulAssign<N> for MVector<N> {
-    #[inline]
-    fn mul_assign(&mut self, rhs: N) {
-        self.0 *= rhs;
-    }
-}
-
 impl<N: RealField + Copy> MulAssign<N> for MIsometry<N> {
     #[inline]
     fn mul_assign(&mut self, rhs: N) {
         self.0 *= rhs;
-    }
-}
-
-impl<N: RealField + Copy> MulAssign<MIsometry<N>> for MIsometry<N> {
-    #[inline]
-    fn mul_assign(&mut self, rhs: MIsometry<N>) {
-        self.0 *= rhs.0;
-    }
-}
-
-impl<N: Scalar> Index<usize> for MVector<N> {
-    type Output = N;
-    #[inline]
-    fn index(&self, i: usize) -> &Self::Output {
-        &self.0[i]
-    }
-}
-
-impl<N: Scalar> IndexMut<usize> for MVector<N> {
-    #[inline]
-    fn index_mut(&mut self, i: usize) -> &mut N {
-        &mut self.0[i]
-    }
-}
-
-impl<N: Scalar> Index<(usize, usize)> for MIsometry<N> {
-    type Output = N;
-    #[inline]
-    fn index(&self, ij: (usize, usize)) -> &Self::Output {
-        &self.0[ij]
     }
 }
 
