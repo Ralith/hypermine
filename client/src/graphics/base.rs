@@ -315,7 +315,7 @@ impl Base {
     }
 
     /// Set an object's name for use in diagnostics
-    pub unsafe fn set_name<T: vk::Handle>(&self, object: T, name: &CStr) {
+    pub unsafe fn set_name<T: vk::Handle>(&self, object: T, name: &CStr) { unsafe {
         let Some(ref ex) = self.debug_utils else {
             return;
         };
@@ -325,7 +325,7 @@ impl Base {
                 .object_name(name),
         )
         .unwrap();
-    }
+    }}
 
     /// Convenience constructor for tests and benchmarks
     pub fn headless() -> Self {

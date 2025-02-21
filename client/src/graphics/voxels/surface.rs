@@ -252,7 +252,7 @@ impl Surface {
         common_ds: vk::DescriptorSet,
         frame: &Frame,
         cmd: vk::CommandBuffer,
-    ) -> bool {
+    ) -> bool { unsafe {
         if self.colors_view == vk::ImageView::null() {
             if let Some(colors) = loader.get(self.colors) {
                 self.colors_view = device
@@ -308,7 +308,7 @@ impl Surface {
         );
 
         true
-    }
+    }}
 
     pub unsafe fn draw(
         &self,
@@ -316,7 +316,7 @@ impl Surface {
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
         chunk: u32,
-    ) {
+    ) { unsafe {
         device.cmd_draw_indirect(
             cmd,
             buffer.indirect_buffer(),
@@ -324,9 +324,9 @@ impl Surface {
             1,
             16,
         );
-    }
+    }}
 
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         device.destroy_pipeline(self.pipeline, None);
         device.destroy_pipeline_layout(self.pipeline_layout, None);
         device.destroy_descriptor_set_layout(self.static_ds_layout, None);
@@ -334,7 +334,7 @@ impl Surface {
         if self.colors_view != vk::ImageView::null() {
             device.destroy_image_view(self.colors_view, None);
         }
-    }
+    }}
 }
 
 pub struct Frame {
@@ -361,9 +361,9 @@ impl Frame {
 }
 
 impl Frame {
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         self.transforms.destroy(device);
-    }
+    }}
 }
 
 // 4x4 f32 matrix

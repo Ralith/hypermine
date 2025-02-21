@@ -170,7 +170,7 @@ impl Meshes {
         cmd: vk::CommandBuffer,
         mesh: &Mesh,
         transform: &na::Matrix4<f32>,
-    ) {
+    ) { unsafe {
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
         device.cmd_bind_descriptor_sets(
             cmd,
@@ -195,12 +195,12 @@ impl Meshes {
             vk::IndexType::UINT32,
         );
         device.cmd_draw_indexed(cmd, mesh.index_count, 1, 0, 0, 0);
-    }
+    }}
 
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         device.destroy_pipeline(self.pipeline, None);
         device.destroy_pipeline_layout(self.pipeline_layout, None);
-    }
+    }}
 }
 
 #[repr(C)]
@@ -223,10 +223,10 @@ pub struct Mesh {
 }
 
 impl crate::loader::Cleanup for Mesh {
-    unsafe fn cleanup(mut self, gfx: &Base) {
+    unsafe fn cleanup(mut self, gfx: &Base) { unsafe {
         let device = &*gfx.device;
         device.destroy_descriptor_pool(self.pool, None);
         device.destroy_image_view(self.color_view, None);
         self.color.destroy(device);
-    }
+    }}
 }

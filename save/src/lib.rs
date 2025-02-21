@@ -18,7 +18,6 @@ impl Save {
         let db = Database::create(path).map_err(redb::Error::from)?;
         let meta = {
             let tx = db.begin_read().map_err(redb::Error::from)?;
-            // Intermediate variable to make borrowck happy
             match tx.open_table(META_TABLE) {
                 Ok(meta) => {
                     let Some(value) = meta.get(&[][..]).map_err(redb::Error::from)? else {

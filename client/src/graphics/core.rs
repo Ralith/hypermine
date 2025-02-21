@@ -128,8 +128,8 @@ unsafe extern "system" fn messenger_callback(
     _message_types: vk::DebugUtilsMessageTypeFlagsEXT,
     p_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
-) -> vk::Bool32 {
-    unsafe fn fmt_labels(ptr: *const vk::DebugUtilsLabelEXT, count: u32) -> String {
+) -> vk::Bool32 { unsafe {
+    unsafe fn fmt_labels(ptr: *const vk::DebugUtilsLabelEXT, count: u32) -> String { unsafe {
         if count == 0 {
             // We need to handle a count of 0 separately because ptr may be
             // null, resulting in undefined behavior if used with
@@ -145,7 +145,7 @@ unsafe extern "system" fn messenger_callback(
             })
             .collect::<Vec<_>>()
             .join(", ")
-    }
+    }}
 
     let data = &*p_data;
     let msg_id = if data.p_message_id_name.is_null() {
@@ -177,4 +177,4 @@ unsafe extern "system" fn messenger_callback(
         trace!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
     }
     vk::FALSE
-}
+}}

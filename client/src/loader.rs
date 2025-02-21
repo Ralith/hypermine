@@ -27,9 +27,9 @@ pub trait Cleanup {
 }
 
 impl Cleanup for DedicatedImage {
-    unsafe fn cleanup(mut self, gfx: &Base) {
+    unsafe fn cleanup(mut self, gfx: &Base) { unsafe {
         self.destroy(&gfx.device);
-    }
+    }}
 }
 
 pub trait Loadable: Send + 'static {

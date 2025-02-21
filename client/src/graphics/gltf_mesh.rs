@@ -68,11 +68,11 @@ impl GlbFile {
 pub struct GltfScene(pub Vec<Mesh>);
 
 impl Cleanup for GltfScene {
-    unsafe fn cleanup(self, gfx: &Base) {
+    unsafe fn cleanup(self, gfx: &Base) { unsafe {
         for mesh in self.0 {
             mesh.cleanup(gfx);
         }
-    }
+    }}
 }
 
 fn load_node<'a>(

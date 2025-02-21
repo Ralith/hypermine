@@ -247,7 +247,7 @@ impl Draw {
     /// Waits for a frame's worth of resources to become available for use in rendering a new frame
     ///
     /// Call before signaling the image_acquired semaphore or invoking `draw`.
-    pub unsafe fn wait(&mut self) {
+    pub unsafe fn wait(&mut self) { unsafe {
         let device = &*self.gfx.device;
         let state = &mut self.states[self.next_state];
         device.wait_for_fences(&[state.fence], true, !0).unwrap();
@@ -258,7 +258,7 @@ impl Draw {
                 self.gfx.memory_properties,
             ));
         state.in_flight = false;
-    }
+    }}
 
     /// Semaphore that must be signaled when an output framebuffer can be rendered to
     ///
@@ -285,7 +285,7 @@ impl Draw {
         extent: vk::Extent2D,
         present: vk::Semaphore,
         frustum: &Frustum,
-    ) {
+    ) { unsafe {
         let draw_started = Instant::now();
         let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
         let projection = frustum.projection(1.0e-4);
@@ -548,7 +548,7 @@ impl Draw {
         state.used = true;
         state.in_flight = true;
         histogram!("frame.cpu").record(draw_started.elapsed());
-    }
+    }}
 
     /// Wait for all drawing to complete
     ///
