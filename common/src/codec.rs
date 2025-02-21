@@ -1,5 +1,5 @@
-use anyhow::{bail, Result};
-use serde::{de::DeserializeOwned, Serialize};
+use anyhow::{Result, bail};
+use serde::{Serialize, de::DeserializeOwned};
 
 pub async fn send<T: Serialize + ?Sized>(stream: &mut quinn::SendStream, msg: &T) -> Result<()> {
     let mut buf = Vec::new();

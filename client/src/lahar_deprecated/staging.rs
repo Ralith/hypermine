@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 
-use ash::{vk, Device};
+use ash::{Device, vk};
 use futures_util::future;
 
 use super::condition::{self, Condition};

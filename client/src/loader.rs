@@ -7,19 +7,19 @@ use std::{
 
 use anyhow::Result;
 use ash::vk;
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use fxhash::FxHashMap;
 use lahar::{BufferRegion, DedicatedImage};
 use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::{
+    Config,
     graphics::Base,
     lahar_deprecated::{
         staging::StagingBuffer,
         transfer::{self, TransferHandle},
     },
-    Config,
 };
 
 pub trait Cleanup {
@@ -27,9 +27,11 @@ pub trait Cleanup {
 }
 
 impl Cleanup for DedicatedImage {
-    unsafe fn cleanup(mut self, gfx: &Base) { unsafe {
-        self.destroy(&gfx.device);
-    }}
+    unsafe fn cleanup(mut self, gfx: &Base) {
+        unsafe {
+            self.destroy(&gfx.device);
+        }
+    }
 }
 
 pub trait Loadable: Send + 'static {

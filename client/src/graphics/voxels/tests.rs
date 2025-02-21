@@ -4,7 +4,7 @@ use ash::vk;
 use lahar::DedicatedMapping;
 use renderdoc::{RenderDoc, V110};
 
-use super::{surface_extraction, SurfaceExtraction};
+use super::{SurfaceExtraction, surface_extraction};
 use crate::graphics::{Base, VkDrawIndirectCommand};
 use common::world::Material;
 

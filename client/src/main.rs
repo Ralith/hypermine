@@ -1,12 +1,12 @@
 use std::{sync::Arc, thread};
 
-use client::{graphics, metrics, net, Config};
+use client::{Config, graphics, metrics, net};
 use common::proto;
 use save::Save;
 
 use ash::khr;
 use server::Server;
-use tracing::{debug, error, error_span, info, Instrument};
+use tracing::{Instrument, debug, error, error_span, info};
 use winit::{
     application::ApplicationHandler,
     event_loop::{ActiveEventLoop, EventLoop},

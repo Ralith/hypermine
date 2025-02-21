@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
 
 use common::{
-    character_controller,
+    SimConfig, character_controller,
     graph::Graph,
     proto::{CharacterInput, Position},
-    SimConfig,
 };
 
 /// Predicts the result of motion inputs in-flight to the server

@@ -1,10 +1,10 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use common::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     node::Chunk,
-    node::{populate_fresh_nodes, ChunkId},
+    node::{ChunkId, populate_fresh_nodes},
     proto::Position,
     traversal::ensure_nearby,
     worldgen::ChunkParams,

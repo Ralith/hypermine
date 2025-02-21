@@ -1,7 +1,8 @@
-use rand::{distr::Uniform, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
 
 use crate::{
+    Plane,
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     margins, math,
@@ -9,7 +10,6 @@ use crate::{
     node::{ChunkId, VoxelData},
     terraingen::VoronoiInfo,
     world::Material,
-    Plane,
 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -617,8 +617,8 @@ fn hash(a: u64, b: u64) -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::node::Node;
     use crate::Chunks;
+    use crate::node::Node;
     use approx::*;
 
     const CHUNK_SIZE: u8 = 12;

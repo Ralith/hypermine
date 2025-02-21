@@ -5,7 +5,7 @@ use std::ptr;
 use std::slice;
 
 use ash::ext::debug_utils;
-use ash::{vk, Entry, Instance};
+use ash::{Entry, Instance, vk};
 use tracing::{debug, error, info, trace, warn};
 
 use common::defer;
@@ -128,53 +128,57 @@ unsafe extern "system" fn messenger_callback(
     _message_types: vk::DebugUtilsMessageTypeFlagsEXT,
     p_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
-) -> vk::Bool32 { unsafe {
-    unsafe fn fmt_labels(ptr: *const vk::DebugUtilsLabelEXT, count: u32) -> String { unsafe {
-        if count == 0 {
-            // We need to handle a count of 0 separately because ptr may be
-            // null, resulting in undefined behavior if used with
-            // slice::from_raw_parts.
-            return String::new();
+) -> vk::Bool32 {
+    unsafe {
+        unsafe fn fmt_labels(ptr: *const vk::DebugUtilsLabelEXT, count: u32) -> String {
+            unsafe {
+                if count == 0 {
+                    // We need to handle a count of 0 separately because ptr may be
+                    // null, resulting in undefined behavior if used with
+                    // slice::from_raw_parts.
+                    return String::new();
+                }
+                slice::from_raw_parts(ptr, count as usize)
+                    .iter()
+                    .map(|label| {
+                        CStr::from_ptr(label.p_label_name)
+                            .to_string_lossy()
+                            .into_owned()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
         }
-        slice::from_raw_parts(ptr, count as usize)
+
+        let data = &*p_data;
+        let msg_id = if data.p_message_id_name.is_null() {
+            "".into()
+        } else {
+            CStr::from_ptr(data.p_message_id_name).to_string_lossy()
+        };
+        let msg = CStr::from_ptr(data.p_message).to_string_lossy();
+        let queue_labels = fmt_labels(data.p_queue_labels, data.queue_label_count);
+        let cmd_labels = fmt_labels(data.p_cmd_buf_labels, data.cmd_buf_label_count);
+        let objects = slice::from_raw_parts(data.p_objects, data.object_count as usize)
             .iter()
-            .map(|label| {
-                CStr::from_ptr(label.p_label_name)
-                    .to_string_lossy()
-                    .into_owned()
+            .map(|obj| {
+                if obj.p_object_name.is_null() {
+                    format!("{:?} {:x}", obj.object_type, obj.object_handle)
+                } else {
+                    format!("{:?} {:x} {}", obj.object_type, obj.object_handle, msg_id)
+                }
             })
             .collect::<Vec<_>>()
-            .join(", ")
-    }}
-
-    let data = &*p_data;
-    let msg_id = if data.p_message_id_name.is_null() {
-        "".into()
-    } else {
-        CStr::from_ptr(data.p_message_id_name).to_string_lossy()
-    };
-    let msg = CStr::from_ptr(data.p_message).to_string_lossy();
-    let queue_labels = fmt_labels(data.p_queue_labels, data.queue_label_count);
-    let cmd_labels = fmt_labels(data.p_cmd_buf_labels, data.cmd_buf_label_count);
-    let objects = slice::from_raw_parts(data.p_objects, data.object_count as usize)
-        .iter()
-        .map(|obj| {
-            if obj.p_object_name.is_null() {
-                format!("{:?} {:x}", obj.object_type, obj.object_handle)
-            } else {
-                format!("{:?} {:x} {}", obj.object_type, obj.object_handle, msg_id)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
-        error!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
-    } else if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
-        warn! (target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
-    } else if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::INFO {
-        debug!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
-    } else {
-        trace!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
+            .join(", ");
+        if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+            error!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
+        } else if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
+            warn! (target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
+        } else if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::INFO {
+            debug!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
+        } else {
+            trace!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
+        }
+        vk::FALSE
     }
-    vk::FALSE
-}}
+}

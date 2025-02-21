@@ -1,13 +1,13 @@
 //! Common state shared throughout the graphics system
 
 use ash::ext::debug_utils;
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
 use tracing::{error, info, trace, warn};
 
-use ash::{vk, Device};
+use ash::{Device, vk};
 
 use super::Core;
 
@@ -315,17 +315,19 @@ impl Base {
     }
 
     /// Set an object's name for use in diagnostics
-    pub unsafe fn set_name<T: vk::Handle>(&self, object: T, name: &CStr) { unsafe {
-        let Some(ref ex) = self.debug_utils else {
-            return;
-        };
-        ex.set_debug_utils_object_name(
-            &vk::DebugUtilsObjectNameInfoEXT::default()
-                .object_handle(object)
-                .object_name(name),
-        )
-        .unwrap();
-    }}
+    pub unsafe fn set_name<T: vk::Handle>(&self, object: T, name: &CStr) {
+        unsafe {
+            let Some(ref ex) = self.debug_utils else {
+                return;
+            };
+            ex.set_debug_utils_object_name(
+                &vk::DebugUtilsObjectNameInfoEXT::default()
+                    .object_handle(object)
+                    .object_name(name),
+            )
+            .unwrap();
+        }
+    }
 
     /// Convenience constructor for tests and benchmarks
     pub fn headless() -> Self {

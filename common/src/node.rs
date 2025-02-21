@@ -12,7 +12,7 @@ use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
 use crate::worldgen::NodeState;
-use crate::{margins, Chunks};
+use crate::{Chunks, margins};
 
 /// Unique identifier for a single chunk (1/20 of a dodecahedron) in the graph
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

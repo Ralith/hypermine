@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use save::Save;
 
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 #[test]
 fn write() {

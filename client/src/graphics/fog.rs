@@ -1,4 +1,4 @@
-use ash::{vk, Device};
+use ash::{Device, vk};
 use vk_shader_macros::include_glsl;
 
 use super::Base;
@@ -128,23 +128,27 @@ impl Fog {
         device: &Device,
         common_ds: vk::DescriptorSet,
         cmd: vk::CommandBuffer,
-    ) { unsafe {
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-        device.cmd_bind_descriptor_sets(
-            cmd,
-            vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline_layout,
-            0,
-            &[common_ds],
-            &[],
-        );
-        device.cmd_draw(cmd, 3, 1, 0, 0);
-    }}
+    ) {
+        unsafe {
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+            device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline_layout,
+                0,
+                &[common_ds],
+                &[],
+            );
+            device.cmd_draw(cmd, 3, 1, 0, 0);
+        }
+    }
 
-    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
-        device.destroy_pipeline(self.pipeline, None);
-        device.destroy_pipeline_layout(self.pipeline_layout, None);
-    }}
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        unsafe {
+            device.destroy_pipeline(self.pipeline, None);
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+    }
 }
 
 /// Compute the density value that will lead to a certain transmission from points at a certain

@@ -1,11 +1,11 @@
 use std::ffi::c_char;
 use std::mem;
 
-use ash::{vk, Device};
+use ash::{Device, vk};
 use lahar::{DedicatedBuffer, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
-use crate::graphics::{as_bytes, Base, VkDrawIndirectCommand};
+use crate::graphics::{Base, VkDrawIndirectCommand, as_bytes};
 use common::{defer, world::Material};
 
 const EXTRACT: &[u32] = include_glsl!("shaders/surface-extraction/extract.comp", target: vulkan1_1);
@@ -145,12 +145,14 @@ impl SurfaceExtraction {
         }
     }
 
-    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
-        device.destroy_descriptor_set_layout(self.params_layout, None);
-        device.destroy_descriptor_set_layout(self.ds_layout, None);
-        device.destroy_pipeline_layout(self.pipeline_layout, None);
-        device.destroy_pipeline(self.extract, None);
-    }}
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        unsafe {
+            device.destroy_descriptor_set_layout(self.params_layout, None);
+            device.destroy_descriptor_set_layout(self.ds_layout, None);
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+            device.destroy_pipeline(self.extract, None);
+        }
+    }
 }
 
 /// Scratch space for actually performing the extraction
@@ -317,207 +319,211 @@ impl ScratchBuffer {
         face_buffer: vk::Buffer,
         cmd: vk::CommandBuffer,
         tasks: &[ExtractTask],
-    ) { unsafe {
-        // Prevent overlap with the last batch of work
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            vk::PipelineStageFlags::TRANSFER,
-            Default::default(),
-            &[vk::MemoryBarrier {
-                src_access_mask: vk::AccessFlags::SHADER_READ,
-                dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-                ..Default::default()
-            }],
-            &[],
-            &[],
-        );
-        // HACKITY HACK: Queue submit synchronization validation thinks we're
-        // racing with the preceding chunk draws. Our logic to allocate unique
-        // ranges should be preventing this, so this may be a false positive.
-        // However, if that's true, why does the validation error only trigger a
-        // handful of times at startup? Perhaps we're freeing and reusing
-        // storage before the previous draw completes, and validation is somehow
-        // smart enough to notice?
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::VERTEX_SHADER,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            Default::default(),
-            &[],
-            &[vk::BufferMemoryBarrier {
-                buffer: face_buffer,
-                src_access_mask: vk::AccessFlags::SHADER_READ,
-                dst_access_mask: vk::AccessFlags::SHADER_WRITE,
-                offset: 0,
-                size: vk::WHOLE_SIZE,
-                ..Default::default()
-            }],
-            &[],
-        );
-
-        // Prepare shared state
-        device.cmd_update_buffer(
-            cmd,
-            self.params.handle,
-            0,
-            as_bytes(&Params {
-                dimension: self.dimension,
-            }),
-        );
-        device.cmd_fill_buffer(cmd, self.state.handle, 0, vk::WHOLE_SIZE, 0);
-
-        let voxel_count = (self.dimension + 2).pow(3) as usize;
-        let voxels_range =
-            voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
-        let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
-        let dispatch = dispatch_sizes(self.dimension);
-        device.cmd_bind_descriptor_sets(
-            cmd,
-            vk::PipelineBindPoint::COMPUTE,
-            ctx.pipeline_layout,
-            0,
-            &[self.params_ds],
-            &[],
-        );
-
-        // Prepare each task
-        for task in tasks {
-            assert!(
-                task.index < self.concurrency,
-                "index {} out of bounds for concurrency {}",
-                task.index,
-                self.concurrency
+    ) {
+        unsafe {
+            // Prevent overlap with the last batch of work
+            device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::PipelineStageFlags::TRANSFER,
+                Default::default(),
+                &[vk::MemoryBarrier {
+                    src_access_mask: vk::AccessFlags::SHADER_READ,
+                    dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                    ..Default::default()
+                }],
+                &[],
+                &[],
             );
-            let index = task.index as usize;
-
-            let voxels_offset = self.voxel_buffer_unit * index as vk::DeviceSize;
-
-            device.update_descriptor_sets(
-                &[
-                    vk::WriteDescriptorSet::default()
-                        .dst_set(self.descriptor_sets[index])
-                        .dst_binding(0)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: self.voxels.handle,
-                            offset: voxels_offset,
-                            range: voxels_range,
-                        }]),
-                    vk::WriteDescriptorSet::default()
-                        .dst_set(self.descriptor_sets[index])
-                        .dst_binding(1)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: self.state.handle,
-                            offset: self.state_buffer_unit * vk::DeviceSize::from(task.index),
-                            range: 4,
-                        }]),
-                    vk::WriteDescriptorSet::default()
-                        .dst_set(self.descriptor_sets[index])
-                        .dst_binding(2)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: indirect_buffer,
-                            offset: task.indirect_offset,
-                            range: INDIRECT_SIZE,
-                        }]),
-                    vk::WriteDescriptorSet::default()
-                        .dst_set(self.descriptor_sets[index])
-                        .dst_binding(3)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&[vk::DescriptorBufferInfo {
-                            buffer: face_buffer,
-                            offset: task.face_offset,
-                            range: max_faces as vk::DeviceSize * FACE_SIZE,
-                        }]),
-                ],
+            // HACKITY HACK: Queue submit synchronization validation thinks we're
+            // racing with the preceding chunk draws. Our logic to allocate unique
+            // ranges should be preventing this, so this may be a false positive.
+            // However, if that's true, why does the validation error only trigger a
+            // handful of times at startup? Perhaps we're freeing and reusing
+            // storage before the previous draw completes, and validation is somehow
+            // smart enough to notice?
+            device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::VERTEX_SHADER,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                Default::default(),
+                &[],
+                &[vk::BufferMemoryBarrier {
+                    buffer: face_buffer,
+                    src_access_mask: vk::AccessFlags::SHADER_READ,
+                    dst_access_mask: vk::AccessFlags::SHADER_WRITE,
+                    offset: 0,
+                    size: vk::WHOLE_SIZE,
+                    ..Default::default()
+                }],
                 &[],
             );
 
-            device.cmd_copy_buffer(
-                cmd,
-                self.voxels_staging.buffer(),
-                self.voxels.handle,
-                &[vk::BufferCopy {
-                    src_offset: voxels_offset,
-                    dst_offset: voxels_offset,
-                    size: voxels_range,
-                }],
-            );
+            // Prepare shared state
             device.cmd_update_buffer(
                 cmd,
-                indirect_buffer,
-                task.indirect_offset,
-                as_bytes(&VkDrawIndirectCommand {
-                    vertex_count: 0,
-                    instance_count: 1,
-                    first_vertex: (task.face_offset / FACE_SIZE) as u32 * 6,
-                    first_instance: task.draw_id,
-                }),
-            )
-        }
-
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            Default::default(),
-            &[vk::MemoryBarrier {
-                src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-                dst_access_mask: vk::AccessFlags::SHADER_READ
-                    | vk::AccessFlags::SHADER_WRITE
-                    | vk::AccessFlags::UNIFORM_READ,
-                ..Default::default()
-            }],
-            &[],
-            &[],
-        );
-
-        // Write faces to memory
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.extract);
-        for task in tasks {
-            device.cmd_push_constants(
-                cmd,
-                ctx.pipeline_layout,
-                vk::ShaderStageFlags::COMPUTE,
+                self.params.handle,
                 0,
-                &u32::from(task.reverse_winding).to_ne_bytes(),
+                as_bytes(&Params {
+                    dimension: self.dimension,
+                }),
             );
+            device.cmd_fill_buffer(cmd, self.state.handle, 0, vk::WHOLE_SIZE, 0);
+
+            let voxel_count = (self.dimension + 2).pow(3) as usize;
+            let voxels_range =
+                voxel_count as vk::DeviceSize * mem::size_of::<Material>() as vk::DeviceSize;
+            let max_faces = 3 * (self.dimension.pow(3) + self.dimension.pow(2));
+            let dispatch = dispatch_sizes(self.dimension);
             device.cmd_bind_descriptor_sets(
                 cmd,
                 vk::PipelineBindPoint::COMPUTE,
                 ctx.pipeline_layout,
-                1,
-                &[self.descriptor_sets[task.index as usize]],
+                0,
+                &[self.params_ds],
                 &[],
             );
-            device.cmd_dispatch(cmd, dispatch.x, dispatch.y, dispatch.z);
+
+            // Prepare each task
+            for task in tasks {
+                assert!(
+                    task.index < self.concurrency,
+                    "index {} out of bounds for concurrency {}",
+                    task.index,
+                    self.concurrency
+                );
+                let index = task.index as usize;
+
+                let voxels_offset = self.voxel_buffer_unit * index as vk::DeviceSize;
+
+                device.update_descriptor_sets(
+                    &[
+                        vk::WriteDescriptorSet::default()
+                            .dst_set(self.descriptor_sets[index])
+                            .dst_binding(0)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .buffer_info(&[vk::DescriptorBufferInfo {
+                                buffer: self.voxels.handle,
+                                offset: voxels_offset,
+                                range: voxels_range,
+                            }]),
+                        vk::WriteDescriptorSet::default()
+                            .dst_set(self.descriptor_sets[index])
+                            .dst_binding(1)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .buffer_info(&[vk::DescriptorBufferInfo {
+                                buffer: self.state.handle,
+                                offset: self.state_buffer_unit * vk::DeviceSize::from(task.index),
+                                range: 4,
+                            }]),
+                        vk::WriteDescriptorSet::default()
+                            .dst_set(self.descriptor_sets[index])
+                            .dst_binding(2)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .buffer_info(&[vk::DescriptorBufferInfo {
+                                buffer: indirect_buffer,
+                                offset: task.indirect_offset,
+                                range: INDIRECT_SIZE,
+                            }]),
+                        vk::WriteDescriptorSet::default()
+                            .dst_set(self.descriptor_sets[index])
+                            .dst_binding(3)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .buffer_info(&[vk::DescriptorBufferInfo {
+                                buffer: face_buffer,
+                                offset: task.face_offset,
+                                range: max_faces as vk::DeviceSize * FACE_SIZE,
+                            }]),
+                    ],
+                    &[],
+                );
+
+                device.cmd_copy_buffer(
+                    cmd,
+                    self.voxels_staging.buffer(),
+                    self.voxels.handle,
+                    &[vk::BufferCopy {
+                        src_offset: voxels_offset,
+                        dst_offset: voxels_offset,
+                        size: voxels_range,
+                    }],
+                );
+                device.cmd_update_buffer(
+                    cmd,
+                    indirect_buffer,
+                    task.indirect_offset,
+                    as_bytes(&VkDrawIndirectCommand {
+                        vertex_count: 0,
+                        instance_count: 1,
+                        first_vertex: (task.face_offset / FACE_SIZE) as u32 * 6,
+                        first_instance: task.draw_id,
+                    }),
+                )
+            }
+
+            device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                Default::default(),
+                &[vk::MemoryBarrier {
+                    src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                    dst_access_mask: vk::AccessFlags::SHADER_READ
+                        | vk::AccessFlags::SHADER_WRITE
+                        | vk::AccessFlags::UNIFORM_READ,
+                    ..Default::default()
+                }],
+                &[],
+                &[],
+            );
+
+            // Write faces to memory
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, ctx.extract);
+            for task in tasks {
+                device.cmd_push_constants(
+                    cmd,
+                    ctx.pipeline_layout,
+                    vk::ShaderStageFlags::COMPUTE,
+                    0,
+                    &u32::from(task.reverse_winding).to_ne_bytes(),
+                );
+                device.cmd_bind_descriptor_sets(
+                    cmd,
+                    vk::PipelineBindPoint::COMPUTE,
+                    ctx.pipeline_layout,
+                    1,
+                    &[self.descriptor_sets[task.index as usize]],
+                    &[],
+                );
+                device.cmd_dispatch(cmd, dispatch.x, dispatch.y, dispatch.z);
+            }
+
+            device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::DRAW_INDIRECT,
+                Default::default(),
+                &[vk::MemoryBarrier {
+                    src_access_mask: vk::AccessFlags::SHADER_WRITE,
+                    dst_access_mask: vk::AccessFlags::SHADER_READ
+                        | vk::AccessFlags::INDIRECT_COMMAND_READ,
+                    ..Default::default()
+                }],
+                &[],
+                &[],
+            );
         }
+    }
 
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::COMPUTE_SHADER,
-            vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::DRAW_INDIRECT,
-            Default::default(),
-            &[vk::MemoryBarrier {
-                src_access_mask: vk::AccessFlags::SHADER_WRITE,
-                dst_access_mask: vk::AccessFlags::SHADER_READ
-                    | vk::AccessFlags::INDIRECT_COMMAND_READ,
-                ..Default::default()
-            }],
-            &[],
-            &[],
-        );
-    }}
-
-    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
-        device.destroy_descriptor_pool(self.descriptor_pool, None);
-        self.params.destroy(device);
-        self.voxels_staging.destroy(device);
-        self.voxels.destroy(device);
-        self.state.destroy(device);
-    }}
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        unsafe {
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
+            self.params.destroy(device);
+            self.voxels_staging.destroy(device);
+            self.voxels.destroy(device);
+            self.state.destroy(device);
+        }
+    }
 }
 
 /// Specifies a single chunk's worth of surface extraction work
@@ -637,10 +643,12 @@ impl DrawBuffer {
         self.dimension
     }
 
-    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
-        self.indirect.destroy(device);
-        self.faces.destroy(device);
-    }}
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        unsafe {
+            self.indirect.destroy(device);
+            self.faces.destroy(device);
+        }
+    }
 }
 
 // Size of the VkDrawIndirectCommand struct

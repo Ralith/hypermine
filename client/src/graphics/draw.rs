@@ -6,10 +6,10 @@ use common::traversal;
 use lahar::Staged;
 use metrics::histogram;
 
-use super::{fog, voxels, Base, Fog, Frustum, GltfScene, Meshes, Voxels};
+use super::{Base, Fog, Frustum, GltfScene, Meshes, Voxels, fog, voxels};
 use crate::{Asset, Config, Loader, Sim};
-use common::proto::{Character, Position};
 use common::SimConfig;
+use common::proto::{Character, Position};
 
 /// Manages rendering, independent of what is being rendered to
 pub struct Draw {
@@ -247,18 +247,20 @@ impl Draw {
     /// Waits for a frame's worth of resources to become available for use in rendering a new frame
     ///
     /// Call before signaling the image_acquired semaphore or invoking `draw`.
-    pub unsafe fn wait(&mut self) { unsafe {
-        let device = &*self.gfx.device;
-        let state = &mut self.states[self.next_state];
-        device.wait_for_fences(&[state.fence], true, !0).unwrap();
-        self.yakui_vulkan
-            .transfers_finished(&yakui_vulkan::VulkanContext::new(
-                device,
-                self.gfx.queue,
-                self.gfx.memory_properties,
-            ));
-        state.in_flight = false;
-    }}
+    pub unsafe fn wait(&mut self) {
+        unsafe {
+            let device = &*self.gfx.device;
+            let state = &mut self.states[self.next_state];
+            device.wait_for_fences(&[state.fence], true, !0).unwrap();
+            self.yakui_vulkan
+                .transfers_finished(&yakui_vulkan::VulkanContext::new(
+                    device,
+                    self.gfx.queue,
+                    self.gfx.memory_properties,
+                ));
+            state.in_flight = false;
+        }
+    }
 
     /// Semaphore that must be signaled when an output framebuffer can be rendered to
     ///
@@ -285,270 +287,287 @@ impl Draw {
         extent: vk::Extent2D,
         present: vk::Semaphore,
         frustum: &Frustum,
-    ) { unsafe {
-        let draw_started = Instant::now();
-        let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
-        let projection = frustum.projection(1.0e-4);
-        let view_projection = projection.matrix() * na::Matrix4::from(view.local.inverse());
-        self.loader.drive();
+    ) {
+        unsafe {
+            let draw_started = Instant::now();
+            let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
+            let projection = frustum.projection(1.0e-4);
+            let view_projection = projection.matrix() * na::Matrix4::from(view.local.inverse());
+            self.loader.drive();
 
-        let device = &*self.gfx.device;
-        let state_index = self.next_state;
-        let state = &mut self.states[self.next_state];
-        let cmd = state.cmd;
+            let device = &*self.gfx.device;
+            let state_index = self.next_state;
+            let state = &mut self.states[self.next_state];
+            let cmd = state.cmd;
 
-        let yakui_vulkan_context =
-            yakui_vulkan::VulkanContext::new(device, self.gfx.queue, self.gfx.memory_properties);
+            let yakui_vulkan_context = yakui_vulkan::VulkanContext::new(
+                device,
+                self.gfx.queue,
+                self.gfx.memory_properties,
+            );
 
-        // We're using this state again, so put the fence back in the unsignaled state and compute
-        // the next frame to use
-        device.reset_fences(&[state.fence]).unwrap();
-        self.next_state = (self.next_state + 1) % PIPELINE_DEPTH as usize;
+            // We're using this state again, so put the fence back in the unsignaled state and compute
+            // the next frame to use
+            device.reset_fences(&[state.fence]).unwrap();
+            self.next_state = (self.next_state + 1) % PIPELINE_DEPTH as usize;
 
-        // Set up framebuffer attachments
-        device.update_descriptor_sets(
-            &[vk::WriteDescriptorSet::default()
-                .dst_set(state.common_ds)
-                .dst_binding(1)
-                .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
-                .image_info(&[vk::DescriptorImageInfo {
-                    sampler: vk::Sampler::null(),
-                    image_view: depth_view,
-                    image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-                }])],
-            &[],
-        );
+            // Set up framebuffer attachments
+            device.update_descriptor_sets(
+                &[vk::WriteDescriptorSet::default()
+                    .dst_set(state.common_ds)
+                    .dst_binding(1)
+                    .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+                    .image_info(&[vk::DescriptorImageInfo {
+                        sampler: vk::Sampler::null(),
+                        image_view: depth_view,
+                        image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                    }])],
+                &[],
+            );
 
-        // Handle completed queries
-        let first_query = state_index as u32 * TIMESTAMPS_PER_FRAME;
-        if state.used {
-            // Collect timestamps from the last time we drew this frame
-            let mut queries = [0u64; TIMESTAMPS_PER_FRAME as usize];
-            // `WAIT` is guaranteed not to block here because `Self::draw` is only called after
-            // `Self::wait` ensures that the prior instance of this frame is complete.
+            // Handle completed queries
+            let first_query = state_index as u32 * TIMESTAMPS_PER_FRAME;
+            if state.used {
+                // Collect timestamps from the last time we drew this frame
+                let mut queries = [0u64; TIMESTAMPS_PER_FRAME as usize];
+                // `WAIT` is guaranteed not to block here because `Self::draw` is only called after
+                // `Self::wait` ensures that the prior instance of this frame is complete.
+                device
+                    .get_query_pool_results(
+                        self.timestamp_pool,
+                        first_query,
+                        &mut queries,
+                        vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                    )
+                    .unwrap();
+                let draw_seconds = self.gfx.limits.timestamp_period as f64
+                    * 1e-9
+                    * (queries[1] - queries[0]) as f64;
+                let after_seconds = self.gfx.limits.timestamp_period as f64
+                    * 1e-9
+                    * (queries[2] - queries[1]) as f64;
+                histogram!("frame.gpu.draw").record(draw_seconds);
+                histogram!("frame.gpu.after_draw").record(after_seconds);
+            }
+
             device
-                .get_query_pool_results(
-                    self.timestamp_pool,
-                    first_query,
-                    &mut queries,
-                    vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                .begin_command_buffer(
+                    cmd,
+                    &vk::CommandBufferBeginInfo::default()
+                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .unwrap();
-            let draw_seconds =
-                self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[1] - queries[0]) as f64;
-            let after_seconds =
-                self.gfx.limits.timestamp_period as f64 * 1e-9 * (queries[2] - queries[1]) as f64;
-            histogram!("frame.gpu.draw").record(draw_seconds);
-            histogram!("frame.gpu.after_draw").record(after_seconds);
-        }
+            device
+                .begin_command_buffer(
+                    state.post_cmd,
+                    &vk::CommandBufferBeginInfo::default()
+                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                )
+                .unwrap();
 
-        device
-            .begin_command_buffer(
+            device.cmd_reset_query_pool(
                 cmd,
-                &vk::CommandBufferBeginInfo::default()
-                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
-            )
-            .unwrap();
-        device
-            .begin_command_buffer(
-                state.post_cmd,
-                &vk::CommandBufferBeginInfo::default()
-                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
-            )
-            .unwrap();
-
-        device.cmd_reset_query_pool(cmd, self.timestamp_pool, first_query, TIMESTAMPS_PER_FRAME);
-        let mut timestamp_index = first_query;
-        device.cmd_write_timestamp(
-            cmd,
-            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            self.timestamp_pool,
-            timestamp_index,
-        );
-        timestamp_index += 1;
-
-        self.yakui_vulkan
-            .transfer(yakui_paint_dom, &yakui_vulkan_context, cmd);
-
-        // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
-        // before submitting the command buffer so time-sensitive values can be set with minimum
-        // latency.
-        state.uniforms.record_transfer(device, cmd);
-        self.buffer_barriers.push(
-            vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::UNIFORM_READ)
-                .buffer(state.uniforms.buffer())
-                .size(vk::WHOLE_SIZE),
-        );
-
-        let nearby_nodes_started = Instant::now();
-        let nearby_nodes = if let Some(sim) = sim.as_deref() {
-            traversal::nearby_nodes(&sim.graph, &view, self.cfg.local_simulation.view_distance)
-        } else {
-            vec![]
-        };
-        histogram!("frame.cpu.nearby_nodes").record(nearby_nodes_started.elapsed());
-
-        if let (Some(voxels), Some(sim)) = (self.voxels.as_mut(), sim.as_mut()) {
-            voxels.prepare(
-                device,
-                state.voxels.as_mut().unwrap(),
-                sim,
-                &nearby_nodes,
-                state.post_cmd,
-                frustum,
+                self.timestamp_pool,
+                first_query,
+                TIMESTAMPS_PER_FRAME,
             );
-        }
-
-        // Ensure reads of just-transferred memory wait until it's ready
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::DependencyFlags::default(),
-            &[],
-            &self.buffer_barriers,
-            &self.image_barriers,
-        );
-        self.buffer_barriers.clear();
-        self.image_barriers.clear();
-
-        device.cmd_begin_render_pass(
-            cmd,
-            &vk::RenderPassBeginInfo::default()
-                .render_pass(self.gfx.render_pass)
-                .framebuffer(framebuffer)
-                .render_area(vk::Rect2D {
-                    offset: vk::Offset2D::default(),
-                    extent,
-                })
-                .clear_values(&[
-                    vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [0.0, 0.0, 0.0, 0.0],
-                        },
-                    },
-                    vk::ClearValue {
-                        depth_stencil: vk::ClearDepthStencilValue {
-                            depth: 0.0,
-                            stencil: 0,
-                        },
-                    },
-                ]),
-            vk::SubpassContents::INLINE,
-        );
-
-        // Set up common dynamic state
-        let viewports = [vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: extent.width as f32,
-            height: extent.height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        }];
-        let scissors = [vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent: vk::Extent2D {
-                width: extent.width,
-                height: extent.height,
-            },
-        }];
-        device.cmd_set_viewport(cmd, 0, &viewports);
-        device.cmd_set_scissor(cmd, 0, &scissors);
-
-        // Record the actual rendering commands
-        if let Some(ref mut voxels) = self.voxels {
-            voxels.draw(
-                device,
-                &self.loader,
-                state.common_ds,
-                state.voxels.as_ref().unwrap(),
+            let mut timestamp_index = first_query;
+            device.cmd_write_timestamp(
                 cmd,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                self.timestamp_pool,
+                timestamp_index,
             );
-        }
+            timestamp_index += 1;
 
-        if let Some(sim) = sim.as_deref() {
-            for (node, transform) in nearby_nodes {
-                for &entity in sim.graph_entities.get(node) {
-                    if sim.local_character == Some(entity) {
-                        // Don't draw ourself
-                        continue;
-                    }
-                    let pos = sim
-                        .world
-                        .get::<&Position>(entity)
-                        .expect("positionless entity in graph");
-                    if let Some(character_model) = self.loader.get(self.character_model) {
-                        if let Ok(ch) = sim.world.get::<&Character>(entity) {
-                            let transform = na::Matrix4::from(transform * pos.local)
-                                * na::Matrix4::new_scaling(sim.cfg().meters_to_absolute)
-                                * ch.state.orientation.to_homogeneous();
-                            for mesh in &character_model.0 {
-                                self.meshes
-                                    .draw(device, state.common_ds, cmd, mesh, &transform);
+            self.yakui_vulkan
+                .transfer(yakui_paint_dom, &yakui_vulkan_context, cmd);
+
+            // Schedule transfer of uniform data. Note that we defer actually preparing the data to just
+            // before submitting the command buffer so time-sensitive values can be set with minimum
+            // latency.
+            state.uniforms.record_transfer(device, cmd);
+            self.buffer_barriers.push(
+                vk::BufferMemoryBarrier::default()
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .dst_access_mask(vk::AccessFlags::UNIFORM_READ)
+                    .buffer(state.uniforms.buffer())
+                    .size(vk::WHOLE_SIZE),
+            );
+
+            let nearby_nodes_started = Instant::now();
+            let nearby_nodes = if let Some(sim) = sim.as_deref() {
+                traversal::nearby_nodes(&sim.graph, &view, self.cfg.local_simulation.view_distance)
+            } else {
+                vec![]
+            };
+            histogram!("frame.cpu.nearby_nodes").record(nearby_nodes_started.elapsed());
+
+            if let (Some(voxels), Some(sim)) = (self.voxels.as_mut(), sim.as_mut()) {
+                voxels.prepare(
+                    device,
+                    state.voxels.as_mut().unwrap(),
+                    sim,
+                    &nearby_nodes,
+                    state.post_cmd,
+                    frustum,
+                );
+            }
+
+            // Ensure reads of just-transferred memory wait until it's ready
+            device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::default(),
+                &[],
+                &self.buffer_barriers,
+                &self.image_barriers,
+            );
+            self.buffer_barriers.clear();
+            self.image_barriers.clear();
+
+            device.cmd_begin_render_pass(
+                cmd,
+                &vk::RenderPassBeginInfo::default()
+                    .render_pass(self.gfx.render_pass)
+                    .framebuffer(framebuffer)
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D::default(),
+                        extent,
+                    })
+                    .clear_values(&[
+                        vk::ClearValue {
+                            color: vk::ClearColorValue {
+                                float32: [0.0, 0.0, 0.0, 0.0],
+                            },
+                        },
+                        vk::ClearValue {
+                            depth_stencil: vk::ClearDepthStencilValue {
+                                depth: 0.0,
+                                stencil: 0,
+                            },
+                        },
+                    ]),
+                vk::SubpassContents::INLINE,
+            );
+
+            // Set up common dynamic state
+            let viewports = [vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: extent.width as f32,
+                height: extent.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            }];
+            let scissors = [vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
+                    width: extent.width,
+                    height: extent.height,
+                },
+            }];
+            device.cmd_set_viewport(cmd, 0, &viewports);
+            device.cmd_set_scissor(cmd, 0, &scissors);
+
+            // Record the actual rendering commands
+            if let Some(ref mut voxels) = self.voxels {
+                voxels.draw(
+                    device,
+                    &self.loader,
+                    state.common_ds,
+                    state.voxels.as_ref().unwrap(),
+                    cmd,
+                );
+            }
+
+            if let Some(sim) = sim.as_deref() {
+                for (node, transform) in nearby_nodes {
+                    for &entity in sim.graph_entities.get(node) {
+                        if sim.local_character == Some(entity) {
+                            // Don't draw ourself
+                            continue;
+                        }
+                        let pos = sim
+                            .world
+                            .get::<&Position>(entity)
+                            .expect("positionless entity in graph");
+                        if let Some(character_model) = self.loader.get(self.character_model) {
+                            if let Ok(ch) = sim.world.get::<&Character>(entity) {
+                                let transform = na::Matrix4::from(transform * pos.local)
+                                    * na::Matrix4::new_scaling(sim.cfg().meters_to_absolute)
+                                    * ch.state.orientation.to_homogeneous();
+                                for mesh in &character_model.0 {
+                                    self.meshes.draw(
+                                        device,
+                                        state.common_ds,
+                                        cmd,
+                                        mesh,
+                                        &transform,
+                                    );
+                                }
                             }
                         }
                     }
                 }
             }
+
+            device.cmd_next_subpass(cmd, vk::SubpassContents::INLINE);
+
+            self.fog.draw(device, state.common_ds, cmd);
+
+            self.yakui_vulkan
+                .paint(yakui_paint_dom, &yakui_vulkan_context, cmd, extent);
+
+            // Finish up
+            device.cmd_end_render_pass(cmd);
+            device.cmd_write_timestamp(
+                cmd,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                self.timestamp_pool,
+                timestamp_index,
+            );
+            timestamp_index += 1;
+            device.end_command_buffer(cmd).unwrap();
+
+            device.cmd_write_timestamp(
+                state.post_cmd,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                self.timestamp_pool,
+                timestamp_index,
+            );
+            device.end_command_buffer(state.post_cmd).unwrap();
+
+            // Specify the uniform data before actually submitting the command to transfer it
+            state.uniforms.write(Uniforms {
+                view_projection,
+                inverse_projection: *projection.inverse().matrix(),
+                fog_density: fog::density(self.cfg.local_simulation.view_distance, 1e-3, 5.0),
+                time: self.epoch.elapsed().as_secs_f32().fract(),
+            });
+
+            // Submit the commands to the GPU
+            device
+                .queue_submit(
+                    self.gfx.queue,
+                    &[
+                        vk::SubmitInfo::default()
+                            .command_buffers(&[cmd])
+                            .wait_semaphores(&[state.image_acquired])
+                            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+                            .signal_semaphores(&[present]),
+                        vk::SubmitInfo::default().command_buffers(&[state.post_cmd]),
+                    ],
+                    state.fence,
+                )
+                .unwrap();
+            self.yakui_vulkan.transfers_submitted();
+            state.used = true;
+            state.in_flight = true;
+            histogram!("frame.cpu").record(draw_started.elapsed());
         }
-
-        device.cmd_next_subpass(cmd, vk::SubpassContents::INLINE);
-
-        self.fog.draw(device, state.common_ds, cmd);
-
-        self.yakui_vulkan
-            .paint(yakui_paint_dom, &yakui_vulkan_context, cmd, extent);
-
-        // Finish up
-        device.cmd_end_render_pass(cmd);
-        device.cmd_write_timestamp(
-            cmd,
-            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            self.timestamp_pool,
-            timestamp_index,
-        );
-        timestamp_index += 1;
-        device.end_command_buffer(cmd).unwrap();
-
-        device.cmd_write_timestamp(
-            state.post_cmd,
-            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            self.timestamp_pool,
-            timestamp_index,
-        );
-        device.end_command_buffer(state.post_cmd).unwrap();
-
-        // Specify the uniform data before actually submitting the command to transfer it
-        state.uniforms.write(Uniforms {
-            view_projection,
-            inverse_projection: *projection.inverse().matrix(),
-            fog_density: fog::density(self.cfg.local_simulation.view_distance, 1e-3, 5.0),
-            time: self.epoch.elapsed().as_secs_f32().fract(),
-        });
-
-        // Submit the commands to the GPU
-        device
-            .queue_submit(
-                self.gfx.queue,
-                &[
-                    vk::SubmitInfo::default()
-                        .command_buffers(&[cmd])
-                        .wait_semaphores(&[state.image_acquired])
-                        .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                        .signal_semaphores(&[present]),
-                    vk::SubmitInfo::default().command_buffers(&[state.post_cmd]),
-                ],
-                state.fence,
-            )
-            .unwrap();
-        self.yakui_vulkan.transfers_submitted();
-        state.used = true;
-        state.in_flight = true;
-        histogram!("frame.cpu").record(draw_started.elapsed());
-    }}
+    }
 
     /// Wait for all drawing to complete
     ///

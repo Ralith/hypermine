@@ -7,13 +7,13 @@ use std::{
     ptr,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use ash::vk;
-use futures_util::future::{try_join_all, BoxFuture, FutureExt};
+use futures_util::future::{BoxFuture, FutureExt, try_join_all};
 use lahar::{BufferRegionAlloc, DedicatedImage};
 use tracing::{error, trace};
 
-use super::{meshes::Vertex, Base, Mesh};
+use super::{Base, Mesh, meshes::Vertex};
 use crate::loader::{Cleanup, LoadCtx, LoadFuture, Loadable};
 
 pub struct GlbFile {
@@ -68,11 +68,13 @@ impl GlbFile {
 pub struct GltfScene(pub Vec<Mesh>);
 
 impl Cleanup for GltfScene {
-    unsafe fn cleanup(self, gfx: &Base) { unsafe {
-        for mesh in self.0 {
-            mesh.cleanup(gfx);
+    unsafe fn cleanup(self, gfx: &Base) {
+        unsafe {
+            for mesh in self.0 {
+                mesh.cleanup(gfx);
+            }
         }
-    }}
+    }
 }
 
 fn load_node<'a>(
@@ -385,7 +387,7 @@ async fn load_material(
                 ctx,
                 prim.material().pbr_metallic_roughness().base_color_factor(),
             )
-            .await
+            .await;
         }
         Some(x) => x,
     };

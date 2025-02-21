@@ -1,9 +1,9 @@
-use ash::{vk, Device};
+use ash::{Device, vk};
 use lahar::{DedicatedImage, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
 use super::surface_extraction::DrawBuffer;
-use crate::{graphics::Base, Asset, Loader};
+use crate::{Asset, Loader, graphics::Base};
 use common::{defer, world::Material};
 
 const VERT: &[u32] = include_glsl!("shaders/voxels.vert");
@@ -252,63 +252,65 @@ impl Surface {
         common_ds: vk::DescriptorSet,
         frame: &Frame,
         cmd: vk::CommandBuffer,
-    ) -> bool { unsafe {
-        if self.colors_view == vk::ImageView::null() {
-            if let Some(colors) = loader.get(self.colors) {
-                self.colors_view = device
-                    .create_image_view(
-                        &vk::ImageViewCreateInfo::default()
-                            .image(colors.handle)
-                            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
-                            .format(vk::Format::R8G8B8A8_SRGB)
-                            .subresource_range(vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                base_mip_level: 0,
-                                level_count: 1,
-                                base_array_layer: 0,
-                                layer_count: (Material::COUNT - 1) as u32,
-                            }),
-                        None,
-                    )
-                    .unwrap();
-                device.update_descriptor_sets(
-                    &[vk::WriteDescriptorSet::default()
-                        .dst_set(self.ds)
-                        .dst_binding(1)
-                        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                        .image_info(&[vk::DescriptorImageInfo {
-                            sampler: vk::Sampler::null(),
-                            image_view: self.colors_view,
-                            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                        }])],
-                    &[],
-                );
-            } else {
-                return false;
+    ) -> bool {
+        unsafe {
+            if self.colors_view == vk::ImageView::null() {
+                if let Some(colors) = loader.get(self.colors) {
+                    self.colors_view = device
+                        .create_image_view(
+                            &vk::ImageViewCreateInfo::default()
+                                .image(colors.handle)
+                                .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+                                .format(vk::Format::R8G8B8A8_SRGB)
+                                .subresource_range(vk::ImageSubresourceRange {
+                                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                                    base_mip_level: 0,
+                                    level_count: 1,
+                                    base_array_layer: 0,
+                                    layer_count: (Material::COUNT - 1) as u32,
+                                }),
+                            None,
+                        )
+                        .unwrap();
+                    device.update_descriptor_sets(
+                        &[vk::WriteDescriptorSet::default()
+                            .dst_set(self.ds)
+                            .dst_binding(1)
+                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .image_info(&[vk::DescriptorImageInfo {
+                                sampler: vk::Sampler::null(),
+                                image_view: self.colors_view,
+                                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                            }])],
+                        &[],
+                    );
+                } else {
+                    return false;
+                }
             }
+
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+            device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline_layout,
+                0,
+                &[common_ds, self.ds],
+                &[],
+            );
+            device.cmd_bind_vertex_buffers(cmd, 0, &[frame.transforms.buffer()], &[0]);
+
+            device.cmd_push_constants(
+                cmd,
+                self.pipeline_layout,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+                &dimension.to_ne_bytes(),
+            );
+
+            true
         }
-
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-        device.cmd_bind_descriptor_sets(
-            cmd,
-            vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline_layout,
-            0,
-            &[common_ds, self.ds],
-            &[],
-        );
-        device.cmd_bind_vertex_buffers(cmd, 0, &[frame.transforms.buffer()], &[0]);
-
-        device.cmd_push_constants(
-            cmd,
-            self.pipeline_layout,
-            vk::ShaderStageFlags::VERTEX,
-            0,
-            &dimension.to_ne_bytes(),
-        );
-
-        true
-    }}
+    }
 
     pub unsafe fn draw(
         &self,
@@ -316,25 +318,29 @@ impl Surface {
         cmd: vk::CommandBuffer,
         buffer: &DrawBuffer,
         chunk: u32,
-    ) { unsafe {
-        device.cmd_draw_indirect(
-            cmd,
-            buffer.indirect_buffer(),
-            buffer.indirect_offset(chunk),
-            1,
-            16,
-        );
-    }}
-
-    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
-        device.destroy_pipeline(self.pipeline, None);
-        device.destroy_pipeline_layout(self.pipeline_layout, None);
-        device.destroy_descriptor_set_layout(self.static_ds_layout, None);
-        device.destroy_descriptor_pool(self.descriptor_pool, None);
-        if self.colors_view != vk::ImageView::null() {
-            device.destroy_image_view(self.colors_view, None);
+    ) {
+        unsafe {
+            device.cmd_draw_indirect(
+                cmd,
+                buffer.indirect_buffer(),
+                buffer.indirect_offset(chunk),
+                1,
+                16,
+            );
         }
-    }}
+    }
+
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        unsafe {
+            device.destroy_pipeline(self.pipeline, None);
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+            device.destroy_descriptor_set_layout(self.static_ds_layout, None);
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
+            if self.colors_view != vk::ImageView::null() {
+                device.destroy_image_view(self.colors_view, None);
+            }
+        }
+    }
 }
 
 pub struct Frame {
@@ -361,9 +367,11 @@ impl Frame {
 }
 
 impl Frame {
-    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
-        self.transforms.destroy(device);
-    }}
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        unsafe {
+            self.transforms.destroy(device);
+        }
+    }
 }
 
 // 4x4 f32 matrix

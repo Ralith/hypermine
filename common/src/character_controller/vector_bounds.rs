@@ -108,7 +108,9 @@ impl BoundedVectors {
             (bounds_iter.clone()).filter(|b| !b.check_vector(&self.displacement, self.error_margin))
         {
             let Some(ortho_bound) = bound.get_self_constrained_with_bound(new_bound) else {
-                warn!("Unsatisfied existing bound is parallel to new bound. Is the character squeezed between two walls?");
+                warn!(
+                    "Unsatisfied existing bound is parallel to new bound. Is the character squeezed between two walls?"
+                );
                 continue;
             };
 
