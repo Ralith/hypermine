@@ -78,38 +78,40 @@ impl Reactor {
         queue_family: u32,
         queue: vk::Queue,
         dst_queue_family: Option<u32>,
-    ) -> (TransferHandle, Self) { unsafe {
-        let (send, recv) = mpsc::unbounded_channel();
-        let cmd_pool = device
-            .create_command_pool(
-                &vk::CommandPoolCreateInfo::default()
-                    .queue_family_index(queue_family)
-                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
-                None,
-            )
-            .unwrap();
-        (
-            TransferHandle { send },
-            Self {
-                queue,
-                spare_fences: Vec::new(),
-                spare_cmds: Vec::new(),
-                in_flight: Vec::new(),
-                in_flight_fences: Vec::new(),
-                cmd_pool,
-                pending: None,
-                recv,
-                ctx: TransferContext {
-                    device,
-                    queue_family,
-                    dst_queue_family: dst_queue_family.unwrap_or(queue_family),
-                    stages: vk::PipelineStageFlags::empty(),
-                    buffer_barriers: Vec::new(),
-                    image_barriers: Vec::new(),
+    ) -> (TransferHandle, Self) {
+        unsafe {
+            let (send, recv) = mpsc::unbounded_channel();
+            let cmd_pool = device
+                .create_command_pool(
+                    &vk::CommandPoolCreateInfo::default()
+                        .queue_family_index(queue_family)
+                        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
+                    None,
+                )
+                .unwrap();
+            (
+                TransferHandle { send },
+                Self {
+                    queue,
+                    spare_fences: Vec::new(),
+                    spare_cmds: Vec::new(),
+                    in_flight: Vec::new(),
+                    in_flight_fences: Vec::new(),
+                    cmd_pool,
+                    pending: None,
+                    recv,
+                    ctx: TransferContext {
+                        device,
+                        queue_family,
+                        dst_queue_family: dst_queue_family.unwrap_or(queue_family),
+                        stages: vk::PipelineStageFlags::empty(),
+                        buffer_barriers: Vec::new(),
+                        image_barriers: Vec::new(),
+                    },
                 },
-            },
-        )
-    }}
+            )
+        }
+    }
 
     pub fn poll(&mut self) -> Result<(), Disconnected> {
         self.run_for(Duration::from_secs(0))

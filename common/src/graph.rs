@@ -79,7 +79,10 @@ impl Graph {
     /// Returns all of the sides between the provided node and its shorter neighbors.
     ///
     /// A node's length is its distance from the root node.
-    pub fn descenders(&self, node: NodeId) -> impl ExactSizeIterator<Item = (Side, NodeId)> + use<> {
+    pub fn descenders(
+        &self,
+        node: NodeId,
+    ) -> impl ExactSizeIterator<Item = (Side, NodeId)> + use<> {
         let node_length = self.length(node);
 
         let mut results = [None; 3];

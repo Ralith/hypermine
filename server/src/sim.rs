@@ -6,7 +6,7 @@ use common::math::MIsometry;
 use common::node::VoxelData;
 use common::proto::{BlockUpdate, Inventory, SerializedVoxelData};
 use common::world::Material;
-use common::{node::ChunkId, GraphEntities};
+use common::{GraphEntities, node::ChunkId};
 use fxhash::{FxHashMap, FxHashSet};
 use hecs::{DynamicBundle, Entity, EntityBuilder};
 use rand::rngs::SmallRng;
@@ -16,16 +16,15 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, error_span, info, trace};
 
 use common::{
-    character_controller, dodeca,
+    EntityId, SimConfig, Step, character_controller, dodeca,
     graph::{Graph, NodeId},
-    node::{populate_fresh_nodes, Chunk},
+    node::{Chunk, populate_fresh_nodes},
     proto::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
     },
     traversal::{ensure_nearby, nearby_nodes},
     worldgen::ChunkParams,
-    EntityId, SimConfig, Step,
 };
 
 use crate::postcard_helpers::{self, SaveEntity};
@@ -183,7 +182,10 @@ impl Sim {
                 // Ensure that every node occupied by a character is generated.
                 let Some(character) = read.get_character(&name)? else {
                     // Skip loading named entities that lack path information.
-                    error!("Entity {} will not be loaded because their node path information is missing.", name);
+                    error!(
+                        "Entity {} will not be loaded because their node path information is missing.",
+                        name
+                    );
                     return Ok(());
                 };
                 let mut current_node = NodeId::ROOT;
@@ -198,7 +200,10 @@ impl Sim {
                     // Skip loading named entities that are in the wrong place. This can happen
                     // when there are multiple entities with the same name, which has been possible
                     // in previous versions of Hypermine.
-                    error!("Entity {} will not be loaded because their node path information is incorrect.", name);
+                    error!(
+                        "Entity {} will not be loaded because their node path information is incorrect.",
+                        name
+                    );
                     return Ok(());
                 }
                 // Prepare all relevant components that are needed to support ComponentType::Name

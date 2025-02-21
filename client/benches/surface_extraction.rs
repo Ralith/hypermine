@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use ash::vk;
-use bencher::{benchmark_group, benchmark_main, Bencher};
+use bencher::{Bencher, benchmark_group, benchmark_main};
 
 use client::graphics::{
-    voxels::surface_extraction::{self, ExtractTask, SurfaceExtraction},
     Base,
+    voxels::surface_extraction::{self, ExtractTask, SurfaceExtraction},
 };
 //use common::world::Material;
 

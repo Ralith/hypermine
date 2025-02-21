@@ -7,7 +7,7 @@ mod sim;
 
 use std::{net::UdpSocket, sync::Arc, time::Instant};
 
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{Context, Error, Result, anyhow};
 use hecs::Entity;
 use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use slotmap::DenseSlotMap;
@@ -15,9 +15,8 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, error_span, info, trace, warn};
 
 use common::{
-    codec,
+    SimConfig, codec,
     proto::{self, connection_error_codes},
-    SimConfig,
 };
 use input_queue::InputQueue;
 use save::Save;

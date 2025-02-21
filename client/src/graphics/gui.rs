@@ -1,5 +1,5 @@
 use yakui::{
-    align, colored_box, colored_box_container, label, pad, widgets::Pad, Alignment, Color,
+    Alignment, Color, align, colored_box, colored_box_container, label, pad, widgets::Pad,
 };
 
 use crate::Sim;

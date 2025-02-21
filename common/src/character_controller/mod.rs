@@ -6,8 +6,9 @@ use std::mem::replace;
 use tracing::warn;
 
 use crate::{
+    SimConfig,
     character_controller::{
-        collision::{check_collision, Collision, CollisionContext},
+        collision::{Collision, CollisionContext, check_collision},
         vector_bounds::{BoundedVectors, VectorBound},
     },
     graph::Graph,
@@ -15,7 +16,6 @@ use crate::{
     proto::{CharacterInput, Position},
     sanitize_motion_input,
     sim_config::CharacterConfig,
-    SimConfig,
 };
 
 /// Runs a single step of character movement
@@ -262,7 +262,9 @@ fn apply_velocity(
     }
 
     if !all_collisions_resolved {
-        warn!("A character entity processed too many collisions and collision resolution was cut short.");
+        warn!(
+            "A character entity processed too many collisions and collision resolution was cut short."
+        );
     }
 
     *velocity = *bounded_vectors.velocity().unwrap();

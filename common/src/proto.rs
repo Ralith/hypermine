@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dodeca, graph::NodeId, math::MIsometry, node::ChunkId, voxel_math::Coords, world::Material,
-    EntityId, SimConfig, Step,
+    EntityId, SimConfig, Step, dodeca, graph::NodeId, math::MIsometry, node::ChunkId,
+    voxel_math::Coords, world::Material,
 };
 
 #[derive(Debug, Serialize, Deserialize)]

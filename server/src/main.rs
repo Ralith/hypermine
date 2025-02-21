@@ -4,7 +4,7 @@ mod config;
 
 use std::{fs, net::UdpSocket, path::Path};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use tracing::{info, warn};
 
@@ -47,16 +47,14 @@ pub async fn run() -> Result<()> {
         _ => {
             // TODO: Cache on disk
             warn!("generating self-signed certificate");
-            let certified_key = rcgen::generate_simple_self_signed(vec![cfg
-                .server_name
-                .clone()
-                .map(Ok)
-                .unwrap_or_else(|| {
+            let certified_key = rcgen::generate_simple_self_signed(vec![
+                cfg.server_name.clone().map(Ok).unwrap_or_else(|| {
                     hostname::get().context("getting hostname").and_then(|x| {
                         x.into_string()
                             .map_err(|_| anyhow!("hostname is not valid UTF-8"))
                     })
-                })?])
+                })?,
+            ])
             .unwrap();
             let key = certified_key.key_pair.serialize_der();
             let cert = certified_key.cert.der().to_vec();

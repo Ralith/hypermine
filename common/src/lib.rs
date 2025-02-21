@@ -1,8 +1,8 @@
 #![allow(clippy::needless_borrowed_reference)]
 
 use rand::{
-    distr::{Distribution, StandardUniform},
     Rng,
+    distr::{Distribution, StandardUniform},
 };
 
 #[macro_use]

@@ -1,6 +1,6 @@
 use std::mem;
 
-use ash::{vk, Device};
+use ash::{Device, vk};
 use lahar::{BufferRegionAlloc, DedicatedImage};
 use memoffset::offset_of;
 use vk_shader_macros::include_glsl;
@@ -170,37 +170,46 @@ impl Meshes {
         cmd: vk::CommandBuffer,
         mesh: &Mesh,
         transform: &na::Matrix4<f32>,
-    ) { unsafe {
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-        device.cmd_bind_descriptor_sets(
-            cmd,
-            vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline_layout,
-            0,
-            &[common_ds, mesh.ds],
-            &[],
-        );
-        device.cmd_push_constants(
-            cmd,
-            self.pipeline_layout,
-            vk::ShaderStageFlags::VERTEX,
-            0,
-            &mem::transmute::<na::Matrix4<f32>, [u8; 64]>(*transform),
-        );
-        device.cmd_bind_vertex_buffers(cmd, 0, &[mesh.vertices.buffer], &[mesh.vertices.offset]);
-        device.cmd_bind_index_buffer(
-            cmd,
-            mesh.indices.buffer,
-            mesh.indices.offset,
-            vk::IndexType::UINT32,
-        );
-        device.cmd_draw_indexed(cmd, mesh.index_count, 1, 0, 0, 0);
-    }}
+    ) {
+        unsafe {
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+            device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline_layout,
+                0,
+                &[common_ds, mesh.ds],
+                &[],
+            );
+            device.cmd_push_constants(
+                cmd,
+                self.pipeline_layout,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+                &mem::transmute::<na::Matrix4<f32>, [u8; 64]>(*transform),
+            );
+            device.cmd_bind_vertex_buffers(
+                cmd,
+                0,
+                &[mesh.vertices.buffer],
+                &[mesh.vertices.offset],
+            );
+            device.cmd_bind_index_buffer(
+                cmd,
+                mesh.indices.buffer,
+                mesh.indices.offset,
+                vk::IndexType::UINT32,
+            );
+            device.cmd_draw_indexed(cmd, mesh.index_count, 1, 0, 0, 0);
+        }
+    }
 
-    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
-        device.destroy_pipeline(self.pipeline, None);
-        device.destroy_pipeline_layout(self.pipeline_layout, None);
-    }}
+    pub unsafe fn destroy(&mut self, device: &Device) {
+        unsafe {
+            device.destroy_pipeline(self.pipeline, None);
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+    }
 }
 
 #[repr(C)]
@@ -223,10 +232,12 @@ pub struct Mesh {
 }
 
 impl crate::loader::Cleanup for Mesh {
-    unsafe fn cleanup(mut self, gfx: &Base) { unsafe {
-        let device = &*gfx.device;
-        device.destroy_descriptor_pool(self.pool, None);
-        device.destroy_image_view(self.color_view, None);
-        self.color.destroy(device);
-    }}
+    unsafe fn cleanup(mut self, gfx: &Base) {
+        unsafe {
+            let device = &*gfx.device;
+            device.destroy_descriptor_pool(self.pool, None);
+            device.destroy_image_view(self.color_view, None);
+            self.color.destroy(device);
+        }
+    }
 }

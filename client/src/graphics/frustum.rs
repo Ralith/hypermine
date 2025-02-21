@@ -1,5 +1,5 @@
-use common::math::MVector;
 use common::Plane;
+use common::math::MVector;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Frustum {

@@ -189,9 +189,10 @@ mod tests {
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
             * &Ray::new(MVector::origin(), MVector::x());
         let normal = -MVector::z();
-        assert!(ray
-            .solve_sphere_plane_intersection(&normal, 0.2_f32.sinh())
-            .is_none());
+        assert!(
+            ray.solve_sphere_plane_intersection(&normal, 0.2_f32.sinh())
+                .is_none()
+        );
     }
 
     #[test]
@@ -256,9 +257,10 @@ mod tests {
             * &Ray::new(MVector::origin(), MVector::x());
         let line_normal0 = MVector::x();
         let line_normal1 = MVector::z();
-        assert!(ray
-            .solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2_f32.sinh())
-            .is_none());
+        assert!(
+            ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2_f32.sinh())
+                .is_none()
+        );
     }
 
     #[test]
@@ -291,9 +293,10 @@ mod tests {
         let radius = 0.019090926_f32;
         // The following returns wrong results in the other implementation, so we test this case
         // to make sure there are no regressions.
-        assert!(ray
-            .solve_sphere_line_intersection(&line_normal0, &line_normal1, radius.sinh())
-            .is_none());
+        assert!(
+            ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, radius.sinh())
+                .is_none()
+        );
     }
 
     #[test]
@@ -355,14 +358,15 @@ mod tests {
         let point_normal0 = MVector::x();
         let point_normal1 = MVector::y();
         let point_normal2 = MVector::z();
-        assert!(ray
-            .solve_sphere_point_intersection(
+        assert!(
+            ray.solve_sphere_point_intersection(
                 &point_normal0,
                 &point_normal1,
                 &point_normal2,
                 0.2_f32.sinh()
             )
-            .is_none());
+            .is_none()
+        );
     }
 
     #[test]

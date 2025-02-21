@@ -447,38 +447,44 @@ impl SwapchainMgr {
         surface_fn: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
         fallback_size: PhysicalSize<u32>,
-    ) { unsafe {
-        self.state = SwapchainState::new(
-            surface_fn,
-            self.state.swapchain_fn.clone(),
-            self.state.gfx.clone(),
-            surface,
-            self.format,
-            self.state.handle,
-            fallback_size,
-        );
-    }}
+    ) {
+        unsafe {
+            self.state = SwapchainState::new(
+                surface_fn,
+                self.state.swapchain_fn.clone(),
+                self.state.gfx.clone(),
+                surface,
+                self.format,
+                self.state.handle,
+                fallback_size,
+            );
+        }
+    }
 
     /// Get the index of the next frame to use
-    unsafe fn acquire_next_image(&self, signal: vk::Semaphore) -> Result<(u32, bool), vk::Result> { unsafe {
-        self.state.swapchain_fn.acquire_next_image(
-            self.state.handle,
-            u64::MAX,
-            signal,
-            vk::Fence::null(),
-        )
-    }}
+    unsafe fn acquire_next_image(&self, signal: vk::Semaphore) -> Result<(u32, bool), vk::Result> {
+        unsafe {
+            self.state.swapchain_fn.acquire_next_image(
+                self.state.handle,
+                u64::MAX,
+                signal,
+                vk::Fence::null(),
+            )
+        }
+    }
 
     /// Present a frame on the window
-    unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> { unsafe {
-        self.state.swapchain_fn.queue_present(
-            self.state.gfx.queue,
-            &vk::PresentInfoKHR::default()
-                .wait_semaphores(&[self.state.frames[index as usize].present])
-                .swapchains(&[self.state.handle])
-                .image_indices(&[index]),
-        )
-    }}
+    unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> {
+        unsafe {
+            self.state.swapchain_fn.queue_present(
+                self.state.gfx.queue,
+                &vk::PresentInfoKHR::default()
+                    .wait_semaphores(&[self.state.frames[index as usize].present])
+                    .swapchains(&[self.state.handle])
+                    .image_indices(&[index]),
+            )
+        }
+    }
 }
 
 /// Data that's replaced when the swapchain is updated
@@ -499,155 +505,157 @@ impl SwapchainState {
         format: vk::SurfaceFormatKHR,
         old: vk::SwapchainKHR,
         fallback_size: PhysicalSize<u32>,
-    ) -> Self { unsafe {
-        let device = &*gfx.device;
+    ) -> Self {
+        unsafe {
+            let device = &*gfx.device;
 
-        let surface_capabilities = surface_fn
-            .get_physical_device_surface_capabilities(gfx.physical, surface)
-            .unwrap();
-        let extent = match surface_capabilities.current_extent.width {
-            // If Vulkan doesn't know, winit probably does. Known to apply at least to Wayland.
-            std::u32::MAX => vk::Extent2D {
-                width: fallback_size.width,
-                height: fallback_size.height,
-            },
-            _ => surface_capabilities.current_extent,
-        };
-        let pre_transform = if surface_capabilities
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-        {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
-        } else {
-            surface_capabilities.current_transform
-        };
-        let present_modes = surface_fn
-            .get_physical_device_surface_present_modes(gfx.physical, surface)
-            .unwrap();
-        let present_mode = present_modes
-            .iter()
-            .cloned()
-            .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
-            .unwrap_or(vk::PresentModeKHR::FIFO);
+            let surface_capabilities = surface_fn
+                .get_physical_device_surface_capabilities(gfx.physical, surface)
+                .unwrap();
+            let extent = match surface_capabilities.current_extent.width {
+                // If Vulkan doesn't know, winit probably does. Known to apply at least to Wayland.
+                std::u32::MAX => vk::Extent2D {
+                    width: fallback_size.width,
+                    height: fallback_size.height,
+                },
+                _ => surface_capabilities.current_extent,
+            };
+            let pre_transform = if surface_capabilities
+                .supported_transforms
+                .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+            {
+                vk::SurfaceTransformFlagsKHR::IDENTITY
+            } else {
+                surface_capabilities.current_transform
+            };
+            let present_modes = surface_fn
+                .get_physical_device_surface_present_modes(gfx.physical, surface)
+                .unwrap();
+            let present_mode = present_modes
+                .iter()
+                .cloned()
+                .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
+                .unwrap_or(vk::PresentModeKHR::FIFO);
 
-        let image_count = if surface_capabilities.max_image_count > 0 {
-            surface_capabilities
-                .max_image_count
-                .min(surface_capabilities.min_image_count + 1)
-        } else {
-            surface_capabilities.min_image_count + 1
-        };
+            let image_count = if surface_capabilities.max_image_count > 0 {
+                surface_capabilities
+                    .max_image_count
+                    .min(surface_capabilities.min_image_count + 1)
+            } else {
+                surface_capabilities.min_image_count + 1
+            };
 
-        let handle = swapchain_fn
-            .create_swapchain(
-                &vk::SwapchainCreateInfoKHR::default()
-                    .surface(surface)
-                    .min_image_count(image_count)
-                    .image_color_space(format.color_space)
-                    .image_format(format.format)
-                    .image_extent(extent)
-                    .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-                    .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-                    .pre_transform(pre_transform)
-                    .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                    .present_mode(present_mode)
-                    .clipped(true)
-                    .image_array_layers(1)
-                    .old_swapchain(old),
-                None,
-            )
-            .unwrap();
+            let handle = swapchain_fn
+                .create_swapchain(
+                    &vk::SwapchainCreateInfoKHR::default()
+                        .surface(surface)
+                        .min_image_count(image_count)
+                        .image_color_space(format.color_space)
+                        .image_format(format.format)
+                        .image_extent(extent)
+                        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                        .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                        .pre_transform(pre_transform)
+                        .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+                        .present_mode(present_mode)
+                        .clipped(true)
+                        .image_array_layers(1)
+                        .old_swapchain(old),
+                    None,
+                )
+                .unwrap();
 
-        let frames = swapchain_fn
-            .get_swapchain_images(handle)
-            .unwrap()
-            .into_iter()
-            .map(|image| {
-                let view = device
-                    .create_image_view(
-                        &vk::ImageViewCreateInfo::default()
-                            .view_type(vk::ImageViewType::TYPE_2D)
-                            .format(format.format)
-                            .subresource_range(vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                base_mip_level: 0,
-                                level_count: 1,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                            })
-                            .image(image),
-                        None,
-                    )
-                    .unwrap();
-                gfx.set_name(view, cstr!("swapchain"));
-                let depth = DedicatedImage::new(
-                    device,
-                    &gfx.memory_properties,
-                    &vk::ImageCreateInfo::default()
-                        .image_type(vk::ImageType::TYPE_2D)
-                        .format(vk::Format::D32_SFLOAT)
-                        .extent(vk::Extent3D {
-                            width: extent.width,
-                            height: extent.height,
-                            depth: 1,
-                        })
-                        .mip_levels(1)
-                        .array_layers(1)
-                        .samples(vk::SampleCountFlags::TYPE_1)
-                        .usage(
-                            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                                | vk::ImageUsageFlags::INPUT_ATTACHMENT,
-                        ),
-                );
-                gfx.set_name(depth.handle, cstr!("depth"));
-                gfx.set_name(depth.memory, cstr!("depth"));
-                let depth_view = device
-                    .create_image_view(
-                        &vk::ImageViewCreateInfo::default()
-                            .image(depth.handle)
-                            .view_type(vk::ImageViewType::TYPE_2D)
-                            .format(vk::Format::D32_SFLOAT)
-                            .subresource_range(vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::DEPTH,
-                                base_mip_level: 0,
-                                level_count: 1,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                            }),
-                        None,
-                    )
-                    .unwrap();
-                gfx.set_name(depth_view, cstr!("depth"));
-                let present = device.create_semaphore(&Default::default(), None).unwrap();
-                gfx.set_name(present, cstr!("present"));
-                Frame {
-                    view,
-                    depth,
-                    depth_view,
-                    buffer: device
-                        .create_framebuffer(
-                            &vk::FramebufferCreateInfo::default()
-                                .render_pass(gfx.render_pass)
-                                .attachments(&[view, depth_view])
-                                .width(extent.width)
-                                .height(extent.height)
-                                .layers(1),
+            let frames = swapchain_fn
+                .get_swapchain_images(handle)
+                .unwrap()
+                .into_iter()
+                .map(|image| {
+                    let view = device
+                        .create_image_view(
+                            &vk::ImageViewCreateInfo::default()
+                                .view_type(vk::ImageViewType::TYPE_2D)
+                                .format(format.format)
+                                .subresource_range(vk::ImageSubresourceRange {
+                                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                                    base_mip_level: 0,
+                                    level_count: 1,
+                                    base_array_layer: 0,
+                                    layer_count: 1,
+                                })
+                                .image(image),
                             None,
                         )
-                        .unwrap(),
-                    present,
-                }
-            })
-            .collect();
+                        .unwrap();
+                    gfx.set_name(view, cstr!("swapchain"));
+                    let depth = DedicatedImage::new(
+                        device,
+                        &gfx.memory_properties,
+                        &vk::ImageCreateInfo::default()
+                            .image_type(vk::ImageType::TYPE_2D)
+                            .format(vk::Format::D32_SFLOAT)
+                            .extent(vk::Extent3D {
+                                width: extent.width,
+                                height: extent.height,
+                                depth: 1,
+                            })
+                            .mip_levels(1)
+                            .array_layers(1)
+                            .samples(vk::SampleCountFlags::TYPE_1)
+                            .usage(
+                                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                                    | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+                            ),
+                    );
+                    gfx.set_name(depth.handle, cstr!("depth"));
+                    gfx.set_name(depth.memory, cstr!("depth"));
+                    let depth_view = device
+                        .create_image_view(
+                            &vk::ImageViewCreateInfo::default()
+                                .image(depth.handle)
+                                .view_type(vk::ImageViewType::TYPE_2D)
+                                .format(vk::Format::D32_SFLOAT)
+                                .subresource_range(vk::ImageSubresourceRange {
+                                    aspect_mask: vk::ImageAspectFlags::DEPTH,
+                                    base_mip_level: 0,
+                                    level_count: 1,
+                                    base_array_layer: 0,
+                                    layer_count: 1,
+                                }),
+                            None,
+                        )
+                        .unwrap();
+                    gfx.set_name(depth_view, cstr!("depth"));
+                    let present = device.create_semaphore(&Default::default(), None).unwrap();
+                    gfx.set_name(present, cstr!("present"));
+                    Frame {
+                        view,
+                        depth,
+                        depth_view,
+                        buffer: device
+                            .create_framebuffer(
+                                &vk::FramebufferCreateInfo::default()
+                                    .render_pass(gfx.render_pass)
+                                    .attachments(&[view, depth_view])
+                                    .width(extent.width)
+                                    .height(extent.height)
+                                    .layers(1),
+                                None,
+                            )
+                            .unwrap(),
+                        present,
+                    }
+                })
+                .collect();
 
-        Self {
-            swapchain_fn,
-            gfx,
-            extent,
-            handle,
-            frames,
+            Self {
+                swapchain_fn,
+                gfx,
+                extent,
+                handle,
+                frames,
+            }
         }
-    }}
+    }
 }
 
 impl Drop for SwapchainState {

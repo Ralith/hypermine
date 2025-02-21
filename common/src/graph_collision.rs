@@ -89,7 +89,7 @@ mod tests {
         dodeca::{self, Side, Vertex},
         graph::{Graph, NodeId},
         math::MIsometry,
-        node::{populate_fresh_nodes, VoxelData},
+        node::{VoxelData, populate_fresh_nodes},
         proto::Position,
         traversal::{ensure_nearby, nearby_nodes},
         voxel_math::Coords,

@@ -8,19 +8,18 @@ use crate::{
     local_character_controller::LocalCharacterController, metrics, prediction::PredictedMotion,
 };
 use common::{
-    character_controller,
+    EntityId, GraphEntities, SimConfig, Step, character_controller,
     collision_math::Ray,
     graph::{Graph, NodeId},
     graph_ray_casting,
     math::{MIsometry, MVector},
-    node::{populate_fresh_nodes, ChunkId, VoxelData},
+    node::{ChunkId, VoxelData, populate_fresh_nodes},
     proto::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
         Inventory, Position,
     },
     sanitize_motion_input,
     world::Material,
-    EntityId, GraphEntities, SimConfig, Step,
 };
 
 const MATERIAL_PALETTE: [Material; 10] = [
