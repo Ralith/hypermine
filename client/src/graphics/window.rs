@@ -447,7 +447,7 @@ impl SwapchainMgr {
         surface_fn: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
         fallback_size: PhysicalSize<u32>,
-    ) {
+    ) { unsafe {
         self.state = SwapchainState::new(
             surface_fn,
             self.state.swapchain_fn.clone(),
@@ -457,20 +457,20 @@ impl SwapchainMgr {
             self.state.handle,
             fallback_size,
         );
-    }
+    }}
 
     /// Get the index of the next frame to use
-    unsafe fn acquire_next_image(&self, signal: vk::Semaphore) -> Result<(u32, bool), vk::Result> {
+    unsafe fn acquire_next_image(&self, signal: vk::Semaphore) -> Result<(u32, bool), vk::Result> { unsafe {
         self.state.swapchain_fn.acquire_next_image(
             self.state.handle,
             u64::MAX,
             signal,
             vk::Fence::null(),
         )
-    }
+    }}
 
     /// Present a frame on the window
-    unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> {
+    unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> { unsafe {
         self.state.swapchain_fn.queue_present(
             self.state.gfx.queue,
             &vk::PresentInfoKHR::default()
@@ -478,7 +478,7 @@ impl SwapchainMgr {
                 .swapchains(&[self.state.handle])
                 .image_indices(&[index]),
         )
-    }
+    }}
 }
 
 /// Data that's replaced when the swapchain is updated
@@ -499,7 +499,7 @@ impl SwapchainState {
         format: vk::SurfaceFormatKHR,
         old: vk::SwapchainKHR,
         fallback_size: PhysicalSize<u32>,
-    ) -> Self {
+    ) -> Self { unsafe {
         let device = &*gfx.device;
 
         let surface_capabilities = surface_fn
@@ -647,7 +647,7 @@ impl SwapchainState {
             handle,
             frames,
         }
-    }
+    }}
 }
 
 impl Drop for SwapchainState {

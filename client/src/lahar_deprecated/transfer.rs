@@ -78,7 +78,7 @@ impl Reactor {
         queue_family: u32,
         queue: vk::Queue,
         dst_queue_family: Option<u32>,
-    ) -> (TransferHandle, Self) {
+    ) -> (TransferHandle, Self) { unsafe {
         let (send, recv) = mpsc::unbounded_channel();
         let cmd_pool = device
             .create_command_pool(
@@ -109,7 +109,7 @@ impl Reactor {
                 },
             },
         )
-    }
+    }}
 
     pub fn poll(&mut self) -> Result<(), Disconnected> {
         self.run_for(Duration::from_secs(0))

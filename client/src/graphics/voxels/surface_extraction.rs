@@ -145,12 +145,12 @@ impl SurfaceExtraction {
         }
     }
 
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         device.destroy_descriptor_set_layout(self.params_layout, None);
         device.destroy_descriptor_set_layout(self.ds_layout, None);
         device.destroy_pipeline_layout(self.pipeline_layout, None);
         device.destroy_pipeline(self.extract, None);
-    }
+    }}
 }
 
 /// Scratch space for actually performing the extraction
@@ -317,7 +317,7 @@ impl ScratchBuffer {
         face_buffer: vk::Buffer,
         cmd: vk::CommandBuffer,
         tasks: &[ExtractTask],
-    ) {
+    ) { unsafe {
         // Prevent overlap with the last batch of work
         device.cmd_pipeline_barrier(
             cmd,
@@ -509,15 +509,15 @@ impl ScratchBuffer {
             &[],
             &[],
         );
-    }
+    }}
 
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         device.destroy_descriptor_pool(self.descriptor_pool, None);
         self.params.destroy(device);
         self.voxels_staging.destroy(device);
         self.voxels.destroy(device);
         self.state.destroy(device);
-    }
+    }}
 }
 
 /// Specifies a single chunk's worth of surface extraction work
@@ -637,10 +637,10 @@ impl DrawBuffer {
         self.dimension
     }
 
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         self.indirect.destroy(device);
         self.faces.destroy(device);
-    }
+    }}
 }
 
 // Size of the VkDrawIndirectCommand struct

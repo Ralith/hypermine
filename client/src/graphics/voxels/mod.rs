@@ -91,7 +91,7 @@ impl Voxels {
         nearby_nodes: &[(NodeId, MIsometry<f32>)],
         cmd: vk::CommandBuffer,
         frustum: &Frustum,
-    ) {
+    ) { unsafe {
         // Clean up after previous frame
         for i in frame.extracted.drain(..) {
             self.extraction_scratch.free(i);
@@ -163,7 +163,7 @@ impl Voxels {
                         }
                         continue;
                     }
-                    Populated {
+                    &mut Populated {
                         ref mut surface,
                         ref mut old_surface,
                         ref voxels,
@@ -241,7 +241,7 @@ impl Voxels {
             &extractions,
         );
         histogram!("frame.cpu.voxels.node_scan").record(node_scan_started.elapsed());
-    }
+    }}
 
     pub unsafe fn draw(
         &mut self,
@@ -250,7 +250,7 @@ impl Voxels {
         common_ds: vk::DescriptorSet,
         frame: &Frame,
         cmd: vk::CommandBuffer,
-    ) {
+    ) { unsafe {
         let started = Instant::now();
         if !self.draw.bind(
             device,
@@ -266,14 +266,14 @@ impl Voxels {
             self.draw.draw(device, cmd, &self.surfaces, chunk.0);
         }
         histogram!("frame.cpu.voxels.draw").record(started.elapsed());
-    }
+    }}
 
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         self.surface_extraction.destroy(device);
         self.extraction_scratch.destroy(device);
         self.surfaces.destroy(device);
         self.draw.destroy(device);
-    }
+    }}
 }
 
 pub struct Frame {
@@ -284,9 +284,9 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub unsafe fn destroy(&mut self, device: &Device) {
+    pub unsafe fn destroy(&mut self, device: &Device) { unsafe {
         self.surface.destroy(device);
-    }
+    }}
 }
 
 impl Frame {
