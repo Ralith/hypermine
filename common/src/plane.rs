@@ -50,7 +50,7 @@ impl<N: na::RealField + Copy> Mul<Plane<N>> for &MIsometry<N> {
     type Output = Plane<N>;
     fn mul(self, rhs: Plane<N>) -> Plane<N> {
         Plane {
-            normal: (*self * rhs.normal).normalized(),
+            normal: (self * rhs.normal).normalized(),
         }
     }
 }

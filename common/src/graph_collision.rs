@@ -175,9 +175,9 @@ mod tests {
                 .node_path
                 .iter()
                 .fold(MIsometry::identity(), |transform: MIsometry<f32>, side| {
-                    transform * *side.reflection()
+                    transform * side.reflection()
                 })
-                * *self.chosen_voxel.vertex.dual_to_node();
+                * self.chosen_voxel.vertex.dual_to_node();
 
             let dual_to_grid_factor = graph.layout().dual_to_grid_factor();
             let ray_target = chosen_chunk_transform
@@ -437,7 +437,7 @@ mod tests {
         }
 
         // The node coordinates of the corner of the missing node
-        let vertex_pos = *Vertex::A.dual_to_node() * MVector::origin();
+        let vertex_pos = Vertex::A.dual_to_node() * MVector::origin();
 
         // Use a ray starting from the origin. The direction vector is vertex_pos with the w coordinate
         // set to 0 and normalized
