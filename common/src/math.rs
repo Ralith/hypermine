@@ -27,7 +27,9 @@ use simba::scalar::SupersetOf;
 ///
 /// If the absolute value of this Minkowski inner product is 1, it is
 /// normalized, and equations involving such a vector tend to be simpler, much
-/// like with unit vectors.
+/// like with unit vectors. Two types, `MPoint` and `MDirection`, are available
+/// to facilitate the use of such vectors (for Minkowski inner product -1 and 1,
+/// respectively).
 ///
 /// Note that the simplest way to represent directions/velocities/normals at a
 /// point in hyperbolic space is with a vector whose Minkowski inner product
@@ -45,58 +47,52 @@ pub struct MVector<N: Scalar>(na::Vector4<N>);
 
 impl<N: RealField + Copy> MVector<N> {
     /// Normalizes the vector so that the Minkowski inner product between the
-    /// vector and itself has absolute value 1. Note that this means that this
-    /// function can be called on a vector representing either a regular point
-    /// or an ultraideal point (but not an ideal point).
+    /// vector and itself is -1. It should be called on vectors with a negative
+    /// self-mip, generally representing points.
     ///
     /// Note that this function is numerically unstable for vectors representing
-    /// points or planes far from the origin, so it is recommended to avoid this
-    /// function for such vectors.
-    pub fn normalized(&self) -> Self {
-        // TODO: To avoid subtle bugs, we should try to have different functions
-        // for points vs ultraideal points that use `self.mip(self)` or
-        // `-self.mip(self)` instead of `self.mip(self).abs()`. The correct sign
-        // should already be known by the caller. This is something that can be
-        // introduced with additional `MVector` types that distinguish between
-        // these two types of points.
-        let scale_factor_squared = self.mip(self).abs();
-        if scale_factor_squared == na::zero() {
+    /// points far from the origin, so it is recommended to avoid this function
+    /// for such vectors.
+    pub fn normalized_point(&self) -> MPoint<N> {
+        let scale_factor_squared = -self.mip(self);
+        if scale_factor_squared <= na::zero() {
             debug_assert!(
                 false,
-                "Normalizing this vector would require division by zero."
+                "Tried to normalize a non-point-like vector as a point."
             );
-            return MVector::origin();
+            return MPoint::origin();
         }
         let scale_factor = scale_factor_squared.sqrt();
-        *self / scale_factor
+        MPoint(*self / scale_factor)
+    }
+
+    /// Normalizes the vector so that the Minkowski inner product between the
+    /// vector and itself is 1. It should be called on vectors with a positive
+    /// self-mip, generally representing directions.
+    ///
+    /// Note that this function is numerically unstable for vectors representing
+    /// directions from points far from the origin, so it is recommended to
+    /// avoid this function for such vectors.
+    pub fn normalized_direction(&self) -> MDirection<N> {
+        let scale_factor_squared = self.mip(self);
+        if scale_factor_squared <= na::zero() {
+            debug_assert!(
+                false,
+                "Tried to normalize a non-direction-like vector as a direction."
+            );
+            return MDirection::x();
+        }
+        let scale_factor = scale_factor_squared.sqrt();
+        MDirection(*self / scale_factor)
     }
 
     /// Minkowski inner product, aka `<a, b>_h`. This is much like the dot
     /// product, but the product of the w-components is negated. This is the
     /// main operation that distinguishes Minkowski space from Euclidean
     /// 4-space.
-    pub fn mip(&self, other: &Self) -> N {
+    pub fn mip(&self, other: &impl AsRef<MVector<N>>) -> N {
+        let other = other.as_ref();
         self.x * other.x + self.y * other.y + self.z * other.z - self.w * other.w
-    }
-
-    /// Returns the midpoint between this vector and the given vector. An
-    /// incorrect result will be returned if the input vectors are not
-    /// normalized.
-    pub fn midpoint(&self, other: &Self) -> MVector<N> {
-        // The midpoint in the hyperboloid model is simply the midpoint in the
-        // underlying Euclidean 4-space normalized to land on the hyperboloid.
-        (self + other).normalized()
-    }
-
-    /// Returns the distance between the this vector and the given vector. An
-    /// incorrect result will be returned if the input vectors are not
-    /// normalized.
-    pub fn distance(&self, other: &MVector<N>) -> N {
-        // The absolute value of the mip between two normalized point-like is
-        // the cosh of their distance in hyperbolic space. This is analogous to
-        // the fact that the dot product between two unit vectors is the cos of
-        // their angle (or distance in spherical geometry).
-        (-self.mip(other)).acosh()
     }
 
     /// The Minkowski-space equivalent of the outer product of two vectors. This
@@ -208,6 +204,13 @@ impl<N: Scalar> std::ops::DerefMut for MVector<N> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
+    }
+}
+
+impl<N: Scalar> AsRef<MVector<N>> for MVector<N> {
+    #[inline]
+    fn as_ref(&self) -> &MVector<N> {
+        self
     }
 }
 
@@ -365,6 +368,203 @@ impl<N: RealField> std::ops::DivAssign<N> for MVector<N> {
     }
 }
 
+/// An `MVector` with the constraint that the Minkowski inner product between
+/// the vector and itself is -1. Such a vector can be used to represent a point
+/// in hyperbolic space.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(transparent)]
+pub struct MPoint<N: Scalar>(MVector<N>);
+
+impl<N: RealField + Copy> MPoint<N> {
+    /// Returns the midpoint between this vector and the given vector.
+    pub fn midpoint(&self, other: &Self) -> MPoint<N> {
+        // The midpoint in the hyperboloid model is simply the midpoint in the
+        // underlying Euclidean 4-space normalized to land on the hyperboloid.
+        (self.as_ref() + other.as_ref()).normalized_point()
+    }
+
+    /// Returns the distance between the this vector and the given vector.
+    pub fn distance(&self, other: &Self) -> N {
+        // The absolute value of the mip between two normalized point-like is
+        // the cosh of their distance in hyperbolic space. This is analogous to
+        // the fact that the dot product between two unit vectors is the cos of
+        // their angle (or distance in spherical geometry).
+        (-self.mip(other)).acosh()
+    }
+
+    /// Minkowski inner product, aka `<a, b>_h`. This is much like the dot
+    /// product, but the product of the w-components is negated. This is the
+    /// main operation that distinguishes Minkowski space from Euclidean
+    /// 4-space.
+    #[inline]
+    pub fn mip(&self, other: &impl AsRef<MVector<N>>) -> N {
+        self.as_ref().mip(other)
+    }
+
+    /// The vector representing the origin in hyperbolic space. Alias for `MVector::w()`.
+    #[inline]
+    pub fn origin() -> Self {
+        Self::w()
+    }
+
+    /// The column vector with components `[0, 0, 0, 1]`.
+    #[inline]
+    pub fn w() -> Self {
+        Self(MVector::w())
+    }
+
+    /// Creates an `MPoint` with the given components. It is the caller's
+    /// responsibility to ensure that the `MPoint` invariant holds.
+    #[inline]
+    pub fn new_unchecked(x: N, y: N, z: N, w: N) -> Self {
+        Self(MVector::new(x, y, z, w))
+    }
+
+    /// Cast the components of `self` to another type.
+    #[inline]
+    pub fn cast<N2: RealField + Copy + SupersetOf<N>>(self) -> MPoint<N2> {
+        MPoint(self.0.cast())
+    }
+}
+
+impl<N: Scalar> From<MPoint<N>> for MVector<N> {
+    /// Removes the constraint that makes the argument an `MPoint`
+    fn from(value: MPoint<N>) -> MVector<N> {
+        value.0
+    }
+}
+
+impl<N: Scalar> From<MPoint<N>> for na::Vector4<N> {
+    /// Unwraps the underlying vector. This effectively reinterprets the vector
+    /// as a vector in Euclidean 4-space, or, if interpreted as homogeneous
+    /// coordinates, a point within the 3D Beltrami-Klein model (as long as it's
+    /// inside the unit ball).
+    fn from(value: MPoint<N>) -> na::Vector4<N> {
+        value.0.0
+    }
+}
+
+impl<N: Scalar> std::ops::Deref for MPoint<N> {
+    type Target = na::coordinates::XYZW<N>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<N: Scalar> AsRef<MVector<N>> for MPoint<N> {
+    /// Unwraps the `MPoint` into its underlying `MVector`
+    #[inline]
+    fn as_ref(&self) -> &MVector<N> {
+        &self.0
+    }
+}
+
+/// An `MVector` with the constraint that the Minkowski inner product between
+/// the vector and itself is 1. Such a vector can be used to represent a
+/// direction in hyperbolic space.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
+#[repr(transparent)]
+pub struct MDirection<N: Scalar>(MVector<N>);
+
+impl<N: RealField + Copy> MDirection<N> {
+    /// The column vector with components `[1, 0, 0, 0]`.
+    #[inline]
+    pub fn x() -> Self {
+        Self(MVector::x())
+    }
+
+    /// The column vector with components `[0, 1, 0, 0]`.
+    #[inline]
+    pub fn y() -> Self {
+        Self(MVector::y())
+    }
+
+    /// The column vector with components `[0, 0, 1, 0]`.
+    #[inline]
+    pub fn z() -> Self {
+        Self(MVector::z())
+    }
+
+    /// Minkowski inner product, aka `<a, b>_h`. This is much like the dot
+    /// product, but the product of the w-components is negated. This is the
+    /// main operation that distinguishes Minkowski space from Euclidean
+    /// 4-space.
+    #[inline]
+    pub fn mip(&self, other: &impl AsRef<MVector<N>>) -> N {
+        self.as_ref().mip(other)
+    }
+
+    /// Creates an `MDirection with the given components. It is the caller's
+    /// responsibility to ensure that the `MDirection` invariant holds.
+    #[inline]
+    pub fn new_unchecked(x: N, y: N, z: N, w: N) -> Self {
+        Self(MVector::new(x, y, z, w))
+    }
+
+    /// Cast the components of `self` to another type.
+    #[inline]
+    pub fn cast<N2: RealField + Copy + SupersetOf<N>>(self) -> MDirection<N2> {
+        MDirection(self.0.cast())
+    }
+}
+
+impl<N: Scalar> From<MDirection<N>> for na::Vector4<N> {
+    /// Unwraps the underlying vector. This effectively reinterprets the vector
+    /// as a vector in Euclidean 4-space, or, if interpreted as homogeneous
+    /// coordinates, a point within the 3D Beltrami-Klein model (as long as it's
+    /// inside the unit ball).
+    fn from(value: MDirection<N>) -> na::Vector4<N> {
+        value.0.0
+    }
+}
+
+impl<N: Scalar> From<MDirection<N>> for MVector<N> {
+    /// Removes the constraint that makes the argument an `MDirection`
+    fn from(value: MDirection<N>) -> MVector<N> {
+        value.0
+    }
+}
+
+impl<N: RealField + Copy> From<na::UnitVector3<N>> for MDirection<N> {
+    /// Reinterprets the input as a vector in Minkowski space.
+    fn from(value: na::UnitVector3<N>) -> Self {
+        MDirection(MVector(value.to_homogeneous()))
+    }
+}
+
+impl<N: Scalar> std::ops::Deref for MDirection<N> {
+    type Target = na::coordinates::XYZW<N>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<N: Scalar> AsRef<MVector<N>> for MDirection<N> {
+    /// Unwraps the `MPoint` into its underlying `MVector`
+    #[inline]
+    fn as_ref(&self) -> &MVector<N> {
+        &self.0
+    }
+}
+
+impl<N: RealField> std::ops::Neg for MDirection<N> {
+    type Output = MDirection<N>;
+    #[inline]
+    fn neg(self) -> Self::Output {
+        MDirection(-self.0)
+    }
+}
+
+impl<N: RealField> std::ops::Neg for &MDirection<N> {
+    type Output = MDirection<N>;
+    #[inline]
+    fn neg(self) -> Self::Output {
+        MDirection(-&self.0)
+    }
+}
+
 /// A stack-allocated, column-major, 4x4 square matrix in Minkowski space that
 /// preserves the Minkowski inner product. Such matrices are useful for
 /// computations in the hyperboloid model of hyperbolic space. Note that the
@@ -394,9 +594,8 @@ impl<N: RealField + Copy> MIsometry<N> {
     }
 
     /// The reflection about the hyperbolic plane represented by the given
-    /// normalized vector. An incorrect matrix will be returned if the input
-    /// vector is not normalized.
-    pub fn reflection(normal: &MVector<N>) -> Self {
+    /// vector.
+    pub fn reflection(normal: &MDirection<N>) -> Self {
         // The formula below is the equivalent of the formula for the
         // Householder matrix, but the minkowski outer product instead of the
         // standard outer product to ensure that the reflection is done in
@@ -404,14 +603,13 @@ impl<N: RealField + Copy> MIsometry<N> {
         // `I - 2vv*`
         Self(
             na::Matrix4::<N>::identity()
-                - normal.minkowski_outer_product(normal) * na::convert::<_, N>(2.0),
+                - normal.as_ref().minkowski_outer_product(normal.as_ref())
+                    * na::convert::<_, N>(2.0),
         )
     }
 
-    /// The matrix that translates `a` to `b` given that `a` and `b` are
-    /// normalized point-like `MVectors`. An incorrect matrix will be returned
-    /// if `a` and `b` are not normalized.
-    pub fn translation(a: &MVector<N>, b: &MVector<N>) -> MIsometry<N> {
+    /// The matrix that translates `a` to `b`.
+    pub fn translation(a: &MPoint<N>, b: &MPoint<N>) -> MIsometry<N> {
         // A translation in hyperbolic space can be split into two
         // point-reflections (reflections about a point, where the midpoint of
         // the start and end points is that point)
@@ -445,9 +643,10 @@ impl<N: RealField + Copy> MIsometry<N> {
         // `I + (a+b)(a+b)*/(1-a*b) + 2aa* - 2(a+b)a*`
         // `I + (a+b)(a+b)*/(1-a*b) + 2aa* - 2aa* - 2ba*`
         // `I - 2ba* + (a+b)(a+b)*/(1-a*b)`
-        let a_plus_b = a + b;
+        let a_plus_b = a.as_ref() + b.as_ref();
         Self(
-            na::Matrix4::<N>::identity() - b.minkowski_outer_product(a) * na::convert::<_, N>(2.0)
+            na::Matrix4::<N>::identity()
+                - b.as_ref().minkowski_outer_product(a.as_ref()) * na::convert::<_, N>(2.0)
                 + a_plus_b.minkowski_outer_product(&a_plus_b) / (N::one() - a.mip(b)),
         )
     }
@@ -472,16 +671,25 @@ impl<N: RealField + Copy> MIsometry<N> {
         // `sinhc(x)` simply means `sinh(x)/x` but defined when `x` is 0. Using sinhc combines
         // the normalization of `v` with its multiplication by `sinh(||v||)`.
         MIsometry::translation(
-            &MVector::origin(),
-            &MVector((v * norm.sinhc()).insert_row(3, norm.cosh())),
+            &MPoint::origin(),
+            &MPoint(MVector((v * norm.sinhc()).insert_row(3, norm.cosh()))),
         )
     }
 
     /// Creates an `MIsometry` with the given columns. It is the caller's
-    /// responsibility to ensure that the resulting matrix is a valid isometry.
+    /// responsibility to ensure that the resulting matrix is a valid isometry
+    /// by ensuring that columns are mutually orthogonal.
     #[inline]
-    pub fn from_columns_unchecked(columns: &[MVector<N>; 4]) -> Self {
-        Self(na::Matrix4::from_columns(&columns.map(|x| x.0)))
+    pub fn from_columns_unchecked(
+        direction_columns: &[MDirection<N>; 3],
+        point_column: MPoint<N>,
+    ) -> Self {
+        Self(na::Matrix4::from_columns(&[
+            direction_columns[0].0.0,
+            direction_columns[1].0.0,
+            direction_columns[2].0.0,
+            point_column.0.0,
+        ]))
     }
 
     /// Creates an `MIsometry` with its elements filled with the components
@@ -532,8 +740,8 @@ impl<N: RealField + Copy> MIsometry<N> {
         // translated, we extract the normalized translation component by
         // recreating a hyperbolic translation matrix using that column.
         let normalized_translation_component = MIsometry::translation(
-            &MVector::origin(),
-            &MVector(self.0.column(3).into()).normalized(),
+            &MPoint::origin(),
+            &MVector(self.0.column(3).into()).normalized_point(),
         );
 
         // Once we have the translation component, we use that component's
@@ -689,6 +897,70 @@ impl<N: RealField> std::ops::Mul<&MVector<N>> for &MIsometry<N> {
     }
 }
 
+impl<N: RealField> std::ops::Mul<MPoint<N>> for MIsometry<N> {
+    type Output = MPoint<N>;
+    #[inline]
+    fn mul(self, rhs: MPoint<N>) -> Self::Output {
+        MPoint(self * rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<&MPoint<N>> for MIsometry<N> {
+    type Output = MPoint<N>;
+    #[inline]
+    fn mul(self, rhs: &MPoint<N>) -> Self::Output {
+        MPoint(self * &rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<MPoint<N>> for &MIsometry<N> {
+    type Output = MPoint<N>;
+    #[inline]
+    fn mul(self, rhs: MPoint<N>) -> Self::Output {
+        MPoint(self * rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<&MPoint<N>> for &MIsometry<N> {
+    type Output = MPoint<N>;
+    #[inline]
+    fn mul(self, rhs: &MPoint<N>) -> Self::Output {
+        MPoint(self * &rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<MDirection<N>> for MIsometry<N> {
+    type Output = MDirection<N>;
+    #[inline]
+    fn mul(self, rhs: MDirection<N>) -> Self::Output {
+        MDirection(self * rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<&MDirection<N>> for MIsometry<N> {
+    type Output = MDirection<N>;
+    #[inline]
+    fn mul(self, rhs: &MDirection<N>) -> Self::Output {
+        MDirection(self * &rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<MDirection<N>> for &MIsometry<N> {
+    type Output = MDirection<N>;
+    #[inline]
+    fn mul(self, rhs: MDirection<N>) -> Self::Output {
+        MDirection(self * rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<&MDirection<N>> for &MIsometry<N> {
+    type Output = MDirection<N>;
+    #[inline]
+    fn mul(self, rhs: &MDirection<N>) -> Self::Output {
+        MDirection(self * &rhs.0)
+    }
+}
+
 /// Multiplies the argument by itself.
 #[inline]
 pub fn sqr<N: RealField + Copy>(x: N) -> N {
@@ -725,29 +997,43 @@ pub fn rotation_between_axis<N: RealField + Copy>(
     ))
 }
 
-/// Converts from t-u-v coordinates to x-y-z coordinates. t-u-v coordinates
-/// are a permuted version of x-y-z coordinates. `t_axis` determines which
-/// of the three x-y-z coordinates corresponds to the t-coordinate. This
-/// function works with any indexable entity with at least three entries.
-/// Any entry after the third entry is ignored. As an extra guarantee, this
-/// function only performs even permutations.
-///
-/// Examples:
-/// ```
-/// # use common::math::tuv_to_xyz;
-/// assert_eq!(tuv_to_xyz(0, [2, 4, 6]), [2, 4, 6]);
-/// assert_eq!(tuv_to_xyz(1, [2, 4, 6]), [6, 2, 4]);
-/// assert_eq!(tuv_to_xyz(2, [2, 4, 6]), [4, 6, 2]);
-/// assert_eq!(tuv_to_xyz(1, [2, 4, 6, 8]), [6, 2, 4, 8]);
-/// ```
-pub fn tuv_to_xyz<T: std::ops::IndexMut<usize, Output = N>, N: Copy>(t_axis: usize, tuv: T) -> T {
-    let mut result = tuv;
-    (
-        result[t_axis],
-        result[(t_axis + 1) % 3],
-        result[(t_axis + 2) % 3],
-    ) = (result[0], result[1], result[2]);
-    result
+pub trait PermuteXYZ {
+    /// Converts from t-u-v coordinates to x-y-z coordinates. t-u-v coordinates
+    /// are a permuted version of x-y-z coordinates. `t_axis` determines which
+    /// of the three x-y-z coordinates corresponds to the t-coordinate. This
+    /// function works with any indexable entity with at least three entries.
+    /// Any entry after the third entry is ignored. As an extra guarantee, this
+    /// function only performs even permutations.
+    ///
+    /// Examples:
+    /// ```
+    /// # use common::math::PermuteXYZ;
+    /// assert_eq!([2, 4, 6].tuv_to_xyz(0), [2, 4, 6]);
+    /// assert_eq!([2, 4, 6].tuv_to_xyz(1), [6, 2, 4]);
+    /// assert_eq!([2, 4, 6].tuv_to_xyz(2), [4, 6, 2]);
+    /// assert_eq!([2, 4, 6, 8].tuv_to_xyz(1), [6, 2, 4, 8]);
+    /// ```
+    fn tuv_to_xyz(self, t_axis: usize) -> Self;
+}
+
+impl<T: std::ops::IndexMut<usize, Output = N>, N: Copy> PermuteXYZ for T {
+    fn tuv_to_xyz(mut self, t_axis: usize) -> Self {
+        (self[t_axis], self[(t_axis + 1) % 3], self[(t_axis + 2) % 3]) =
+            (self[0], self[1], self[2]);
+        self
+    }
+}
+
+impl<N: Scalar + Copy> PermuteXYZ for MPoint<N> {
+    fn tuv_to_xyz(self, t_axis: usize) -> Self {
+        MPoint(self.0.tuv_to_xyz(t_axis))
+    }
+}
+
+impl<N: Scalar + Copy> PermuteXYZ for MDirection<N> {
+    fn tuv_to_xyz(self, t_axis: usize) -> Self {
+        MDirection(self.0.tuv_to_xyz(t_axis))
+    }
 }
 
 #[cfg(test)]
@@ -787,7 +1073,7 @@ mod tests {
     #[rustfmt::skip]
     fn reflect_example() {
         assert_abs_diff_eq!(
-            MIsometry::reflection(&MVector::new(1.0, 0.0, 0.0, 0.5).normalized()),
+            MIsometry::reflection(&MVector::new(1.0, 0.0, 0.0, 0.5).normalized_direction()),
             MIsometry(
                 na::Matrix4::new(
                     -1.666, 0.0, 0.0, 1.333,
@@ -805,8 +1091,8 @@ mod tests {
     fn translate_example() {
         assert_abs_diff_eq!(
             MIsometry::translation(
-                &MVector::new(-0.5, -0.5, 0.0, 1.0).normalized(),
-                &MVector::new(0.3, -0.7, 0.0, 1.0).normalized()
+                &MVector::new(-0.5, -0.5, 0.0, 1.0).normalized_point(),
+                &MVector::new(0.3, -0.7, 0.0, 1.0).normalized_point()
             ),
             MIsometry(
                 na::Matrix4::new(
@@ -822,9 +1108,9 @@ mod tests {
 
     #[test]
     fn translate_identity() {
-        let a = MVector::new(-0.5, -0.5, 0.0, 1.0).normalized();
-        let b = MVector::new(0.3, -0.7, 0.0, 1.0).normalized();
-        let o = MVector::new(0.0, 0.0, 0.0, 1.0);
+        let a = MVector::new(-0.5, -0.5, 0.0, 1.0).normalized_point();
+        let b = MVector::new(0.3, -0.7, 0.0, 1.0).normalized_point();
+        let o = MVector::new(0.0, 0.0, 0.0, 1.0).normalized_point();
         assert_abs_diff_eq!(
             MIsometry::translation(&a, &b),
             MIsometry::translation(&o, &a)
@@ -836,8 +1122,8 @@ mod tests {
 
     #[test]
     fn translate_equivalence() {
-        let a = MVector::new(-0.5, -0.5, 0.0, 1.0).normalized();
-        let o = MVector::new(0.0, 0.0, 0.0, 1.0);
+        let a = MVector::new(-0.5, -0.5, 0.0, 1.0).normalized_point();
+        let o = MVector::new(0.0, 0.0, 0.0, 1.0).normalized_point();
         let direction = a.0.xyz().normalize();
         let distance = dbg!(o.distance(&a));
         assert_abs_diff_eq!(
@@ -851,28 +1137,28 @@ mod tests {
     fn translate_distance() {
         let dx = 2.3;
         let xf = MIsometry::translation_along(&(na::Vector3::x() * dx));
-        assert_abs_diff_eq!(dx, MVector::origin().distance(&(xf * MVector::origin())));
+        assert_abs_diff_eq!(dx, MPoint::origin().distance(&(xf * MPoint::origin())));
     }
 
     #[test]
     fn distance_example() {
-        let a = MVector::new(0.2, 0.0, 0.0, 1.0).normalized();
-        let b = MVector::new(-0.5, -0.5, 0.0, 1.0).normalized();
+        let a = MVector::new(0.2, 0.0, 0.0, 1.0).normalized_point();
+        let b = MVector::new(-0.5, -0.5, 0.0, 1.0).normalized_point();
         // Paper doubles distances for reasons unknown
         assert_abs_diff_eq!(a.distance(&b), 2.074 / 2.0, epsilon = 1e-3);
     }
 
     #[test]
     fn distance_commutative() {
-        let p = MVector::new(-1.0, -1.0, 0.0, 3.0f64.sqrt());
-        let q = MVector::new(1.0, -1.0, 0.0, 3.0f64.sqrt());
+        let p = MPoint::new_unchecked(-1.0, -1.0, 0.0, 3.0f64.sqrt());
+        let q = MPoint::new_unchecked(1.0, -1.0, 0.0, 3.0f64.sqrt());
         assert_abs_diff_eq!(p.distance(&q), q.distance(&p));
     }
 
     #[test]
     fn midpoint_distance() {
-        let p = MVector::new(-1.0, -1.0, 0.0, 3.0f64.sqrt());
-        let q = MVector::new(1.0, -1.0, 0.0, 3.0f64.sqrt());
+        let p = MPoint::new_unchecked(-1.0, -1.0, 0.0, 3.0f64.sqrt());
+        let q = MPoint::new_unchecked(1.0, -1.0, 0.0, 3.0f64.sqrt());
         let m = p.midpoint(&q);
         assert_abs_diff_eq!(p.distance(&m), m.distance(&q), epsilon = 1e-5);
         assert_abs_diff_eq!(p.distance(&m) * 2.0, p.distance(&q), epsilon = 1e-5);
@@ -881,8 +1167,8 @@ mod tests {
     #[test]
     fn renormalize_translation() {
         let mat = MIsometry::translation(
-            &MVector::new(-0.5, -0.5, 0.0, 1.0).normalized(),
-            &MVector::new(0.3, -0.7, 0.0, 1.0).normalized(),
+            &MVector::new(-0.5, -0.5, 0.0, 1.0).normalized_point(),
+            &MVector::new(0.3, -0.7, 0.0, 1.0).normalized_point(),
         );
         assert_abs_diff_eq!(mat.renormalized(), mat, epsilon = 1e-5);
     }
@@ -910,8 +1196,8 @@ mod tests {
 
         // translation with some error
         let mat = MIsometry(MIsometry::translation(
-            &MVector::new(-0.5, -0.5, 0.0, 1.0).normalized(),
-            &MVector::new(0.3, -0.7, 0.0, 1.0).normalized(),
+            &MVector::new(-0.5, -0.5, 0.0, 1.0).normalized_point(),
+            &MVector::new(0.3, -0.7, 0.0, 1.0).normalized_point(),
         ).0 + error.0 * 0.05);
 
         let normalized_mat = mat.renormalized();

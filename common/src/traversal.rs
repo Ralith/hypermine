@@ -6,7 +6,7 @@ use crate::{
     collision_math::Ray,
     dodeca::{self, Side, Vertex},
     graph::{Graph, NodeId},
-    math::{MIsometry, MVector},
+    math::{MIsometry, MPoint},
     node::ChunkId,
     proto::Position,
 };
@@ -21,7 +21,7 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
 
     pending.push_back((start.node, MIsometry::identity()));
     visited.insert(start.node);
-    let start_p = start.local * MVector::origin();
+    let start_p = start.local * MPoint::origin();
 
     while let Some((node, current_transform)) = pending.pop_front() {
         for side in Side::iter() {
@@ -31,7 +31,7 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
             }
             visited.insert(neighbor);
             let neighbor_transform = current_transform * side.reflection();
-            let neighbor_p = neighbor_transform * MVector::origin();
+            let neighbor_p = neighbor_transform * MPoint::origin();
             if -start_p.mip(&neighbor_p) > distance.cosh() {
                 continue;
             }
@@ -59,7 +59,7 @@ pub fn nearby_nodes(
     // hundreds of transformations being composed.
     let mut pending = VecDeque::<PendingNode>::new();
     let mut visited = FxHashSet::<NodeId>::default();
-    let start_p = start.local * MVector::origin();
+    let start_p = start.local * MPoint::origin();
 
     pending.push_back(PendingNode {
         id: start.node,
@@ -68,7 +68,7 @@ pub fn nearby_nodes(
     visited.insert(start.node);
 
     while let Some(current) = pending.pop_front() {
-        let current_p = current.transform * MVector::origin();
+        let current_p = current.transform * MPoint::origin();
         if -start_p.mip(&current_p) > distance.cosh() {
             continue;
         }
@@ -114,7 +114,7 @@ impl<'a> RayTraverser<'a> {
         let mut closest_vertex_cosh_distance = f32::INFINITY;
         for vertex in Vertex::iter() {
             let vertex_cosh_distance =
-                (vertex.node_to_dual() * position.local * MVector::origin()).w;
+                (vertex.node_to_dual() * position.local * MPoint::origin()).w;
             if vertex_cosh_distance < closest_vertex_cosh_distance {
                 closest_vertex = vertex;
                 closest_vertex_cosh_distance = vertex_cosh_distance;

@@ -1,32 +1,34 @@
-use crate::math::{MIsometry, MVector};
+use crate::math::{MDirection, MIsometry, MPoint, MVector};
 
-/// A ray in hyperbolic space. The fields must be lorentz normalized, with `mip(position, position) == -1`,
-/// `mip(direction, direction) == 1`, and `mip(position, direction) == 0`.
+/// A ray in hyperbolic space. The position and direction must be orthogonal:
+/// `mip(position, direction) == 0`.
 #[derive(Debug)]
 pub struct Ray {
-    pub position: MVector<f32>,
-    pub direction: MVector<f32>,
+    pub position: MPoint<f32>,
+    pub direction: MDirection<f32>,
 }
 
 impl Ray {
-    pub fn new(position: MVector<f32>, direction: MVector<f32>) -> Ray {
+    /// Constructs a new `Ray`. It is the caller's responsibility to ensure that
+    /// `position` and `direction` are orthogonal.
+    pub fn new(position: MPoint<f32>, direction: MDirection<f32>) -> Ray {
         Ray {
             position,
             direction,
         }
     }
 
-    /// Returns a point along this ray `atanh(tanh_distance)` units away from the origin. This point
-    /// is _not_ lorentz normalized.
+    /// Returns an unnormalized vector representing a point along this ray
+    /// `atanh(tanh_distance)` units away from the origin.
     pub fn ray_point(&self, tanh_distance: f32) -> MVector<f32> {
-        self.position + self.direction * tanh_distance
+        self.position.as_ref() + self.direction.as_ref() * tanh_distance
     }
 
     /// Finds the tanh of the distance a sphere will have to travel along the ray before it
     /// intersects the given plane.
     pub fn solve_sphere_plane_intersection(
         &self,
-        plane_normal: &MVector<f32>,
+        plane_normal: &MDirection<f32>,
         sinh_radius: f32,
     ) -> Option<f32> {
         let mip_pos_a = self.position.mip(plane_normal);
@@ -43,8 +45,8 @@ impl Ray {
     /// intersects the given line.
     pub fn solve_sphere_line_intersection(
         &self,
-        line_normal1: &MVector<f32>,
-        line_normal0: &MVector<f32>,
+        line_normal1: &MDirection<f32>,
+        line_normal0: &MDirection<f32>,
         sinh_radius: f32,
     ) -> Option<f32> {
         let mip_pos_a = self.position.mip(line_normal0);
@@ -63,9 +65,9 @@ impl Ray {
     /// intersects the given point.
     pub fn solve_sphere_point_intersection(
         &self,
-        point_normal0: &MVector<f32>,
-        point_normal1: &MVector<f32>,
-        point_normal2: &MVector<f32>,
+        point_normal0: &MDirection<f32>,
+        point_normal1: &MDirection<f32>,
+        point_normal2: &MDirection<f32>,
         sinh_radius: f32,
     ) -> Option<f32> {
         let mip_pos_a = self.position.mip(point_normal0);
@@ -84,7 +86,7 @@ impl Ray {
 
     /// Finds the tanh of the distance a point will have to travel along a ray before it
     /// intersects the given plane.
-    pub fn solve_point_plane_intersection(&self, plane_normal: &MVector<f32>) -> Option<f32> {
+    pub fn solve_point_plane_intersection(&self, plane_normal: &MDirection<f32>) -> Option<f32> {
         let mip_pos_a = self.position.mip(plane_normal);
         let mip_dir_a = self.direction.mip(plane_normal);
 
@@ -157,14 +159,17 @@ mod tests {
     fn solve_sphere_plane_intersection_example() {
         // Hit the z=0 plane with a radius of 0.2
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::new(0.8, 0.0, 0.6, 0.0));
-        let normal = -MVector::z();
+            * &Ray::new(
+                MPoint::origin(),
+                MDirection::new_unchecked(0.8, 0.0, 0.6, 0.0),
+            );
+        let normal = -MDirection::z();
         let hit_point = ray
             .ray_point(
                 ray.solve_sphere_plane_intersection(&normal, 0.2_f32.sinh())
                     .unwrap(),
             )
-            .normalized();
+            .normalized_point();
 
         assert_abs_diff_eq!(hit_point.mip(&normal), 0.2_f32.sinh(), epsilon = 1e-4);
     }
@@ -173,8 +178,8 @@ mod tests {
     fn solve_sphere_plane_intersection_direct_hit() {
         // Directly hit the z=0 plane with a ray 0.5 units away and a radius of 0.2.
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::z());
-        let normal = -MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::z());
+        let normal = -MDirection::z();
         assert_abs_diff_eq!(
             ray.solve_sphere_plane_intersection(&normal, 0.2_f32.sinh())
                 .unwrap(),
@@ -187,8 +192,8 @@ mod tests {
     fn solve_sphere_plane_intersection_miss() {
         // No collision with the plane anywhere along the ray's line
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::x());
-        let normal = -MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::x());
+        let normal = -MDirection::z();
         assert!(
             ray.solve_sphere_plane_intersection(&normal, 0.2_f32.sinh())
                 .is_none()
@@ -199,8 +204,8 @@ mod tests {
     fn solve_sphere_plane_intersection_margin() {
         // Sphere is already contacting the plane, with some error
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.2))
-            * &Ray::new(MVector::origin(), MVector::z());
-        let normal = -MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::z());
+        let normal = -MDirection::z();
         assert_eq!(
             ray.solve_sphere_plane_intersection(&normal, 0.2001_f32.sinh())
                 .unwrap(),
@@ -213,17 +218,17 @@ mod tests {
         // Hit the x=z=0 line with a radius of 0.2
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
             * &Ray::new(
-                MVector::origin(),
-                MVector::new(1.0, 2.0, 3.0, 0.0).normalized(),
+                MPoint::origin(),
+                MVector::new(1.0, 2.0, 3.0, 0.0).normalized_direction(),
             );
-        let line_normal0 = MVector::x();
-        let line_normal1 = MVector::z();
+        let line_normal0 = MDirection::x();
+        let line_normal1 = MDirection::z();
         let hit_point = ray
             .ray_point(
                 ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2_f32.sinh())
                     .unwrap(),
             )
-            .normalized();
+            .normalized_point();
         // Measue the distance from hit_point to the line and ensure it's equal to the radius
         assert_abs_diff_eq!(
             (hit_point.mip(&line_normal0).powi(2) + hit_point.mip(&line_normal1).powi(2)).sqrt(),
@@ -239,9 +244,9 @@ mod tests {
         // Ensure the ray is slightly off-center so that the distance math is shown to be correct
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.7, 0.0))
             * MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::z());
-        let line_normal0 = MVector::x();
-        let line_normal1 = MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::z());
+        let line_normal0 = MDirection::x();
+        let line_normal1 = MDirection::z();
         assert_abs_diff_eq!(
             ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2_f32.sinh())
                 .unwrap(),
@@ -254,9 +259,9 @@ mod tests {
     fn solve_sphere_line_intersection_miss() {
         // No collision with the line anywhere along the ray's line
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::x());
-        let line_normal0 = MVector::x();
-        let line_normal1 = MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::x());
+        let line_normal0 = MDirection::x();
+        let line_normal1 = MDirection::z();
         assert!(
             ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2_f32.sinh())
                 .is_none()
@@ -267,9 +272,9 @@ mod tests {
     fn solve_sphere_line_intersection_margin() {
         // Sphere is already contacting the line, with some error
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.2))
-            * &Ray::new(MVector::origin(), MVector::z());
-        let line_normal0 = MVector::x();
-        let line_normal1 = MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::z());
+        let line_normal0 = MDirection::x();
+        let line_normal1 = MDirection::z();
         assert_eq!(
             ray.solve_sphere_line_intersection(&line_normal0, &line_normal1, 0.2001_f32.sinh())
                 .unwrap(),
@@ -285,11 +290,11 @@ mod tests {
         // Similar reasoning can also apply to `solve_sphere_point_intersection` even though it is
         // not tested explicitly in the same way.
         let ray = Ray::new(
-            MVector::new(-0.019093871, -0.0014823675, 0.059645057, 1.0019588),
-            MVector::new(-0.02954007, 0.9965602, 0.07752046, 0.003702946),
+            MPoint::new_unchecked(-0.019093871, -0.0014823675, 0.059645057, 1.0019588),
+            MDirection::new_unchecked(-0.02954007, 0.9965602, 0.07752046, 0.003702946),
         );
-        let line_normal0 = MVector::<f32>::x();
-        let line_normal1 = MVector::<f32>::y();
+        let line_normal0 = MDirection::<f32>::x();
+        let line_normal1 = MDirection::<f32>::y();
         let radius = 0.019090926_f32;
         // The following returns wrong results in the other implementation, so we test this case
         // to make sure there are no regressions.
@@ -304,13 +309,13 @@ mod tests {
         // Hit the origin with a radius of 0.2
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
             * &Ray::new(
-                MVector::origin(),
-                MVector::new(1.0, 2.0, 6.0, 0.0).normalized(),
+                MPoint::origin(),
+                MVector::new(1.0, 2.0, 6.0, 0.0).normalized_direction(),
             );
-        let point_position = MVector::origin();
-        let point_normal0 = MVector::x();
-        let point_normal1 = MVector::y();
-        let point_normal2 = MVector::z();
+        let point_position = MPoint::origin();
+        let point_normal0 = MDirection::x();
+        let point_normal1 = MDirection::y();
+        let point_normal2 = MDirection::z();
         let hit_point = ray
             .ray_point(
                 ray.solve_sphere_point_intersection(
@@ -321,7 +326,7 @@ mod tests {
                 )
                 .unwrap(),
             )
-            .normalized();
+            .normalized_point();
         assert_abs_diff_eq!(
             -hit_point.mip(&point_position),
             0.2_f32.cosh(),
@@ -333,10 +338,10 @@ mod tests {
     fn solve_sphere_point_intersection_direct_hit() {
         // Directly hit the origin with a ray 0.5 units away and a radius of 0.2.
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::z());
-        let point_normal0 = MVector::x();
-        let point_normal1 = MVector::y();
-        let point_normal2 = MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::z());
+        let point_normal0 = MDirection::x();
+        let point_normal1 = MDirection::y();
+        let point_normal2 = MDirection::z();
         assert_abs_diff_eq!(
             ray.solve_sphere_point_intersection(
                 &point_normal0,
@@ -354,10 +359,10 @@ mod tests {
     fn solve_sphere_point_intersection_miss() {
         // No collision with the point anywhere along the ray's line
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::x());
-        let point_normal0 = MVector::x();
-        let point_normal1 = MVector::y();
-        let point_normal2 = MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::x());
+        let point_normal0 = MDirection::x();
+        let point_normal1 = MDirection::y();
+        let point_normal2 = MDirection::z();
         assert!(
             ray.solve_sphere_point_intersection(
                 &point_normal0,
@@ -373,10 +378,10 @@ mod tests {
     fn solve_sphere_point_intersection_margin() {
         // Sphere is already contacting the point, with some error
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.2))
-            * &Ray::new(MVector::origin(), MVector::z());
-        let point_normal0 = MVector::x();
-        let point_normal1 = MVector::y();
-        let point_normal2 = MVector::z();
+            * &Ray::new(MPoint::origin(), MDirection::z());
+        let point_normal0 = MDirection::x();
+        let point_normal1 = MDirection::y();
+        let point_normal2 = MDirection::z();
         assert_eq!(
             ray.solve_sphere_point_intersection(
                 &point_normal0,
@@ -393,11 +398,14 @@ mod tests {
     fn foo() {
         // Hit the z=0 plane
         let ray = MIsometry::translation_along(&na::Vector3::new(0.0, 0.0, -0.5))
-            * &Ray::new(MVector::origin(), MVector::new(0.8, 0.0, 0.6, 0.0));
-        let normal = -MVector::z();
+            * &Ray::new(
+                MPoint::origin(),
+                MDirection::new_unchecked(0.8, 0.0, 0.6, 0.0),
+            );
+        let normal = -MDirection::z();
         let hit_point = ray
             .ray_point(ray.solve_point_plane_intersection(&normal).unwrap())
-            .normalized();
+            .normalized_point();
         assert_abs_diff_eq!(hit_point.mip(&normal), 0.0, epsilon = 1e-4);
     }
 

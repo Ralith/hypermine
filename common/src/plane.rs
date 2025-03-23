@@ -2,13 +2,13 @@ use std::ops::{Mul, Neg};
 
 use crate::{
     dodeca::{Side, Vertex},
-    math::{MIsometry, MVector},
+    math::{MDirection, MIsometry, MPoint, MVector},
 };
 
 /// A hyperbolic plane
 #[derive(Debug, Copy, Clone)]
 pub struct Plane<N: na::RealField> {
-    normal: MVector<N>,
+    normal: MDirection<N>,
 }
 
 impl From<Side> for Plane<f64> {
@@ -24,7 +24,7 @@ impl<N: na::RealField + Copy> From<na::Unit<na::Vector3<N>>> for Plane<N> {
     /// A plane passing through the origin
     fn from(x: na::Unit<na::Vector3<N>>) -> Self {
         Self {
-            normal: MVector::from(x.into_inner().push(na::zero())),
+            normal: MDirection::from(x),
         }
     }
 }
@@ -50,19 +50,19 @@ impl<N: na::RealField + Copy> Mul<Plane<N>> for &MIsometry<N> {
     type Output = Plane<N>;
     fn mul(self, rhs: Plane<N>) -> Plane<N> {
         Plane {
-            normal: (self * rhs.normal).normalized(),
+            normal: (self * rhs.normal).as_ref().normalized_direction(),
         }
     }
 }
 
 impl<N: na::RealField + Copy> Plane<N> {
     /// Hyperbolic normal vector identifying the plane
-    pub fn normal(&self) -> &MVector<N> {
+    pub fn normal(&self) -> &MDirection<N> {
         &self.normal
     }
 
     /// Shortest distance between the plane and a point
-    pub fn distance_to(&self, point: &MVector<N>) -> N {
+    pub fn distance_to(&self, point: &MPoint<N>) -> N {
         let mip_value = self.normal.mip(point);
         // Workaround for bug fixed in rust PR #72486
         mip_value.abs().asinh() * mip_value.signum()
@@ -72,7 +72,7 @@ impl<N: na::RealField + Copy> Plane<N> {
 impl Plane<f64> {
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
-        let pos = (MVector::from(chunk.chunk_to_node_f64() * coord.push(1.0))).normalized();
+        let pos = (MVector::from(chunk.chunk_to_node_f64() * coord.push(1.0))).normalized_point();
         self.distance_to(&pos)
     }
 }
@@ -94,7 +94,7 @@ mod tests {
                 assert_abs_diff_eq!(
                     plane.distance_to(
                         &(MIsometry::translation_along(&(axis.into_inner() * distance))
-                            * MVector::origin())
+                            * MPoint::origin())
                     ),
                     distance
                 );

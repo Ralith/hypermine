@@ -1,7 +1,7 @@
 use crate::{
     dodeca::Vertex,
     graph::Graph,
-    math,
+    math::PermuteXYZ,
     node::{Chunk, ChunkId, VoxelData},
     voxel_math::{ChunkAxisPermutation, ChunkDirection, CoordAxis, CoordSign, Coords},
     world::Material,
@@ -62,14 +62,11 @@ pub fn fix_margins(
             // Determine coordinates of the boundary voxel (to read from) and the margin voxel (to write to)
             // in voxel_data's perspective. To convert to neighbor_voxel_data's perspective, left-multiply
             // by neighbor_axis_permutation.
-            let coords_of_boundary_voxel = CoordsWithMargins(math::tuv_to_xyz(
-                direction.axis as usize,
-                [boundary_coord, i + 1, j + 1],
-            ));
-            let coords_of_margin_voxel = CoordsWithMargins(math::tuv_to_xyz(
-                direction.axis as usize,
-                [margin_coord, i + 1, j + 1],
-            ));
+            let coords_of_boundary_voxel = CoordsWithMargins(
+                [boundary_coord, i + 1, j + 1].tuv_to_xyz(direction.axis as usize),
+            );
+            let coords_of_margin_voxel =
+                CoordsWithMargins([margin_coord, i + 1, j + 1].tuv_to_xyz(direction.axis as usize));
 
             // Use neighbor_voxel_data to set margins of voxel_data
             voxel_data[coords_of_margin_voxel.to_index(dimension)] = neighbor_voxel_data
@@ -93,10 +90,9 @@ fn all_voxels_at_face(
     let boundary_coord = CoordsWithMargins::boundary_coord(dimension, direction.sign);
     for j in 0..dimension {
         for i in 0..dimension {
-            let coords_of_boundary_voxel = CoordsWithMargins(math::tuv_to_xyz(
-                direction.axis as usize,
-                [boundary_coord, i + 1, j + 1],
-            ));
+            let coords_of_boundary_voxel = CoordsWithMargins(
+                [boundary_coord, i + 1, j + 1].tuv_to_xyz(direction.axis as usize),
+            );
 
             if !f(voxels.get(coords_of_boundary_voxel.to_index(dimension))) {
                 return false;
@@ -123,14 +119,12 @@ pub fn initialize_margins(dimension: u8, voxels: &mut VoxelData) {
         for j in 0..dimension {
             for i in 0..dimension {
                 // Determine coordinates of the boundary voxel (to read from) and the margin voxel (to write to).
-                let coords_of_boundary_voxel = CoordsWithMargins(math::tuv_to_xyz(
-                    direction.axis as usize,
-                    [boundary_coord, i + 1, j + 1],
-                ));
-                let coords_of_margin_voxel = CoordsWithMargins(math::tuv_to_xyz(
-                    direction.axis as usize,
-                    [margin_coord, i + 1, j + 1],
-                ));
+                let coords_of_boundary_voxel = CoordsWithMargins(
+                    [boundary_coord, i + 1, j + 1].tuv_to_xyz(direction.axis as usize),
+                );
+                let coords_of_margin_voxel = CoordsWithMargins(
+                    [margin_coord, i + 1, j + 1].tuv_to_xyz(direction.axis as usize),
+                );
 
                 chunk_data[coords_of_margin_voxel.to_index(dimension)] =
                     chunk_data[coords_of_boundary_voxel.to_index(dimension)];
