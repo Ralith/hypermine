@@ -6,7 +6,7 @@ use crate::{
     collision_math::Ray,
     graph::Graph,
     graph_collision,
-    math::{MIsometry, MVector},
+    math::{MDirection, MIsometry, MPoint},
     proto::Position,
 };
 
@@ -17,7 +17,6 @@ pub fn check_collision(
     relative_displacement: &na::Vector3<f32>,
 ) -> CollisionCheckingResult {
     // Split relative_displacement into its norm and a unit vector
-    let relative_displacement = relative_displacement.to_homogeneous();
     let displacement_sqr = relative_displacement.norm_squared();
     if displacement_sqr < 1e-16 {
         // Fallback for if the displacement vector isn't large enough to reliably be normalized.
@@ -26,11 +25,12 @@ pub fn check_collision(
     }
 
     let displacement_norm = displacement_sqr.sqrt();
-    let displacement_normalized = relative_displacement / displacement_norm;
+    let displacement_normalized =
+        na::UnitVector3::new_unchecked(relative_displacement / displacement_norm);
 
     let ray = Ray::new(
-        MVector::origin(),
-        MVector::<f32>::from(displacement_normalized),
+        MPoint::origin(),
+        MDirection::<f32>::from(displacement_normalized),
     );
     let tanh_distance = displacement_norm.tanh();
 

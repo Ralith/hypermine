@@ -88,7 +88,7 @@ mod tests {
         collision_math::Ray,
         dodeca::{self, Side, Vertex},
         graph::{Graph, NodeId},
-        math::MIsometry,
+        math::{MIsometry, MPoint},
         node::{VoxelData, populate_fresh_nodes},
         proto::Position,
         traversal::{ensure_nearby, nearby_nodes},
@@ -187,7 +187,7 @@ mod tests {
                     self.chosen_chunk_relative_grid_ray_end[2] / dual_to_grid_factor,
                     1.0,
                 )
-                .normalized();
+                .normalized_point();
 
             let ray_position = *Vertex::A.dual_to_node()
                 * MVector::new(
@@ -196,12 +196,13 @@ mod tests {
                     self.start_chunk_relative_grid_ray_start[2] / dual_to_grid_factor,
                     1.0,
                 )
-                .normalized();
-            let ray_direction = ray_target - ray_position;
+                .normalized_point();
+            let ray_direction = ray_target.as_ref() - ray_position.as_ref();
 
             let ray = Ray::new(
                 ray_position,
-                (ray_direction + ray_position * ray_position.mip(&ray_direction)).normalized(),
+                (ray_direction.as_ref() + ray_position.as_ref() * ray_position.mip(&ray_direction))
+                    .normalized_direction(),
             );
 
             let tanh_distance =
@@ -437,13 +438,13 @@ mod tests {
         }
 
         // The node coordinates of the corner of the missing node
-        let vertex_pos = Vertex::A.dual_to_node() * MVector::origin();
+        let vertex_pos = Vertex::A.dual_to_node() * MPoint::origin();
 
         // Use a ray starting from the origin. The direction vector is vertex_pos with the w coordinate
         // set to 0 and normalized
         let ray = Ray::new(
-            MVector::origin(),
-            (vertex_pos - MVector::w() * vertex_pos.w).normalized(),
+            MPoint::origin(),
+            (vertex_pos.as_ref() - MVector::w() * vertex_pos.w).normalized_direction(),
         );
         let sphere_radius = 0.1;
 
