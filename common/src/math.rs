@@ -9,7 +9,6 @@
 use na::{RealField, Scalar};
 use serde::{Deserialize, Serialize};
 use simba::scalar::SupersetOf;
-use std::ops::*;
 
 /// A stack-allocated 4-dimensional column-vector in Minkowski space. Such
 /// vectors are useful for computations in the hyperboloid model of hyperbolic
@@ -165,7 +164,7 @@ impl<N: RealField + Copy> MVector<N> {
     }
 }
 
-impl<N: Scalar> Index<usize> for MVector<N> {
+impl<N: Scalar> std::ops::Index<usize> for MVector<N> {
     type Output = N;
     #[inline]
     fn index(&self, i: usize) -> &Self::Output {
@@ -173,9 +172,9 @@ impl<N: Scalar> Index<usize> for MVector<N> {
     }
 }
 
-impl<N: Scalar> IndexMut<usize> for MVector<N> {
+impl<N: Scalar> std::ops::IndexMut<usize> for MVector<N> {
     #[inline]
-    fn index_mut(&mut self, i: usize) -> &mut N {
+    fn index_mut(&mut self, i: usize) -> &mut Self::Output {
         &mut self.0[i]
     }
 }
@@ -197,7 +196,7 @@ impl<N: Scalar> From<MVector<N>> for na::Vector4<N> {
     }
 }
 
-impl<N: Scalar> Deref for MVector<N> {
+impl<N: Scalar> std::ops::Deref for MVector<N> {
     type Target = na::coordinates::XYZW<N>;
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -205,45 +204,52 @@ impl<N: Scalar> Deref for MVector<N> {
     }
 }
 
-impl<N: Scalar> DerefMut for MVector<N> {
+impl<N: Scalar> std::ops::DerefMut for MVector<N> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: RealField> Add for MVector<N> {
-    type Output = Self;
+impl<N: RealField> std::ops::Add<MVector<N>> for MVector<N> {
+    type Output = MVector<N>;
     #[inline]
-    fn add(self, other: Self) -> Self {
-        Self(self.0 + other.0)
+    fn add(self, other: MVector<N>) -> Self::Output {
+        MVector(self.0 + other.0)
     }
 }
 
-impl<N: RealField + Copy> std::ops::AddAssign for MVector<N> {
+impl<N: RealField> std::ops::AddAssign<MVector<N>> for MVector<N> {
     #[inline]
-    fn add_assign(&mut self, other: Self) {
+    fn add_assign(&mut self, other: MVector<N>) {
         self.0 += other.0;
     }
 }
 
-impl<N: RealField> Sub for MVector<N> {
-    type Output = Self;
+impl<N: RealField> std::ops::Sub<MVector<N>> for MVector<N> {
+    type Output = MVector<N>;
     #[inline]
-    fn sub(self, other: Self) -> Self {
-        Self(self.0 - other.0)
+    fn sub(self, other: MVector<N>) -> Self::Output {
+        MVector(self.0 - other.0)
     }
 }
 
-impl<N: RealField> Neg for MVector<N> {
-    type Output = Self;
+impl<N: RealField> std::ops::SubAssign<MVector<N>> for MVector<N> {
     #[inline]
-    fn neg(self) -> Self {
-        Self(-self.0)
+    fn sub_assign(&mut self, other: MVector<N>) {
+        self.0 -= other.0;
     }
 }
 
-impl<N: RealField> Mul<N> for MVector<N> {
+impl<N: RealField> std::ops::Neg for MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn neg(self) -> Self::Output {
+        MVector(-self.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<N> for MVector<N> {
     type Output = MVector<N>;
     #[inline]
     fn mul(self, rhs: N) -> Self::Output {
@@ -251,18 +257,25 @@ impl<N: RealField> Mul<N> for MVector<N> {
     }
 }
 
-impl<N: RealField + Copy> MulAssign<N> for MVector<N> {
+impl<N: RealField> std::ops::MulAssign<N> for MVector<N> {
     #[inline]
     fn mul_assign(&mut self, rhs: N) {
         self.0 *= rhs;
     }
 }
 
-impl<N: RealField> Div<N> for MVector<N> {
+impl<N: RealField> std::ops::Div<N> for MVector<N> {
     type Output = MVector<N>;
     #[inline]
     fn div(self, rhs: N) -> Self::Output {
         MVector(self.0 / rhs)
+    }
+}
+
+impl<N: RealField> std::ops::DivAssign<N> for MVector<N> {
+    #[inline]
+    fn div_assign(&mut self, rhs: N) {
+        self.0 /= rhs;
     }
 }
 
@@ -466,7 +479,7 @@ impl<N: RealField + Copy> MIsometry<N> {
     }
 }
 
-impl<N: Scalar> Index<(usize, usize)> for MIsometry<N> {
+impl<N: Scalar> std::ops::Index<(usize, usize)> for MIsometry<N> {
     type Output = N;
     #[inline]
     fn index(&self, ij: (usize, usize)) -> &Self::Output {
@@ -497,7 +510,7 @@ impl<N: Scalar> From<MIsometry<N>> for na::Matrix4<N> {
     }
 }
 
-impl<N: Scalar> Deref for MIsometry<N> {
+impl<N: Scalar> std::ops::Deref for MIsometry<N> {
     type Target = na::coordinates::M4x4<N>;
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -505,29 +518,29 @@ impl<N: Scalar> Deref for MIsometry<N> {
     }
 }
 
-impl<N: RealField + Copy> AsRef<[[N; 4]; 4]> for MIsometry<N> {
+impl<N: RealField> AsRef<[[N; 4]; 4]> for MIsometry<N> {
     #[inline]
     fn as_ref(&self) -> &[[N; 4]; 4] {
         self.0.as_ref()
     }
 }
 
-impl<N: RealField> Mul for MIsometry<N> {
-    type Output = Self;
+impl<N: RealField> std::ops::Mul<MIsometry<N>> for MIsometry<N> {
+    type Output = MIsometry<N>;
     #[inline]
-    fn mul(self, rhs: Self) -> Self::Output {
+    fn mul(self, rhs: MIsometry<N>) -> Self::Output {
         MIsometry(self.0 * rhs.0)
     }
 }
 
-impl<N: RealField + Copy> MulAssign for MIsometry<N> {
+impl<N: RealField> std::ops::MulAssign<MIsometry<N>> for MIsometry<N> {
     #[inline]
-    fn mul_assign(&mut self, rhs: Self) {
+    fn mul_assign(&mut self, rhs: MIsometry<N>) {
         self.0 *= rhs.0;
     }
 }
 
-impl<N: RealField> Mul<MVector<N>> for MIsometry<N> {
+impl<N: RealField> std::ops::Mul<MVector<N>> for MIsometry<N> {
     type Output = MVector<N>;
     #[inline]
     fn mul(self, rhs: MVector<N>) -> Self::Output {
