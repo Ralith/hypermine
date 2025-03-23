@@ -481,12 +481,12 @@ mod data {
                 // value that doesn't depend on the normal vector, so the formula
                 // used here takes advantage of that.
                 let vertex_position = (MVector::origin()
-                    - (*a.normal_f64() + *b.normal_f64() + *c.normal_f64()) * mip_origin_normal)
+                    - (a.normal_f64() + b.normal_f64() + c.normal_f64()) * mip_origin_normal)
                     .normalized();
                 MIsometry::from_columns_unchecked(&[
-                    -*a.normal_f64(),
-                    -*b.normal_f64(),
-                    -*c.normal_f64(),
+                    -a.normal_f64(),
+                    -b.normal_f64(),
+                    -c.normal_f64(),
                     vertex_position,
                 ])
             })

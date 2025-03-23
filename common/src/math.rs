@@ -85,7 +85,7 @@ impl<N: RealField + Copy> MVector<N> {
     pub fn midpoint(&self, other: &Self) -> MVector<N> {
         // The midpoint in the hyperboloid model is simply the midpoint in the
         // underlying Euclidean 4-space normalized to land on the hyperboloid.
-        (*self + *other).normalized()
+        (self + other).normalized()
     }
 
     /// Returns the distance between the this vector and the given vector. An
@@ -219,10 +219,41 @@ impl<N: RealField> std::ops::Add<MVector<N>> for MVector<N> {
     }
 }
 
+impl<N: RealField> std::ops::Add<&MVector<N>> for MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn add(self, other: &MVector<N>) -> Self::Output {
+        MVector(self.0 + &other.0)
+    }
+}
+
+impl<N: RealField> std::ops::Add<MVector<N>> for &MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn add(self, other: MVector<N>) -> Self::Output {
+        MVector(&self.0 + other.0)
+    }
+}
+
+impl<N: RealField> std::ops::Add<&MVector<N>> for &MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn add(self, other: &MVector<N>) -> Self::Output {
+        MVector(&self.0 + &other.0)
+    }
+}
+
 impl<N: RealField> std::ops::AddAssign<MVector<N>> for MVector<N> {
     #[inline]
     fn add_assign(&mut self, other: MVector<N>) {
         self.0 += other.0;
+    }
+}
+
+impl<N: RealField> std::ops::AddAssign<&MVector<N>> for MVector<N> {
+    #[inline]
+    fn add_assign(&mut self, other: &MVector<N>) {
+        self.0 += &other.0;
     }
 }
 
@@ -234,10 +265,41 @@ impl<N: RealField> std::ops::Sub<MVector<N>> for MVector<N> {
     }
 }
 
+impl<N: RealField> std::ops::Sub<&MVector<N>> for MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn sub(self, other: &MVector<N>) -> Self::Output {
+        MVector(self.0 - &other.0)
+    }
+}
+
+impl<N: RealField> std::ops::Sub<MVector<N>> for &MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn sub(self, other: MVector<N>) -> Self::Output {
+        MVector(&self.0 - other.0)
+    }
+}
+
+impl<N: RealField> std::ops::Sub<&MVector<N>> for &MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn sub(self, other: &MVector<N>) -> Self::Output {
+        MVector(&self.0 - &other.0)
+    }
+}
+
 impl<N: RealField> std::ops::SubAssign<MVector<N>> for MVector<N> {
     #[inline]
     fn sub_assign(&mut self, other: MVector<N>) {
         self.0 -= other.0;
+    }
+}
+
+impl<N: RealField> std::ops::SubAssign<&MVector<N>> for MVector<N> {
+    #[inline]
+    fn sub_assign(&mut self, other: &MVector<N>) {
+        self.0 -= &other.0;
     }
 }
 
@@ -249,11 +311,27 @@ impl<N: RealField> std::ops::Neg for MVector<N> {
     }
 }
 
+impl<N: RealField> std::ops::Neg for &MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn neg(self) -> Self::Output {
+        MVector(-&self.0)
+    }
+}
+
 impl<N: RealField> std::ops::Mul<N> for MVector<N> {
     type Output = MVector<N>;
     #[inline]
     fn mul(self, rhs: N) -> Self::Output {
         MVector(self.0 * rhs)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<N> for &MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn mul(self, rhs: N) -> Self::Output {
+        MVector(&self.0 * rhs)
     }
 }
 
@@ -269,6 +347,14 @@ impl<N: RealField> std::ops::Div<N> for MVector<N> {
     #[inline]
     fn div(self, rhs: N) -> Self::Output {
         MVector(self.0 / rhs)
+    }
+}
+
+impl<N: RealField> std::ops::Div<N> for &MVector<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn div(self, rhs: N) -> Self::Output {
+        MVector(&self.0 / rhs)
     }
 }
 
@@ -359,7 +445,7 @@ impl<N: RealField + Copy> MIsometry<N> {
         // `I + (a+b)(a+b)*/(1-a*b) + 2aa* - 2(a+b)a*`
         // `I + (a+b)(a+b)*/(1-a*b) + 2aa* - 2aa* - 2ba*`
         // `I - 2ba* + (a+b)(a+b)*/(1-a*b)`
-        let a_plus_b = *a + *b;
+        let a_plus_b = a + b;
         Self(
             na::Matrix4::<N>::identity() - b.minkowski_outer_product(a) * na::convert::<_, N>(2.0)
                 + a_plus_b.minkowski_outer_product(&a_plus_b) / (N::one() - a.mip(b)),
@@ -453,7 +539,7 @@ impl<N: RealField + Copy> MIsometry<N> {
         // Once we have the translation component, we use that component's
         // inverse to remove the translation from the original matrix to extract
         // the orientation component.
-        let orientation_component = normalized_translation_component.inverse() * *self;
+        let orientation_component = normalized_translation_component.inverse() * self;
 
         // Then, we use the QR decomposition to convert the orientation
         // component into an orthogonal matrix, which renormalizes it.
@@ -533,10 +619,41 @@ impl<N: RealField> std::ops::Mul<MIsometry<N>> for MIsometry<N> {
     }
 }
 
+impl<N: RealField> std::ops::Mul<&MIsometry<N>> for MIsometry<N> {
+    type Output = MIsometry<N>;
+    #[inline]
+    fn mul(self, rhs: &MIsometry<N>) -> Self::Output {
+        MIsometry(self.0 * &rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<MIsometry<N>> for &MIsometry<N> {
+    type Output = MIsometry<N>;
+    #[inline]
+    fn mul(self, rhs: MIsometry<N>) -> Self::Output {
+        MIsometry(&self.0 * rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<&MIsometry<N>> for &MIsometry<N> {
+    type Output = MIsometry<N>;
+    #[inline]
+    fn mul(self, rhs: &MIsometry<N>) -> Self::Output {
+        MIsometry(&self.0 * &rhs.0)
+    }
+}
+
 impl<N: RealField> std::ops::MulAssign<MIsometry<N>> for MIsometry<N> {
     #[inline]
     fn mul_assign(&mut self, rhs: MIsometry<N>) {
         self.0 *= rhs.0;
+    }
+}
+
+impl<N: RealField> std::ops::MulAssign<&MIsometry<N>> for MIsometry<N> {
+    #[inline]
+    fn mul_assign(&mut self, rhs: &MIsometry<N>) {
+        self.0 *= &rhs.0;
     }
 }
 
@@ -545,6 +662,30 @@ impl<N: RealField> std::ops::Mul<MVector<N>> for MIsometry<N> {
     #[inline]
     fn mul(self, rhs: MVector<N>) -> Self::Output {
         MVector(self.0 * rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<&MVector<N>> for MIsometry<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn mul(self, rhs: &MVector<N>) -> Self::Output {
+        MVector(self.0 * &rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<MVector<N>> for &MIsometry<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn mul(self, rhs: MVector<N>) -> Self::Output {
+        MVector(&self.0 * rhs.0)
+    }
+}
+
+impl<N: RealField> std::ops::Mul<&MVector<N>> for &MIsometry<N> {
+    type Output = MVector<N>;
+    #[inline]
+    fn mul(self, rhs: &MVector<N>) -> Self::Output {
+        MVector(&self.0 * &rhs.0)
     }
 }
 

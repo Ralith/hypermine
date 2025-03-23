@@ -131,7 +131,7 @@ impl Graph {
         original: &MIsometry<f32>,
     ) -> (NodeId, MIsometry<f32>) {
         let mut transform = MIsometry::identity();
-        let mut location = *original * MVector::origin();
+        let mut location = original * MVector::origin();
         'outer: loop {
             for side in Side::iter() {
                 if !side.is_facing(&location) {
@@ -141,7 +141,7 @@ impl Graph {
                     None => continue,
                     Some(x) => x,
                 };
-                let mat = *side.reflection();
+                let mat = side.reflection();
                 location = mat * location;
                 transform = mat * transform;
                 continue 'outer;

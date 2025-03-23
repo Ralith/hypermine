@@ -126,7 +126,7 @@ impl Voxels {
             let mut extractions = Vec::new();
             let mut workqueue_is_full = false;
             for &(node, ref node_transform) in nearby_nodes {
-                let node_to_view = local_to_view * *node_transform;
+                let node_to_view = local_to_view * node_transform;
                 let origin = node_to_view * MVector::origin();
                 if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS) {
                     // Don't bother generating or drawing chunks from nodes that are wholly outside the
