@@ -928,16 +928,16 @@ const SURFACE_DEEP: [VoronoiInfo; 113] = [
     VoronoiInfo::new(Material::Lava, -10.50, 10.50),
 ];
 
-const TERRAIN_SURFACE_THICKNESS: f64 = 0.2;
+const TERRAIN_SURFACE_THICKNESS: f32 = 0.2;
 
 pub struct VoronoiInfo {
     pub location: [f32; 2],
     pub material: Material,
 }
 impl VoronoiInfo {
-    pub const fn new(mat: Material, rain: f64, temp: f64) -> VoronoiInfo {
+    pub const fn new(mat: Material, rain: f32, temp: f32) -> VoronoiInfo {
         VoronoiInfo {
-            location: [rain as f32, temp as f32],
+            location: [rain, temp],
             material: mat,
         }
     }
@@ -952,7 +952,7 @@ impl VoronoiInfo {
     // elev represents distance from the guiding plane. There are four strata of
     // terrain that are defined by elev thresholds. Variations between strata
     // are intended to represent the effects of more or less skylight being exposed.
-    pub fn terraingen_voronoi(elev: f64, rain: f64, temp: f64, dist: f64) -> Material {
+    pub fn terraingen_voronoi(elev: f32, rain: f32, temp: f32, dist: f32) -> Material {
         let voronoi_choices = if dist <= TERRAIN_SURFACE_THICKNESS {
             if elev < -30.0 {
                 SURFACE_DEEP
@@ -973,7 +973,7 @@ impl VoronoiInfo {
             GENERAL_HIGH
         };
 
-        let y: [f32; 2] = [rain as f32, temp as f32];
+        let y: [f32; 2] = [rain, temp];
         let mut dist_squared = math::sqr(voronoi_choices[0].location[0] - y[0])
             + math::sqr(voronoi_choices[0].location[1] - y[1]);
         let mut voxel_mat = voronoi_choices[0].material;

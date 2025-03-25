@@ -10,19 +10,19 @@ use crate::{
 /// with world generation.
 #[derive(Debug, Copy, Clone)]
 pub struct Plane {
-    scaled_normal: MVector<f64>,
-    exponent: f64, // Multiply "normal" by e^exponent to get the actual normal vector
+    scaled_normal: MVector<f32>,
+    exponent: f32, // Multiply "normal" by e^exponent to get the actual normal vector
 }
 
 impl From<Side> for Plane {
     /// A surface overlapping with a particular dodecahedron side
     fn from(side: Side) -> Self {
-        Plane::from(*side.normal_f64())
+        Plane::from(*side.normal())
     }
 }
 
-impl From<MDirection<f64>> for Plane {
-    fn from(normal: MDirection<f64>) -> Self {
+impl From<MDirection<f32>> for Plane {
+    fn from(normal: MDirection<f32>) -> Self {
         Plane {
             scaled_normal: normal.into(),
             exponent: 0.0,
@@ -30,9 +30,9 @@ impl From<MDirection<f64>> for Plane {
     }
 }
 
-impl From<na::Unit<na::Vector3<f64>>> for Plane {
+impl From<na::Unit<na::Vector3<f32>>> for Plane {
     /// A plane passing through the origin
-    fn from(x: na::UnitVector3<f64>) -> Self {
+    fn from(x: na::UnitVector3<f32>) -> Self {
         Self::from(MDirection::from(x))
     }
 }
@@ -51,11 +51,11 @@ impl Mul<Plane> for Side {
     type Output = Plane;
     /// Reflect a plane across the side
     fn mul(self, rhs: Plane) -> Plane {
-        self.reflection_f64() * rhs
+        self.reflection() * rhs
     }
 }
 
-impl Mul<Plane> for &MIsometry<f64> {
+impl Mul<Plane> for &MIsometry<f32> {
     type Output = Plane;
     fn mul(self, rhs: Plane) -> Plane {
         Plane {
@@ -68,24 +68,24 @@ impl Mul<Plane> for &MIsometry<f64> {
 
 impl Plane {
     /// Hyperbolic normal vector identifying the plane, possibly scaled to avoid
-    /// being too large to represent in an f64.
-    pub fn scaled_normal(&self) -> &MVector<f64> {
+    /// being too large to represent in an f32.
+    pub fn scaled_normal(&self) -> &MVector<f32> {
         &self.scaled_normal
     }
 
     /// Shortest distance between the plane and a point
-    pub fn distance_to(&self, point: &MPoint<f64>) -> f64 {
+    pub fn distance_to(&self, point: &MPoint<f32>) -> f32 {
         if self.exponent == 0.0 {
-            libm::asinh(self.scaled_normal.mip(point))
+            libm::asinhf(self.scaled_normal.mip(point))
         } else {
             let mip_2 = self.scaled_normal.mip(point) * 2.0;
-            (libm::log(mip_2.abs()) + self.exponent) * mip_2.signum()
+            (libm::logf(mip_2.abs()) + self.exponent) * mip_2.signum()
         }
     }
 
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
-    pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
-        let pos = (MVector::from(chunk.chunk_to_node_f64() * coord.push(1.0))).normalized_point();
+    pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f32>) -> f32 {
+        let pos = (MVector::from(chunk.chunk_to_node() * coord.push(1.0))).normalized_point();
         self.distance_to(&pos)
     }
 
@@ -94,14 +94,16 @@ impl Plane {
         // exponent is nonzero, so we want to only update the exponent when
         // we're sure such an approximation will be good enough. Once the
         // vector's w-coordinate is above 1.0e8, the error becomes unnoticeable
-        // in double-precision floating point.
+        // even with double-precision floating point. With single-precision,
+        // it's overkill, but there's no real downside to using a large value
+        // here.
 
         // Note that this is a one-way operation. Since trying to use matrices
         // to transform a plane closer to the origin would result in a kind of
         // catastrophic cancellation, Plane is not designed to handle that kind
         // of use case.
         while self.scaled_normal.w.abs() > 1.0e8 {
-            self.scaled_normal *= libm::exp(-16.0);
+            self.scaled_normal *= libm::expf(-16.0);
             self.exponent += 16.0;
         }
         self
@@ -127,7 +129,8 @@ mod tests {
                         &(MIsometry::translation_along(&(axis.into_inner() * distance))
                             * MPoint::origin())
                     ),
-                    distance
+                    distance,
+                    epsilon = 1e-6
                 );
             }
         }
@@ -151,7 +154,7 @@ mod tests {
                 &na::Vector3::new(0.0, 0.7, 0.1), // The first 0.0 is important, the plane is the midplane of the cube in Side::A direction
             ),
             0.0,
-            epsilon = 1e-8,
+            epsilon = 1e-6,
         );
     }
 
@@ -166,7 +169,7 @@ mod tests {
                 Vertex::from_sides([Side::F, Side::H, Side::J]).unwrap(),
                 &na::Vector3::new(1.0, 1.0, 1.0),
             ),
-            epsilon = 1e-8,
+            epsilon = 1e-6,
         );
 
         // The same corner should have the same distance_to_chunk when represented from the same cube at different corners
@@ -174,21 +177,21 @@ mod tests {
             Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(0.0, 1.0, 1.0)),
             (Side::A * Plane::from(Side::A))
                 .distance_to_chunk(abc, &na::Vector3::new(0.0, 1.0, 1.0),),
-            epsilon = 1e-8,
+            epsilon = 1e-6,
         );
 
         // Corners of midplane cubes separated by the midplane should have the same distance_to_chunk with a different sign
         assert_abs_diff_eq!(
             Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, 1.0)),
             -Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(-1.0, 1.0, 1.0)),
-            epsilon = 1e-8,
+            epsilon = 1e-6,
         );
 
         // Corners of midplane cubes not separated by the midplane should have the same distance_to_chunk
         assert_abs_diff_eq!(
             Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, 1.0)),
             Plane::from(Side::A).distance_to_chunk(abc, &na::Vector3::new(1.0, 1.0, -1.0)),
-            epsilon = 1e-8,
+            epsilon = 1e-6,
         );
     }
 
@@ -196,7 +199,7 @@ mod tests {
     fn large_distances() {
         for offset in [10.0, -10.0] {
             let mut plane = Plane::from(MDirection::x());
-            let point = MPoint::<f64>::origin();
+            let point = MPoint::<f32>::origin();
             let mut expected_distance = 0.0;
 
             for _ in 0..200 {
@@ -205,7 +208,7 @@ mod tests {
                 assert_abs_diff_eq!(
                     plane.distance_to(&point),
                     expected_distance,
-                    epsilon = 1.0e-8
+                    epsilon = 1.0e-6
                 );
             }
         }
