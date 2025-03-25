@@ -7,11 +7,11 @@ use crate::{
 
 /// A hyperbolic plane
 #[derive(Debug, Copy, Clone)]
-pub struct Plane<N: na::RealField> {
-    normal: MDirection<N>,
+pub struct Plane {
+    normal: MDirection<f64>,
 }
 
-impl From<Side> for Plane<f64> {
+impl From<Side> for Plane {
     /// A surface overlapping with a particular dodecahedron side
     fn from(side: Side) -> Self {
         Self {
@@ -20,16 +20,16 @@ impl From<Side> for Plane<f64> {
     }
 }
 
-impl<N: na::RealField + Copy> From<na::Unit<na::Vector3<N>>> for Plane<N> {
+impl From<na::Unit<na::Vector3<f64>>> for Plane {
     /// A plane passing through the origin
-    fn from(x: na::Unit<na::Vector3<N>>) -> Self {
+    fn from(x: na::Unit<na::Vector3<f64>>) -> Self {
         Self {
             normal: MDirection::from(x),
         }
     }
 }
 
-impl<N: na::RealField + Copy> Neg for Plane<N> {
+impl Neg for Plane {
     type Output = Self;
     fn neg(self) -> Self {
         Self {
@@ -38,38 +38,36 @@ impl<N: na::RealField + Copy> Neg for Plane<N> {
     }
 }
 
-impl Mul<Plane<f64>> for Side {
-    type Output = Plane<f64>;
+impl Mul<Plane> for Side {
+    type Output = Plane;
     /// Reflect a plane across the side
-    fn mul(self, rhs: Plane<f64>) -> Plane<f64> {
+    fn mul(self, rhs: Plane) -> Plane {
         self.reflection_f64() * rhs
     }
 }
 
-impl<N: na::RealField + Copy> Mul<Plane<N>> for &MIsometry<N> {
-    type Output = Plane<N>;
-    fn mul(self, rhs: Plane<N>) -> Plane<N> {
+impl Mul<Plane> for &MIsometry<f64> {
+    type Output = Plane;
+    fn mul(self, rhs: Plane) -> Plane {
         Plane {
             normal: (self * rhs.normal).as_ref().normalized_direction(),
         }
     }
 }
 
-impl<N: na::RealField + Copy> Plane<N> {
+impl Plane {
     /// Hyperbolic normal vector identifying the plane
-    pub fn normal(&self) -> &MDirection<N> {
+    pub fn normal(&self) -> &MDirection<f64> {
         &self.normal
     }
 
     /// Shortest distance between the plane and a point
-    pub fn distance_to(&self, point: &MPoint<N>) -> N {
+    pub fn distance_to(&self, point: &MPoint<f64>) -> f64 {
         let mip_value = self.normal.mip(point);
         // Workaround for bug fixed in rust PR #72486
-        mip_value.abs().asinh() * mip_value.signum()
+        libm::asinh(mip_value.abs()) * mip_value.signum()
     }
-}
 
-impl Plane<f64> {
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f64>) -> f64 {
         let pos = (MVector::from(chunk.chunk_to_node_f64() * coord.push(1.0))).normalized_point();

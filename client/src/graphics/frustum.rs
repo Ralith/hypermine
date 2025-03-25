@@ -1,5 +1,4 @@
-use common::Plane;
-use common::math::MPoint;
+use common::math::{MDirection, MPoint};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Frustum {
@@ -51,19 +50,19 @@ impl Frustum {
 
     pub fn planes(&self) -> FrustumPlanes {
         FrustumPlanes {
-            left: Plane::from(
+            left: MDirection::from(
                 na::UnitQuaternion::from_axis_angle(&na::Vector3::y_axis(), self.left)
                     * -na::Vector3::x_axis(),
             ),
-            right: Plane::from(
+            right: MDirection::from(
                 na::UnitQuaternion::from_axis_angle(&na::Vector3::y_axis(), self.right)
                     * na::Vector3::x_axis(),
             ),
-            down: Plane::from(
+            down: MDirection::from(
                 na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), self.down)
                     * na::Vector3::y_axis(),
             ),
-            up: Plane::from(
+            up: MDirection::from(
                 na::UnitQuaternion::from_axis_angle(&na::Vector3::x_axis(), self.up)
                     * -na::Vector3::y_axis(),
             ),
@@ -73,16 +72,16 @@ impl Frustum {
 
 #[derive(Debug, Copy, Clone)]
 pub struct FrustumPlanes {
-    left: Plane<f32>,
-    right: Plane<f32>,
-    down: Plane<f32>,
-    up: Plane<f32>,
+    left: MDirection<f32>,
+    right: MDirection<f32>,
+    down: MDirection<f32>,
+    up: MDirection<f32>,
 }
 
 impl FrustumPlanes {
     pub fn contain(&self, point: &MPoint<f32>, radius: f32) -> bool {
         for &plane in &[&self.left, &self.right, &self.down, &self.up] {
-            if plane.distance_to(point) < -radius {
+            if plane.mip(point).asinh() < -radius {
                 return false;
             }
         }

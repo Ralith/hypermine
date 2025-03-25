@@ -2,12 +2,12 @@ use rand::{Rng, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
 
 use crate::{
-    Plane,
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     margins,
     math::{self, MDirection},
     node::{ChunkId, VoxelData},
+    plane::Plane,
     terraingen::VoronoiInfo,
     world::Material,
 };
@@ -66,7 +66,7 @@ impl NodeStateRoad {
 /// generation logic uses this information as a starting point.
 pub struct NodeState {
     kind: NodeStateKind,
-    surface: Plane<f64>,
+    surface: Plane,
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
 }
@@ -171,7 +171,7 @@ pub struct ChunkParams {
     /// Random quantities stored at the eight adjacent nodes, used for terrain generation
     env: ChunkIncidentEnviroFactors,
     /// Reference plane for the terrain surface
-    surface: Plane<f64>,
+    surface: Plane,
     /// Whether this chunk contains a segment of the road
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
