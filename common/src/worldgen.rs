@@ -5,7 +5,7 @@ use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     margins,
-    math::{self, MDirection},
+    math::{self, MVector},
     node::{ChunkId, VoxelData},
     plane::Plane,
     terraingen::VoronoiInfo,
@@ -122,8 +122,8 @@ impl NodeState {
         }
     }
 
-    pub fn up_direction(&self) -> MDirection<f32> {
-        self.surface.normal().cast()
+    pub fn up_direction(&self) -> MVector<f32> {
+        self.surface.scaled_normal().cast()
     }
 }
 
