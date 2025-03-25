@@ -1150,15 +1150,15 @@ mod tests {
 
     #[test]
     fn distance_commutative() {
-        let p = MPoint::new_unchecked(-1.0, -1.0, 0.0, 3.0f64.sqrt());
-        let q = MPoint::new_unchecked(1.0, -1.0, 0.0, 3.0f64.sqrt());
+        let p = MPoint::new_unchecked(-1.0, -1.0, 0.0, 3.0f32.sqrt());
+        let q = MPoint::new_unchecked(1.0, -1.0, 0.0, 3.0f32.sqrt());
         assert_abs_diff_eq!(p.distance(&q), q.distance(&p));
     }
 
     #[test]
     fn midpoint_distance() {
-        let p = MPoint::new_unchecked(-1.0, -1.0, 0.0, 3.0f64.sqrt());
-        let q = MPoint::new_unchecked(1.0, -1.0, 0.0, 3.0f64.sqrt());
+        let p = MPoint::new_unchecked(-1.0, -1.0, 0.0, 3.0f32.sqrt());
+        let q = MPoint::new_unchecked(1.0, -1.0, 0.0, 3.0f32.sqrt());
         let m = p.midpoint(&q);
         assert_abs_diff_eq!(p.distance(&m), m.distance(&q), epsilon = 1e-5);
         assert_abs_diff_eq!(p.distance(&m) * 2.0, p.distance(&q), epsilon = 1e-5);
