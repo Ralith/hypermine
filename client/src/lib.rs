@@ -20,6 +20,7 @@ pub mod metrics;
 pub mod net;
 mod prediction;
 pub mod sim;
+mod worldgen_driver;
 
 pub use config::Config;
 pub use sim::Sim;

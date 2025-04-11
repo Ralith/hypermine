@@ -7,6 +7,7 @@ use lahar::Staged;
 use metrics::histogram;
 
 use super::{Base, Fog, Frustum, GltfScene, Meshes, Voxels, fog, voxels};
+use crate::worldgen_driver::WorldgenDriver;
 use crate::{Asset, Config, Loader, Sim};
 use common::SimConfig;
 use common::proto::{Character, Position};
@@ -34,6 +35,9 @@ pub struct Draw {
 
     /// Drives async asset loading
     loader: Loader,
+
+    /// Drives chunk generation
+    worldgen_driver: WorldgenDriver,
 
     //
     // Rendering pipelines
@@ -129,6 +133,8 @@ impl Draw {
 
             let mut loader = Loader::new(cfg.clone(), gfx.clone());
 
+            let worldgen_driver = WorldgenDriver::new(cfg.clone(), &mut loader);
+
             // Construct the per-frame states
             let states = cmds
                 .chunks(2)
@@ -214,6 +220,8 @@ impl Draw {
                 common_descriptor_pool,
 
                 loader,
+
+                worldgen_driver,
 
                 voxels: None,
                 meshes,
@@ -404,6 +412,7 @@ impl Draw {
             histogram!("frame.cpu.nearby_nodes").record(nearby_nodes_started.elapsed());
 
             if let (Some(voxels), Some(sim)) = (self.voxels.as_mut(), sim.as_mut()) {
+                self.worldgen_driver.drive(sim, &nearby_nodes, frustum);
                 voxels.prepare(
                     device,
                     state.voxels.as_mut().unwrap(),

@@ -13,7 +13,6 @@ use tracing::warn;
 use crate::{
     Config, Loader, Sim,
     graphics::{Base, Frustum},
-    loader::{Cleanup, LoadCtx, LoadFuture, Loadable, WorkQueue},
 };
 use common::{
     LruSlab,
@@ -35,7 +34,6 @@ pub struct Voxels {
     states: LruSlab<SurfaceState>,
     draw: Surface,
     max_chunks: u32,
-    worldgen: WorkQueue<ChunkDesc>,
 }
 
 impl Voxels {
@@ -67,7 +65,6 @@ impl Voxels {
             dimension,
         );
         Self {
-            worldgen: loader.make_queue(config.chunk_load_parallelism as usize),
             config,
             surface_extraction,
             extraction_scratch,
@@ -98,19 +95,6 @@ impl Voxels {
         for chunk in frame.drawn.drain(..) {
             self.states.peek_mut(chunk).refcount -= 1;
         }
-        while let Some(chunk) = self.worldgen.poll() {
-            let chunk_id = ChunkId::new(chunk.node, chunk.chunk);
-            sim.graph.populate_chunk(chunk_id, chunk.voxels);
-
-            // Now that the block is populated, we can apply any pending block updates the server
-            // provided that the client couldn't apply.
-            if let Some(block_updates) = sim.preloaded_block_updates.remove(&chunk_id) {
-                for block_update in block_updates {
-                    // The chunk was just populated, so a block update should always succeed.
-                    assert!(sim.graph.update_block(&block_update));
-                }
-            }
-        }
 
         // Determine what to load/render
         let view = sim.view();
@@ -123,7 +107,6 @@ impl Voxels {
         let frustum_planes = frustum.planes();
         let local_to_view = view.local.inverse();
         let mut extractions = Vec::new();
-        let mut workqueue_is_full = false;
         for &(node, ref node_transform) in nearby_nodes {
             let node_to_view = local_to_view * node_transform;
             let origin = node_to_view * MPoint::origin();
@@ -136,98 +119,76 @@ impl Voxels {
             use Chunk::*;
             for vertex in Vertex::iter() {
                 let chunk = ChunkId::new(node, vertex);
+
                 // Fetch existing chunk, or extract surface of new chunk
-                match sim
-                    .graph
-                    .get_chunk_mut(chunk)
-                    .expect("all nodes must be populated before rendering")
-                {
-                    Generating => continue,
-                    Fresh => {
-                        // Don't bother trying to generate fresh nodes if the work queue is full
-                        if workqueue_is_full {
-                            continue;
-                        }
-                        // Generate voxel data
-                        if let Some(params) = common::worldgen::ChunkParams::new(
-                            self.surfaces.dimension() as u8,
-                            &sim.graph,
-                            chunk,
-                        ) {
-                            if self.worldgen.load(ChunkDesc { node, params }).is_ok() {
-                                sim.graph[chunk] = Generating;
-                            } else {
-                                workqueue_is_full = true;
-                            }
-                        }
+                let &mut Populated {
+                    ref mut surface,
+                    ref mut old_surface,
+                    ref voxels,
+                } = &mut sim.graph[chunk]
+                else {
+                    continue;
+                };
+
+                if let Some(slot) = surface.or(*old_surface) {
+                    // Render an already-extracted surface
+                    self.states.get_mut(slot).refcount += 1;
+                    frame.drawn.push(slot);
+                    // Transfer transform
+                    frame.surface.transforms_mut()[slot.0 as usize] =
+                        na::Matrix4::from(*node_transform) * vertex.chunk_to_node();
+                }
+                if let (None, &VoxelData::Dense(ref data)) = (&surface, voxels) {
+                    // Extract a surface so it can be drawn in future frames
+                    if frame.extracted.len() == self.config.chunk_load_parallelism as usize {
                         continue;
                     }
-                    &mut Populated {
-                        ref mut surface,
-                        ref mut old_surface,
-                        ref voxels,
-                    } => {
-                        if let Some(slot) = surface.or(*old_surface) {
-                            // Render an already-extracted surface
-                            self.states.get_mut(slot).refcount += 1;
-                            frame.drawn.push(slot);
-                            // Transfer transform
-                            frame.surface.transforms_mut()[slot.0 as usize] =
-                                na::Matrix4::from(*node_transform) * vertex.chunk_to_node();
+                    let removed = if self.states.len() == self.max_chunks {
+                        let slot = self.states.lru().expect("full LRU table is nonempty");
+                        if self.states.peek(slot).refcount != 0 {
+                            warn!("MAX_CHUNKS is too small");
+                            break;
                         }
-                        if let (None, &VoxelData::Dense(ref data)) = (&surface, voxels) {
-                            // Extract a surface so it can be drawn in future frames
-                            if frame.extracted.len() == self.config.chunk_load_parallelism as usize
-                            {
-                                continue;
+                        Some((slot, self.states.remove(slot)))
+                    } else {
+                        None
+                    };
+                    let scratch_slot = self.extraction_scratch.alloc().expect(
+                        "there are at least chunks_loaded_per_frame scratch slots per frame",
+                    );
+                    frame.extracted.push(scratch_slot);
+                    let slot = self.states.insert(SurfaceState {
+                        node,
+                        chunk: vertex,
+                        refcount: 0,
+                    });
+                    *surface = Some(slot);
+                    let storage = self.extraction_scratch.storage(scratch_slot);
+                    storage.copy_from_slice(&data[..]);
+                    if let Some((lru_slot, lru)) = removed {
+                        if let Populated {
+                            ref mut surface,
+                            ref mut old_surface,
+                            ..
+                        } = sim.graph.get_mut(lru.node).as_mut().unwrap().chunks[lru.chunk]
+                        {
+                            // Remove references to released slot IDs
+                            if *surface == Some(lru_slot) {
+                                *surface = None;
                             }
-                            let removed = if self.states.len() == self.max_chunks {
-                                let slot = self.states.lru().expect("full LRU table is nonempty");
-                                if self.states.peek(slot).refcount != 0 {
-                                    warn!("MAX_CHUNKS is too small");
-                                    break;
-                                }
-                                Some((slot, self.states.remove(slot)))
-                            } else {
-                                None
-                            };
-                            let scratch_slot = self.extraction_scratch.alloc().expect("there are at least chunks_loaded_per_frame scratch slots per frame");
-                            frame.extracted.push(scratch_slot);
-                            let slot = self.states.insert(SurfaceState {
-                                node,
-                                chunk: vertex,
-                                refcount: 0,
-                            });
-                            *surface = Some(slot);
-                            let storage = self.extraction_scratch.storage(scratch_slot);
-                            storage.copy_from_slice(&data[..]);
-                            if let Some((lru_slot, lru)) = removed {
-                                if let Populated {
-                                    ref mut surface,
-                                    ref mut old_surface,
-                                    ..
-                                } =
-                                    sim.graph.get_mut(lru.node).as_mut().unwrap().chunks[lru.chunk]
-                                {
-                                    // Remove references to released slot IDs
-                                    if *surface == Some(lru_slot) {
-                                        *surface = None;
-                                    }
-                                    if *old_surface == Some(lru_slot) {
-                                        *old_surface = None;
-                                    }
-                                }
+                            if *old_surface == Some(lru_slot) {
+                                *old_surface = None;
                             }
-                            let node_is_odd = sim.graph.length(node) & 1 != 0;
-                            extractions.push(ExtractTask {
-                                index: scratch_slot,
-                                indirect_offset: self.surfaces.indirect_offset(slot.0),
-                                face_offset: self.surfaces.face_offset(slot.0),
-                                draw_id: slot.0,
-                                reverse_winding: vertex.parity() ^ node_is_odd,
-                            });
                         }
                     }
+                    let node_is_odd = sim.graph.length(node) & 1 != 0;
+                    extractions.push(ExtractTask {
+                        index: scratch_slot,
+                        indirect_offset: self.surfaces.indirect_offset(slot.0),
+                        face_offset: self.surfaces.face_offset(slot.0),
+                        draw_id: slot.0,
+                        reverse_winding: vertex.parity() ^ node_is_odd,
+                    });
                 }
             }
         }
@@ -313,32 +274,4 @@ struct SurfaceState {
     node: NodeId,
     chunk: common::dodeca::Vertex,
     refcount: u32,
-}
-
-struct ChunkDesc {
-    node: NodeId,
-    params: common::worldgen::ChunkParams,
-}
-
-struct LoadedChunk {
-    node: NodeId,
-    chunk: Vertex,
-    voxels: VoxelData,
-}
-
-impl Cleanup for LoadedChunk {
-    unsafe fn cleanup(self, _gfx: &Base) {}
-}
-
-impl Loadable for ChunkDesc {
-    type Output = LoadedChunk;
-    fn load(self, _ctx: &LoadCtx) -> LoadFuture<'_, Self::Output> {
-        Box::pin(async move {
-            Ok(LoadedChunk {
-                node: self.node,
-                chunk: self.params.chunk(),
-                voxels: self.params.generate_voxels(),
-            })
-        })
-    }
 }
