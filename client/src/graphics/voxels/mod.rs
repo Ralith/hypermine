@@ -213,10 +213,10 @@ impl Voxels {
                                         [lru.chunk]
                                     {
                                         // Remove references to released slot IDs
-                                        if surface.map_or(false, |slot| lru_slot == slot) {
+                                        if *surface == Some(lru_slot) {
                                             *surface = None;
                                         }
-                                        if old_surface.map_or(false, |slot| lru_slot == slot) {
+                                        if *old_surface == Some(lru_slot) {
                                             *old_surface = None;
                                         }
                                     }
