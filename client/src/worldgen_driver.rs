@@ -1,88 +1,73 @@
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use common::{
-    dodeca::{self, Vertex},
-    graph::NodeId,
-    math::{MIsometry, MPoint},
+    dodeca::Vertex,
+    graph::{Graph, NodeId},
     node::{Chunk, ChunkId, VoxelData},
+    proto::{BlockUpdate, Position},
+    traversal,
 };
+use fxhash::FxHashMap;
 use metrics::histogram;
-
-use crate::{
-    Config, Sim,
-    graphics::{Base, Frustum},
-    loader::{Cleanup, LoadCtx, LoadFuture, Loadable, Loader, WorkQueue},
-};
+use tokio::sync::mpsc;
 
 pub struct WorldgenDriver {
-    work_queue: WorkQueue<ChunkDesc>,
+    work_queue: WorkQueue,
+    /// Voxel data that have been downloaded from the server for chunks not yet introduced to the graph
+    preloaded_block_updates: FxHashMap<ChunkId, Vec<BlockUpdate>>,
 }
 
 impl WorldgenDriver {
-    pub fn new(config: Arc<Config>, loader: &mut Loader) -> Self {
+    pub fn new(chunk_load_parallelism: usize) -> Self {
         Self {
-            work_queue: loader.make_queue(config.chunk_load_parallelism as usize),
+            work_queue: WorkQueue::new(chunk_load_parallelism),
+            preloaded_block_updates: FxHashMap::default(),
         }
     }
 
-    pub fn drive(
-        &mut self,
-        sim: &mut Sim,
-        nearby_nodes: &[(NodeId, MIsometry<f32>)],
-        frustum: &Frustum,
-    ) {
+    pub fn drive(&mut self, view: Position, chunk_generation_distance: f32, graph: &mut Graph) {
         let drive_worldgen_started = Instant::now();
 
         // Check for chunks that have finished generating
         while let Some(chunk) = self.work_queue.poll() {
             let chunk_id = ChunkId::new(chunk.node, chunk.chunk);
-            sim.graph.populate_chunk(chunk_id, chunk.voxels);
+            graph.populate_chunk(chunk_id, chunk.voxels);
 
             // Now that the block is populated, we can apply any pending block updates the server
             // provided that the client couldn't apply.
-            if let Some(block_updates) = sim.preloaded_block_updates.remove(&chunk_id) {
+            if let Some(block_updates) = self.preloaded_block_updates.remove(&chunk_id) {
                 for block_update in block_updates {
                     // The chunk was just populated, so a block update should always succeed.
-                    assert!(sim.graph.update_block(&block_update));
+                    assert!(graph.update_block(&block_update));
                 }
             }
         }
 
         // Determine what to load/render
-        let view = sim.view();
-        if !sim.graph.contains(view.node) {
+        if !graph.contains(view.node) {
             // Graph is temporarily out of sync with the server; we don't know where we are, so
-            // there's no point trying to draw.
+            // there's no point trying to generate chunks.
             return;
         }
-        let frustum_planes = frustum.planes();
-        let local_to_view = view.local.inverse();
 
-        'nearby_nodes: for &(node, ref node_transform) in nearby_nodes {
-            let node_to_view = local_to_view * node_transform;
-            let origin = node_to_view * MPoint::origin();
-            if !frustum_planes.contain(&origin, dodeca::BOUNDING_SPHERE_RADIUS) {
-                // Don't bother generating or drawing chunks from nodes that are wholly outside the frustum.
-                continue;
-            }
+        let nearby_nodes = traversal::nearby_nodes(graph, &view, chunk_generation_distance);
 
+        'nearby_nodes: for &(node, _) in &nearby_nodes {
             for vertex in Vertex::iter() {
                 let chunk_id = ChunkId::new(node, vertex);
 
-                if !matches!(sim.graph[chunk_id], Chunk::Fresh) {
+                if !matches!(graph[chunk_id], Chunk::Fresh) {
                     continue;
                 }
 
-                let Some(params) = common::worldgen::ChunkParams::new(
-                    sim.graph.layout().dimension(),
-                    &sim.graph,
-                    chunk_id,
-                ) else {
+                let Some(params) =
+                    common::worldgen::ChunkParams::new(graph.layout().dimension(), graph, chunk_id)
+                else {
                     continue;
                 };
 
-                if self.work_queue.load(ChunkDesc { node, params }).is_ok() {
-                    sim.graph[chunk_id] = Chunk::Generating;
+                if self.work_queue.load(ChunkDesc { node, params }) {
+                    graph[chunk_id] = Chunk::Generating;
                 } else {
                     // No capacity is available in the work queue. Stop trying to prepare chunks to generate.
                     break 'nearby_nodes;
@@ -90,6 +75,16 @@ impl WorldgenDriver {
             }
         }
         histogram!("frame.cpu.drive_worldgen").record(drive_worldgen_started.elapsed());
+    }
+
+    pub fn apply_block_update(&mut self, graph: &mut Graph, block_update: BlockUpdate) {
+        if graph.update_block(&block_update) {
+            return;
+        }
+        self.preloaded_block_updates
+            .entry(block_update.chunk_id)
+            .or_default()
+            .push(block_update);
     }
 }
 
@@ -104,20 +99,61 @@ struct LoadedChunk {
     voxels: VoxelData,
 }
 
-impl Cleanup for LoadedChunk {
-    // TODO: `Base` is unused. Try to uncouple Loader from graphics.
-    unsafe fn cleanup(self, _gfx: &Base) {}
+struct WorkQueue {
+    _runtime: tokio::runtime::Runtime,
+    send: tokio::sync::mpsc::Sender<ChunkDesc>,
+    recv: tokio::sync::mpsc::Receiver<LoadedChunk>,
+    capacity: usize,
+    fill: usize,
 }
 
-impl Loadable for ChunkDesc {
-    type Output = LoadedChunk;
-    fn load(self, _ctx: &LoadCtx) -> LoadFuture<'_, Self::Output> {
-        Box::pin(async move {
-            Ok(LoadedChunk {
-                node: self.node,
-                chunk: self.params.chunk(),
-                voxels: self.params.generate_voxels(),
-            })
-        })
+impl WorkQueue {
+    pub fn new(chunk_load_parallelism: usize) -> Self {
+        let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
+
+        let (input_send, mut input_recv) = mpsc::channel::<ChunkDesc>(chunk_load_parallelism);
+        let (output_send, output_recv) = mpsc::channel::<LoadedChunk>(chunk_load_parallelism);
+        runtime.spawn(async move {
+            while let Some(x) = input_recv.recv().await {
+                let out = output_send.clone();
+                tokio::spawn(async move {
+                    let loaded_chunk = LoadedChunk {
+                        node: x.node,
+                        chunk: x.params.chunk(),
+                        voxels: x.params.generate_voxels(),
+                    };
+                    let _ = out.send(loaded_chunk).await;
+                });
+            }
+        });
+
+        Self {
+            _runtime: runtime,
+            send: input_send,
+            recv: output_recv,
+            capacity: chunk_load_parallelism,
+            fill: 0,
+        }
+    }
+
+    /// Begin loading a single item, if capacity is available
+    #[must_use]
+    pub fn load(&mut self, x: ChunkDesc) -> bool {
+        if self.fill == self.capacity {
+            return false;
+        }
+        if self.send.try_send(x).is_ok() {
+            self.fill += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Fetch a load result if one is ready, freeing capacity
+    pub fn poll(&mut self) -> Option<LoadedChunk> {
+        let result = self.recv.try_recv().ok()?;
+        self.fill -= 1;
+        Some(result)
     }
 }
