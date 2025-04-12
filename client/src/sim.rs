@@ -377,7 +377,10 @@ impl Sim {
             metrics::declare_ready_for_profiling();
         }
         for node in &msg.nodes {
-            self.graph.insert_neighbor(node.parent, node.side);
+            // We need to get a list of nodes from the server, especially on first log-in,
+            // since otherwise, we won't be able to know where the local character is with
+            // just the NodeId alone.
+            self.graph.ensure_neighbor(node.parent, node.side);
         }
         populate_fresh_nodes(&mut self.graph);
         for block_update in msg.block_updates.into_iter() {

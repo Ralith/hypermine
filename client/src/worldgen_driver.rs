@@ -3,7 +3,7 @@ use std::time::Instant;
 use common::{
     dodeca::Vertex,
     graph::{Graph, NodeId},
-    node::{Chunk, ChunkId, VoxelData},
+    node::{self, Chunk, ChunkId, VoxelData},
     proto::{BlockUpdate, Position},
     traversal,
 };
@@ -41,7 +41,8 @@ impl WorldgenDriver {
             // there's no point trying to generate chunks.
             return;
         }
-
+        traversal::ensure_nearby(graph, &view, chunk_generation_distance);
+        node::populate_fresh_nodes(graph);
         let nearby_nodes = traversal::nearby_nodes(graph, &view, chunk_generation_distance);
 
         'nearby_nodes: for &(node, _) in &nearby_nodes {

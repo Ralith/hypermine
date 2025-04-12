@@ -491,13 +491,6 @@ impl Sim {
         let span = error_span!("step", step = self.step);
         let _guard = span.enter();
 
-        // Extend graph structure
-        for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
-            ensure_nearby(&mut self.graph, position, self.cfg.view_distance);
-        }
-
-        self.populate_fresh_graph_nodes();
-
         // We want to load all chunks that a player can interact with in a single step, so chunk_generation_distance
         // is set up to cover that distance.
         let chunk_generation_distance = dodeca::BOUNDING_SPHERE_RADIUS
@@ -506,6 +499,20 @@ impl Sim {
             + self.cfg.character.ground_distance_tolerance
             + self.cfg.character.block_reach
             + 0.001;
+
+        // Extend graph structure
+        for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
+            // An extra dodeca::BOUNDING_SPHERE_RADIUS is needed here because we need to generate
+            // enough chunks to ensure that the all chunks a character might interact with can be generated
+            // with world generation, which requires all nodes surrounding its vertex to be in the graph.
+            ensure_nearby(
+                &mut self.graph,
+                position,
+                chunk_generation_distance + dodeca::BOUNDING_SPHERE_RADIUS,
+            );
+        }
+
+        self.populate_fresh_graph_nodes();
 
         // Load all chunks around entities corresponding to clients, which correspond to entities
         // with a "Character" component.
