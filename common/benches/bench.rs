@@ -39,7 +39,7 @@ fn build_graph(c: &mut Criterion) {
     c.bench_function("worldgen", |b| {
         b.iter(|| {
             let mut graph = Graph::new(12);
-            ensure_nearby(&mut graph, &Position::origin(), 3.0);
+            ensure_nearby(&mut graph, &Position::origin(), 2.25);
             let fresh = graph.fresh().to_vec();
             populate_fresh_nodes(&mut graph);
             let mut n = 0;

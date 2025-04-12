@@ -543,7 +543,7 @@ impl Draw {
             state.uniforms.write(Uniforms {
                 view_projection,
                 inverse_projection: *projection.inverse().matrix(),
-                fog_density: fog::density(self.cfg.local_simulation.view_distance, 1e-3, 5.0),
+                fog_density: fog::density(self.cfg.local_simulation.fog_distance, 1e-3, 5.0),
                 time: self.epoch.elapsed().as_secs_f32().fract(),
             });
 

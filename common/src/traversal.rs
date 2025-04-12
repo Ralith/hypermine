@@ -11,8 +11,10 @@ use crate::{
     proto::Position,
 };
 
-/// Ensure all nodes within `distance` of `start` exist
+/// Ensure all nodes exist whose bounding spheres are within `distance` of `start`
 pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
+    let max_node_center_distance = distance + dodeca::BOUNDING_SPHERE_RADIUS;
+
     // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
     // minimal path to each node. This greatly helps prevent error from accumulating due to
     // hundreds of transformations being composed.
@@ -25,28 +27,30 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
 
     while let Some((node, current_transform)) = pending.pop_front() {
         for side in Side::iter() {
+            let neighbor_transform = current_transform * side.reflection();
+            let neighbor_p = neighbor_transform * MPoint::origin();
+            if -start_p.mip(&neighbor_p) > max_node_center_distance.cosh() {
+                continue;
+            }
             let neighbor = graph.ensure_neighbor(node, side);
             if visited.contains(&neighbor) {
                 continue;
             }
             visited.insert(neighbor);
-            let neighbor_transform = current_transform * side.reflection();
-            let neighbor_p = neighbor_transform * MPoint::origin();
-            if -start_p.mip(&neighbor_p) > distance.cosh() {
-                continue;
-            }
             pending.push_back((neighbor, neighbor_transform));
         }
     }
 }
 
-/// Compute `start.node`-relative transforms of all nodes whose origins lie within `distance` of
+/// Compute `start.node`-relative transforms of all nodes whose bounding spheres lie within `distance` of
 /// `start`
 pub fn nearby_nodes(
     graph: &Graph,
     start: &Position,
     distance: f32,
 ) -> Vec<(NodeId, MIsometry<f32>)> {
+    let max_node_center_distance = distance + dodeca::BOUNDING_SPHERE_RADIUS;
+
     struct PendingNode {
         id: NodeId,
         transform: MIsometry<f32>,
@@ -69,7 +73,7 @@ pub fn nearby_nodes(
 
     while let Some(current) = pending.pop_front() {
         let current_p = current.transform * MPoint::origin();
-        if -start_p.mip(&current_p) > distance.cosh() {
+        if -start_p.mip(&current_p) > max_node_center_distance.cosh() {
             continue;
         }
         result.push((current.id, current.transform));
@@ -234,13 +238,9 @@ mod tests {
     fn traversal_functions_example() {
         let mut graph = Graph::new(1);
         ensure_nearby(&mut graph, &Position::origin(), 6.0);
-        assert_abs_diff_eq!(graph.len(), 502079, epsilon = 50);
+        assert_abs_diff_eq!(graph.len(), 687959, epsilon = 50);
 
-        // TODO: nearby_nodes has a stricter interpretation of distance than
-        // ensure_nearby, resulting in far fewer nodes. Getting these two
-        // functions to align may be a future performance improvement
-        // opportunity.
         let nodes = nearby_nodes(&graph, &Position::origin(), 6.0);
-        assert_abs_diff_eq!(nodes.len(), 60137, epsilon = 5);
+        assert_abs_diff_eq!(nodes.len(), 687959, epsilon = 50);
     }
 }
