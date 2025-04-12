@@ -15,6 +15,8 @@ pub struct WorldgenDriver {
     work_queue: WorkQueue,
     /// Voxel data that have been downloaded from the server for chunks not yet introduced to the graph
     preloaded_block_updates: FxHashMap<ChunkId, Vec<BlockUpdate>>,
+    /// Voxel data that has been fetched from the server but not yet introduced to the graph
+    preloaded_voxel_data: FxHashMap<ChunkId, VoxelData>,
 }
 
 impl WorldgenDriver {
@@ -22,6 +24,7 @@ impl WorldgenDriver {
         Self {
             work_queue: WorkQueue::new(chunk_load_parallelism),
             preloaded_block_updates: FxHashMap::default(),
+            preloaded_voxel_data: FxHashMap::default(),
         }
     }
 
@@ -30,20 +33,9 @@ impl WorldgenDriver {
 
         // Check for chunks that have finished generating
         while let Some(chunk) = self.work_queue.poll() {
-            let chunk_id = ChunkId::new(chunk.node, chunk.chunk);
-            graph.populate_chunk(chunk_id, chunk.voxels);
-
-            // Now that the block is populated, we can apply any pending block updates the server
-            // provided that the client couldn't apply.
-            if let Some(block_updates) = self.preloaded_block_updates.remove(&chunk_id) {
-                for block_update in block_updates {
-                    // The chunk was just populated, so a block update should always succeed.
-                    assert!(graph.update_block(&block_update));
-                }
-            }
+            self.add_chunk_to_graph(graph, ChunkId::new(chunk.node, chunk.chunk), chunk.voxels);
         }
 
-        // Determine what to load/render
         if !graph.contains(view.node) {
             // Graph is temporarily out of sync with the server; we don't know where we are, so
             // there's no point trying to generate chunks.
@@ -66,7 +58,9 @@ impl WorldgenDriver {
                     continue;
                 };
 
-                if self.work_queue.load(ChunkDesc { node, params }) {
+                if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk_id) {
+                    self.add_chunk_to_graph(graph, chunk_id, voxel_data);
+                } else if self.work_queue.load(ChunkDesc { node, params }) {
                     graph[chunk_id] = Chunk::Generating;
                 } else {
                     // No capacity is available in the work queue. Stop trying to prepare chunks to generate.
@@ -77,6 +71,24 @@ impl WorldgenDriver {
         histogram!("frame.cpu.drive_worldgen").record(drive_worldgen_started.elapsed());
     }
 
+    /// Adds established voxel data to the graph. This could come from world generation or sent from the server,
+    /// depending on whether the chunk has been modified.
+    pub fn add_chunk_to_graph(
+        &mut self,
+        graph: &mut Graph,
+        chunk_id: ChunkId,
+        voxel_data: VoxelData,
+    ) {
+        graph.populate_chunk(chunk_id, voxel_data);
+
+        if let Some(block_updates) = self.preloaded_block_updates.remove(&chunk_id) {
+            for block_update in block_updates {
+                // The chunk was just populated, so a block update should always succeed.
+                assert!(graph.update_block(&block_update));
+            }
+        }
+    }
+
     pub fn apply_block_update(&mut self, graph: &mut Graph, block_update: BlockUpdate) {
         if graph.update_block(&block_update) {
             return;
@@ -85,6 +97,19 @@ impl WorldgenDriver {
             .entry(block_update.chunk_id)
             .or_default()
             .push(block_update);
+    }
+
+    pub fn apply_voxel_data(
+        &mut self,
+        graph: &mut Graph,
+        chunk_id: ChunkId,
+        voxel_data: VoxelData,
+    ) {
+        if graph.contains(chunk_id.node) {
+            self.add_chunk_to_graph(graph, chunk_id, voxel_data);
+        } else {
+            self.preloaded_voxel_data.insert(chunk_id, voxel_data);
+        }
     }
 }
 
