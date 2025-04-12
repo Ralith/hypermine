@@ -103,16 +103,6 @@ impl Graph {
     }
 
     #[inline]
-    pub fn get(&self, node: NodeId) -> &Option<Node> {
-        &self.nodes[&node].value
-    }
-
-    #[inline]
-    pub fn get_mut(&mut self, node: NodeId) -> &mut Option<Node> {
-        &mut self.nodes.get_mut(&node).unwrap().value
-    }
-
-    #[inline]
     pub fn neighbor(&self, node: NodeId, which: Side) -> Option<NodeId> {
         self.nodes[&node].neighbors[which as usize]
     }
@@ -274,6 +264,22 @@ impl Graph {
     }
 }
 
+impl std::ops::Index<NodeId> for Graph {
+    type Output = Node;
+
+    #[inline]
+    fn index(&self, node_id: NodeId) -> &Node {
+        &self.nodes[&node_id].value
+    }
+}
+
+impl std::ops::IndexMut<NodeId> for Graph {
+    #[inline]
+    fn index_mut(&mut self, node_id: NodeId) -> &mut Node {
+        &mut self.nodes.get_mut(&node_id).unwrap().value
+    }
+}
+
 /// Unique 128-bit identifier for a dodecahedral node in the graph. This ID
 /// depends entirely on the location of the node within the graph and is
 /// guaranteed not to depend on the order in which nodes are added to the graph.
@@ -289,7 +295,7 @@ impl NodeId {
 }
 
 struct NodeContainer {
-    value: Option<Node>,
+    value: Node,
     parent_side: Option<Side>,
     /// Distance to origin via parents
     length: u32,
@@ -299,7 +305,7 @@ struct NodeContainer {
 impl NodeContainer {
     fn new(parent_side: Option<Side>, length: u32) -> Self {
         Self {
-            value: None,
+            value: Node::default(),
             parent_side,
             length,
             neighbors: [None; Side::VALUES.len()],
