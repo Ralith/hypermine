@@ -246,7 +246,7 @@ mod tests {
             );
             let Chunk::Populated {
                 voxels: voxel_data, ..
-            } = graph.get_chunk_mut(chunk).unwrap()
+            } = &mut graph[chunk]
             else {
                 panic!("All chunks should be populated.");
             };

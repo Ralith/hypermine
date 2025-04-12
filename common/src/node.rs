@@ -28,20 +28,12 @@ impl ChunkId {
 }
 
 impl Graph {
-    pub fn get_chunk_mut(&mut self, chunk: ChunkId) -> Option<&mut Chunk> {
-        Some(&mut self.get_mut(chunk.node).as_mut()?.chunks[chunk.vertex])
-    }
-
-    pub fn get_chunk(&self, chunk: ChunkId) -> Option<&Chunk> {
-        Some(&self.get(chunk.node).as_ref()?.chunks[chunk.vertex])
-    }
-
     /// Returns the up-direction relative to the given position, or `None` if the
     /// position is in an unpopulated node.
     pub fn get_relative_up(&self, position: &Position) -> Option<na::UnitVector3<f32>> {
-        let node = self.get(position.node).as_ref()?;
+        let node = &self[position.node];
         Some(na::UnitVector3::new_normalize(
-            (position.local.inverse() * node.state.up_direction())
+            (position.local.inverse() * node.state.as_ref()?.up_direction())
                 .as_ref()
                 .xyz(),
         ))
@@ -125,7 +117,7 @@ impl Graph {
         }
 
         // After clearing any margins we needed to clear, we can now insert the data into the graph
-        *self.get_chunk_mut(chunk).unwrap() = Chunk::Populated {
+        self[chunk] = Chunk::Populated {
             voxels,
             surface: None,
             old_surface: None,
@@ -136,7 +128,7 @@ impl Graph {
     pub fn get_material(&self, chunk_id: ChunkId, coords: Coords) -> Option<Material> {
         let dimension = self.layout().dimension;
 
-        let Some(Chunk::Populated { voxels, .. }) = self.get_chunk(chunk_id) else {
+        let Chunk::Populated { voxels, .. } = &self[chunk_id] else {
             return None;
         };
         Some(voxels.get(coords.to_index(dimension)))
@@ -149,11 +141,11 @@ impl Graph {
         let dimension = self.layout().dimension;
 
         // Update the block
-        let Some(Chunk::Populated {
+        let Chunk::Populated {
             voxels,
             surface,
             old_surface,
-        }) = self.get_chunk_mut(block_update.chunk_id)
+        } = &mut self[block_update.chunk_id]
         else {
             return false;
         };
@@ -180,24 +172,27 @@ impl Graph {
 impl Index<ChunkId> for Graph {
     type Output = Chunk;
 
+    #[inline]
     fn index(&self, chunk: ChunkId) -> &Chunk {
-        self.get_chunk(chunk).unwrap()
+        &self[chunk.node].chunks[chunk.vertex]
     }
 }
 
 impl IndexMut<ChunkId> for Graph {
+    #[inline]
     fn index_mut(&mut self, chunk: ChunkId) -> &mut Chunk {
-        self.get_chunk_mut(chunk).unwrap()
+        &mut self[chunk.node].chunks[chunk.vertex]
     }
 }
 
 /// A single dodecahedral node in the graph. All information related to world
 /// generation and the blocks within the node, along with auxiliary information
 /// used for rendering, is stored here.
+#[derive(Default)]
 pub struct Node {
-    pub state: NodeState,
+    pub state: Option<NodeState>,
     /// We can only populate chunks which lie within a cube of populated nodes, so nodes on the edge
-    /// of the graph always have some `None` chunks.
+    /// of the graph always have some `Fresh` chunks.
     pub chunks: Chunks<Chunk>,
 }
 
@@ -389,16 +384,15 @@ pub fn populate_fresh_nodes(graph: &mut Graph) {
 }
 
 fn populate_node(graph: &mut Graph, node: NodeId) {
-    *graph.get_mut(node) = Some(Node {
-        state: graph
+    graph[node].state = Some(
+        graph
             .parent(node)
             .and_then(|i| {
-                let parent_state = &graph.get(graph.neighbor(node, i)?).as_ref()?.state;
+                let parent_state = graph[graph.neighbor(node, i)?].state.as_ref()?;
                 Some(parent_state.child(graph, node, i))
             })
             .unwrap_or_else(NodeState::root),
-        chunks: Chunks::default(),
-    });
+    );
 }
 
 /// Represents a discretized region in the voxel grid contained by an axis-aligned bounding box.
