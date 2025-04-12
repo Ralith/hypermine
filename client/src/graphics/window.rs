@@ -278,7 +278,11 @@ impl Window {
                 error!("connection lost: {}", e);
             }
             server::Message::Hello(msg) => {
-                let sim = Sim::new(msg.sim_config, msg.character);
+                let sim = Sim::new(
+                    msg.sim_config,
+                    self.config.chunk_load_parallelism as usize,
+                    msg.character,
+                );
                 if let Some(draw) = self.draw.as_mut() {
                     draw.configure(sim.cfg());
                 }
