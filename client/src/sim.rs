@@ -222,8 +222,11 @@ impl Sim {
 
     pub fn step(&mut self, dt: Duration, net: &mut server::Handle) {
         self.local_character_controller.renormalize_orientation();
-        self.worldgen_driver
-            .drive(self.view(), self.cfg.view_distance, &mut self.graph);
+        self.worldgen_driver.drive(
+            self.view(),
+            self.cfg.chunk_generation_distance,
+            &mut self.graph,
+        );
 
         let step_interval = self.cfg.step_interval;
         self.since_input_sent += dt;

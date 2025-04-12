@@ -493,8 +493,7 @@ impl Sim {
 
         // We want to load all chunks that a player can interact with in a single step, so chunk_generation_distance
         // is set up to cover that distance.
-        let chunk_generation_distance = dodeca::BOUNDING_SPHERE_RADIUS
-            + self.cfg.character.character_radius
+        let chunk_generation_distance = self.cfg.character.character_radius
             + self.cfg.character.speed_cap * self.cfg.step_interval.as_secs_f32()
             + self.cfg.character.ground_distance_tolerance
             + self.cfg.character.block_reach
