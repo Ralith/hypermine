@@ -44,7 +44,8 @@ pub struct Sim {
     dirty_nodes: FxHashSet<NodeId>,
     /// All nodes that have voxel-related information yet to be saved
     dirty_voxel_nodes: FxHashSet<NodeId>,
-    /// All chunks that have ever had any block updates applied to them and can no longer be regenerated with worldgen
+    /// All chunks in the graph have ever had any block updates applied to them and can no longer be regenerated with worldgen.
+    /// This doesn't include chunks that have not been added to the graph yet (See `preloaded_voxel_data`).
     modified_chunks: FxHashSet<ChunkId>,
 }
 
@@ -478,6 +479,11 @@ impl Sim {
                 .voxel_data
                 .push((chunk_id, voxels.serialize(self.cfg.chunk_size)));
         }
+        for (&chunk_id, voxels) in self.preloaded_voxel_data.iter() {
+            spawns
+                .voxel_data
+                .push((chunk_id, voxels.serialize(self.cfg.chunk_size)));
+        }
         spawns
     }
 
@@ -639,9 +645,6 @@ impl Sim {
             for vertex in Vertex::iter() {
                 let chunk = ChunkId::new(fresh_node, vertex);
                 if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
-                    self.accumulated_changes
-                        .fresh_voxel_data
-                        .push((chunk, voxel_data.serialize(self.cfg.chunk_size)));
                     self.modified_chunks.insert(chunk);
                     self.graph.populate_chunk(chunk, voxel_data)
                 }
@@ -784,10 +787,6 @@ struct AccumulatedChanges {
 
     /// Nodes that have been added to the graph since the last broadcast
     fresh_nodes: Vec<NodeId>,
-
-    /// Voxel data from `fresh_nodes` that needs to be broadcast to clients due to not exactly matching what
-    /// world generation would return. This is needed to support `preloaded_voxel_data`
-    fresh_voxel_data: Vec<(ChunkId, SerializedVoxelData)>,
 }
 
 impl AccumulatedChanges {
@@ -798,7 +797,6 @@ impl AccumulatedChanges {
             && self.inventory_additions.is_empty()
             && self.inventory_removals.is_empty()
             && self.fresh_nodes.is_empty()
-            && self.fresh_voxel_data.is_empty()
     }
 
     /// Convert state changes for broadcast to clients
@@ -833,7 +831,7 @@ impl AccumulatedChanges {
                 })
                 .collect(),
             block_updates: self.block_updates,
-            voxel_data: self.fresh_voxel_data,
+            voxel_data: Vec::new(),
             inventory_additions: self.inventory_additions,
             inventory_removals: self.inventory_removals,
         })

@@ -389,7 +389,8 @@ impl Sim {
                 tracing::error!("Voxel data received from server is of incorrect dimension");
                 continue;
             };
-            self.graph.populate_chunk(chunk_id, voxel_data);
+            self.worldgen_driver
+                .apply_voxel_data(&mut self.graph, chunk_id, voxel_data);
         }
         for (subject, new_entity) in msg.inventory_additions {
             self.world
