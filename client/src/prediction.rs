@@ -100,7 +100,7 @@ impl PredictedMotion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::math::MIsometry;
+    use common::{graph::NodeId, math::MIsometry};
 
     /// An arbitrary position
     fn pos() -> Position {
@@ -114,7 +114,7 @@ mod tests {
     fn wraparound() {
         let mock_cfg = SimConfig::from_raw(&common::SimConfigRaw::default());
         let mut mock_graph = Graph::new(1);
-        common::node::populate_fresh_nodes(&mut mock_graph);
+        mock_graph.ensure_node_state(NodeId::ROOT);
         let mock_character_input = CharacterInput {
             movement: na::Vector3::x(),
             jump: false,

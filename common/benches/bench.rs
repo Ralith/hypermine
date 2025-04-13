@@ -3,10 +3,9 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use common::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
-    node::Chunk,
-    node::{ChunkId, populate_fresh_nodes},
+    node::{Chunk, ChunkId},
     proto::Position,
-    traversal::ensure_nearby,
+    traversal::{ensure_nearby, nearby_nodes},
     worldgen::ChunkParams,
 };
 
@@ -29,10 +28,11 @@ fn build_graph(c: &mut Criterion) {
             let mut n = NodeId::ROOT;
             for _ in 0..500 {
                 n = graph.ensure_neighbor(n, Side::A);
+                graph.ensure_node_state(n);
                 n = graph.ensure_neighbor(n, Side::J);
+                graph.ensure_node_state(n);
             }
             assert_eq!(graph.len(), 1001);
-            populate_fresh_nodes(&mut graph);
         })
     });
 
@@ -40,10 +40,12 @@ fn build_graph(c: &mut Criterion) {
         b.iter(|| {
             let mut graph = Graph::new(12);
             ensure_nearby(&mut graph, &Position::origin(), 2.25);
-            let fresh = graph.fresh().to_vec();
-            populate_fresh_nodes(&mut graph);
+            let all_nodes = nearby_nodes(&graph, &Position::origin(), 2.25);
+            for &(node, _) in &all_nodes {
+                graph.ensure_node_state(node);
+            }
             let mut n = 0;
-            for node in fresh {
+            for (node, _) in all_nodes {
                 for vertex in Vertex::iter() {
                     let chunk = ChunkId::new(node, vertex);
                     if let Some(params) = ChunkParams::new(12, &graph, chunk) {

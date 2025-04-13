@@ -15,9 +15,6 @@ use crate::{
 /// Graph of the right dodecahedral tiling of H^3
 pub struct Graph {
     nodes: FxHashMap<NodeId, NodeContainer>,
-    /// This field stores implicitly added nodes to ensure that they're initialized in the correct
-    /// order
-    fresh: Vec<NodeId>,
     layout: ChunkLayout,
 }
 
@@ -27,7 +24,6 @@ impl Graph {
         nodes.insert(NodeId::ROOT, NodeContainer::new(None, 0));
         Self {
             nodes,
-            fresh: vec![NodeId::ROOT],
             layout: ChunkLayout::new(dimension),
         }
     }
@@ -46,17 +42,6 @@ impl Graph {
     #[inline]
     pub fn contains(&self, node: NodeId) -> bool {
         self.nodes.contains_key(&node)
-    }
-
-    /// Nodes created since the last call to `clear_fresh`
-    #[inline]
-    pub fn fresh(&self) -> &[NodeId] {
-        &self.fresh
-    }
-
-    #[inline]
-    pub fn clear_fresh(&mut self) {
-        self.fresh.clear();
     }
 
     /// Node and vertex that the cube around a certain vertex is canonically assigned to.
@@ -196,7 +181,6 @@ impl Graph {
         for (side, neighbor) in shorter_neighbors_of_subject {
             self.link_neighbors(id, neighbor, side);
         }
-        self.fresh.push(id);
         id
     }
 

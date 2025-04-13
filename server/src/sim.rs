@@ -18,7 +18,7 @@ use tracing::{error, error_span, info, trace};
 use common::{
     EntityId, SimConfig, Step, character_controller, dodeca,
     graph::{Graph, NodeId},
-    node::{Chunk, populate_fresh_nodes},
+    node::Chunk,
     proto::{
         Character, CharacterInput, CharacterState, ClientHello, Command, Component, FreshNode,
         Position, Spawns, StateDelta,
@@ -72,8 +72,6 @@ impl Sim {
         result
             .load_all_entities(save)
             .expect("save file must be of a valid format");
-        // Loading entities can cause graph nodes to also be created, so we should populate them before returning.
-        result.populate_fresh_graph_nodes();
         // As no players have logged in yet, and `snapshot` may be called before the first call of `step`,
         // make sure that `accumulated_changes` is empty to avoid accidental double-spawns of anything.
         result.accumulated_changes = AccumulatedChanges::default();
@@ -120,8 +118,6 @@ impl Sim {
 
     /// Loads all entities from the given save file. Note that this must be called before any players
     /// log in, as `accumulated_changes` will not properly reflect the entities that were loaded in.
-    /// It is also important to call `populate_fresh_graph_nodes` after calling this function to keep
-    /// `Sim` in a consistent state, as this function can expand the graph without populating the graph nodes.
     fn load_all_entities(&mut self, save: &save::Save) -> anyhow::Result<()> {
         let mut read = save.read()?;
         for node_hash in read.get_all_entity_node_ids()? {
@@ -508,9 +504,15 @@ impl Sim {
                 position,
                 chunk_generation_distance + dodeca::BOUNDING_SPHERE_RADIUS,
             );
-        }
 
-        self.populate_fresh_graph_nodes();
+            for (node_id, _) in nearby_nodes(
+                &self.graph,
+                position,
+                chunk_generation_distance + dodeca::BOUNDING_SPHERE_RADIUS,
+            ) {
+                self.graph.ensure_node_state(node_id);
+            }
+        }
 
         // Load all chunks around entities corresponding to clients, which correspond to entities
         // with a "Character" component.
@@ -522,7 +524,11 @@ impl Sim {
                     if !matches!(self.graph[chunk], Chunk::Fresh) {
                         continue;
                     }
-                    if let Some(params) = ChunkParams::new(self.cfg.chunk_size, &self.graph, chunk)
+                    if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
+                        self.modified_chunks.insert(chunk);
+                        self.graph.populate_chunk(chunk, voxel_data);
+                    } else if let Some(params) =
+                        ChunkParams::new(self.cfg.chunk_size, &self.graph, chunk)
                     {
                         self.graph.populate_chunk(chunk, params.generate_voxels());
                     }
@@ -629,26 +635,6 @@ impl Sim {
                     &mut inventory_entity_node_id,
                     inventory_node_id,
                 );
-            }
-        }
-    }
-
-    /// Should be called after any set of changes is made to the graph to ensure that the server
-    /// does not have any partially-initialized graph nodes.
-    fn populate_fresh_graph_nodes(&mut self) {
-        let fresh_nodes = self.graph.fresh().to_vec();
-        populate_fresh_nodes(&mut self.graph);
-
-        self.accumulated_changes
-            .fresh_nodes
-            .extend_from_slice(&fresh_nodes);
-        for fresh_node in fresh_nodes.iter().copied() {
-            for vertex in Vertex::iter() {
-                let chunk = ChunkId::new(fresh_node, vertex);
-                if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
-                    self.modified_chunks.insert(chunk);
-                    self.graph.populate_chunk(chunk, voxel_data)
-                }
             }
         }
     }
