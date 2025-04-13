@@ -71,51 +71,53 @@ pub struct NodeState {
     enviro: EnviroFactors,
 }
 impl NodeState {
-    pub fn root() -> Self {
-        Self {
-            kind: NodeStateKind::ROOT,
-            surface: Plane::from(Side::A),
-            road_state: NodeStateRoad::ROOT,
-            enviro: EnviroFactors {
+    pub fn new(graph: &Graph, node: NodeId) -> Self {
+        let mut parents = graph
+            .parents(node)
+            .map(|(s, n)| ParentInfo {
+                node_id: n,
+                side: s,
+                node_state: graph.node_state(n),
+            })
+            .fuse();
+        let parents = [parents.next(), parents.next(), parents.next()];
+
+        let enviro = match (parents[0], parents[1]) {
+            (None, None) => EnviroFactors {
                 max_elevation: 0.0,
                 temperature: 0.0,
                 rainfall: 0.0,
                 blockiness: 0.0,
             },
-        }
-    }
-
-    pub fn child(&self, graph: &Graph, node: NodeId, side: Side) -> Self {
-        let mut d = graph.parents(node).map(|(s, n)| (s, graph.node_state(n)));
-        let enviro = match (d.next(), d.next()) {
-            (Some(_), None) => {
-                let parent_side = graph.primary_parent_side(node).unwrap();
-                let parent_node = graph.neighbor(node, parent_side).unwrap();
-                let parent_state = graph.node_state(parent_node);
+            (Some(parent), None) => {
                 let spice = graph.hash_of(node) as u64;
-                EnviroFactors::varied_from(parent_state.enviro, spice)
+                EnviroFactors::varied_from(parent.node_state.enviro, spice)
             }
-            (Some((a_side, a_state)), Some((b_side, b_state))) => {
-                let ab_node = graph
-                    .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
-                    .unwrap();
-                let ab_state = graph.node_state(ab_node);
-                EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
+            (Some(parent_a), Some(parent_b)) => {
+                let ab_node = graph.neighbor(parent_a.node_id, parent_b.side).unwrap();
+                let ab_state = &graph.node_state(ab_node);
+                EnviroFactors::continue_from(
+                    parent_a.node_state.enviro,
+                    parent_b.node_state.enviro,
+                    ab_state.enviro,
+                )
             }
             _ => unreachable!(),
         };
 
-        let child_kind = self.kind.child(side);
-        let child_road = self.road_state.child(side);
+        let kind = parents[0].map_or(NodeStateKind::ROOT, |p| p.node_state.kind.child(p.side));
+        let road_state = parents[0].map_or(NodeStateRoad::ROOT, |p| {
+            p.node_state.road_state.child(p.side)
+        });
 
         Self {
-            kind: child_kind,
-            surface: match child_kind {
+            kind,
+            surface: match kind {
                 Land => Plane::from(Side::A),
                 Sky => -Plane::from(Side::A),
-                _ => side * self.surface,
+                _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
             },
-            road_state: child_road,
+            road_state,
             enviro,
         }
     }
@@ -123,6 +125,13 @@ impl NodeState {
     pub fn up_direction(&self) -> MVector<f32> {
         *self.surface.scaled_normal()
     }
+}
+
+#[derive(Clone, Copy)]
+struct ParentInfo<'a> {
+    node_id: NodeId,
+    side: Side,
+    node_state: &'a NodeState,
 }
 
 struct VoxelCoords {
