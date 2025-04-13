@@ -302,6 +302,18 @@ impl Vertex {
         *data::CHUNK_TO_DUAL_FACTOR_F64
     }
 
+    /// In dodeca-centric coordinates, the center of the smallest sphere that contains the entire
+    /// chunk defined by this vertex.
+    pub fn chunk_bounding_sphere_center(self) -> &'static MPoint<f32> {
+        &data::CHUNK_BOUNDING_SPHERE_CENTERS_F32[self as usize]
+    }
+
+    /// In dodeca-centric coordinates, the center of the smallest sphere that contains the entire
+    /// chunk defined by this vertex.
+    pub fn chunk_bounding_sphere_center_f64(self) -> &'static MPoint<f64> {
+        &data::CHUNK_BOUNDING_SPHERE_CENTERS_F64[self as usize]
+    }
+
     /// Convenience method for `self.chunk_to_node().determinant() < 0`.
     pub fn parity(self) -> bool {
         data::CHUNK_TO_NODE_PARITY[self as usize]
@@ -311,12 +323,15 @@ impl Vertex {
 pub const BOUNDING_SPHERE_RADIUS_F64: f64 = 1.2264568712514068;
 pub const BOUNDING_SPHERE_RADIUS: f32 = BOUNDING_SPHERE_RADIUS_F64 as f32;
 
+pub const CHUNK_BOUNDING_SPHERE_RADIUS_F64: f64 = BOUNDING_SPHERE_RADIUS_F64 * 0.5;
+pub const CHUNK_BOUNDING_SPHERE_RADIUS: f32 = CHUNK_BOUNDING_SPHERE_RADIUS_F64 as f32;
+
 mod data {
     use std::array;
     use std::sync::LazyLock;
 
     use crate::dodeca::{Side, Vertex};
-    use crate::math::{MDirection, MIsometry, MVector, PermuteXYZ};
+    use crate::math::{MDirection, MIsometry, MPoint, MVector, PermuteXYZ};
     use crate::voxel_math::ChunkAxisPermutation;
 
     /// Whether two sides share an edge
@@ -504,6 +519,17 @@ mod data {
     pub static CHUNK_TO_DUAL_FACTOR_F64: LazyLock<f64> =
         LazyLock::new(|| 1.0 / *DUAL_TO_CHUNK_FACTOR_F64);
 
+    pub static CHUNK_BOUNDING_SPHERE_CENTERS_F64: LazyLock<[MPoint<f64>; Vertex::VALUES.len()]> =
+        LazyLock::new(|| {
+            Vertex::VALUES.map(|vertex| {
+                // Chunks are most stretched between the origin and the dodeca's vertex, so finding
+                // the midpoint of these two extremes allows one to find the bounding sphere.
+                // Note that this also means that the bounding sphere radius is half the dodeca's
+                // bounding sphere radius.
+                (vertex.dual_to_node_f64() * MPoint::origin()).midpoint(&MPoint::origin())
+            })
+        });
+
     /// Vertex shared by 3 sides
     pub static SIDES_TO_VERTEX: LazyLock<
         [[[Option<Vertex>; Side::VALUES.len()]; Side::VALUES.len()]; Side::VALUES.len()],
@@ -542,6 +568,9 @@ mod data {
 
     pub static CHUNK_TO_DUAL_FACTOR_F32: LazyLock<f32> =
         LazyLock::new(|| *CHUNK_TO_DUAL_FACTOR_F64 as f32);
+
+    pub static CHUNK_BOUNDING_SPHERE_CENTERS_F32: LazyLock<[MPoint<f32>; Vertex::VALUES.len()]> =
+        LazyLock::new(|| CHUNK_BOUNDING_SPHERE_CENTERS_F64.map(|p| p.cast()));
 }
 
 #[cfg(test)]
@@ -650,6 +679,22 @@ mod tests {
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS_F64,
             (1.5 * phi).sqrt().asinh(),
+            epsilon = 1e-10
+        );
+    }
+
+    #[test]
+    fn chunk_bounding_sphere() {
+        let corner = *Vertex::A.dual_to_node_f64() * MPoint::origin();
+        let bounding_sphere_center = Vertex::A.chunk_bounding_sphere_center_f64();
+        assert_abs_diff_eq!(
+            CHUNK_BOUNDING_SPHERE_RADIUS_F64,
+            corner.distance(bounding_sphere_center),
+            epsilon = 1e-10
+        );
+        assert_abs_diff_eq!(
+            CHUNK_BOUNDING_SPHERE_RADIUS_F64,
+            MPoint::origin().distance(bounding_sphere_center),
             epsilon = 1e-10
         );
     }

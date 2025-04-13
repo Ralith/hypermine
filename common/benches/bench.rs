@@ -39,26 +39,22 @@ fn build_graph(c: &mut Criterion) {
     c.bench_function("worldgen", |b| {
         b.iter(|| {
             let mut graph = Graph::new(12);
-            ensure_nearby(&mut graph, &Position::origin(), 2.25);
-            let all_nodes = nearby_nodes(&graph, &Position::origin(), 2.25);
-            for &(node, _) in &all_nodes {
-                graph.ensure_node_state(node);
-            }
+            ensure_nearby(&mut graph, &Position::origin(), 1.0);
+            let all_nodes = nearby_nodes(&graph, &Position::origin(), 1.0);
             let mut n = 0;
             for (node, _) in all_nodes {
                 for vertex in Vertex::iter() {
                     let chunk = ChunkId::new(node, vertex);
-                    if let Some(params) = ChunkParams::new(12, &graph, chunk) {
-                        graph[chunk] = Chunk::Populated {
-                            voxels: params.generate_voxels(),
-                            surface: None,
-                            old_surface: None,
-                        };
-                        n += 1;
-                    }
+                    let params = ChunkParams::new(&mut graph, chunk);
+                    graph[chunk] = Chunk::Populated {
+                        voxels: params.generate_voxels(),
+                        surface: None,
+                        old_surface: None,
+                    };
+                    n += 1;
                 }
             }
-            assert_eq!(n, 640);
+            assert_eq!(n, 860);
         })
     });
 }
