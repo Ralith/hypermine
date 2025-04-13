@@ -88,12 +88,12 @@ impl NodeState {
     pub fn child(&self, graph: &Graph, node: NodeId, side: Side) -> Self {
         let mut d = graph
             .descenders(node)
-            .map(|(s, n)| (s, graph[n].state.as_ref().unwrap()));
+            .map(|(s, n)| (s, graph.node_state(n)));
         let enviro = match (d.next(), d.next()) {
             (Some(_), None) => {
                 let parent_side = graph.parent(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
-                let parent_state = graph[parent_node].state.as_ref().unwrap();
+                let parent_state = graph.node_state(parent_node);
                 let spice = graph.hash_of(node) as u64;
                 EnviroFactors::varied_from(parent_state.enviro, spice)
             }
@@ -101,7 +101,7 @@ impl NodeState {
                 let ab_node = graph
                     .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
                     .unwrap();
-                let ab_state = graph[ab_node].state.as_ref().unwrap();
+                let ab_state = graph.node_state(ab_node);
                 EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
             }
             _ => unreachable!(),
@@ -683,9 +683,8 @@ mod test {
             let new_node = path.fold(NodeId::ROOT, |node, side| g.ensure_neighbor(node, side));
 
             // assigning state
-            let mut state = NodeState::root();
-            state.enviro.max_elevation = i as f32 + 1.0;
-            g[new_node].state = Some(state);
+            g.ensure_node_state(new_node);
+            g[new_node].state.as_mut().unwrap().enviro.max_elevation = i as f32 + 1.0;
         }
 
         let enviros =

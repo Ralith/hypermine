@@ -28,6 +28,33 @@ impl ChunkId {
 }
 
 impl Graph {
+    /// Returns the NodeState for the given node, panicking if it isn't initialized.
+    #[inline]
+    pub fn node_state(&self, node_id: NodeId) -> &NodeState {
+        self[node_id].state.as_ref().unwrap()
+    }
+
+    /// Initializes the NodeState for the given node and all its ancestors if not
+    /// already initialized.
+    pub fn ensure_node_state(&mut self, node_id: NodeId) {
+        if self[node_id].state.is_some() {
+            return;
+        }
+
+        for (_, parent) in self.descenders(node_id) {
+            self.ensure_node_state(parent);
+        }
+
+        let node_state = self
+            .parent(node_id)
+            .map(|i| {
+                let parent_state = self.node_state(self.neighbor(node_id, i).unwrap());
+                parent_state.child(self, node_id, i)
+            })
+            .unwrap_or_else(NodeState::root);
+        self[node_id].state = Some(node_state);
+    }
+
     /// Returns the up-direction relative to the given position, or `None` if the
     /// position is in an unpopulated node.
     pub fn get_relative_up(&self, position: &Position) -> Option<na::UnitVector3<f32>> {
@@ -371,28 +398,6 @@ impl ChunkLayout {
     pub fn neighboring_voxels(&self, grid_coord: u8) -> impl Iterator<Item = u8> + use<> {
         grid_coord.saturating_sub(1)..grid_coord.saturating_add(1).min(self.dimension())
     }
-}
-
-/// Ensures that every new node of the given Graph is populated with a [Node] and is
-/// ready for world generation.
-pub fn populate_fresh_nodes(graph: &mut Graph) {
-    let fresh = graph.fresh().to_vec();
-    graph.clear_fresh();
-    for &node in &fresh {
-        populate_node(graph, node);
-    }
-}
-
-fn populate_node(graph: &mut Graph, node: NodeId) {
-    graph[node].state = Some(
-        graph
-            .parent(node)
-            .and_then(|i| {
-                let parent_state = graph[graph.neighbor(node, i)?].state.as_ref()?;
-                Some(parent_state.child(graph, node, i))
-            })
-            .unwrap_or_else(NodeState::root),
-    );
 }
 
 /// Represents a discretized region in the voxel grid contained by an axis-aligned bounding box.

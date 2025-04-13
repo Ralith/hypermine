@@ -14,7 +14,7 @@ use common::{
     graph::{Graph, NodeId},
     graph_ray_casting,
     math::{MDirection, MIsometry, MPoint},
-    node::{VoxelData, populate_fresh_nodes},
+    node::VoxelData,
     proto::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
         Inventory, Position,
@@ -88,7 +88,7 @@ impl Sim {
         local_character_id: EntityId,
     ) -> Self {
         let mut graph = Graph::new(cfg.chunk_size);
-        populate_fresh_nodes(&mut graph);
+        graph.ensure_node_state(NodeId::ROOT);
         Self {
             graph,
             worldgen_driver: WorldgenDriver::new(chunk_load_parallelism),
@@ -383,9 +383,9 @@ impl Sim {
             // We need to get a list of nodes from the server, especially on first log-in,
             // since otherwise, we won't be able to know where the local character is with
             // just the NodeId alone.
-            self.graph.ensure_neighbor(node.parent, node.side);
+            let node_id = self.graph.ensure_neighbor(node.parent, node.side);
+            self.graph.ensure_node_state(node_id);
         }
-        populate_fresh_nodes(&mut self.graph);
         for block_update in msg.block_updates.into_iter() {
             self.worldgen_driver
                 .apply_block_update(&mut self.graph, block_update);
