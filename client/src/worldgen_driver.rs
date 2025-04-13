@@ -3,6 +3,7 @@ use std::time::Instant;
 use common::{
     dodeca::{self, Vertex},
     graph::{Graph, NodeId},
+    math::MPoint,
     node::{Chunk, ChunkId, VoxelData},
     proto::{BlockUpdate, Position},
     traversal,
@@ -41,24 +42,13 @@ impl WorldgenDriver {
             // there's no point trying to generate chunks.
             return;
         }
-        // An extra dodeca::BOUNDING_SPHERE_RADIUS is needed here because we need to generate
-        // enough chunks to ensure that the all chunks within chunk_generation_distance can be filled
-        // with world generation, which requires all nodes surrounding its vertex to be in the graph.
-        traversal::ensure_nearby(
-            graph,
-            &view,
-            chunk_generation_distance + dodeca::BOUNDING_SPHERE_RADIUS,
-        );
-        for (node_id, _) in traversal::nearby_nodes(
-            graph,
-            &view,
-            chunk_generation_distance + dodeca::BOUNDING_SPHERE_RADIUS,
-        ) {
-            graph.ensure_node_state(node_id);
-        }
+        let local_to_view = view.local.inverse();
+
+        traversal::ensure_nearby(graph, &view, chunk_generation_distance);
         let nearby_nodes = traversal::nearby_nodes(graph, &view, chunk_generation_distance);
 
-        'nearby_nodes: for &(node, _) in &nearby_nodes {
+        'nearby_nodes: for &(node, ref node_transform) in &nearby_nodes {
+            let node_to_view = local_to_view * node_transform;
             for vertex in Vertex::iter() {
                 let chunk_id = ChunkId::new(node, vertex);
 
@@ -66,12 +56,16 @@ impl WorldgenDriver {
                     continue;
                 }
 
-                let Some(params) =
-                    common::worldgen::ChunkParams::new(graph.layout().dimension(), graph, chunk_id)
-                else {
+                // Skip chunks beyond the chunk generation distance
+                if (node_to_view * vertex.chunk_bounding_sphere_center())
+                    .distance(&MPoint::origin())
+                    > chunk_generation_distance + dodeca::CHUNK_BOUNDING_SPHERE_RADIUS
+                {
                     continue;
-                };
+                }
 
+                // Generate voxel data
+                let params = common::worldgen::ChunkParams::new(graph, chunk_id);
                 if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk_id) {
                     self.add_chunk_to_graph(graph, chunk_id, voxel_data);
                 } else if self.work_queue.load(ChunkDesc { node, params }) {

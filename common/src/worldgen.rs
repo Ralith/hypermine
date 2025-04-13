@@ -181,22 +181,22 @@ pub struct ChunkParams {
 }
 
 impl ChunkParams {
-    /// Extract data necessary to generate a chunk
-    ///
-    /// Returns `None` if an unpopulated node is needed.
-    pub fn new(dimension: u8, graph: &Graph, chunk: ChunkId) -> Option<Self> {
-        let state = graph[chunk.node].state.as_ref()?;
-        Some(Self {
-            dimension,
+    /// Extract data necessary to generate a chunk, generating new graph nodes if necessary
+    pub fn new(graph: &mut Graph, chunk: ChunkId) -> Self {
+        graph.ensure_node_state(chunk.node);
+        let env = chunk_incident_enviro_factors(graph, chunk);
+        let state = graph.node_state(chunk.node);
+        Self {
+            dimension: graph.layout().dimension(),
             chunk: chunk.vertex,
-            env: chunk_incident_enviro_factors(graph, chunk)?,
+            env,
             surface: state.surface,
             is_road: state.kind == Sky
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
             node_spice: graph.hash_of(chunk.node) as u64,
-        })
+        }
     }
 
     pub fn chunk(&self) -> Vertex {
@@ -519,33 +519,30 @@ struct ChunkIncidentEnviroFactors {
 /// sorted and converted to f32 for use in functions like trilerp.
 ///
 /// Returns `None` if not all incident nodes are populated.
-fn chunk_incident_enviro_factors(
-    graph: &Graph,
-    chunk: ChunkId,
-) -> Option<ChunkIncidentEnviroFactors> {
-    let mut i = chunk
-        .vertex
-        .dual_vertices()
-        .map(|(_, mut path)| path.try_fold(chunk.node, |node, side| graph.neighbor(node, side)))
-        .filter_map(|node| Some(graph[node?].state.as_ref()?.enviro));
+fn chunk_incident_enviro_factors(graph: &mut Graph, chunk: ChunkId) -> ChunkIncidentEnviroFactors {
+    let mut i = chunk.vertex.dual_vertices().map(|(_, path)| {
+        let node = path.fold(chunk.node, |node, side| graph.ensure_neighbor(node, side));
+        graph.ensure_node_state(node);
+        graph.node_state(node).enviro
+    });
 
     // this is a bit cursed, but I don't want to collect into a vec because perf,
     // and I can't just return an iterator because then something still references graph.
-    let (e1, t1, r1, b1) = i.next()?.into();
-    let (e2, t2, r2, b2) = i.next()?.into();
-    let (e3, t3, r3, b3) = i.next()?.into();
-    let (e4, t4, r4, b4) = i.next()?.into();
-    let (e5, t5, r5, b5) = i.next()?.into();
-    let (e6, t6, r6, b6) = i.next()?.into();
-    let (e7, t7, r7, b7) = i.next()?.into();
-    let (e8, t8, r8, b8) = i.next()?.into();
+    let (e1, t1, r1, b1) = i.next().unwrap().into();
+    let (e2, t2, r2, b2) = i.next().unwrap().into();
+    let (e3, t3, r3, b3) = i.next().unwrap().into();
+    let (e4, t4, r4, b4) = i.next().unwrap().into();
+    let (e5, t5, r5, b5) = i.next().unwrap().into();
+    let (e6, t6, r6, b6) = i.next().unwrap().into();
+    let (e7, t7, r7, b7) = i.next().unwrap().into();
+    let (e8, t8, r8, b8) = i.next().unwrap().into();
 
-    Some(ChunkIncidentEnviroFactors {
+    ChunkIncidentEnviroFactors {
         max_elevations: [e1, e2, e3, e4, e5, e6, e7, e8],
         temperatures: [t1, t2, t3, t4, t5, t6, t7, t8],
         rainfalls: [r1, r2, r3, r4, r5, r6, r7, r8],
         blockinesses: [b1, b2, b3, b4, b5, b6, b7, b8],
-    })
+    }
 }
 
 /// Linearly interpolate at interior and boundary of a cube given values at the eight corners.
@@ -687,8 +684,7 @@ mod test {
             g[new_node].state.as_mut().unwrap().enviro.max_elevation = i as f32 + 1.0;
         }
 
-        let enviros =
-            chunk_incident_enviro_factors(&g, ChunkId::new(NodeId::ROOT, Vertex::A)).unwrap();
+        let enviros = chunk_incident_enviro_factors(&mut g, ChunkId::new(NodeId::ROOT, Vertex::A));
         for (i, max_elevation) in enviros.max_elevations.into_iter().enumerate() {
             println!("{i}, {max_elevation}");
             assert_abs_diff_eq!(max_elevation, (i + 1) as f32, epsilon = 1e-8);

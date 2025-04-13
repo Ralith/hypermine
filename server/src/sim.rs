@@ -494,29 +494,10 @@ impl Sim {
             + self.cfg.character.block_reach
             + 0.001;
 
-        // Extend graph structure
-        for (_, (position, _)) in self.world.query::<(&mut Position, &mut Character)>().iter() {
-            // An extra dodeca::BOUNDING_SPHERE_RADIUS is needed here because we need to generate
-            // enough chunks to ensure that the all chunks a character might interact with can be generated
-            // with world generation, which requires all nodes surrounding its vertex to be in the graph.
-            ensure_nearby(
-                &mut self.graph,
-                position,
-                chunk_generation_distance + dodeca::BOUNDING_SPHERE_RADIUS,
-            );
-
-            for (node_id, _) in nearby_nodes(
-                &self.graph,
-                position,
-                chunk_generation_distance + dodeca::BOUNDING_SPHERE_RADIUS,
-            ) {
-                self.graph.ensure_node_state(node_id);
-            }
-        }
-
         // Load all chunks around entities corresponding to clients, which correspond to entities
         // with a "Character" component.
         for (_, (position, _)) in self.world.query::<(&Position, &Character)>().iter() {
+            ensure_nearby(&mut self.graph, position, chunk_generation_distance);
             let nodes = nearby_nodes(&self.graph, position, chunk_generation_distance);
             for &(node, _) in &nodes {
                 for vertex in dodeca::Vertex::iter() {
@@ -527,9 +508,8 @@ impl Sim {
                     if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk) {
                         self.modified_chunks.insert(chunk);
                         self.graph.populate_chunk(chunk, voxel_data);
-                    } else if let Some(params) =
-                        ChunkParams::new(self.cfg.chunk_size, &self.graph, chunk)
-                    {
+                    } else {
+                        let params = ChunkParams::new(&mut self.graph, chunk);
                         self.graph.populate_chunk(chunk, params.generate_voxels());
                     }
                 }

@@ -233,8 +233,8 @@ pub enum Chunk {
     /// - It was just added to the graph and hasn't had time to be processed.
     /// - All world generation threads are occupied, and it is not this chunk's
     ///   turn yet.
-    /// - Not all nodes adjacent to this chunk are in the graph yet, so this
-    ///   chunk lacks information necessary for world generation to proceed.
+    /// - The chunk is not close enough to be worth generating. This might
+    ///   happen for chunks on the far side of a node.
     #[default]
     Fresh,
 
