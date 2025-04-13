@@ -45,13 +45,7 @@ impl Graph {
             self.ensure_node_state(parent);
         }
 
-        let node_state = self
-            .primary_parent_side(node_id)
-            .map(|i| {
-                let parent_state = self.node_state(self.neighbor(node_id, i).unwrap());
-                parent_state.child(self, node_id, i)
-            })
-            .unwrap_or_else(NodeState::root);
+        let node_state = NodeState::new(self, node_id);
         self[node_id].state = Some(node_state);
     }
 
