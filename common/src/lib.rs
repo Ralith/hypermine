@@ -25,6 +25,7 @@ pub mod lru_slab;
 mod margins;
 pub mod math;
 pub mod node;
+pub mod peer_traverser;
 mod plane;
 pub mod proto;
 mod sim_config;
