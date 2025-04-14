@@ -51,12 +51,17 @@ pub struct Sim {
 
 impl Sim {
     pub fn new(cfg: Arc<SimConfig>, save: &save::Save) -> Self {
+        let mut graph = Graph::new(cfg.chunk_size);
+        if cfg.horospheres_enabled {
+            graph.enable_horospheres();
+        }
+
         let mut result = Self {
             rng: SmallRng::from_os_rng(),
             step: 0,
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),
-            graph: Graph::new(cfg.chunk_size),
+            graph,
             preloaded_voxel_data: FxHashMap::default(),
             accumulated_changes: AccumulatedChanges::default(),
             graph_entities: GraphEntities::new(),

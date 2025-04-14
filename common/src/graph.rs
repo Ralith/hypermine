@@ -16,6 +16,7 @@ use crate::{
 pub struct Graph {
     nodes: FxHashMap<NodeId, NodeContainer>,
     layout: ChunkLayout,
+    horospheres_enabled: bool,
 }
 
 impl Graph {
@@ -25,7 +26,16 @@ impl Graph {
         Self {
             nodes,
             layout: ChunkLayout::new(dimension),
+            horospheres_enabled: false,
         }
+    }
+
+    pub fn enable_horospheres(&mut self) {
+        self.horospheres_enabled = true;
+    }
+
+    pub fn horospheres_enabled(&self) -> bool {
+        self.horospheres_enabled
     }
 
     #[inline]
