@@ -1,6 +1,8 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
+use plane::Plane;
 use rand::{Rng, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
+use terraingen::VoronoiInfo;
 
 use crate::{
     dodeca::{Side, Vertex},
@@ -8,12 +10,12 @@ use crate::{
     margins,
     math::{self, MVector},
     node::{ChunkId, VoxelData},
-    plane::Plane,
-    terraingen::VoronoiInfo,
     world::Material,
 };
 
 mod horosphere;
+mod plane;
+mod terraingen;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
