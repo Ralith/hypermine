@@ -11,8 +11,8 @@ use crate::lru_slab::SlotId;
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
-use crate::worldgen::NodeState;
-use crate::{Chunks, margins};
+use crate::worldgen::{NodeState, PartialNodeState};
+use crate::{Chunks, margins, peer_traverser};
 
 /// Unique identifier for a single chunk (1/20 of a dodecahedron) in the graph
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -28,21 +28,43 @@ impl ChunkId {
 }
 
 impl Graph {
+    /// Returns the PartialNodeState for the given node, panicking if it isn't initialized.
+    #[inline]
+    pub fn partial_node_state(&self, node_id: NodeId) -> &PartialNodeState {
+        self[node_id].partial_state.as_ref().unwrap()
+    }
+
+    /// Initializes the PartialNodeState for the given node if not already initialized,
+    /// initializing other nodes' NodeState and PartialNodeState as necessary
+    pub fn ensure_partial_node_state(&mut self, node_id: NodeId) {
+        if self[node_id].partial_state.is_some() {
+            return;
+        }
+
+        for (_, parent) in self.parents(node_id) {
+            self.ensure_node_state(parent);
+        }
+
+        let partial_node_state = PartialNodeState::new(self, node_id);
+        self[node_id].partial_state = Some(partial_node_state);
+    }
+
     /// Returns the NodeState for the given node, panicking if it isn't initialized.
     #[inline]
     pub fn node_state(&self, node_id: NodeId) -> &NodeState {
         self[node_id].state.as_ref().unwrap()
     }
 
-    /// Initializes the NodeState for the given node and all its ancestors if not
-    /// already initialized.
+    /// Initializes the NodeState for the given node if not already initialized,
+    /// initializing other nodes' NodeState and PartialNodeState as necessary
     pub fn ensure_node_state(&mut self, node_id: NodeId) {
         if self[node_id].state.is_some() {
             return;
         }
 
-        for (_, parent) in self.parents(node_id) {
-            self.ensure_node_state(parent);
+        self.ensure_partial_node_state(node_id);
+        for peer in peer_traverser::ensure_peer_nodes(self, node_id) {
+            self.ensure_partial_node_state(peer.node());
         }
 
         let node_state = NodeState::new(self, node_id);
@@ -211,6 +233,7 @@ impl IndexMut<ChunkId> for Graph {
 /// used for rendering, is stored here.
 #[derive(Default)]
 pub struct Node {
+    pub partial_state: Option<PartialNodeState>,
     pub state: Option<NodeState>,
     /// We can only populate chunks which lie within a cube of populated nodes, so nodes on the edge
     /// of the graph always have some `Fresh` chunks.

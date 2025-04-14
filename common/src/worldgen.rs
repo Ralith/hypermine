@@ -1,3 +1,4 @@
+use horosphere::{HorosphereChunk, HorosphereNode};
 use rand::{Rng, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
 
@@ -11,6 +12,8 @@ use crate::{
     terraingen::VoronoiInfo,
     world::Material,
 };
+
+mod horosphere;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
@@ -62,13 +65,32 @@ impl NodeStateRoad {
     }
 }
 
+/// Contains a minimal amount of information about a node that can be deduced entirely from
+/// the NodeState of its parents.
+pub struct PartialNodeState {
+    /// This becomes a real horosphere only if it doesn't interfere with another higher-priority horosphere.
+    /// See `HorosphereNode::has_priority` for the definition of priority.
+    candidate_horosphere: Option<HorosphereNode>,
+}
+
+impl PartialNodeState {
+    pub fn new(graph: &Graph, node: NodeId) -> Self {
+        Self {
+            candidate_horosphere: HorosphereNode::new(graph, node),
+        }
+    }
+}
+
 /// Contains all information about a node used for world generation. Most world
-/// generation logic uses this information as a starting point.
+/// generation logic uses this information as a starting point. The `NodeState` is deduced
+/// from the `NodeState` of the node's parents, along with the `PartialNodeState` of the node
+/// itself and its "peer" nodes (See `peer_traverser`).
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane,
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
+    horosphere: Option<HorosphereNode>,
 }
 impl NodeState {
     pub fn new(graph: &Graph, node: NodeId) -> Self {
@@ -110,6 +132,11 @@ impl NodeState {
             p.node_state.road_state.child(p.side)
         });
 
+        let horosphere = graph
+            .partial_node_state(node)
+            .candidate_horosphere
+            .filter(|h| h.should_generate(graph, node));
+
         Self {
             kind,
             surface: match kind {
@@ -119,6 +146,7 @@ impl NodeState {
             },
             road_state,
             enviro,
+            horosphere,
         }
     }
 
@@ -185,6 +213,8 @@ pub struct ChunkParams {
     is_road_support: bool,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
+    /// Horosphere to place in the chunk
+    horosphere: Option<HorosphereChunk>,
 }
 
 impl ChunkParams {
@@ -203,6 +233,10 @@ impl ChunkParams {
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
             node_spice: graph.hash_of(chunk.node) as u64,
+            horosphere: state
+                .horosphere
+                .as_ref()
+                .map(|h| HorosphereChunk::new(h, chunk.vertex)),
         }
     }
 
@@ -221,6 +255,10 @@ impl ChunkParams {
             self.generate_road(&mut voxels);
         } else if self.is_road_support {
             self.generate_road_support(&mut voxels);
+        }
+
+        if let Some(horosphere) = &self.horosphere {
+            horosphere.generate(&mut voxels, self.dimension);
         }
 
         // TODO: Don't generate detailed data for solid chunks with no neighboring voids

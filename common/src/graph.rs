@@ -259,7 +259,7 @@ impl std::ops::IndexMut<NodeId> for Graph {
 /// A cryptographic hash function is used to ensure uniqueness, making it
 /// astronomically unlikely to be able to find two different nodes in the graph
 /// with the same ID.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NodeId(u128);
 
 impl NodeId {
