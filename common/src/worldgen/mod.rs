@@ -1,5 +1,8 @@
+use horosphere::{HorosphereChunk, HorosphereNode};
+use plane::Plane;
 use rand::{Rng, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
+use terraingen::VoronoiInfo;
 
 use crate::{
     dodeca::{Side, Vertex},
@@ -7,10 +10,12 @@ use crate::{
     margins,
     math::{self, MVector},
     node::{ChunkId, VoxelData},
-    plane::Plane,
-    terraingen::VoronoiInfo,
     world::Material,
 };
+
+mod horosphere;
+mod plane;
+mod terraingen;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
@@ -62,69 +67,104 @@ impl NodeStateRoad {
     }
 }
 
+/// Contains a minimal amount of information about a node that can be deduced entirely from
+/// the NodeState of its parents.
+pub struct PartialNodeState {
+    /// This becomes a real horosphere only if it doesn't interfere with another higher-priority horosphere.
+    candidate_horosphere: Option<HorosphereNode>,
+}
+
+impl PartialNodeState {
+    pub fn new(graph: &Graph, node: NodeId) -> Self {
+        Self {
+            candidate_horosphere: HorosphereNode::new(graph, node),
+        }
+    }
+}
+
 /// Contains all information about a node used for world generation. Most world
-/// generation logic uses this information as a starting point.
+/// generation logic uses this information as a starting point. The `NodeState` is deduced
+/// from the `NodeState` of the node's parents, along with the `PartialNodeState` of the node
+/// itself and its "peer" nodes (See `peer_traverser`).
 pub struct NodeState {
     kind: NodeStateKind,
     surface: Plane,
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
+    horosphere: Option<HorosphereNode>,
 }
 impl NodeState {
-    pub fn root() -> Self {
-        Self {
-            kind: NodeStateKind::ROOT,
-            surface: Plane::from(Side::A),
-            road_state: NodeStateRoad::ROOT,
-            enviro: EnviroFactors {
+    pub fn new(graph: &Graph, node: NodeId) -> Self {
+        let mut parents = graph
+            .descenders(node)
+            .map(|(s, n)| ParentInfo {
+                node_id: n,
+                side: s,
+                node_state: graph.node_state(n),
+            })
+            .fuse();
+        let parents = [parents.next(), parents.next(), parents.next()];
+
+        let enviro = match (parents[0], parents[1]) {
+            (None, None) => EnviroFactors {
                 max_elevation: 0.0,
                 temperature: 0.0,
                 rainfall: 0.0,
                 blockiness: 0.0,
             },
-        }
-    }
-
-    pub fn child(&self, graph: &Graph, node: NodeId, side: Side) -> Self {
-        let mut d = graph
-            .descenders(node)
-            .map(|(s, n)| (s, graph.node_state(n)));
-        let enviro = match (d.next(), d.next()) {
-            (Some(_), None) => {
-                let parent_side = graph.parent(node).unwrap();
-                let parent_node = graph.neighbor(node, parent_side).unwrap();
-                let parent_state = graph.node_state(parent_node);
+            (Some(parent), None) => {
                 let spice = graph.hash_of(node) as u64;
-                EnviroFactors::varied_from(parent_state.enviro, spice)
+                EnviroFactors::varied_from(parent.node_state.enviro, spice)
             }
-            (Some((a_side, a_state)), Some((b_side, b_state))) => {
-                let ab_node = graph
-                    .neighbor(graph.neighbor(node, a_side).unwrap(), b_side)
-                    .unwrap();
-                let ab_state = graph.node_state(ab_node);
-                EnviroFactors::continue_from(a_state.enviro, b_state.enviro, ab_state.enviro)
+            (Some(parent_a), Some(parent_b)) => {
+                let ab_node = graph.neighbor(parent_a.node_id, parent_b.side).unwrap();
+                let ab_state = &graph.node_state(ab_node);
+                EnviroFactors::continue_from(
+                    parent_a.node_state.enviro,
+                    parent_b.node_state.enviro,
+                    ab_state.enviro,
+                )
             }
             _ => unreachable!(),
         };
 
-        let child_kind = self.kind.child(side);
-        let child_road = self.road_state.child(side);
+        let kind = parents[0].map_or(NodeStateKind::ROOT, |p| p.node_state.kind.child(p.side));
+        let road_state = parents[0].map_or(NodeStateRoad::ROOT, |p| {
+            p.node_state.road_state.child(p.side)
+        });
+
+        let horosphere =
+            (graph.partial_node_state(node).candidate_horosphere.as_ref()).and_then(|h| {
+                if h.should_generate(graph, node) {
+                    Some(h.clone())
+                } else {
+                    None
+                }
+            });
 
         Self {
-            kind: child_kind,
-            surface: match child_kind {
+            kind,
+            surface: match kind {
                 Land => Plane::from(Side::A),
                 Sky => -Plane::from(Side::A),
-                _ => side * self.surface,
+                _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
             },
-            road_state: child_road,
+            road_state,
             enviro,
+            horosphere,
         }
     }
 
     pub fn up_direction(&self) -> MVector<f32> {
         *self.surface.scaled_normal()
     }
+}
+
+#[derive(Clone, Copy)]
+struct ParentInfo<'a> {
+    node_id: NodeId,
+    side: Side,
+    node_state: &'a NodeState,
 }
 
 struct VoxelCoords {
@@ -178,6 +218,8 @@ pub struct ChunkParams {
     is_road_support: bool,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
+    /// Horosphere to place in the chunk
+    horosphere: Option<HorosphereChunk>,
 }
 
 impl ChunkParams {
@@ -196,6 +238,10 @@ impl ChunkParams {
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
             node_spice: graph.hash_of(chunk.node) as u64,
+            horosphere: state
+                .horosphere
+                .as_ref()
+                .map(|h| HorosphereChunk::new(h, chunk.vertex)),
         }
     }
 
@@ -205,6 +251,32 @@ impl ChunkParams {
 
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self) -> VoxelData {
+        let mut voxels = VoxelData::Solid(Material::Void);
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
+
+        self.generate_terrain(&mut voxels, &mut rng);
+
+        if self.is_road {
+            self.generate_road(&mut voxels);
+        } else if self.is_road_support {
+            self.generate_road_support(&mut voxels);
+        }
+
+        if let Some(horosphere) = &self.horosphere {
+            horosphere.generate(&mut voxels, self.dimension);
+        }
+
+        // TODO: Don't generate detailed data for solid chunks with no neighboring voids
+
+        self.generate_trees(&mut voxels, &mut rng);
+
+        margins::initialize_margins(self.dimension, &mut voxels);
+        voxels
+    }
+
+    /// Performs all terrain generation that can be done one voxel at a time and with
+    /// only the containing chunk's surrounding nodes' envirofactors.
+    fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         // Determine whether this chunk might contain a boundary between solid and void
         let mut me_min = self.env.max_elevations[0];
         let mut me_max = self.env.max_elevations[0];
@@ -219,43 +291,19 @@ impl ChunkParams {
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
-        if (center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS)
-            && !(self.is_road || self.is_road_support)
-        {
-            // The whole chunk is above ground and not part of the road
-            return VoxelData::Solid(Material::Void);
+        if center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS {
+            // The whole chunk is above ground
+            *voxels = VoxelData::Solid(Material::Void);
+            return;
         }
-
-        if (center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS) && !self.is_road {
+        if center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS {
             // The whole chunk is underground
-            // TODO: More accurate VoxelData
-            return VoxelData::Solid(Material::Dirt);
+            *voxels = VoxelData::Solid(Material::Dirt);
+            return;
         }
 
-        let mut voxels = VoxelData::Solid(Material::Void);
-        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
-
-        self.generate_terrain(&mut voxels, &mut rng);
-
-        if self.is_road {
-            self.generate_road(&mut voxels);
-        } else if self.is_road_support {
-            self.generate_road_support(&mut voxels);
-        }
-
-        // TODO: Don't generate detailed data for solid chunks with no neighboring voids
-
-        if self.dimension > 4 && matches!(voxels, VoxelData::Dense(_)) {
-            self.generate_trees(&mut voxels, &mut rng);
-        }
-
-        margins::initialize_margins(self.dimension, &mut voxels);
-        voxels
-    }
-
-    /// Performs all terrain generation that can be done one voxel at a time and with
-    /// only the containing chunk's surrounding nodes' envirofactors.
-    fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
+        // Otherwise, the chunk might contain a solid/void boundary, so the full terrain generation
+        // code should run.
         let normal = Normal::new(0.0, 0.03).unwrap();
 
         for (x, y, z) in VoxelCoords::new(self.dimension) {
@@ -339,6 +387,12 @@ impl ChunkParams {
 
     /// Fills the half-plane below the road with wooden supports.
     fn generate_road_support(&self, voxels: &mut VoxelData) {
+        if voxels.is_solid() && voxels.get(0) != Material::Void {
+            // There is guaranteed no void to fill with the road supports, so
+            // nothing to do here.
+            return;
+        }
+
         let plane = -Plane::from(Side::B);
 
         for (x, y, z) in VoxelCoords::new(self.dimension) {
@@ -388,6 +442,16 @@ impl ChunkParams {
     /// and a block of leaves. The leaf block is on the opposite face of the
     /// wood block as the ground block.
     fn generate_trees(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
+        if voxels.is_solid() {
+            // No trees can be generated unless there's both land and air.
+            return;
+        }
+
+        if self.dimension <= 4 {
+            // The tree generation algorithm can crash when the chunk size is too small.
+            return;
+        }
+
         // margins are added to keep voxels outside the chunk from being read/written
         let random_position = Uniform::new(1, self.dimension - 1).unwrap();
 

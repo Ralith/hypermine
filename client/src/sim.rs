@@ -88,6 +88,9 @@ impl Sim {
         local_character_id: EntityId,
     ) -> Self {
         let mut graph = Graph::new(cfg.chunk_size);
+        if cfg.horospheres_enabled {
+            graph.enable_horospheres();
+        }
         graph.ensure_node_state(NodeId::ROOT);
         Self {
             graph,

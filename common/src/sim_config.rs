@@ -19,6 +19,9 @@ pub struct SimConfigRaw {
     pub input_queue_size_ms: Option<u16>,
     /// Whether gameplay-like restrictions exist, such as limited inventory
     pub gameplay_enabled: Option<bool>,
+    /// Whether an assortment of random horospheres should be added to world generation. This is a temporary
+    /// option until large structures that fit with the theme of the world are introduced.
+    pub horospheres_enabled: Option<bool>,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: Option<u8>,
     /// Approximate length of the edge of a voxel in meters
@@ -49,6 +52,9 @@ pub struct SimConfig {
     pub input_queue_size: Duration,
     /// Whether gameplay-like restrictions exist, such as limited inventory
     pub gameplay_enabled: bool,
+    /// Whether an assortment of random horospheres should be added to world generation. This is a temporary
+    /// option until large structures that fit with the theme of the world are introduced.
+    pub horospheres_enabled: bool,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: u8,
     /// Static configuration information relevant to character physics
@@ -70,6 +76,7 @@ impl SimConfig {
             fog_distance: x.fog_distance.unwrap_or(90.0) * meters_to_absolute,
             input_queue_size: Duration::from_millis(x.input_queue_size_ms.unwrap_or(50).into()),
             gameplay_enabled: x.gameplay_enabled.unwrap_or(false),
+            horospheres_enabled: x.horospheres_enabled.unwrap_or(false),
             chunk_size,
             character: CharacterConfig::from_raw(&x.character, meters_to_absolute),
             meters_to_absolute,
