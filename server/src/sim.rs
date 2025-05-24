@@ -78,6 +78,7 @@ impl Sim {
         result
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn save(&mut self, save: &mut save::Save) -> Result<(), save::DbError> {
         fn path_from_origin(graph: &Graph, mut node: NodeId) -> Vec<u8> {
             let mut result = Vec::new();
