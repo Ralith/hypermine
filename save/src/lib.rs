@@ -37,7 +37,7 @@ impl Save {
                     init_meta_table(&db, &defaults)?;
                     defaults
                 }
-                Err(e) => return Err(OpenError::Db(DbError(e.into()))),
+                Err(e) => return Err(OpenError::Db(DbError(Box::new(e.into())))),
             }
         };
         Ok(Self { meta, db })
@@ -65,8 +65,8 @@ impl Save {
     }
 }
 
-fn init_meta_table(db: &Database, value: &Meta) -> Result<(), redb::Error> {
-    let tx = db.begin_write()?;
+fn init_meta_table(db: &Database, value: &Meta) -> Result<(), DbError> {
+    let tx = db.begin_write().map_err(redb::Error::from)?;
     let mut meta = tx.open_table(META_TABLE)?;
     let mut cctx = cctx();
     let mut plain = Vec::new();
@@ -281,7 +281,7 @@ pub enum OpenError {
 
 impl From<redb::Error> for OpenError {
     fn from(x: redb::Error) -> Self {
-        OpenError::Db(DbError(x))
+        OpenError::Db(DbError(Box::new(x)))
     }
 }
 
@@ -297,34 +297,40 @@ pub enum GetError {
 
 impl From<redb::Error> for GetError {
     fn from(x: redb::Error) -> Self {
-        GetError::Db(DbError(x))
+        GetError::Db(DbError(Box::new(x)))
     }
 }
 
 impl From<redb::StorageError> for GetError {
     fn from(x: redb::StorageError) -> Self {
-        GetError::Db(DbError(x.into()))
+        GetError::Db(DbError(Box::new(x.into())))
     }
 }
 
 #[derive(Debug, Error)]
 #[error(transparent)]
-pub struct DbError(#[from] redb::Error);
+pub struct DbError(Box<redb::Error>);
+
+impl From<redb::Error> for DbError {
+    fn from(x: redb::Error) -> Self {
+        DbError(Box::new(x))
+    }
+}
 
 impl From<redb::StorageError> for DbError {
     fn from(x: redb::StorageError) -> Self {
-        DbError(x.into())
+        DbError(Box::new(x.into()))
     }
 }
 
 impl From<redb::CommitError> for DbError {
     fn from(x: redb::CommitError) -> Self {
-        DbError(x.into())
+        DbError(Box::new(x.into()))
     }
 }
 
 impl From<redb::TableError> for DbError {
     fn from(x: redb::TableError) -> Self {
-        DbError(x.into())
+        DbError(Box::new(x.into()))
     }
 }
