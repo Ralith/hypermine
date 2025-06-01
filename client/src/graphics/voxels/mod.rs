@@ -181,7 +181,7 @@ impl Voxels {
                             }
                         }
                     }
-                    let node_is_odd = sim.graph.length(node) & 1 != 0;
+                    let node_is_odd = sim.graph.depth(node) & 1 != 0;
                     extractions.push(ExtractTask {
                         index: scratch_slot,
                         indirect_offset: self.surfaces.indirect_offset(slot.0),

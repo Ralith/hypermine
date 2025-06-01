@@ -86,12 +86,10 @@ impl NodeState {
     }
 
     pub fn child(&self, graph: &Graph, node: NodeId, side: Side) -> Self {
-        let mut d = graph
-            .descenders(node)
-            .map(|(s, n)| (s, graph.node_state(n)));
+        let mut d = graph.parents(node).map(|(s, n)| (s, graph.node_state(n)));
         let enviro = match (d.next(), d.next()) {
             (Some(_), None) => {
-                let parent_side = graph.parent(node).unwrap();
+                let parent_side = graph.primary_parent_side(node).unwrap();
                 let parent_node = graph.neighbor(node, parent_side).unwrap();
                 let parent_state = graph.node_state(parent_node);
                 let spice = graph.hash_of(node) as u64;

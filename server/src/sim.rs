@@ -81,9 +81,9 @@ impl Sim {
     pub fn save(&mut self, save: &mut save::Save) -> Result<(), save::DbError> {
         fn path_from_origin(graph: &Graph, mut node: NodeId) -> Vec<u8> {
             let mut result = Vec::new();
-            while let Some(parent) = graph.parent(node) {
-                result.push(parent as u8);
-                node = graph.neighbor(node, parent).unwrap();
+            while let Some(primary_parent) = graph.primary_parent_side(node) {
+                result.push(primary_parent as u8);
+                node = graph.neighbor(node, primary_parent).unwrap();
             }
             result.reverse();
             result
@@ -790,7 +790,7 @@ impl AccumulatedChanges {
                 .fresh_nodes
                 .iter()
                 .filter_map(|&id| {
-                    let side = graph.parent(id)?;
+                    let side = graph.primary_parent_side(id)?;
                     Some(FreshNode {
                         side,
                         parent: graph.neighbor(id, side).unwrap(),

@@ -41,12 +41,12 @@ impl Graph {
             return;
         }
 
-        for (_, parent) in self.descenders(node_id) {
+        for (_, parent) in self.parents(node_id) {
             self.ensure_node_state(parent);
         }
 
         let node_state = self
-            .parent(node_id)
+            .primary_parent_side(node_id)
             .map(|i| {
                 let parent_state = self.node_state(self.neighbor(node_id, i).unwrap());
                 parent_state.child(self, node_id, i)
