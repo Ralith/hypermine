@@ -9,6 +9,7 @@ license = "Apache-2.0 OR Zlib"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+arrayvec = "0.7.6"
 blake3 = "1.3.3"
 serde = { version = "1.0.104", features = ["derive"] }
 nalgebra = { workspace = true, features = ["serde-serialize"] }
