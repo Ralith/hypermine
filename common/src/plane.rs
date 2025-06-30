@@ -141,7 +141,7 @@ mod tests {
         let root = Plane::from(Side::A);
         assert_abs_diff_eq!(
             root.distance_to_chunk(Vertex::A, &na::Vector3::new(-1.0, 1.0, 1.0)),
-            root.distance_to_chunk(Vertex::J, &na::Vector3::new(-1.0, 1.0, 1.0)) * -1.0,
+            -root.distance_to_chunk(Vertex::J, &na::Vector3::new(-1.0, 1.0, 1.0)),
             epsilon = 1e-5
         );
     }
