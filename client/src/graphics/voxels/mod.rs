@@ -165,20 +165,19 @@ impl Voxels {
                     *surface = Some(slot);
                     let storage = self.extraction_scratch.storage(scratch_slot);
                     storage.copy_from_slice(&data[..]);
-                    if let Some((lru_slot, lru)) = removed {
-                        if let Populated {
+                    if let Some((lru_slot, lru)) = removed
+                        && let Populated {
                             ref mut surface,
                             ref mut old_surface,
                             ..
                         } = sim.graph[lru.node].chunks[lru.chunk]
-                        {
-                            // Remove references to released slot IDs
-                            if *surface == Some(lru_slot) {
-                                *surface = None;
-                            }
-                            if *old_surface == Some(lru_slot) {
-                                *old_surface = None;
-                            }
+                    {
+                        // Remove references to released slot IDs
+                        if *surface == Some(lru_slot) {
+                            *surface = None;
+                        }
+                        if *old_surface == Some(lru_slot) {
+                            *old_surface = None;
                         }
                     }
                     let node_is_odd = sim.graph.depth(node) & 1 != 0;
