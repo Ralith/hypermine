@@ -50,10 +50,10 @@ impl Graph {
     pub fn canonicalize(&self, mut chunk: ChunkId) -> Option<ChunkId> {
         for side in chunk.vertex.canonical_sides().into_iter() {
             // missing neighbors are always longer
-            if let Some(neighbor) = self.neighbor(chunk.node, side) {
-                if self.depth(neighbor) < self.depth(chunk.node) {
-                    chunk.node = neighbor;
-                }
+            if let Some(neighbor) = self.neighbor(chunk.node, side)
+                && self.depth(neighbor) < self.depth(chunk.node)
+            {
+                chunk.node = neighbor;
             }
         }
         Some(chunk)
@@ -69,11 +69,11 @@ impl Graph {
         for side in Side::iter() {
             // filtering out not-yet-allocated neighbors is fine since
             // they have to be longer than us not to be allocated yet
-            if let Some(neighbor_node) = self.neighbor(node, side) {
-                if self.depth(neighbor_node) < node_depth {
-                    results[len] = Some((side, neighbor_node));
-                    len += 1;
-                }
+            if let Some(neighbor_node) = self.neighbor(node, side)
+                && self.depth(neighbor_node) < node_depth
+            {
+                results[len] = Some((side, neighbor_node));
+                len += 1;
             }
         }
 
@@ -311,11 +311,11 @@ impl<'a> TreeIter<'a> {
         let node_id = self.queue.pop_front()?;
         let node = &self.nodes[&node_id];
         for side in Side::iter() {
-            if let Some(neighbor) = node.neighbors[side as usize] {
-                if !self.visited.contains(&neighbor) {
-                    self.queue.push_back(neighbor);
-                    self.visited.insert(neighbor);
-                }
+            if let Some(neighbor) = node.neighbors[side as usize]
+                && !self.visited.contains(&neighbor)
+            {
+                self.queue.push_back(neighbor);
+                self.visited.insert(neighbor);
             }
         }
         Some(node)

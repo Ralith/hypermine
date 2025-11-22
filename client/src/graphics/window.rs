@@ -174,10 +174,10 @@ impl Window {
                 state: ElementState::Pressed,
                 ..
             } => {
-                if self.input.mouse_captured {
-                    if let Some(sim) = self.sim.as_mut() {
-                        sim.set_break_block_pressed_true();
-                    }
+                if self.input.mouse_captured
+                    && let Some(sim) = self.sim.as_mut()
+                {
+                    sim.set_break_block_pressed_true();
                 }
                 let _ = self
                     .window
@@ -191,10 +191,10 @@ impl Window {
                 state: ElementState::Pressed,
                 ..
             } => {
-                if self.input.mouse_captured {
-                    if let Some(sim) = self.sim.as_mut() {
-                        sim.set_place_block_pressed_true();
-                    }
+                if self.input.mouse_captured
+                    && let Some(sim) = self.sim.as_mut()
+                {
+                    sim.set_place_block_pressed_true();
                 }
             }
             WindowEvent::KeyboardInput {
@@ -252,12 +252,11 @@ impl Window {
                     self.input.mouse_captured = false;
                 }
                 _ => {
-                    if let Some(material_idx) = number_key_to_index(key) {
-                        if state == ElementState::Pressed {
-                            if let Some(sim) = self.sim.as_mut() {
-                                sim.select_material(material_idx);
-                            }
-                        }
+                    if let Some(material_idx) = number_key_to_index(key)
+                        && state == ElementState::Pressed
+                        && let Some(sim) = self.sim.as_mut()
+                    {
+                        sim.select_material(material_idx);
                     }
                 }
             },

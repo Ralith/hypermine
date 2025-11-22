@@ -59,10 +59,10 @@ impl Config {
             data_dirs.push(dir);
         }
         data_dirs.push(dirs.data_dir().into());
-        if let Ok(path) = env::current_exe() {
-            if let Some(dir) = path.parent() {
-                data_dirs.push(dir.into());
-            }
+        if let Ok(path) = env::current_exe()
+            && let Some(dir) = path.parent()
+        {
+            data_dirs.push(dir.into());
         }
         #[cfg(feature = "use-repo-assets")]
         {
