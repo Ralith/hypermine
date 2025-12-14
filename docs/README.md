@@ -32,15 +32,8 @@ This is subject to change.
     * Chunks and their coordinate systems (explaining node_to_dual and dual_to_node)
     * Voxels within chunks (Margins should be mentioned here.)
     * The graph (how dodecahedra are organized into the tiling in code. Also mention how NodeId works.)
-* World generation
-    * Introduction (explain NodeState and ChunkParams)
-    * Environmental factors (how they change from node to node)
-    * The surface (explain the flat plane of the world, and how gravity works)
-    * Terrain (explain parts of the generate_terrain function that determine void vs non-void, ignoring material for now)
-    * Materials of the terrain
-    * The road
-    * Trees
-    * How world generation is driven (wait until this section to describe anything async or anything related to margins)
+* World generation (See `world_generation.md`)
+* How world generation is driven (wait until this section to describe anything async or anything related to margins)
 * Character physics (May want to mention the word "player" for searchability)
     * The movement algorithm (generally describing character_controller/mod.rs)
     * Constraining movement vectors (describing vector_bounds.rs)
