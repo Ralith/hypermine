@@ -1,8 +1,8 @@
+use std::hint::black_box;
+
 use save::Save;
 
-use criterion::{
-    BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 fn save(c: &mut Criterion) {

@@ -3,10 +3,10 @@ resolver = "2"
 members = ["client", "server", "common", "save", "save/gen-protos"]
 
 [workspace.dependencies]
-hecs = "0.10.0"
-nalgebra = { version = "0.33.0", features = ["libm-force"] }
+hecs = "0.11.0"
+nalgebra = { version = "0.34.1", features = ["libm-force"] }
 quinn = { version = "0.11", default-features = false, features = ["rustls", "ring", "runtime-tokio"] }
-toml = { version = "0.8.0", default-features = false, features = ["parse"] }
+toml = { version = "0.9.11", default-features = false, features = ["parse", "serde", "std"] }
 
 [profile.dev]
 opt-level = 1

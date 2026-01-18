@@ -56,7 +56,7 @@ pub async fn run() -> Result<()> {
                 })?,
             ])
             .unwrap();
-            let key = certified_key.key_pair.serialize_der();
+            let key = certified_key.signing_key.serialize_der();
             let cert = certified_key.cert.der().to_vec();
             (
                 vec![CertificateDer::from(cert)],

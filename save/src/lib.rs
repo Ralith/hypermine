@@ -3,7 +3,7 @@ mod protos;
 use std::path::Path;
 
 use prost::Message;
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use thiserror::Error;
 
 pub use protos::*;
