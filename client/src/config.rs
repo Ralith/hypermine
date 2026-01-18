@@ -75,7 +75,11 @@ impl Config {
         }
         // Massage into final form
         Config {
-            name: name.unwrap_or_else(|| whoami::username().into()),
+            name: name.unwrap_or_else(|| {
+                whoami::username()
+                    .unwrap_or_else(|_| String::from("unknown"))
+                    .into()
+            }),
             data_dirs,
             save: save.unwrap_or("default.save".into()),
             chunk_load_parallelism: chunk_load_parallelism.unwrap_or(256),

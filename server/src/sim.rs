@@ -91,7 +91,7 @@ impl Sim {
 
         let mut tx = save.write()?;
         let mut writer = tx.get()?;
-        for (_, (pos, ch)) in self.world.query::<(&Position, &Character)>().iter() {
+        for (pos, ch) in self.world.query::<(&Position, &Character)>().iter() {
             writer.put_character(
                 &ch.name,
                 &save::Character {
@@ -341,7 +341,7 @@ impl Sim {
             .world
             .query::<&Character>()
             .iter()
-            .any(|(_, character)| character.name == hello.name)
+            .any(|character| character.name == hello.name)
         {
             return None;
         }
@@ -349,10 +349,10 @@ impl Sim {
         // Check for matching characters
         let matching_character = self
             .world
-            .query::<(&EntityId, &InactiveCharacter)>()
+            .query::<(Entity, &EntityId, &InactiveCharacter)>()
             .iter()
-            .find(|(_, (_, inactive_character))| inactive_character.0.name == hello.name)
-            .map(|(entity, (entity_id, _))| (*entity_id, entity));
+            .find(|(_, _, inactive_character)| inactive_character.0.name == hello.name)
+            .map(|(entity, entity_id, _)| (*entity_id, entity));
         if let Some((entity_id, entity)) = matching_character {
             info!(id = %entity_id, name = %hello.name, "activating character");
             let inactive_character = self.world.remove_one::<InactiveCharacter>(entity).unwrap();
@@ -411,7 +411,7 @@ impl Sim {
 
         self.entity_ids.insert(id, entity);
 
-        if !self.world.satisfies::<&InactiveCharacter>(entity).unwrap() {
+        if !self.world.satisfies::<&InactiveCharacter>(entity) {
             self.accumulated_changes.spawns.push(entity);
         }
 
@@ -436,7 +436,7 @@ impl Sim {
         if let Ok(node) = self.world.get::<&NodeId>(entity) {
             self.graph_entities.remove(*node, entity);
         }
-        if !self.world.satisfies::<&InactiveCharacter>(entity).unwrap() {
+        if !self.world.satisfies::<&InactiveCharacter>(entity) {
             self.accumulated_changes.despawns.push(id);
         }
         self.world.despawn(entity).unwrap();
@@ -460,7 +460,7 @@ impl Sim {
         };
         for (entity, &id) in &mut self
             .world
-            .query::<hecs::Without<&EntityId, &InactiveCharacter>>()
+            .query::<hecs::Without<(Entity, &EntityId), &InactiveCharacter>>()
         {
             spawns.spawns.push((id, dump_entity(&self.world, entity)));
         }
@@ -496,7 +496,7 @@ impl Sim {
 
         // Load all chunks around entities corresponding to clients, which correspond to entities
         // with a "Character" component.
-        for (_, (position, _)) in self.world.query::<(&Position, &Character)>().iter() {
+        for (position, _) in self.world.query::<(&Position, &Character)>().iter() {
             ensure_nearby(&mut self.graph, position, chunk_generation_distance);
             let nodes = nearby_nodes(&self.graph, position, chunk_generation_distance);
             for &(node, _) in &nodes {
@@ -519,9 +519,15 @@ impl Sim {
         let mut pending_block_updates: Vec<(Entity, BlockUpdate)> = vec![];
 
         // Simulate
-        for (entity, (node, position, character, input)) in self
+        for (entity, node, position, character, input) in self
             .world
-            .query::<(&NodeId, &mut Position, &mut Character, &CharacterInput)>()
+            .query::<(
+                Entity,
+                &NodeId,
+                &mut Position,
+                &mut Character,
+                &CharacterInput,
+            )>()
             .iter()
         {
             character_controller::run_character_step(
@@ -560,13 +566,13 @@ impl Sim {
                 .world
                 .query::<(&EntityId, &Position)>()
                 .iter()
-                .map(|(_, (&id, &position))| (id, position))
+                .map(|(&id, &position)| (id, position))
                 .collect(),
             character_states: self
                 .world
                 .query::<(&EntityId, &Character)>()
                 .iter()
-                .map(|(_, (&id, ch))| (id, ch.state.clone()))
+                .map(|(&id, ch)| (id, ch.state.clone()))
                 .collect(),
         };
 
@@ -592,7 +598,11 @@ impl Sim {
         };
 
         // Synchronize NodeId and Position
-        for (entity, (node_id, position)) in self.world.query::<(&mut NodeId, &Position)>().iter() {
+        for (entity, node_id, position) in self
+            .world
+            .query::<(Entity, &mut NodeId, &Position)>()
+            .iter()
+        {
             update_node_id(entity, node_id, position.node);
         }
 
@@ -601,9 +611,7 @@ impl Sim {
         // if inventory items can themselves have inventories, their respective NodeIds
         // may be out of date by a few steps, which could cause bugs. This can be solved with
         // a more complete entity hierarchy system
-        for (_, (&inventory_node_id, inventory)) in
-            self.world.query::<(&NodeId, &Inventory)>().iter()
-        {
+        for (&inventory_node_id, inventory) in self.world.query::<(&NodeId, &Inventory)>().iter() {
             for inventory_entity_id in &inventory.contents {
                 let inventory_entity = *self.entity_ids.get(inventory_entity_id).unwrap();
 
@@ -710,7 +718,7 @@ impl Sim {
 /// Collect all information about a particular entity for transmission to clients.
 fn dump_entity(world: &hecs::World, entity: Entity) -> Vec<Component> {
     assert!(
-        !world.satisfies::<&InactiveCharacter>(entity).unwrap(),
+        !world.satisfies::<&InactiveCharacter>(entity),
         "Inactive characters should not be sent to clients"
     );
     let mut components = Vec::new();

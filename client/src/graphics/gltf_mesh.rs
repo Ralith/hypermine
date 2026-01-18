@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
-    fs,
-    fs::File,
+    fs::{self, File},
+    io::Cursor,
     mem,
     path::{Path, PathBuf},
     ptr,
@@ -411,7 +411,7 @@ async fn load_material(
         }
     };
     let mut color_data = &color_data[..];
-    let mut color_reader = png::Decoder::new(&mut color_data)
+    let mut color_reader = png::Decoder::new(Cursor::new(&mut color_data))
         .read_info()
         .with_context(|| "decoding PNG header")?;
     let (width, height) = {
