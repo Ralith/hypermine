@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use crate::dodeca::{Side, Vertex};
+use crate::dodeca::{SIDE_COUNT, Side, Vertex};
 use crate::graph::{Graph, NodeId};
 use crate::node::ChunkId;
 
@@ -104,31 +104,30 @@ impl std::ops::Neg for Dir {
 }
 
 /// Maps every (A, B, C) sharing a vertex to A', the side that shares edges with B and C but not A
-static NEIGHBORS: LazyLock<
-    [[[Option<Side>; Side::VALUES.len()]; Side::VALUES.len()]; Side::VALUES.len()],
-> = LazyLock::new(|| {
-    let mut result = [[[None; Side::VALUES.len()]; Side::VALUES.len()]; Side::VALUES.len()];
-    for a in Side::iter() {
-        for b in Side::iter() {
-            for c in Side::iter() {
-                for s in Side::iter() {
-                    if s == a || s == b || s == c {
-                        continue;
+static NEIGHBORS: LazyLock<[[[Option<Side>; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT]> =
+    LazyLock::new(|| {
+        let mut result = [[[None; SIDE_COUNT]; SIDE_COUNT]; SIDE_COUNT];
+        for a in Side::iter() {
+            for b in Side::iter() {
+                for c in Side::iter() {
+                    for s in Side::iter() {
+                        if s == a || s == b || s == c {
+                            continue;
+                        }
+                        let (opposite, shared) =
+                            match (s.adjacent_to(a), s.adjacent_to(b), s.adjacent_to(c)) {
+                                (false, true, true) => (a, (b, c)),
+                                (true, false, true) => (b, (a, c)),
+                                (true, true, false) => (c, (a, b)),
+                                _ => continue,
+                            };
+                        result[opposite as usize][shared.0 as usize][shared.1 as usize] = Some(s);
                     }
-                    let (opposite, shared) =
-                        match (s.adjacent_to(a), s.adjacent_to(b), s.adjacent_to(c)) {
-                            (false, true, true) => (a, (b, c)),
-                            (true, false, true) => (b, (a, c)),
-                            (true, true, false) => (c, (a, b)),
-                            _ => continue,
-                        };
-                    result[opposite as usize][shared.0 as usize][shared.1 as usize] = Some(s);
                 }
             }
         }
-    }
-    result
-});
+        result
+    });
 
 #[cfg(test)]
 mod tests {
