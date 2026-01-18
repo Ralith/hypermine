@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use arrayvec::ArrayVec;
 
 use crate::{
-    dodeca::Side,
+    dodeca::{SIDE_COUNT, Side},
     graph::{Graph, NodeId},
 };
 
@@ -104,65 +104,64 @@ impl PeerNode {
 }
 
 /// All paths that can potentially lead to a peer node after following the given parent path of length 1
-static DEPTH1_CHILD_PATHS: LazyLock<[ArrayVec<Side, 5>; Side::VALUES.len()]> =
-    LazyLock::new(|| {
-        Side::VALUES.map(|parent_side| {
-            // The main constraint is that all parent sides need to be adjacent to all child sides.
-            let mut path_list: ArrayVec<Side, 5> = ArrayVec::new();
-            for child_side in Side::iter() {
-                if !child_side.adjacent_to(parent_side) {
-                    continue;
-                }
-                path_list.push(child_side);
+static DEPTH1_CHILD_PATHS: LazyLock<[ArrayVec<Side, 5>; SIDE_COUNT]> = LazyLock::new(|| {
+    Side::VALUES.map(|parent_side| {
+        // The main constraint is that all parent sides need to be adjacent to all child sides.
+        let mut path_list: ArrayVec<Side, 5> = ArrayVec::new();
+        for child_side in Side::iter() {
+            if !child_side.adjacent_to(parent_side) {
+                continue;
             }
-            path_list
-        })
-    });
+            path_list.push(child_side);
+        }
+        path_list
+    })
+});
 
 /// All paths that can potentially lead to a peer node after following the given parent path of length 2
-static DEPTH2_CHILD_PATHS: LazyLock<
-    [[ArrayVec<[Side; 2], 2>; Side::VALUES.len()]; Side::VALUES.len()],
-> = LazyLock::new(|| {
-    Side::VALUES.map(|parent_side0| {
-        Side::VALUES.map(|parent_side1| {
-            let mut path_list: ArrayVec<[Side; 2], 2> = ArrayVec::new();
-            if parent_side0 == parent_side1 {
-                // Backtracking parent paths are irrelevant and may result in more child paths than
-                // can fit in the ArrayVec, so skip these.
-                return path_list;
-            }
-            // The main constraint is that all parent sides need to be adjacent to all child sides.
-            for child_side0 in Side::iter() {
-                if !child_side0.adjacent_to(parent_side0) || !child_side0.adjacent_to(parent_side1)
-                {
-                    // Child paths need to have both parts adjacent to parent paths.
-                    continue;
+static DEPTH2_CHILD_PATHS: LazyLock<[[ArrayVec<[Side; 2], 2>; SIDE_COUNT]; SIDE_COUNT]> =
+    LazyLock::new(|| {
+        Side::VALUES.map(|parent_side0| {
+            Side::VALUES.map(|parent_side1| {
+                let mut path_list: ArrayVec<[Side; 2], 2> = ArrayVec::new();
+                if parent_side0 == parent_side1 {
+                    // Backtracking parent paths are irrelevant and may result in more child paths than
+                    // can fit in the ArrayVec, so skip these.
+                    return path_list;
                 }
-                for child_side1 in Side::iter() {
-                    // To avoid redundancies, only look at child paths that obey shortlex rules.
-                    if child_side0 == child_side1 {
-                        // Child path backtracks and should be discounted.
-                        continue;
-                    }
-                    if child_side0.adjacent_to(child_side1)
-                        && (child_side0 as usize) > (child_side1 as usize)
-                    {
-                        // There is a lexicographically earlier child path, so this should be discounted.
-                        continue;
-                    }
-                    if !child_side1.adjacent_to(parent_side0)
-                        || !child_side1.adjacent_to(parent_side1)
+                // The main constraint is that all parent sides need to be adjacent to all child sides.
+                for child_side0 in Side::iter() {
+                    if !child_side0.adjacent_to(parent_side0)
+                        || !child_side0.adjacent_to(parent_side1)
                     {
                         // Child paths need to have both parts adjacent to parent paths.
                         continue;
                     }
-                    path_list.push([child_side0, child_side1]);
+                    for child_side1 in Side::iter() {
+                        // To avoid redundancies, only look at child paths that obey shortlex rules.
+                        if child_side0 == child_side1 {
+                            // Child path backtracks and should be discounted.
+                            continue;
+                        }
+                        if child_side0.adjacent_to(child_side1)
+                            && (child_side0 as usize) > (child_side1 as usize)
+                        {
+                            // There is a lexicographically earlier child path, so this should be discounted.
+                            continue;
+                        }
+                        if !child_side1.adjacent_to(parent_side0)
+                            || !child_side1.adjacent_to(parent_side1)
+                        {
+                            // Child paths need to have both parts adjacent to parent paths.
+                            continue;
+                        }
+                        path_list.push([child_side0, child_side1]);
+                    }
                 }
-            }
-            path_list
+                path_list
+            })
         })
-    })
-});
+    });
 
 /// A reference to the graph used by `PeerTraverser` to decide how to handle not-yet-created nodes
 trait GraphRef: AsRef<Graph> {
