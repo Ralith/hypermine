@@ -1,4 +1,5 @@
-//! Postcard doesn't support serializing to an existing vec out of the box
+//! Postcard doesn't support serializing to an existing vec out of the box.
+//! See https://github.com/jamesmunns/postcard/pull/208.
 
 use postcard::Result;
 

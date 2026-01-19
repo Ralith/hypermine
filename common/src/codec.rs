@@ -2,14 +2,12 @@ use anyhow::{Result, bail};
 use serde::{Serialize, de::DeserializeOwned};
 
 pub async fn send<T: Serialize + ?Sized>(stream: &mut quinn::SendStream, msg: &T) -> Result<()> {
-    let mut buf = Vec::new();
-    let len = bincode::serialized_size(msg).unwrap();
-    if len >= 2u64.pow(24) {
+    let buf = postcard::to_stdvec(msg).unwrap();
+    let len = buf.len();
+    if len >= 1 << 24 {
         bail!("{} byte ordered message exceeds maximum length", len);
     }
-    let tag = (len as u32).to_le_bytes();
-    buf.extend_from_slice(&tag[0..3]);
-    bincode::serialize_into(&mut buf, msg).unwrap();
+    stream.write_all(&(len as u32).to_le_bytes()[0..3]).await?;
     stream.write_all(&buf).await?;
     Ok(())
 }
@@ -30,7 +28,7 @@ pub async fn recv<T: DeserializeOwned>(stream: &mut quinn::RecvStream) -> Result
         Err(quinn::ReadExactError::ReadError(e)) => return Err(e.into()),
         Ok(()) => {}
     }
-    Ok(Some(bincode::deserialize(&buf)?))
+    Ok(Some(postcard::from_bytes(&buf)?))
 }
 
 /// Send a message as the entirety of `stream`
@@ -38,7 +36,7 @@ pub async fn send_whole<T: Serialize + ?Sized>(
     mut stream: quinn::SendStream,
     msg: &T,
 ) -> std::result::Result<(), quinn::WriteError> {
-    let buf = bincode::serialize(msg).unwrap();
+    let buf = postcard::to_stdvec(msg).unwrap();
     stream.write_all(&buf).await?;
     Ok(())
 }
@@ -49,5 +47,5 @@ pub async fn recv_whole<T: DeserializeOwned>(
     mut stream: quinn::RecvStream,
 ) -> Result<T> {
     let buf = stream.read_to_end(size_limit).await?;
-    Ok(bincode::deserialize(&buf)?)
+    Ok(postcard::from_bytes(&buf)?)
 }
