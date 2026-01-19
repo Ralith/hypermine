@@ -6,7 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-prost = "0.13.1"
+prost = "0.14.3"
 redb = "2.0"
 thiserror = "2.0.0"
 zstd = { package = "zstd-safe", version = "7.1.0", default-features = false, features = ["std", "experimental"] }
