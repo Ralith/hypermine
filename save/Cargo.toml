@@ -7,7 +7,7 @@ edition = "2024"
 
 [dependencies]
 prost = "0.13.1"
-redb = "2.0"
+redb = "3.1"
 thiserror = "2.0.0"
 zstd = { package = "zstd-safe", version = "7.1.0", default-features = false, features = ["std", "experimental"] }
 
