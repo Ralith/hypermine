@@ -6,7 +6,7 @@ members = ["client", "server", "common", "save", "save/gen-protos"]
 hecs = "0.10.0"
 nalgebra = { version = "0.33.0", features = ["libm-force"] }
 quinn = { version = "0.11", default-features = false, features = ["rustls", "ring", "runtime-tokio"] }
-toml = { version = "0.8.0", default-features = false, features = ["parse"] }
+toml = { version = "0.9.11", default-features = false, features = ["parse"] }
 
 [profile.dev]
 opt-level = 1
