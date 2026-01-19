@@ -390,7 +390,20 @@ impl Sim {
         self.world
             .insert_one(entity, InactiveCharacter(character))
             .unwrap();
-        self.accumulated_changes.despawns.push(entity_id);
+        if let Some(index) = self
+            .accumulated_changes
+            .spawns
+            .iter()
+            .position(|e| *e == entity)
+        {
+            // Ensure that the same entity does not show up in the spawns
+            // and despawns list if the character entity is spawned and deactivated
+            // in the same frame. This can happen if a client connects and
+            // immediately disconnects due to an error.
+            self.accumulated_changes.spawns.remove(index);
+        } else {
+            self.accumulated_changes.despawns.push(entity_id);
+        }
     }
 
     fn spawn(&mut self, bundle: impl DynamicBundle) -> (EntityId, Entity) {

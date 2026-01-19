@@ -43,6 +43,12 @@ async fn run(
     endpoint.set_default_client_config(client_cfg);
 
     let result = inner(cfg, incoming, outgoing, endpoint.clone()).await;
+    // Close the connection with a generic message, as graceful disconnections are not yet implemented.
+    // See https://github.com/Ralith/hypermine/issues/26
+    endpoint.close(
+        connection_error_codes::CLIENT_CLOSED_CONNECTION,
+        b"client closed connection",
+    );
     endpoint.wait_idle().await;
     result
 }

@@ -122,4 +122,5 @@ pub mod connection_error_codes {
     pub const STREAM_ERROR: VarInt = VarInt::from_u32(1);
     pub const BAD_CLIENT_COMMAND: VarInt = VarInt::from_u32(2);
     pub const NAME_CONFLICT: VarInt = VarInt::from_u32(3);
+    pub const CLIENT_CLOSED_CONNECTION: VarInt = VarInt::from_u32(4);
 }
