@@ -23,10 +23,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Server
-        run: cargo build --package server --release
+        run: cargo build --package server --release --locked
 
       - name: Build Client
-        run: cargo build --package client --release --no-default-features
+        run: cargo build --package client --release --no-default-features --locked
 
       - name: Package Artifacts
         run: |
@@ -55,10 +55,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Server
-        run: cargo build --package server --release
+        run: cargo build --package server --release --locked
 
       - name: Build Client
-        run: cargo build --package client --release --no-default-features
+        run: cargo build --package client --release --no-default-features --locked
 
       - name: Strip
         run: |
