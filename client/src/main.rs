@@ -1,7 +1,7 @@
 use std::{sync::Arc, thread};
 
 use client::{Config, graphics, metrics, net};
-use common::proto;
+use common::{Anonymize, proto};
 use save::Save;
 
 use ash::khr;
@@ -26,7 +26,7 @@ fn main() {
             let sim_cfg = config.local_simulation.clone();
 
             let save = dirs.data_local_dir().join(&config.save);
-            info!("using save file {}", save.display());
+            info!("using save file {}", save.anonymize().display());
             std::fs::create_dir_all(save.parent().unwrap()).unwrap();
             let save = match Save::open(&save, config.local_simulation.chunk_size) {
                 Ok(x) => x,

@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Context, anyhow, bail};
 use ash::vk;
+use common::Anonymize;
 use lahar::DedicatedImage;
 use tracing::trace;
 
@@ -24,19 +25,19 @@ impl Loadable for PngArray {
             let full_path = handle
                 .cfg
                 .find_asset(&self.path)
-                .ok_or_else(|| anyhow!("{} not found", self.path.display()))?;
+                .ok_or_else(|| anyhow!("{} not found", self.path.anonymize().display()))?;
             let mut paths = fs::read_dir(&full_path)
-                .with_context(|| format!("reading {}", full_path.display()))?
+                .with_context(|| format!("reading {}", full_path.anonymize().display()))?
                 .map(|x| x.map(|x| x.path()))
                 .collect::<Result<Vec<_>, _>>()
-                .with_context(|| format!("reading {}", full_path.display()))?;
+                .with_context(|| format!("reading {}", full_path.anonymize().display()))?;
             if paths.is_empty() {
-                bail!("{} is empty", full_path.display());
+                bail!("{} is empty", full_path.anonymize().display());
             }
             if paths.len() < self.size {
                 bail!(
                     "{}: expected {} textures, found {}",
-                    full_path.display(),
+                    full_path.anonymize().display(),
                     self.size,
                     paths.len()
                 );
@@ -46,13 +47,13 @@ impl Loadable for PngArray {
             let mut dims: Option<(u32, u32)> = None;
             let mut mem = None;
             for (i, path) in paths.iter().enumerate() {
-                trace!(layer=i, path=%path.display(), "loading");
-                let file =
-                    File::open(path).with_context(|| format!("reading {}", path.display()))?;
+                trace!(layer=i, path=%path.anonymize().display(), "loading");
+                let file = File::open(path)
+                    .with_context(|| format!("reading {}", path.anonymize().display()))?;
                 let decoder = png::Decoder::new(BufReader::new(file));
                 let mut reader = decoder
                     .read_info()
-                    .with_context(|| format!("decoding {}", path.display()))?;
+                    .with_context(|| format!("decoding {}", path.anonymize().display()))?;
                 let info = reader.info();
                 if let Some(dims) = dims {
                     if dims != (info.width, info.height) {
@@ -72,7 +73,10 @@ impl Loadable for PngArray {
                             .alloc(info.width as usize * info.height as usize * 4 * self.size)
                             .await
                             .ok_or_else(|| {
-                                anyhow!("{}: image array too large", full_path.display())
+                                anyhow!(
+                                    "{}: image array too large",
+                                    full_path.anonymize().display()
+                                )
                             })?,
                     );
                 }
@@ -80,7 +84,7 @@ impl Loadable for PngArray {
                 let step_size = info.width as usize * info.height as usize * 4;
                 reader
                     .next_frame(&mut mem[i * step_size..(i + 1) * step_size])
-                    .with_context(|| format!("decoding {}", path.display()))?;
+                    .with_context(|| format!("decoding {}", path.anonymize().display()))?;
             }
             let (width, height) = dims.unwrap();
             let mem = mem.unwrap();
@@ -171,7 +175,7 @@ impl Loadable for PngArray {
                 trace!(
                     width = width,
                     height = height,
-                    path = %full_path.display(),
+                    path = %full_path.anonymize().display(),
                     "loaded array"
                 );
                 Ok(image)

@@ -1,6 +1,7 @@
 //! Common state shared throughout the graphics system
 
 use ash::ext::debug_utils;
+use common::Anonymize;
 use std::ffi::{CStr, c_char};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -69,7 +70,7 @@ impl Base {
                     if e.kind() == io::ErrorKind::NotFound {
                         info!("creating fresh pipeline cache");
                     } else {
-                        warn!(path=%path.display(), "failed to load pipeline cache: {}", e);
+                        warn!(path=%path.anonymize().display(), "failed to load pipeline cache: {}", e);
                     }
                     Vec::new()
                 }
@@ -309,7 +310,7 @@ impl Base {
                 trace!(len = data.len(), "wrote pipeline cache");
             }
             Err(e) => {
-                warn!(path=%path.display(), "failed to save pipeline cache: {}", e);
+                warn!(path=%path.anonymize().display(), "failed to save pipeline cache: {}", e);
             }
         }
     }

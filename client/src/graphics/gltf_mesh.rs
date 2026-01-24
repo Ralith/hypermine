@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use ash::vk;
+use common::Anonymize;
 use futures_util::future::{BoxFuture, FutureExt, try_join_all};
 use lahar::{BufferRegionAlloc, DedicatedImage};
 use tracing::{error, trace};
@@ -33,12 +34,12 @@ impl GlbFile {
         let path = ctx
             .cfg
             .find_asset(&self.path)
-            .ok_or_else(|| anyhow!("{} not found", self.path.display()))?;
+            .ok_or_else(|| anyhow!("{} not found", self.path.anonymize().display()))?;
 
         let glb = gltf::Glb::from_reader(
-            File::open(&path).with_context(|| format!("opening {}", path.display()))?,
+            File::open(&path).with_context(|| format!("opening {}", path.anonymize().display()))?,
         )
-        .with_context(|| format!("reading {}", path.display()))?;
+        .with_context(|| format!("reading {}", path.anonymize().display()))?;
         let gltf = gltf::Document::from_json(
             gltf::json::deserialize::from_slice(&glb.json).context("JSON parsing")?,
         )
@@ -397,7 +398,7 @@ async fn load_material(
                 .cfg
                 .find_asset(Path::new(uri))
                 .ok_or_else(|| anyhow!("texture {} not found", uri))?;
-            trace!(path = %path.display(), "reading texture");
+            trace!(path = %path.anonymize().display(), "reading texture");
             Cow::Owned(fs::read(&path).context("reading texture")?)
         }
         gltf::image::Source::View { view, .. } => {

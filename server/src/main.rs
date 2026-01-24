@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use tracing::{info, warn};
 
-use common::SimConfig;
+use common::{Anonymize, SimConfig};
 use config::Config;
 use save::Save;
 
@@ -68,7 +68,7 @@ pub async fn run() -> Result<()> {
     let sim_cfg = SimConfig::from_raw(&cfg.simulation);
 
     let save = cfg.save.unwrap_or_else(|| "hypermine.save".into());
-    info!("using save file {}", save.display());
+    info!("using save file {}", save.anonymize().display());
     let save = Save::open(&save, sim_cfg.chunk_size)?;
 
     let server = server::Server::new(

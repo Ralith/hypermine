@@ -113,3 +113,32 @@ fn tracing_subscriber() -> impl tracing::Subscriber {
                 .add_directive(tracing_subscriber::filter::LevelFilter::INFO.into()),
         )
 }
+
+pub trait Anonymize {
+    type Output;
+    fn anonymize(&self) -> Self::Output;
+}
+
+impl Anonymize for std::path::Path {
+    type Output = std::path::PathBuf;
+
+    fn anonymize(&self) -> Self::Output {
+        let Some(home) = std::env::home_dir() else {
+            // Give up if we don't know the home directory
+            return self.into();
+        };
+        let Ok(home_relative_path) = self.strip_prefix(home) else {
+            // If the path is not in the home directory, there is nothing to do.
+            return self.into();
+        };
+        let mut result = std::path::PathBuf::new();
+        // Write a best effort placeholder that should work as a substitute for the home directory in a file explorer
+        result.push(if cfg!(windows) {
+            "%USERPROFILE%"
+        } else {
+            "$HOME"
+        });
+        result.push(home_relative_path);
+        result
+    }
+}
