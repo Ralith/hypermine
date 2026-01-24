@@ -8,7 +8,7 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, info};
 
-use common::{SimConfig, SimConfigRaw};
+use common::{Anonymize, SimConfig, SimConfigRaw};
 
 pub struct Config {
     pub name: Arc<str>,
@@ -33,7 +33,7 @@ impl Config {
             server,
         } = match fs::read(&path) {
             Ok(data) => {
-                info!("found config at {}", path.display());
+                info!("found config at {}", path.anonymize().display());
                 match std::str::from_utf8(&data)
                     .map_err(anyhow::Error::from)
                     .and_then(|s| toml::from_str(s).map_err(anyhow::Error::from))
@@ -46,11 +46,15 @@ impl Config {
                 }
             }
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
-                info!("{} not found, using defaults", path.display());
+                info!("{} not found, using defaults", path.anonymize().display());
                 RawConfig::default()
             }
             Err(e) => {
-                error!("failed to read config: {}: {}", path.display(), e);
+                error!(
+                    "failed to read config: {}: {}",
+                    path.anonymize().display(),
+                    e
+                );
                 RawConfig::default()
             }
         };
@@ -88,7 +92,7 @@ impl Config {
         for dir in &self.data_dirs {
             let full_path = dir.join(path);
             if full_path.exists() {
-                debug!(path = ?path.display(), dir = ?dir.display(), "found asset");
+                debug!(path = ?path.anonymize().display(), dir = ?dir.anonymize().display(), "found asset");
                 return Some(full_path);
             }
         }
