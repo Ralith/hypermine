@@ -22,7 +22,7 @@ raw-window-handle = "0.6"
 directories = "6.0.0"
 vk-shader-macros = "0.2.5"
 nalgebra = { workspace = true }
-libm = "0.2.6"
+libm = "0.2.16"
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "sync", "macros"] }
 png = "0.18.0"
 anyhow = "1.0.26"

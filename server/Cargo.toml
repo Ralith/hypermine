@@ -23,7 +23,7 @@ hecs = { workspace = true }
 rand = { version = "0.9.0", features = ["small_rng"] }
 fxhash = "0.2.1"
 nalgebra = { workspace = true }
-libm = "0.2.6"
+libm = "0.2.16"
 slotmap = "1.0.6"
 rustls-pemfile = "2.1.2"
 save = { path = "../save" }
