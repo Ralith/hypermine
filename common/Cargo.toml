@@ -16,7 +16,7 @@ nalgebra = { workspace = true, features = ["serde-serialize"] }
 postcard = { version = "1.0.4", default-features = false, features = ["use-std"] }
 anyhow = "1.0.26"
 quinn = { workspace = true }
-libm = "0.2.6"
+libm = "0.2.16"
 fxhash = "0.2.1"
 tracing = "0.1.10"
 hecs = { workspace = true }
