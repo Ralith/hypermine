@@ -26,20 +26,16 @@ fn peer_nodes_impl(mut graph: impl GraphRef, base_node: NodeId) -> Vec<PeerNode>
     let mut nodes = Vec::new();
 
     // Depth 1 paths
-    for parent_side in Side::iter() {
-        let parent_node = graph.neighbor(base_node, parent_side);
-        if graph.depth(parent_node) >= graph.depth(base_node) {
-            continue;
-        }
+    for (parent_side, parent_node) in graph.parents(base_node) {
         for &child_side in &DEPTH1_CHILD_PATHS[parent_side as usize] {
-            let peer_node = graph.neighbor(parent_node, child_side);
-            if graph.depth(peer_node) == graph.depth(base_node) {
-                nodes.push(PeerNode {
-                    node_id: peer_node,
-                    parent_path: ArrayVec::from_iter([parent_side]),
-                    child_path: ArrayVec::from_iter([child_side]),
-                });
-            }
+            let Some(peer_node) = graph.child(parent_node, child_side) else {
+                continue;
+            };
+            nodes.push(PeerNode {
+                node_id: peer_node,
+                parent_path: ArrayVec::from_iter([parent_side]),
+                child_path: ArrayVec::from_iter([child_side]),
+            });
         }
     }
 
@@ -53,15 +49,17 @@ fn peer_nodes_impl(mut graph: impl GraphRef, base_node: NodeId) -> Vec<PeerNode>
                 continue;
             }
             for &child_sides in &DEPTH2_CHILD_PATHS[parent_side0 as usize][parent_side1 as usize] {
-                let peer_node_parent = graph.neighbor(parent_node1, child_sides[0]);
-                let peer_node = graph.neighbor(peer_node_parent, child_sides[1]);
-                if graph.depth(peer_node) == graph.depth(base_node) {
-                    nodes.push(PeerNode {
-                        node_id: peer_node,
-                        parent_path: ArrayVec::from_iter([parent_side0, parent_side1]),
-                        child_path: ArrayVec::from_iter(child_sides),
-                    });
-                }
+                let Some(peer_node_parent) = graph.child(parent_node1, child_sides[0]) else {
+                    continue;
+                };
+                let Some(peer_node) = graph.child(peer_node_parent, child_sides[1]) else {
+                    continue;
+                };
+                nodes.push(PeerNode {
+                    node_id: peer_node,
+                    parent_path: ArrayVec::from_iter([parent_side0, parent_side1]),
+                    child_path: ArrayVec::from_iter(child_sides),
+                });
             }
         }
     }
@@ -168,6 +166,16 @@ trait GraphRef: AsRef<Graph> {
     fn depth(&self, node: NodeId) -> u32;
     fn neighbor(&mut self, node: NodeId, side: Side) -> NodeId;
     fn parents(&self, node: NodeId) -> impl ExactSizeIterator<Item = (Side, NodeId)> + use<Self>;
+
+    /// A helper function that returns the node at the particular side if it's a child, or `None` if it's a parent.
+    fn child(&mut self, node: NodeId, side: Side) -> Option<NodeId> {
+        let candidate_child = self.neighbor(node, side);
+        if self.depth(candidate_child) > self.depth(node) {
+            Some(candidate_child)
+        } else {
+            None
+        }
+    }
 }
 
 /// A `GraphRef` that asserts that all the nodes it needs already exist
@@ -242,11 +250,8 @@ mod tests {
     #[test]
     fn peer_traverser_example() {
         let mut graph = Graph::new(1);
-        let base_node = node_from_path(
-            &mut graph,
-            NodeId::ROOT,
-            [Side::B, Side::D, Side::C, Side::A],
-        );
+        let base_node_path = [Side::B, Side::D, Side::C, Side::A];
+        let base_node = node_from_path(&mut graph, NodeId::ROOT, base_node_path);
 
         let expected_paths: &[(&[Side], &[Side])] = &[
             (&[Side::A], &[Side::B]),
@@ -265,7 +270,7 @@ mod tests {
 
         let peers = ensure_peer_nodes(&mut graph, base_node);
         assert_eq!(peers.len(), expected_paths.len());
-        for (peer, expected_path) in peers.into_iter().zip(expected_paths) {
+        for (peer, expected_path) in peers.iter().zip(expected_paths) {
             assert_eq!(
                 peer.peer_to_shared().collect::<Vec<_>>(),
                 expected_path.0.to_vec(),
@@ -275,6 +280,28 @@ mod tests {
                 expected_path.1.to_vec(),
             );
         }
+
+        // Assert that the graph isn't expanded any more than necessary by generating
+        // a reference graph with the same base node and peer nodes manually.
+        let mut reference_graph = Graph::new(1);
+        assert_eq!(
+            base_node,
+            node_from_path(&mut reference_graph, NodeId::ROOT, base_node_path),
+            "Sanity check for reusing base_node"
+        );
+        for peer in &peers {
+            // Generate the peer node by taking the path from the base node to the peer node via their shared parent.
+            node_from_path(
+                &mut reference_graph,
+                base_node,
+                peer.parent_path
+                    .iter()
+                    .cloned()
+                    .chain(peer.child_path.iter().cloned()),
+            );
+        }
+
+        assert_eq!(graph.len(), reference_graph.len());
     }
 
     #[test]
