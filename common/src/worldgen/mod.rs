@@ -253,14 +253,14 @@ impl ChunkParams {
 
         self.generate_terrain(&mut voxels, &mut rng);
 
+        if let Some(horosphere) = &self.horosphere {
+            horosphere.generate(&mut voxels, self.dimension);
+        }
+
         if self.is_road {
             self.generate_road(&mut voxels);
         } else if self.is_road_support {
             self.generate_road_support(&mut voxels);
-        }
-
-        if let Some(horosphere) = &self.horosphere {
-            horosphere.generate(&mut voxels, self.dimension);
         }
 
         // TODO: Don't generate detailed data for solid chunks with no neighboring voids
@@ -293,7 +293,7 @@ impl ChunkParams {
             *voxels = VoxelData::Solid(Material::Void);
             return;
         }
-        if center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS {
+        if center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS && !self.is_road {
             // The whole chunk is underground
             *voxels = VoxelData::Solid(Material::Dirt);
             return;
