@@ -113,7 +113,7 @@ impl NodeState {
                 temperature: 0.0,
                 rainfall: 0.0,
                 blockiness: 0.0,
-                elevation_gradient: EnviroGradient::new_from_direction(3.0_f32, *Side::B.normal()),
+                elevation_gradient: EnviroGradient::new_from_direction(1.5_f32, *Side::B.normal()),
             },
             (Some(parent), None) => {
                 let spice = graph.hash_of(node) as u64;
@@ -534,6 +534,9 @@ struct NeighborData {
     material: Material,
 }
 
+const ELEVATION_GRADIENT_MAGNITUDE_FLOOR: f32 = 0.0;
+const ELEVATION_GRADIENT_MAGNITUDE_CEILING: f32 = 3.0; // maximum 27.0
+
 #[derive(Copy, Clone)]
 struct EnviroGradient {
     magnitude: f32,
@@ -569,7 +572,12 @@ impl EnviroGradient {
     /// The mix is biased toward the origonal direction.
     /// The intent is to use this with a randomly-generated direction.
     /// ratio is the ratio of origonal direction's weight to perturbance direction's weight.
-    fn perturb(&self, perturbance_direction: MDirection<f32>, ratio: f32) -> Self {
+    fn perturb(
+        &self,
+        perturbance_direction: MDirection<f32>,
+        ratio: f32,
+        magnitude_delta: f32,
+    ) -> Self {
         // Allowing the perturbance to equal the origonal opens the door for division by zero
         // during normalization. Consider using rotations or making use of smaller-scale noise
         // if you need a stronger effect.
@@ -579,10 +587,29 @@ impl EnviroGradient {
         let v1 = Vector4::from(self.direction) * ratio;
         let v2 = Vector4::from(perturbance_direction);
 
+        let m = self.magnitude + magnitude_delta;
+
         Self {
-            magnitude: self.magnitude,
+            magnitude: {
+                if m < ELEVATION_GRADIENT_MAGNITUDE_FLOOR {
+                    ELEVATION_GRADIENT_MAGNITUDE_FLOOR - (m - ELEVATION_GRADIENT_MAGNITUDE_FLOOR)
+                } else if m > ELEVATION_GRADIENT_MAGNITUDE_CEILING {
+                    ELEVATION_GRADIENT_MAGNITUDE_CEILING
+                        - (m - ELEVATION_GRADIENT_MAGNITUDE_CEILING)
+                } else {
+                    m
+                }
+            },
             direction: MVector::from(v1 + v2).normalized_direction(),
         }
+    }
+
+    /// Gets the gradient magnitude used for elevation delta calculations,
+    /// Which is the cube of the stored/propogated magnitude for more noticeable
+    /// terrain differences
+    #[inline]
+    fn get_gradient_magnitude(&self) -> f32 {
+        self.magnitude.powi(3)
     }
 }
 
@@ -604,7 +631,8 @@ impl EnviroFactors {
                 let v: [f32; 3] = rng.sample(UnitSphere);
                 MDirection::<f32>::new_unchecked(v[0], v[1], v[2], 0.0)
             },
-            5.0,
+            10.0,
+            rng.sample(unif),
         );
         let average_gradient = parent
             .elevation_gradient
@@ -618,7 +646,7 @@ impl EnviroFactors {
 
         // Increase elevation according to how perpendicular is to traversal direction
         let max_elevation = parent.max_elevation
-            + average_gradient.magnitude * parallel_component
+            + average_gradient.get_gradient_magnitude() * parallel_component
             + rng.sample(Normal::new(0.0, 0.1).unwrap());
 
         Self {
