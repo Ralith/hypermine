@@ -540,13 +540,6 @@ struct EnviroGradient {
     direction: MDirection<f32>,
 }
 impl EnviroGradient {
-    fn new(magnitude: f32, vector: MVector<f32>) -> Self {
-        Self {
-            magnitude,
-            direction: vector.normalized_direction().project_to_origin(),
-        }
-    }
-
     fn new_from_direction(magnitude: f32, direction: MDirection<f32>) -> Self {
         Self {
             magnitude,
