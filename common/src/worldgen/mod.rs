@@ -2,7 +2,7 @@ use horosphere::{HorosphereChunk, HorosphereNode};
 use na::Vector4;
 use plane::Plane;
 use rand::{Rng, SeedableRng, distr::Uniform};
-use rand_distr::Normal;
+use rand_distr::{Normal, UnitSphere};
 use terraingen::VoronoiInfo;
 
 use crate::{
@@ -555,12 +555,32 @@ impl EnviroGradient {
         }
     }
 
-    // Crude "average" between two gradients
+    /// Linear "average" between two gradients
     fn average(&self, other: &EnviroGradient) -> Self {
         let v1 = Vector4::from(self.direction);
         let v2 = Vector4::from(other.direction);
         Self {
             magnitude: 0.5 * (self.magnitude + other.magnitude),
+            direction: MVector::from(v1 + v2).normalized_direction(),
+        }
+    }
+
+    /// Linearally mix the gradient's direction with another direction.
+    /// The mix is biased toward the origonal direction.
+    /// The intent is to use this with a randomly-generated direction.
+    /// ratio is the ratio of origonal direction's weight to perturbance direction's weight.
+    fn perturb(&self, perturbance_direction: MDirection<f32>, ratio: f32) -> Self {
+        // Allowing the perturbance to equal the origonal opens the door for division by zero
+        // during normalization. Consider using rotations or making use of smaller-scale noise
+        // if you need a stronger effect.
+        assert!(ratio > 1.0);
+        assert!(perturbance_direction.w == na::zero());
+
+        let v1 = Vector4::from(self.direction) * ratio;
+        let v2 = Vector4::from(perturbance_direction);
+
+        Self {
+            magnitude: self.magnitude,
             direction: MVector::from(v1 + v2).normalized_direction(),
         }
     }
@@ -579,7 +599,13 @@ impl EnviroFactors {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0).unwrap();
 
-        let elevation_gradient = parent.elevation_gradient.reflect_from_side(side); // No pertubations for now
+        let elevation_gradient = parent.elevation_gradient.reflect_from_side(side).perturb(
+            {
+                let v: [f32; 3] = rng.sample(UnitSphere);
+                MDirection::<f32>::new_unchecked(v[0], v[1], v[2], 0.0)
+            },
+            5.0,
+        );
         let average_gradient = parent
             .elevation_gradient
             .average(&elevation_gradient.reflect_from_side(side));
@@ -593,7 +619,7 @@ impl EnviroFactors {
         // Increase elevation according to how perpendicular is to traversal direction
         let max_elevation = parent.max_elevation
             + average_gradient.magnitude * parallel_component
-            + rng.sample(Normal::new(0.0, 0.01).unwrap());
+            + rng.sample(Normal::new(0.0, 0.1).unwrap());
 
         Self {
             max_elevation,
