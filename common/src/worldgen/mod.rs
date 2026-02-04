@@ -1,4 +1,5 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
+use na::Vector4;
 use plane::Plane;
 use rand::{Rng, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
@@ -8,7 +9,7 @@ use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     margins,
-    math::{self, MVector},
+    math::{self, MDirection, MPoint, MVector},
     node::{ChunkId, VoxelData},
     world::Material,
 };
@@ -112,10 +113,11 @@ impl NodeState {
                 temperature: 0.0,
                 rainfall: 0.0,
                 blockiness: 0.0,
+                elevation_gradient: EnviroGradient::new_from_direction(3.0_f32, *Side::B.normal()),
             },
             (Some(parent), None) => {
                 let spice = graph.hash_of(node) as u64;
-                EnviroFactors::varied_from(parent.node_state.enviro, spice)
+                EnviroFactors::varied_from(parent.node_state.enviro, parent.side, spice)
             }
             (Some(parent_a), Some(parent_b)) => {
                 let ab_node = graph.neighbor(parent_a.node_id, parent_b.side).unwrap();
@@ -124,6 +126,8 @@ impl NodeState {
                     parent_a.node_state.enviro,
                     parent_b.node_state.enviro,
                     ab_state.enviro,
+                    parent_a.side,
+                    parent_b.side,
                 )
             }
             _ => unreachable!(),
@@ -531,31 +535,113 @@ struct NeighborData {
 }
 
 #[derive(Copy, Clone)]
+struct EnviroGradient {
+    magnitude: f32,
+    direction: MDirection<f32>,
+}
+impl EnviroGradient {
+    fn new(magnitude: f32, vector: MVector<f32>) -> Self {
+        Self {
+            magnitude,
+            direction: vector.normalized_direction().project_to_origin(),
+        }
+    }
+
+    fn new_from_direction(magnitude: f32, direction: MDirection<f32>) -> Self {
+        Self {
+            magnitude,
+            direction: direction.project_to_origin(),
+        }
+    }
+
+    fn reflect_from_side(&self, side: Side) -> Self {
+        // reflect, then drop the w-component and renormalize
+        Self {
+            magnitude: self.magnitude,
+            direction: (side.reflection() * self.direction).project_to_origin(),
+        }
+    }
+
+    // Crude "average" between two gradients
+    fn average(&self, other: &EnviroGradient) -> Self {
+        let v1 = Vector4::from(self.direction);
+        let v2 = Vector4::from(other.direction);
+        Self {
+            magnitude: 0.5 * (self.magnitude + other.magnitude),
+            direction: MVector::from(v1 + v2).normalized_direction(),
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
 struct EnviroFactors {
     max_elevation: f32,
     temperature: f32,
     rainfall: f32,
     blockiness: f32,
+    elevation_gradient: EnviroGradient,
 }
 impl EnviroFactors {
-    fn varied_from(parent: Self, spice: u64) -> Self {
+    fn varied_from(parent: Self, side: Side, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0).unwrap();
-        let max_elevation = parent.max_elevation + rng.sample(Normal::new(0.0, 4.0).unwrap());
+
+        let elevation_gradient = parent.elevation_gradient.reflect_from_side(side); // No pertubations for now
+        let average_gradient = parent
+            .elevation_gradient
+            .average(&elevation_gradient.reflect_from_side(side));
+        let traversal_direction = {
+            let p = MPoint::origin();
+            let n = side.normal();
+            (n.as_ref() + p.as_ref() * n.mip(&p)).normalized_direction()
+        };
+        let parallel_component = average_gradient.direction.mip(&traversal_direction);
+
+        // Increase elevation according to how perpendicular is to traversal direction
+        let max_elevation = parent.max_elevation
+            + average_gradient.magnitude * parallel_component
+            + rng.sample(Normal::new(0.0, 0.01).unwrap());
 
         Self {
             max_elevation,
             temperature: parent.temperature + rng.sample(unif),
             rainfall: parent.rainfall + rng.sample(unif),
             blockiness: parent.blockiness + rng.sample(unif),
+            elevation_gradient,
         }
     }
-    fn continue_from(a: Self, b: Self, ab: Self) -> Self {
+    fn continue_from(a: Self, b: Self, ab: Self, side_a: Side, side_b: Side) -> Self {
+        // project the gradients of a, b, and ab into the new node's frame of reference,
+        // then the new gradient's direction is calculated as directions of (a + (b - ab).
+        // This process doesn't really have a physical meaning, but it's an isotropic way for
+        // the child node's gradient direction to be inherited, and it's intuitive for it to operate
+        // in a similar fashion to the scalar environmental factors.
+        let gradient_direction = (a
+            .elevation_gradient
+            .reflect_from_side(side_a)
+            .direction
+            .as_ref()
+            + (b.elevation_gradient
+                .reflect_from_side(side_b)
+                .direction
+                .as_ref()
+                - ab.elevation_gradient
+                    .reflect_from_side(side_a)
+                    .reflect_from_side(side_b)
+                    .direction
+                    .as_ref()))
+        .normalized_direction();
+        let gradient_magnitude = a.elevation_gradient.magnitude
+            + (b.elevation_gradient.magnitude - ab.elevation_gradient.magnitude);
         Self {
             max_elevation: a.max_elevation + (b.max_elevation - ab.max_elevation),
             temperature: a.temperature + (b.temperature - ab.temperature),
             rainfall: a.rainfall + (b.rainfall - ab.rainfall),
             blockiness: a.blockiness + (b.blockiness - ab.blockiness),
+            elevation_gradient: EnviroGradient::new_from_direction(
+                gradient_magnitude,
+                gradient_direction,
+            ),
         }
     }
 }
