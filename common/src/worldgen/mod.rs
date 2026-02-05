@@ -658,7 +658,7 @@ impl EnviroFactors {
                 MDirection::<f32>::new_unchecked(v[0], v[1], v[2], 0.0)
             },
             10.0,
-            0.0, //rng.sample(unif),
+            rng.sample(unif),
         );
         let average_gradient = parent
             .elevation_gradient
