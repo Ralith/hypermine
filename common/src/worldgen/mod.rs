@@ -6,7 +6,12 @@ use rand_distr::{Normal, UnitSphere};
 use terraingen::VoronoiInfo;
 
 use crate::{
-    dodeca::{Side, Vertex}, graph::{Graph, NodeId}, margins, math::{self, MDirection, MPoint, MVector}, node::{ChunkId, VoxelData}, world::Material
+    dodeca::{Side, Vertex},
+    graph::{Graph, NodeId},
+    margins,
+    math::{self, MDirection, MPoint, MVector},
+    node::{ChunkId, VoxelData},
+    world::Material,
 };
 
 mod horosphere;
@@ -116,9 +121,18 @@ impl NodeState {
                     let p = MPoint::origin();
                     let t = parent.side.normal();
                     let u = parent.node_state.up_direction();
-                    ((t.as_ref() + p.as_ref() * t.mip(&p)).normalized_direction(), (u.as_ref() + p.as_ref() * u.mip(&p)).normalized_direction())
+                    (
+                        (t.as_ref() + p.as_ref() * t.mip(&p)).normalized_direction(),
+                        (u.as_ref() + p.as_ref() * u.mip(&p)).normalized_direction(),
+                    )
                 };
-                EnviroFactors::varied_from(parent.node_state.enviro, parent.side, traversal_direction, up_direction, spice)
+                EnviroFactors::varied_from(
+                    parent.node_state.enviro,
+                    parent.side,
+                    traversal_direction,
+                    up_direction,
+                    spice,
+                )
             }
             (Some(parent_a), Some(parent_b)) => {
                 let ab_node = graph.neighbor(parent_a.node_id, parent_b.side).unwrap();
@@ -539,6 +553,9 @@ const ELEVATION_GRADIENT_MAGNITUDE_FLOOR: f32 = 0.0;
 const ELEVATION_GRADIENT_MAGNITUDE_CEILING: f32 = 3.0; // maximum 27.0
 
 #[derive(Copy, Clone)]
+/// A gradient representing evironmental factors.
+/// Consists of a magnitude and direction, which are for the most part operated on indpendently.
+/// The magnitude can be scaled arbitrarily, for example the elevation gradient is on a cubic scale.
 struct EnviroGradient {
     magnitude: f32,
     direction: MDirection<f32>,
@@ -573,6 +590,8 @@ impl EnviroGradient {
     /// The mix is biased toward the origonal direction.
     /// The intent is to use this with a randomly-generated direction.
     /// ratio is the ratio of origonal direction's weight to perturbance direction's weight.
+    /// Also linearly and independently adds a delta to the gradient magnitude,
+    /// which could certainly be a seperate function
     fn perturb(
         &self,
         perturbance_direction: MDirection<f32>,
@@ -605,9 +624,9 @@ impl EnviroGradient {
         }
     }
 
-    /// Gets the gradient magnitude used for elevation delta calculations,
-    /// Which is the cube of the stored/propogated magnitude for more noticeable
-    /// terrain differences
+    /// Gets the gradient magnitude used for elevation delta calculations.
+    /// That magnitude is the cube of the stored/propogated magnitude for more noticeable
+    /// terrain differences.
     #[inline]
     fn get_gradient_magnitude(&self) -> f32 {
         self.magnitude.powi(3)
@@ -623,7 +642,13 @@ struct EnviroFactors {
     elevation_gradient: EnviroGradient,
 }
 impl EnviroFactors {
-    fn varied_from(parent: Self, side: Side, traversal_direction: MDirection<f32>, up_direction: MDirection<f32>, spice: u64) -> Self {
+    fn varied_from(
+        parent: Self,
+        side: Side,
+        traversal_direction: MDirection<f32>,
+        up_direction: MDirection<f32>,
+        spice: u64,
+    ) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0).unwrap();
 
@@ -633,18 +658,22 @@ impl EnviroFactors {
                 MDirection::<f32>::new_unchecked(v[0], v[1], v[2], 0.0)
             },
             10.0,
-            rng.sample(unif),
+            0.0, //rng.sample(unif),
         );
         let average_gradient = parent
             .elevation_gradient
             .average(&elevation_gradient.reflect_from_side(side));
-        
-        let parallel_component = average_gradient.direction.mip(&traversal_direction);
-        let sky_islands_suppression_factor = (1.0 - (traversal_direction.mip(&up_direction)).powi(2)).sqrt();
 
-        // Increase elevation according to how perpendicular is to traversal direction
+        // Increase elevation according to how perpendicular the gradient is to traversal direction
+        let parallel_component = average_gradient.direction.mip(&traversal_direction);
+        // Don't increase elevation when moving vertically
+        let sky_islands_suppression_factor =
+            (1.0 - (traversal_direction.mip(&up_direction)).powi(2)).sqrt();
+
         let max_elevation = parent.max_elevation
-            + average_gradient.get_gradient_magnitude() * sky_islands_suppression_factor * parallel_component
+            + average_gradient.get_gradient_magnitude()
+                * sky_islands_suppression_factor
+                * parallel_component
             + rng.sample(Normal::new(0.0, 0.1).unwrap());
 
         Self {
