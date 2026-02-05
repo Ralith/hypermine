@@ -6,12 +6,7 @@ use rand_distr::{Normal, UnitSphere};
 use terraingen::VoronoiInfo;
 
 use crate::{
-    dodeca::{Side, Vertex},
-    graph::{Graph, NodeId},
-    margins,
-    math::{self, MDirection, MPoint, MVector},
-    node::{ChunkId, VoxelData},
-    world::Material,
+    dodeca::{Side, Vertex}, graph::{Graph, NodeId}, margins, math::{self, MDirection, MPoint, MVector}, node::{ChunkId, VoxelData}, world::Material
 };
 
 mod horosphere;
@@ -117,7 +112,13 @@ impl NodeState {
             },
             (Some(parent), None) => {
                 let spice = graph.hash_of(node) as u64;
-                EnviroFactors::varied_from(parent.node_state.enviro, parent.side, spice)
+                let (traversal_direction, up_direction) = {
+                    let p = MPoint::origin();
+                    let t = parent.side.normal();
+                    let u = parent.node_state.up_direction();
+                    ((t.as_ref() + p.as_ref() * t.mip(&p)).normalized_direction(), (u.as_ref() + p.as_ref() * u.mip(&p)).normalized_direction())
+                };
+                EnviroFactors::varied_from(parent.node_state.enviro, parent.side, traversal_direction, up_direction, spice)
             }
             (Some(parent_a), Some(parent_b)) => {
                 let ab_node = graph.neighbor(parent_a.node_id, parent_b.side).unwrap();
@@ -622,7 +623,7 @@ struct EnviroFactors {
     elevation_gradient: EnviroGradient,
 }
 impl EnviroFactors {
-    fn varied_from(parent: Self, side: Side, spice: u64) -> Self {
+    fn varied_from(parent: Self, side: Side, traversal_direction: MDirection<f32>, up_direction: MDirection<f32>, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0).unwrap();
 
@@ -637,16 +638,13 @@ impl EnviroFactors {
         let average_gradient = parent
             .elevation_gradient
             .average(&elevation_gradient.reflect_from_side(side));
-        let traversal_direction = {
-            let p = MPoint::origin();
-            let n = side.normal();
-            (n.as_ref() + p.as_ref() * n.mip(&p)).normalized_direction()
-        };
+        
         let parallel_component = average_gradient.direction.mip(&traversal_direction);
+        let sky_islands_suppression_factor = (1.0 - (traversal_direction.mip(&up_direction)).powi(2)).sqrt();
 
         // Increase elevation according to how perpendicular is to traversal direction
         let max_elevation = parent.max_elevation
-            + average_gradient.get_gradient_magnitude() * parallel_component
+            + average_gradient.get_gradient_magnitude() * sky_islands_suppression_factor * parallel_component
             + rng.sample(Normal::new(0.0, 0.1).unwrap());
 
         Self {
