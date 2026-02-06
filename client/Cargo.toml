@@ -25,7 +25,7 @@ nalgebra = { workspace = true }
 libm = "0.2.16"
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "sync", "macros"] }
 png = "0.18.0"
-anyhow = "1.0.26"
+anyhow = "1.0.101"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = { workspace = true }
 fxhash = "0.2.1"

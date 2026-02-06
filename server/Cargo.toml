@@ -16,7 +16,7 @@ tokio = { version = "1.18.2", features = ["rt-multi-thread", "time", "macros", "
 quinn = { workspace = true }
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = { workspace = true }
-anyhow = "1.0.26"
+anyhow = "1.0.101"
 rcgen = { version = "0.14.6", default-features = false, features = ["ring"] }
 hostname = "0.4.0"
 hecs = { workspace = true }
