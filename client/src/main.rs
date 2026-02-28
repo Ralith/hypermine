@@ -1,6 +1,6 @@
 use std::{sync::Arc, thread};
 
-use client::{Config, graphics, metrics, net};
+use client::{Config, graphics, logfile::Logfile, metrics, net};
 use common::{Anonymize, proto};
 use save::Save;
 
@@ -13,11 +13,30 @@ use winit::{
 };
 
 fn main() {
+    let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
+
     // Set up logging
-    common::init_tracing();
+    let (non_blocking, _tracing_guard) = tracing_appender::non_blocking(Logfile::new(
+        dirs.data_local_dir().join("logs").join("hypermine.log"),
+    ));
+    common::init_tracing_with_logfiles(non_blocking);
+
+    // Set up panic handler to log errors with "tracing" crate.
+    let default_panic_behavior = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_hook_info| {
+        // Although it's redundant, we take advantage of the default panic behavior to
+        // allow debugging to still work even if there's an issue with our custom logic
+        default_panic_behavior(panic_hook_info);
+
+        // Afterwards, we print the panic message and line number by taking advantage of the `Display` trait of `PanicHookInfo`
+        tracing::error!("{}", panic_hook_info);
+
+        // Finally, we capture a backtrace regardless of whether there is an environment variable enabling said backtrace.
+        tracing::error!("Backtrace:\n{}", std::backtrace::Backtrace::force_capture());
+    }));
+
     let metrics = crate::metrics::init();
 
-    let dirs = directories::ProjectDirs::from("", "", "hypermine").unwrap();
     let config = Arc::new(Config::load(&dirs));
 
     let net = match config.server {

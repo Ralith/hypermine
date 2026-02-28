@@ -12,6 +12,7 @@ license = "Apache-2.0 OR Zlib"
 common = { path = "../common" }
 server = { path = "../server" }
 tracing = "0.1.10"
+tracing-appender = "0.2.4"
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
 lahar = { git = "https://github.com/Ralith/lahar", rev = "7963ae5750ea61fa0a894dbb73d3be0ac77255d2" }
 yakui = "0.3.0"
