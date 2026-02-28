@@ -14,6 +14,7 @@ extern crate nalgebra as na;
 mod config;
 pub mod graphics;
 mod local_character_controller;
+pub mod logfile;
 pub mod metrics;
 pub mod net;
 mod prediction;
