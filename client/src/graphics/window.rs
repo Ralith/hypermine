@@ -265,6 +265,11 @@ impl Window {
                         sim.next_material();
                     }
                 }
+                KeyCode::KeyG => {
+                    if let Some(sim) = self.sim.as_mut() {
+                        sim.pick_material();
+                    }
+                }
                 _ => {
                     if let Some(material_idx) = number_key_to_index(key)
                         && state == ElementState::Pressed

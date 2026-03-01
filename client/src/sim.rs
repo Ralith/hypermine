@@ -176,6 +176,30 @@ impl Sim {
             [(self.selected_material as usize - 1 + Material::COUNT) % Material::COUNT];
     }
 
+    pub fn pick_material(&mut self) {
+        let view_position = self.view();
+        let ray_casting_result = graph_ray_casting::ray_cast(
+            &self.graph,
+            &view_position,
+            &Ray::new(MPoint::w(), -MDirection::z()),
+            self.cfg.character.block_reach,
+        );
+        let Ok(ray_casting_result) = ray_casting_result else {
+            tracing::warn!("Tried to run a raycast beyond generated terrain.");
+            return;
+        };
+
+        let Some(hit) = ray_casting_result else {
+            return;
+        };
+
+        let mat = self.graph.get_material(hit.chunk, hit.voxel_coords);
+        let Some(mat) = mat else {
+            return;
+        };
+        self.selected_material = mat;
+    }
+
     pub fn selected_material(&self) -> Material {
         self.selected_material
     }
