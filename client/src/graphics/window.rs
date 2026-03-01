@@ -251,6 +251,20 @@ impl Window {
                     self.window.set_cursor_visible(true);
                     self.input.mouse_captured = false;
                 }
+                KeyCode::Minus => {
+                    if state == ElementState::Pressed
+                        && let Some(sim) = self.sim.as_mut()
+                    {
+                        sim.prev_material();
+                    }
+                }
+                KeyCode::Equal => {
+                    if state == ElementState::Pressed
+                        && let Some(sim) = self.sim.as_mut()
+                    {
+                        sim.next_material();
+                    }
+                }
                 _ => {
                     if let Some(material_idx) = number_key_to_index(key)
                         && state == ElementState::Pressed
