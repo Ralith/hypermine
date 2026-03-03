@@ -16,7 +16,7 @@ ash = { version = "0.38.0", default-features = false, features = ["loaded", "deb
 lahar = { git = "https://github.com/Ralith/lahar", rev = "7963ae5750ea61fa0a894dbb73d3be0ac77255d2" }
 yakui = "0.3.0"
 yakui-vulkan = "0.3.0"
-winit = "0.30.4"
+winit = "0.30.13"
 ash-window = "0.13"
 raw-window-handle = "0.6"
 directories = "6.0.0"
