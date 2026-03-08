@@ -162,6 +162,22 @@ impl Sim {
         self.place_block_pressed = true;
     }
 
+    pub fn looking_at(&self) -> Option<graph_ray_casting::GraphCastHit> {
+        let view_position = self.view();
+        let ray_casting_result = graph_ray_casting::ray_cast(
+            &self.graph,
+            &view_position,
+            &Ray::new(MPoint::w(), -MDirection::z()),
+            self.cfg.character.block_reach,
+        );
+        if let Ok(ray_casting_result) = ray_casting_result {
+            ray_casting_result
+        } else {
+            tracing::warn!("Tried to run a raycast beyond generated terrain.");
+            None
+        }
+    }
+
     pub fn select_material(&mut self, idx: usize) {
         self.selected_material = *MATERIAL_PALETTE.get(idx).unwrap_or(&MATERIAL_PALETTE[0]);
     }
@@ -177,19 +193,7 @@ impl Sim {
     }
 
     pub fn pick_material(&mut self) {
-        let view_position = self.view();
-        let ray_casting_result = graph_ray_casting::ray_cast(
-            &self.graph,
-            &view_position,
-            &Ray::new(MPoint::w(), -MDirection::z()),
-            self.cfg.character.block_reach,
-        );
-        let Ok(ray_casting_result) = ray_casting_result else {
-            tracing::warn!("Tried to run a raycast beyond generated terrain.");
-            return;
-        };
-
-        let Some(hit) = ray_casting_result else {
+        let Some(hit) = self.looking_at() else {
             return;
         };
 
@@ -589,20 +593,7 @@ impl Sim {
             return None;
         };
 
-        let view_position = self.view();
-        let ray_casing_result = graph_ray_casting::ray_cast(
-            &self.graph,
-            &view_position,
-            &Ray::new(MPoint::w(), -MDirection::z()),
-            self.cfg.character.block_reach,
-        );
-
-        let Ok(ray_casting_result) = ray_casing_result else {
-            tracing::warn!("Tried to run a raycast beyond generated terrain.");
-            return None;
-        };
-
-        let hit = ray_casting_result?;
+        let hit = self.looking_at()?;
 
         let block_pos = if placing {
             self.graph.get_block_neighbor(
