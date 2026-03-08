@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::collision_math::Ray;
 use crate::dodeca::Vertex;
 use crate::graph::{Graph, NodeId};
-use crate::lru_slab::SlotId;
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
@@ -266,12 +265,12 @@ pub enum Chunk {
 
         /// A reference to the "mesh" used to render the chunk. Set to `None` if
         /// this mesh needs to be computed or recomputed.
-        surface: Option<SlotId>,
+        surface: Option<u32>,
 
         /// An outdated (but valid) reference to the "mesh" used to render the
         /// chunk. This is used to allow the mesh to still be rendered while it
         /// is being recomputed.
-        old_surface: Option<SlotId>,
+        old_surface: Option<u32>,
     },
 }
 
