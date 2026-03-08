@@ -190,10 +190,9 @@ impl Sim {
             Material::VALUES[(self.selected_material as usize + 1) % Material::COUNT];
     }
 
-    /// Cycles the selected material through all materials, in reverse.
     pub fn prev_material(&mut self) {
         self.selected_material = Material::VALUES
-            [(self.selected_material as usize - 1 + Material::COUNT) % Material::COUNT];
+            [(self.selected_material as usize + Material::COUNT - 1) % Material::COUNT];
     }
 
     /// selects the material of the block the player is looking at. Will never select void.
