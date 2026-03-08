@@ -39,6 +39,7 @@ gltf = { version = "1.0.0", default-features = false, features = ["utils"] }
 metrics = "0.24.0"
 hdrhistogram = { version = "7", default-features = false }
 save = { path = "../save" }
+lru-slab = "0.1.2"
 
 [features]
 default = ["use-repo-assets"]

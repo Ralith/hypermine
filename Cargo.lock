@@ -414,6 +414,7 @@ dependencies = [
  "hecs",
  "lahar",
  "libm",
+ "lru-slab",
  "memoffset",
  "metrics",
  "nalgebra",
