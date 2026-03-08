@@ -162,8 +162,50 @@ impl Sim {
         self.place_block_pressed = true;
     }
 
+    /// Returns the block the player is looking at, if any. Also includes distance and face
+    pub fn looking_at(&self) -> Option<graph_ray_casting::GraphCastHit> {
+        let view_position = self.view();
+        let ray_casting_result = graph_ray_casting::ray_cast(
+            &self.graph,
+            &view_position,
+            &Ray::new(MPoint::w(), -MDirection::z()),
+            self.cfg.character.block_reach,
+        );
+        if let Ok(ray_casting_result) = ray_casting_result {
+            ray_casting_result
+        } else {
+            tracing::warn!("Tried to run a raycast beyond generated terrain.");
+            None
+        }
+    }
+
+    /// Selects the material from a preset palette.
     pub fn select_material(&mut self, idx: usize) {
         self.selected_material = *MATERIAL_PALETTE.get(idx).unwrap_or(&MATERIAL_PALETTE[0]);
+    }
+
+    /// Cycles the selected material through all materials.
+    pub fn next_material(&mut self) {
+        self.selected_material =
+            Material::VALUES[(self.selected_material as usize + 1) % Material::COUNT];
+    }
+
+    pub fn prev_material(&mut self) {
+        self.selected_material = Material::VALUES
+            [(self.selected_material as usize + Material::COUNT - 1) % Material::COUNT];
+    }
+
+    /// selects the material of the block the player is looking at. Will never select void.
+    pub fn pick_material(&mut self) {
+        let Some(hit) = self.looking_at() else {
+            return;
+        };
+
+        let mat = self.graph.get_material(hit.chunk, hit.voxel_coords);
+        let Some(mat) = mat else {
+            return;
+        };
+        self.selected_material = mat;
     }
 
     pub fn selected_material(&self) -> Material {
@@ -555,20 +597,7 @@ impl Sim {
             return None;
         };
 
-        let view_position = self.view();
-        let ray_casing_result = graph_ray_casting::ray_cast(
-            &self.graph,
-            &view_position,
-            &Ray::new(MPoint::w(), -MDirection::z()),
-            self.cfg.character.block_reach,
-        );
-
-        let Ok(ray_casting_result) = ray_casing_result else {
-            tracing::warn!("Tried to run a raycast beyond generated terrain.");
-            return None;
-        };
-
-        let hit = ray_casting_result?;
+        let hit = self.looking_at()?;
 
         let block_pos = if placing {
             self.graph.get_block_neighbor(
