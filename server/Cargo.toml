@@ -12,7 +12,7 @@ license = "Apache-2.0 OR Zlib"
 postcard = { version = "1.0.4", default-features = false, features = ["use-std"] }
 common = { path = "../common" }
 tracing = "0.1.10"
-tokio = { version = "1.18.2", features = ["rt-multi-thread", "time", "macros", "sync"] }
+tokio = { version = "1.50.0", features = ["rt-multi-thread", "time", "macros", "sync"] }
 quinn = { workspace = true }
 serde = { version = "1.0.104", features = ["derive", "rc"] }
 toml = { workspace = true }
