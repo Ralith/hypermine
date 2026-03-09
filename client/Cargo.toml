@@ -31,7 +31,7 @@ toml = { workspace = true }
 fxhash = "0.2.1"
 downcast-rs = "2.0.0"
 quinn = { workspace = true }
-futures-util = "0.3.1"
+futures-util = "0.3.32"
 webpki = "0.22.4"
 hecs = { workspace = true }
 memoffset = "0.9"
