@@ -507,6 +507,13 @@ impl<N: RealField + Copy> MDirection<N> {
     pub fn cast<N2: RealField + Copy + SupersetOf<N>>(self) -> MDirection<N2> {
         MDirection(self.0.cast())
     }
+
+    /// Project to be orthogonal to the origin [0 0 0 1]
+    #[inline]
+    pub fn project_to_origin(&self) -> Self {
+        let p = MPoint::origin();
+        (self.as_ref() + p.as_ref() * self.mip(&p)).normalized_direction()
+    }
 }
 
 impl<N: Scalar> From<MDirection<N>> for na::Vector4<N> {

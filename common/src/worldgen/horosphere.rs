@@ -17,7 +17,7 @@ use crate::{
 /// Whether an assortment of random horospheres should be added to world generation. This is a temporary
 /// option until large structures that fit with the theme of the world are introduced.
 /// For code simplicity, this is made into a constant instead of a configuration option.
-const HOROSPHERES_ENABLED: bool = true;
+const HOROSPHERES_ENABLED: bool = false;
 
 /// Value to mix into the node's spice for generating horospheres. Chosen randomly.
 const HOROSPHERE_SEED: u64 = 6046133366614030452;
