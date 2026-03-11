@@ -97,7 +97,23 @@ pub fn init_tracing() {
     tracing_subscriber().init();
 }
 
-fn tracing_subscriber() -> impl tracing::Subscriber {
+pub fn init_tracing_with_logfiles(
+    writer: impl for<'a> tracing_subscriber::fmt::MakeWriter<'a> + Send + Sync + 'static,
+) {
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    tracing_subscriber()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_ansi(false)
+                .with_writer(writer),
+        )
+        .init();
+}
+
+fn tracing_subscriber()
+-> impl tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a> {
     use tracing_subscriber::{filter, fmt, layer::SubscriberExt, registry};
 
     registry()
