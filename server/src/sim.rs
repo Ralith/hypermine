@@ -9,8 +9,8 @@ use common::world::Material;
 use common::{GraphEntities, node::ChunkId};
 use fxhash::{FxHashMap, FxHashSet};
 use hecs::{DynamicBundle, Entity, EntityBuilder};
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::rngs::{SmallRng, SysRng};
+use rand::{RngExt, SeedableRng};
 use save::ComponentType;
 use serde::{Deserialize, Serialize};
 use tracing::{error, error_span, info, trace};
@@ -52,7 +52,7 @@ pub struct Sim {
 impl Sim {
     pub fn new(cfg: Arc<SimConfig>, save: &save::Save) -> Self {
         let mut result = Self {
-            rng: SmallRng::from_os_rng(),
+            rng: SmallRng::try_from_rng(&mut SysRng).unwrap(),
             step: 0,
             entity_ids: FxHashMap::default(),
             world: hecs::World::new(),

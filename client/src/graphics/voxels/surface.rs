@@ -361,8 +361,10 @@ impl Frame {
         }
     }
 
-    pub fn transforms_mut(&mut self) -> &mut [na::Matrix4<f32>] {
-        &mut self.transforms
+    /// # Safety
+    /// The returned reference must not be used while this `Frame` is in active use by Vulkan.
+    pub unsafe fn transforms_mut(&mut self) -> &mut [na::Matrix4<f32>] {
+        unsafe { self.transforms.as_mut() }
     }
 }
 

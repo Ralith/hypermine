@@ -1,7 +1,7 @@
 #![allow(clippy::needless_borrowed_reference)]
 
 use rand::{
-    Rng,
+    Rng, RngExt,
     distr::{Distribution, StandardUniform},
 };
 

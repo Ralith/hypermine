@@ -1,4 +1,7 @@
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{
+    RngExt, SeedableRng,
+    rngs::{SmallRng, SysRng},
+};
 
 use save::Save;
 
@@ -41,7 +44,7 @@ fn persist_character() {
     let save = Save::open(file.path(), 12).unwrap();
     let mut writer_guard = save.write().unwrap();
     let mut writer = writer_guard.get().unwrap();
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = SmallRng::try_from_rng(&mut SysRng).unwrap();
     let mut path = Vec::with_capacity(17000);
     for _ in 0..17000 {
         path.push(rng.random_range(0..12));

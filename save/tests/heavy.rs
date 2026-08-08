@@ -2,11 +2,14 @@ use std::time::Instant;
 
 use save::Save;
 
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{
+    RngExt, SeedableRng,
+    rngs::{SmallRng, SysRng},
+};
 
 #[test]
 fn write() {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = SmallRng::try_from_rng(&mut SysRng).unwrap();
     let file = tempfile::NamedTempFile::new().unwrap();
     let save = Save::open(file.path(), 12).unwrap();
     let node = save::VoxelNode {

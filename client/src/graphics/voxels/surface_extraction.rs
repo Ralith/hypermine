@@ -308,9 +308,11 @@ impl ScratchBuffer {
     pub fn storage(&mut self, index: u32) -> &mut [Material] {
         let start = index as usize * (self.voxel_buffer_unit as usize / mem::size_of::<Material>());
         let length = (self.dimension + 2).pow(3) as usize;
-        &mut self.voxels_staging[start..start + length]
+        unsafe { &mut self.voxels_staging.as_mut()[start..start + length] }
     }
 
+    /// # Safety
+    /// The mutable reference returned by `storage` must not be in use while the surface is being extracted.
     pub unsafe fn extract(
         &mut self,
         device: &Device,

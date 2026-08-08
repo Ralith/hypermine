@@ -3,7 +3,10 @@ use std::hint::black_box;
 use save::Save;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{
+    RngExt, SeedableRng,
+    rngs::{SmallRng, SysRng},
+};
 
 fn save(c: &mut Criterion) {
     let mut write = c.benchmark_group("write");
@@ -13,7 +16,7 @@ fn save(c: &mut Criterion) {
             voxels: vec![0; 12 * 12 * 12 * 2],
         }],
     };
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = SmallRng::try_from_rng(&mut SysRng).unwrap();
     for count in [1, 100, 10000] {
         write.throughput(Throughput::Elements(count));
         write.bench_function(BenchmarkId::from_parameter(count), |b| {

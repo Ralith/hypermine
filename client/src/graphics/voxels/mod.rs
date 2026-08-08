@@ -134,8 +134,10 @@ impl Voxels {
                     self.states.get_mut(slot).refcount += 1;
                     frame.drawn.push(slot);
                     // Transfer transform
-                    frame.surface.transforms_mut()[slot as usize] =
-                        na::Matrix4::from(*node_transform) * vertex.chunk_to_node();
+                    unsafe {
+                        frame.surface.transforms_mut()[slot as usize] =
+                            na::Matrix4::from(*node_transform) * vertex.chunk_to_node();
+                    }
                 }
                 if let (None, &VoxelData::Dense(ref data)) = (&surface, voxels) {
                     // Extract a surface so it can be drawn in future frames

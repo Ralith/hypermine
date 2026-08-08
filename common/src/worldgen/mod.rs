@@ -1,6 +1,6 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
 use plane::Plane;
-use rand::{Rng, SeedableRng, distr::Uniform};
+use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
 use terraingen::VoronoiInfo;
 

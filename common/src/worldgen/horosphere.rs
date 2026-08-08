@@ -1,5 +1,5 @@
 use libm::{cosf, sinf, sqrtf};
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rand_distr::Poisson;
 use rand_pcg::Pcg64Mcg;
 
