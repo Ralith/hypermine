@@ -145,7 +145,10 @@ fn get_ground_normal(
             position,
             allowed_displacement.displacement(),
         );
-        if let Some(collision) = collision_result.collision.as_ref() {
+        {
+            // Get the collision, returning `None` if we travel the whole `allowed_displacement` and don't find the ground.
+            let collision = collision_result.collision.as_ref()?;
+
             if is_ground(ctx, &collision.normal) {
                 // We found the ground, so return its normal.
                 return Some(collision.normal);
@@ -155,9 +158,6 @@ fn get_ground_normal(
                 collision.normal,
                 true,
             ));
-        } else {
-            // Return `None` if we travel the whole `allowed_displacement` and don't find the ground.
-            return None;
         }
     }
     // Return `None` if we fail to find the ground after the maximum number of attempts

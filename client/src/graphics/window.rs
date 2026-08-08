@@ -279,12 +279,10 @@ impl Window {
                     }
                 }
             },
-            WindowEvent::Focused(focused) => {
-                if !focused {
-                    let _ = self.window.set_cursor_grab(CursorGrabMode::None);
-                    self.window.set_cursor_visible(true);
-                    self.input.mouse_captured = false;
-                }
+            WindowEvent::Focused(focused) if !focused => {
+                let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+                self.window.set_cursor_visible(true);
+                self.input.mouse_captured = false;
             }
             _ => {}
         }
