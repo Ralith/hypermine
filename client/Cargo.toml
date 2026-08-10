@@ -23,7 +23,8 @@ directories = "6.0.0"
 vk-shader-macros = "0.2.5"
 nalgebra = { workspace = true }
 libm = "0.2.16"
-tokio = { version = "1.43.0", features = ["rt-multi-thread", "sync", "macros"] }
+tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread", "sync", "macros"] }
+pollster = "1.0.1"
 png = "0.18.0"
 anyhow = "1.0.26"
 serde = { version = "1.0.104", features = ["derive", "rc"] }
@@ -40,6 +41,7 @@ metrics = "0.24.0"
 hdrhistogram = { version = "7", default-features = false }
 save = { path = "../save" }
 lru-slab = "0.1.2"
+skid-steer = { git="https://github.com/Ralith/skid-steer", rev = "16feada2408810f78a9f469001ef9277e98d4061" }
 
 [features]
 default = ["use-repo-assets"]
