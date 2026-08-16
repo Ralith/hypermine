@@ -12,8 +12,8 @@ use metrics::histogram;
 use tracing::warn;
 
 use crate::{
-    Config, Loader, Sim,
-    graphics::{Base, Frustum},
+    Config, Sim,
+    graphics::{Base, Frustum, asset_loader::AssetLoader},
 };
 use common::{
     dodeca::{self, Vertex},
@@ -39,7 +39,7 @@ impl Voxels {
     pub fn new(
         gfx: &Base,
         config: Arc<Config>,
-        loader: &mut Loader,
+        loader: &AssetLoader,
         dimension: u32,
         frames: u32,
     ) -> Self {
@@ -208,7 +208,6 @@ impl Voxels {
     pub unsafe fn draw(
         &mut self,
         device: &Device,
-        loader: &Loader,
         common_ds: vk::DescriptorSet,
         frame: &Frame,
         cmd: vk::CommandBuffer,
@@ -217,7 +216,6 @@ impl Voxels {
             let started = Instant::now();
             if !self.draw.bind(
                 device,
-                loader,
                 self.surfaces.dimension(),
                 common_ds,
                 &frame.surface,

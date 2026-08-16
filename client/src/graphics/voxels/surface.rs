@@ -3,7 +3,7 @@ use lahar::{DedicatedImage, DedicatedMapping};
 use vk_shader_macros::include_glsl;
 
 use super::surface_extraction::DrawBuffer;
-use crate::{Asset, Loader, graphics::Base};
+use crate::graphics::{Base, asset_loader::AssetLoader};
 use common::{defer, world::Material};
 
 const VERT: &[u32] = include_glsl!("shaders/voxels.vert");
@@ -15,12 +15,12 @@ pub struct Surface {
     pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
     ds: vk::DescriptorSet,
-    colors: Asset<DedicatedImage>,
+    colors: skid_steer::Asset<DedicatedImage>,
     colors_view: vk::ImageView,
 }
 
 impl Surface {
-    pub fn new(gfx: &Base, loader: &mut Loader, buffer: &DrawBuffer) -> Self {
+    pub fn new(gfx: &Base, loader: &AssetLoader, buffer: &DrawBuffer) -> Self {
         let device = &*gfx.device;
         unsafe {
             // Construct the shader modules
@@ -224,13 +224,10 @@ impl Surface {
             v_guard.invoke();
             f_guard.invoke();
 
-            let colors = loader.load(
-                "voxel materials",
-                crate::graphics::PngArray {
-                    path: "materials".into(),
-                    size: common::world::Material::COUNT - 1,
-                },
-            );
+            let colors = loader.load(crate::graphics::PngArray {
+                path: "materials".into(),
+                size: common::world::Material::COUNT - 1,
+            });
 
             Self {
                 static_ds_layout,
@@ -247,7 +244,6 @@ impl Surface {
     pub unsafe fn bind(
         &mut self,
         device: &Device,
-        loader: &Loader,
         dimension: u32,
         common_ds: vk::DescriptorSet,
         frame: &Frame,
@@ -255,7 +251,7 @@ impl Surface {
     ) -> bool {
         unsafe {
             if self.colors_view == vk::ImageView::null() {
-                if let Some(colors) = loader.get(self.colors) {
+                if let Some(colors) = self.colors.try_get() {
                     self.colors_view = device
                         .create_image_view(
                             &vk::ImageViewCreateInfo::default()

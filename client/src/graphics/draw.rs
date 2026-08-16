@@ -7,6 +7,7 @@ use lahar::Staged;
 use metrics::histogram;
 
 use super::{Base, Fog, Frustum, GltfScene, Meshes, Voxels, fog, voxels};
+use crate::graphics::asset_loader::AssetLoader;
 use crate::{Asset, Config, Loader, Sim};
 use common::SimConfig;
 use common::proto::{Character, Position};
@@ -53,6 +54,9 @@ pub struct Draw {
 
     /// Miscellany
     character_model: Asset<GltfScene>,
+
+    /// Drives async asset loading
+    asset_loader: AssetLoader, // TODO: Make code more robust by not requiring this to be defined last (due to Drop order)
 }
 
 /// Maximum number of simultaneous frames in flight
@@ -128,6 +132,7 @@ impl Draw {
                 .unwrap();
 
             let mut loader = Loader::new(cfg.clone(), gfx.clone());
+            let asset_loader = AssetLoader::new(gfx.clone(), cfg.clone());
 
             // Construct the per-frame states
             let states = cmds
@@ -225,6 +230,8 @@ impl Draw {
                 yakui_vulkan,
 
                 character_model,
+
+                asset_loader,
             }
         }
     }
@@ -234,7 +241,7 @@ impl Draw {
         let voxels = Voxels::new(
             &self.gfx,
             self.cfg.clone(),
-            &mut self.loader,
+            &self.asset_loader,
             u32::from(cfg.chunk_size),
             PIPELINE_DEPTH,
         );
@@ -473,13 +480,7 @@ impl Draw {
 
             // Record the actual rendering commands
             if let Some(ref mut voxels) = self.voxels {
-                voxels.draw(
-                    device,
-                    &self.loader,
-                    state.common_ds,
-                    state.voxels.as_ref().unwrap(),
-                    cmd,
-                );
+                voxels.draw(device, state.common_ds, state.voxels.as_ref().unwrap(), cmd);
             }
 
             if let Some(sim) = sim.as_deref() {
