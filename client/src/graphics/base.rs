@@ -144,7 +144,8 @@ impl Base {
                             .push_next(
                                 &mut vk::PhysicalDeviceVulkan12Features::default()
                                     .descriptor_binding_partially_bound(true)
-                                    .descriptor_binding_sampled_image_update_after_bind(true),
+                                    .descriptor_binding_sampled_image_update_after_bind(true)
+                                    .timeline_semaphore(true),
                             ),
                         None,
                     )
