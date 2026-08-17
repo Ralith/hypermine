@@ -10,6 +10,8 @@ use tracing::{error, info, trace, warn};
 
 use ash::{Device, vk};
 
+use crate::graphics::shader_data::ShaderData;
+
 use super::Core;
 
 /// Vulkan resources shared between many parts of the renderer
@@ -29,10 +31,8 @@ pub struct Base {
     pub pipeline_cache: vk::PipelineCache,
     /// Context in which the main rendering work occurs
     pub render_pass: vk::RenderPass,
-    /// A reasonable general-purpose texture sampler
-    pub linear_sampler: vk::Sampler,
-    /// Layout of common shader resources, such as the common uniform buffer
-    pub common_layout: vk::DescriptorSetLayout,
+    /// Holds globally-managed memory for data that is sent to shaders
+    pub shader_data: ShaderData,
     pub limits: vk::PhysicalDeviceLimits,
     pub timestamp_bits: u32,
     pipeline_cache_path: Option<PathBuf>,
@@ -48,9 +48,7 @@ impl Drop for Base {
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, None);
             self.device.destroy_render_pass(self.render_pass, None);
-            self.device.destroy_sampler(self.linear_sampler, None);
-            self.device
-                .destroy_descriptor_set_layout(self.common_layout, None);
+            self.shader_data.destroy(&self.device);
             self.device.destroy_device(None);
         }
     }
@@ -235,43 +233,7 @@ impl Base {
                 )
                 .unwrap();
 
-            let linear_sampler = device
-                .create_sampler(
-                    &vk::SamplerCreateInfo::default()
-                        .min_filter(vk::Filter::LINEAR)
-                        .mag_filter(vk::Filter::LINEAR)
-                        .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
-                        .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                        .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                        .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE),
-                    None,
-                )
-                .unwrap();
-
-            let common_layout = device
-                .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
-                        // Uniforms
-                        vk::DescriptorSetLayoutBinding {
-                            binding: 0,
-                            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-                            descriptor_count: 1,
-                            stage_flags: vk::ShaderStageFlags::VERTEX
-                                | vk::ShaderStageFlags::FRAGMENT,
-                            ..Default::default()
-                        },
-                        // Depth buffer
-                        vk::DescriptorSetLayoutBinding {
-                            binding: 1,
-                            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
-                            descriptor_count: 1,
-                            stage_flags: vk::ShaderStageFlags::FRAGMENT,
-                            ..Default::default()
-                        },
-                    ]),
-                    None,
-                )
-                .unwrap();
+            let shader_data = ShaderData::new(&device, &memory_properties);
             let debug_utils = core
                 .debug_utils
                 .as_ref()
@@ -286,8 +248,7 @@ impl Base {
                 memory_properties,
                 pipeline_cache,
                 render_pass,
-                linear_sampler,
-                common_layout,
+                shader_data,
                 pipeline_cache_path,
                 limits: physical_properties.properties.limits,
                 timestamp_bits: queue_family_properties.timestamp_valid_bits,

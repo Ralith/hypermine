@@ -31,7 +31,8 @@ impl Fog {
             // Define the outward-facing interface of the shaders, incl. uniforms, samplers, etc.
             let pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::default().set_layouts(&[gfx.common_layout]),
+                    &vk::PipelineLayoutCreateInfo::default()
+                        .set_layouts(&[gfx.shader_data.common_layout]),
                     None,
                 )
                 .unwrap();

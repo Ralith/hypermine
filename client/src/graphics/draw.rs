@@ -99,7 +99,8 @@ impl Draw {
 
             let common_pipeline_layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::default().set_layouts(&[gfx.common_layout]),
+                    &vk::PipelineLayoutCreateInfo::default()
+                        .set_layouts(&[gfx.shader_data.common_layout]),
                     None,
                 )
                 .unwrap();
@@ -127,7 +128,10 @@ impl Draw {
                 .allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(common_descriptor_pool)
-                        .set_layouts(&vec![gfx.common_layout; PIPELINE_DEPTH as usize]),
+                        .set_layouts(&vec![
+                            gfx.shader_data.common_layout;
+                            PIPELINE_DEPTH as usize
+                        ]),
                 )
                 .unwrap();
 
@@ -183,7 +187,7 @@ impl Draw {
                 })
                 .collect();
 
-            let meshes = Meshes::new(&gfx, loader.ctx().mesh_ds_layout);
+            let meshes = Meshes::new(&gfx);
 
             let fog = Fog::new(&gfx);
 
