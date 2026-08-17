@@ -17,8 +17,7 @@ pub struct Meshes {
 }
 
 impl Meshes {
-    #[allow(clippy::unneeded_field_pattern)] // Silence offset_of warnings nonsense
-    pub fn new(gfx: &Base, ds_layout: vk::DescriptorSetLayout) -> Self {
+    pub fn new(gfx: &Base) -> Self {
         let device = &*gfx.device;
         unsafe {
             // Construct the shader modules
@@ -37,7 +36,10 @@ impl Meshes {
             let pipeline_layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::default()
-                        .set_layouts(&[gfx.common_layout, ds_layout])
+                        .set_layouts(&[
+                            gfx.shader_data.common_layout,
+                            gfx.shader_data.mesh_ds_layout,
+                        ])
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::VERTEX,
                             offset: 0,

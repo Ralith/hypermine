@@ -63,39 +63,6 @@ impl Loader {
         let (transfer, reactor) = unsafe {
             transfer::Reactor::new(gfx.device.clone(), gfx.queue_family, gfx.queue, None)
         };
-        let vertex_alloc = unsafe {
-            BufferRegion::new(
-                &gfx.device,
-                &gfx.memory_properties,
-                16 * 1024 * 1024,
-                vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
-            )
-        };
-        let index_alloc = unsafe {
-            BufferRegion::new(
-                &gfx.device,
-                &gfx.memory_properties,
-                16 * 1024 * 1024,
-                vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
-            )
-        };
-        let mesh_ds_layout = unsafe {
-            gfx.device
-                .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
-                        vk::DescriptorSetLayoutBinding {
-                            binding: 0,
-                            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                            descriptor_count: 1,
-                            stage_flags: vk::ShaderStageFlags::FRAGMENT,
-                            p_immutable_samplers: &gfx.linear_sampler,
-                            ..vk::DescriptorSetLayoutBinding::default()
-                        },
-                    ]),
-                    None,
-                )
-                .unwrap()
-        };
         let shared = Arc::new(Shared {
             send,
             ctx: LoadCtx {
@@ -103,9 +70,6 @@ impl Loader {
                 gfx,
                 staging,
                 transfer,
-                vertex_alloc: Mutex::new(vertex_alloc),
-                index_alloc: Mutex::new(index_alloc),
-                mesh_ds_layout,
             },
         });
         Self {
@@ -236,25 +200,11 @@ pub struct LoadCtx {
     pub gfx: Arc<Base>,
     pub staging: StagingBuffer,
     pub transfer: TransferHandle,
-    pub vertex_alloc: Mutex<BufferRegion>,
-    pub index_alloc: Mutex<BufferRegion>,
-    pub mesh_ds_layout: vk::DescriptorSetLayout,
 }
 
 impl LoadCtx {
     async fn load<T: Loadable>(&self, x: T) -> Result<T::Output> {
         x.load(self).await
-    }
-}
-
-impl Drop for LoadCtx {
-    fn drop(&mut self) {
-        let device = &*self.gfx.device;
-        unsafe {
-            self.index_alloc.lock().unwrap().destroy(device);
-            self.vertex_alloc.lock().unwrap().destroy(device);
-            device.destroy_descriptor_set_layout(self.mesh_ds_layout, None);
-        }
     }
 }
 

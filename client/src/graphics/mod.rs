@@ -10,6 +10,7 @@ mod gltf_mesh;
 mod gui;
 mod meshes;
 mod png_array;
+pub mod shader_data;
 pub mod voxels;
 mod window;
 

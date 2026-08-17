@@ -50,7 +50,7 @@ impl Surface {
                             descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                             descriptor_count: 1,
                             stage_flags: vk::ShaderStageFlags::FRAGMENT,
-                            p_immutable_samplers: &gfx.linear_sampler,
+                            p_immutable_samplers: &gfx.shader_data.linear_sampler,
                             ..Default::default()
                         },
                     ]),
@@ -99,7 +99,7 @@ impl Surface {
             let pipeline_layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::default()
-                        .set_layouts(&[gfx.common_layout, static_ds_layout])
+                        .set_layouts(&[gfx.shader_data.common_layout, static_ds_layout])
                         .push_constant_ranges(&[vk::PushConstantRange {
                             stage_flags: vk::ShaderStageFlags::VERTEX,
                             offset: 0,
