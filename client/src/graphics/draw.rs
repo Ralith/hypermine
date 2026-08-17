@@ -8,7 +8,7 @@ use metrics::histogram;
 
 use super::{Base, Fog, Frustum, GltfScene, Meshes, Voxels, fog, voxels};
 use crate::graphics::asset_loader::AssetLoader;
-use crate::{Asset, Config, Loader, Sim};
+use crate::{Config, Loader, Sim};
 use common::SimConfig;
 use common::proto::{Character, Position};
 
@@ -53,7 +53,7 @@ pub struct Draw {
     yakui_vulkan: yakui_vulkan::YakuiVulkan,
 
     /// Miscellany
-    character_model: Asset<GltfScene>,
+    character_model: skid_steer::Asset<GltfScene>,
 
     /// Drives async asset loading
     asset_loader: AssetLoader, // TODO: Make code more robust by not requiring this to be defined last (due to Drop order)
@@ -204,12 +204,9 @@ impl Draw {
                 yakui_vulkan.transfers_submitted();
             }
 
-            let character_model = loader.load(
-                "character model",
-                super::GlbFile {
-                    path: "character.glb".into(),
-                },
-            );
+            let character_model = asset_loader.load(super::GlbFile {
+                path: "character.glb".into(),
+            });
 
             Self {
                 gfx,
@@ -498,7 +495,7 @@ impl Draw {
                             .world
                             .get::<&Position>(entity)
                             .expect("positionless entity in graph");
-                        if let Some(character_model) = self.loader.get(self.character_model)
+                        if let Some(character_model) = self.character_model.try_get()
                             && let Ok(ch) = sim.world.get::<&Character>(entity)
                         {
                             let transform = na::Matrix4::from(transform * pos.local)
