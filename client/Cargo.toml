@@ -43,6 +43,7 @@ hdrhistogram = { version = "7", default-features = false }
 save = { path = "../save" }
 lru-slab = "0.1.2"
 skid-steer = { git="https://github.com/Ralith/skid-steer", rev = "16feada2408810f78a9f469001ef9277e98d4061" }
+color = "0.3.3"
 
 [features]
 default = ["use-repo-assets"]
