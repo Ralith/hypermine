@@ -147,7 +147,6 @@ struct Surface {
 }
 
 #[test]
-#[ignore]
 fn surface_extraction() {
     assert_eq!(mem::size_of::<Surface>(), 8);
 
