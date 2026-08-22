@@ -325,7 +325,9 @@ impl VoxelData {
 
         let mut materials = serialized
             .inner
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]));
 
         let mut data = vec![Material::Void; (usize::from(dimension) + 2).pow(3)];

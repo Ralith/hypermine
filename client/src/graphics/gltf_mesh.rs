@@ -258,7 +258,7 @@ async fn load_geom(
         .ok_or_else(|| anyhow!("too large"))?;
     for ((pos, norm), storage) in positions
         .zip(normals)
-        .zip(v_staging.chunks_exact_mut(mem::size_of::<Vertex>()))
+        .zip(v_staging.as_chunks_mut::<{ mem::size_of::<Vertex>() }>().0)
     {
         let v = Vertex {
             position: na::Point3::from_homogeneous(
@@ -289,7 +289,7 @@ async fn load_geom(
         .alloc(index_count * 4)
         .await
         .ok_or_else(|| anyhow!("too large"))?;
-    for (idx, storage) in indices.zip(i_staging.chunks_exact_mut(4)) {
+    for (idx, storage) in indices.zip(i_staging.as_chunks_mut::<4>().0) {
         storage.copy_from_slice(&idx.to_ne_bytes());
     }
 
