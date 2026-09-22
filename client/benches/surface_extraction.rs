@@ -10,7 +10,7 @@ use client::graphics::{
 //use common::world::Material;
 
 fn extract(bench: &mut Bencher) {
-    let gfx = Arc::new(Base::headless());
+    let gfx = Arc::new(Base::headless(false));
     let extract = SurfaceExtraction::new(&gfx);
     let mut scratch = surface_extraction::ScratchBuffer::new(&gfx, &extract, BATCH_SIZE, DIMENSION);
     let draw = surface_extraction::DrawBuffer::new(&gfx, BATCH_SIZE, DIMENSION);
@@ -58,7 +58,7 @@ fn extract(bench: &mut Bencher) {
         bench.iter(|| {
             device
                 .queue_submit(
-                    gfx.queue,
+                    gfx.graphics_queue,
                     &[vk::SubmitInfo::default().command_buffers(&[cmd])],
                     vk::Fence::null(),
                 )

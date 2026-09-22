@@ -126,6 +126,7 @@ impl ApplicationHandler for App {
                 Some(self.dirs.cache_dir().join("pipeline_cache")),
                 &[khr::swapchain::NAME],
                 |physical, queue_family| window.supports(physical, queue_family),
+                false,
             )
             .unwrap(),
         );

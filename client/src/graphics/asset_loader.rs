@@ -116,6 +116,7 @@ pub struct AssetLoader {
     staging: Arc<GrowableRing>,
     queue_unparker: Arc<QueueUnparker>,
     task_executor_threads: Vec<JoinHandle<()>>,
+    externally_controlled_queue_driver: Option<QueueDriver>,
     queue_driver_thread: Option<JoinHandle<()>>,
 }
 
@@ -123,7 +124,9 @@ impl AssetLoader {
     pub fn new(gfx: Arc<Base>, config: Arc<Config>) -> Self {
         let loader = skid_steer::Loader::new();
         let queue_shutdown_token = CancellationToken::new();
-        let queue = unsafe { ParallelQueue::new(&gfx.device, gfx.queue_family, gfx.queue, None) };
+        let queue = unsafe {
+            ParallelQueue::new(&gfx.device, gfx.queue_family, gfx.asset_loader_queue, None)
+        };
         let staging = Arc::new(GrowableRing::new(
             &gfx.device,
             gfx.memory_properties,
@@ -156,21 +159,29 @@ impl AssetLoader {
             task_executor_threads.push(thread);
         }
 
-        let queue_driver = QueueDriver {
+        // This queue_driver will be owned by queue_driver_thread if it is safe to create
+        // such a thread. Otherwise, it will be stored in the AssetLoader to be referenced
+        // externally
+        let mut queue_driver = Some(QueueDriver {
             gfx: Arc::clone(&gfx),
             queue,
             queue_unpark_semaphore: queue_unparker.semaphore(),
             queue_shutdown_token: queue_shutdown_token.clone(),
             queue_watch_sender: queue_watch_sender.clone(),
             staging: Arc::clone(&staging),
-        };
+        });
 
-        let queue_driver_thread = thread::Builder::new()
-            .name("queue_driver".to_owned())
-            .spawn(move || {
-                queue_driver.run();
-            })
-            .unwrap();
+        let queue_driver_thread = (gfx.asset_loader_queue != gfx.graphics_queue).then(|| {
+            // Note: It is only safe to drive the queue in a separate thread if we do not have to
+            // share the asset loader queue with the graphics queue.
+            let queue_driver = std::mem::take(&mut queue_driver).unwrap();
+            thread::Builder::new()
+                .name("queue_driver".to_owned())
+                .spawn(move || {
+                    queue_driver.run();
+                })
+                .unwrap()
+        });
 
         AssetLoader {
             gfx,
@@ -179,7 +190,8 @@ impl AssetLoader {
             staging,
             queue_unparker,
             task_executor_threads,
-            queue_driver_thread: Some(queue_driver_thread),
+            externally_controlled_queue_driver: queue_driver,
+            queue_driver_thread,
         }
     }
 
@@ -188,6 +200,13 @@ impl AssetLoader {
         source: S,
     ) -> skid_steer::Asset<<S as skid_steer::Source>::Output> {
         self.loader.load(source)
+    }
+
+    /// Drives the asset-loading queue if it is not already being driven in a separate thread
+    pub fn drive_queue_once(&mut self) {
+        if let Some(queue_driver) = self.externally_controlled_queue_driver.as_mut() {
+            queue_driver.drive_once();
+        }
     }
 }
 
@@ -339,6 +358,21 @@ impl QueueDriver {
             let _ = self.queue_watch_sender.send(semaphore_value);
             unsafe { self.staging.tick(&self.gfx.device, semaphore_value) };
         }
+    }
+
+    pub fn drive_once(&mut self) {
+        unsafe { self.queue.drive(&self.gfx.device) };
+        let _ = self.queue_watch_sender.send(unsafe {
+            self.gfx
+                .device
+                .get_semaphore_counter_value(self.queue.semaphore())
+                .unwrap()
+        });
+    }
+}
+
+impl Drop for QueueDriver {
+    fn drop(&mut self) {
         unsafe { self.queue.drain(&self.gfx.device) };
         unsafe { self.queue.destroy(&self.gfx.device) };
     }
@@ -346,6 +380,12 @@ impl QueueDriver {
 
 impl Drop for AssetLoader {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            // For a specific example of why we need this, if we don't abort here, unit tests could easily hang forever
+            // while unwinding from a timeout panic if there's an issue in our logic. It is generally better for tests to fail
+            // or for test suites to abort than for a single test to hang indefinitely, so this is the safer option.
+            panic!("Cannot unwind because AssetLoader is not exception-safe");
+        }
         tracing::trace!("Shutting down AssetLoader");
         pollster::block_on(async {
             self.loader.drain().await;
@@ -360,7 +400,11 @@ impl Drop for AssetLoader {
         self.queue_shutdown_token.cancel();
 
         unsafe { self.queue_unparker.unpark_queue(&self.gfx.device) };
-        self.queue_driver_thread.take().unwrap().join().unwrap();
+        if let Some(queue_driver_thread) = self.queue_driver_thread.take() {
+            queue_driver_thread.join().unwrap();
+        }
+
+        self.externally_controlled_queue_driver.take();
 
         unsafe { self.queue_unparker.destroy(&self.gfx.device) };
 
@@ -563,8 +607,8 @@ mod tests {
         }
     }
 
-    fn init_asset_loader(asset_load_parallelism: u32) -> AssetLoader {
-        let gfx = Arc::new(Base::headless());
+    fn init_asset_loader(asset_load_parallelism: u32, force_shared_queue: bool) -> AssetLoader {
+        let gfx = Arc::new(Base::headless(force_shared_queue));
         let config = Arc::new({
             let mut config = Config::create_for_test();
             config.asset_load_parallelism = asset_load_parallelism;
@@ -589,33 +633,70 @@ mod tests {
         }
     }
 
+    struct DummyRenderingThread {
+        cancellation: CancellationToken,
+        join_handle: Option<JoinHandle<()>>,
+    }
+
+    impl DummyRenderingThread {
+        fn run(asset_loader: Arc<Mutex<AssetLoader>>) -> Self {
+            let cancellation = CancellationToken::new();
+            let join_handle = {
+                let cancellation = cancellation.clone();
+                thread::spawn(move || {
+                    while !cancellation.is_cancelled() {
+                        const FPS: f32 = 10.0;
+                        asset_loader.lock().unwrap().drive_queue_once();
+                        thread::sleep(Duration::from_secs_f32(1.0 / FPS)); // FPS: 10
+                    }
+                })
+            };
+            DummyRenderingThread {
+                cancellation,
+                join_handle: Some(join_handle),
+            }
+        }
+    }
+
+    impl Drop for DummyRenderingThread {
+        fn drop(&mut self) {
+            self.cancellation.cancel();
+            self.join_handle.take().unwrap().join().unwrap();
+        }
+    }
+
     #[test]
     fn test_load_and_free() {
-        let mut events = EventList::new();
-        let asset_loader = init_asset_loader(2);
-        let dummy_asset = load_dummy_asset(&asset_loader, &events, "asset");
-        dummy_asset.add_percent_progress(50);
-        dummy_asset.add_percent_progress(50);
-        dummy_asset.wait_for_completion();
-        assert!(dummy_asset.asset.try_get().is_some());
-        assert_eq!(
-            events.get_all_events(),
-            &[
-                Event::progress("asset", 50),
-                Event::progress("asset", 100),
-                Event::loaded("asset")
-            ]
-        );
-        events.drain_queried_events();
-        drop(dummy_asset);
-        drop(asset_loader);
-        assert_eq!(events.get_all_events(), &[Event::freed("asset")]);
+        for force_shared_queue in [false, true] {
+            println!("force_shared_queue: {}", force_shared_queue);
+            let mut events = EventList::new();
+            let asset_loader = Arc::new(Mutex::new(init_asset_loader(2, force_shared_queue)));
+            let rendering_thread = DummyRenderingThread::run(asset_loader.clone());
+            let dummy_asset = load_dummy_asset(&asset_loader.lock().unwrap(), &events, "asset");
+            dummy_asset.add_percent_progress(50);
+            dummy_asset.add_percent_progress(50);
+            dummy_asset.wait_for_completion();
+            assert!(dummy_asset.asset.try_get().is_some());
+            assert_eq!(
+                events.get_all_events(),
+                &[
+                    Event::progress("asset", 50),
+                    Event::progress("asset", 100),
+                    Event::loaded("asset")
+                ]
+            );
+            events.drain_queried_events();
+            drop(rendering_thread);
+            drop(dummy_asset);
+            drop(asset_loader);
+            assert_eq!(events.get_all_events(), &[Event::freed("asset")]);
+        }
     }
 
     #[test]
     fn test_concurrency_and_cancellation() {
         let mut events = EventList::new();
-        let asset_loader = init_asset_loader(2);
+        let asset_loader = init_asset_loader(2, false);
         let assets: Vec<_> = (0..4)
             .map(|i| load_dummy_asset(&asset_loader, &events, &format!("asset{i}")))
             .collect();

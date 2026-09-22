@@ -193,7 +193,11 @@ impl Draw {
             yakui_vulkan_options.render_pass = gfx.render_pass;
             yakui_vulkan_options.subpass = 1;
             let mut yakui_vulkan = yakui_vulkan::YakuiVulkan::new(
-                &yakui_vulkan::VulkanContext::new(device, gfx.queue, gfx.memory_properties),
+                &yakui_vulkan::VulkanContext::new(
+                    device,
+                    gfx.graphics_queue,
+                    gfx.memory_properties,
+                ),
                 yakui_vulkan_options,
             );
             for _ in 0..PIPELINE_DEPTH {
@@ -257,7 +261,7 @@ impl Draw {
             self.yakui_vulkan
                 .transfers_finished(&yakui_vulkan::VulkanContext::new(
                     device,
-                    self.gfx.queue,
+                    self.gfx.graphics_queue,
                     self.gfx.memory_properties,
                 ));
             state.in_flight = false;
@@ -291,6 +295,8 @@ impl Draw {
         frustum: &Frustum,
     ) {
         unsafe {
+            self.asset_loader.drive_queue_once();
+
             let draw_started = Instant::now();
             let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
             let projection = frustum.projection(1.0e-4);
@@ -303,7 +309,7 @@ impl Draw {
 
             let yakui_vulkan_context = yakui_vulkan::VulkanContext::new(
                 device,
-                self.gfx.queue,
+                self.gfx.graphics_queue,
                 self.gfx.memory_properties,
             );
 
@@ -540,7 +546,7 @@ impl Draw {
             // Submit the commands to the GPU
             device
                 .queue_submit(
-                    self.gfx.queue,
+                    self.gfx.graphics_queue,
                     &[
                         vk::SubmitInfo::default()
                             .command_buffers(&[cmd])
