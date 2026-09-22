@@ -497,7 +497,7 @@ impl SwapchainMgr {
     unsafe fn queue_present(&self, index: u32) -> Result<bool, vk::Result> {
         unsafe {
             self.state.swapchain_fn.queue_present(
-                self.state.gfx.queue,
+                self.state.gfx.graphics_queue,
                 &vk::PresentInfoKHR::default()
                     .wait_semaphores(&[self.state.frames[index as usize].present])
                     .swapchains(&[self.state.handle])

@@ -24,7 +24,9 @@ pub struct Base {
     /// The queue family we're rendering in
     pub queue_family: u32,
     /// The queue used for graphics and presentation
-    pub queue: vk::Queue,
+    pub graphics_queue: vk::Queue,
+    /// The queue we're using for asset loading. May be the same as `graphics_queue`.
+    pub asset_loader_queue: vk::Queue,
     /// Information about the types of device-visible memory that can be allocated
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     /// Cache used to speed up graphics pipeline construction
@@ -60,6 +62,7 @@ impl Base {
         pipeline_cache_path: Option<PathBuf>,
         device_exts: &[&CStr],
         mut device_filter: impl FnMut(vk::PhysicalDevice, u32) -> bool,
+        force_shared_queue: bool,
     ) -> Option<Self> {
         let pipeline_cache_data = if let Some(ref path) = pipeline_cache_path {
             match fs::read(path) {
@@ -89,10 +92,11 @@ impl Base {
                         .into_iter()
                         .enumerate()
                         .filter_map(|(queue_family_index, info)| {
-                            let supports_graphic_and_surface =
-                                info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                                    && device_filter(physical, queue_family_index as u32);
-                            if supports_graphic_and_surface {
+                            if info
+                                .queue_flags
+                                .contains(vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE)
+                                && device_filter(physical, queue_family_index as u32)
+                            {
                                 Some((physical, queue_family_index as u32, info))
                             } else {
                                 None
@@ -130,6 +134,8 @@ impl Base {
 
             // Create the logical device and common resources descended from it
             let device_exts = device_exts.iter().map(|x| x.as_ptr()).collect::<Vec<_>>();
+            let sharing_graphics_and_asset_loading_queue =
+                force_shared_queue || queue_family_properties.queue_count == 1;
             let device = Arc::new(
                 instance
                     .create_device(
@@ -137,7 +143,11 @@ impl Base {
                         &vk::DeviceCreateInfo::default()
                             .queue_create_infos(&[vk::DeviceQueueCreateInfo::default()
                                 .queue_family_index(queue_family_index)
-                                .queue_priorities(&[1.0])])
+                                .queue_priorities(if sharing_graphics_and_asset_loading_queue {
+                                    &[1.0]
+                                } else {
+                                    &[1.0, 1.0]
+                                })])
                             .enabled_extension_names(&device_exts)
                             .push_next(
                                 &mut vk::PhysicalDeviceVulkan12Features::default()
@@ -149,7 +159,14 @@ impl Base {
                     )
                     .unwrap(),
             );
-            let queue = device.get_device_queue(queue_family_index, 0);
+            let graphics_queue = device.get_device_queue(queue_family_index, 0);
+            let asset_loader_queue = if sharing_graphics_and_asset_loading_queue {
+                info!("Sharing queue for graphics and asset loading");
+                graphics_queue
+            } else {
+                info!("Using separate queue for asset loading");
+                device.get_device_queue(queue_family_index, 1)
+            };
             let memory_properties = instance.get_physical_device_memory_properties(physical);
             let pipeline_cache = device
                 .create_pipeline_cache(
@@ -244,7 +261,8 @@ impl Base {
                 physical,
                 device,
                 queue_family: queue_family_index,
-                queue,
+                graphics_queue,
+                asset_loader_queue,
                 memory_properties,
                 pipeline_cache,
                 render_pass,
@@ -293,9 +311,9 @@ impl Base {
     }
 
     /// Convenience constructor for tests and benchmarks
-    pub fn headless() -> Self {
+    pub fn headless(force_shared_queue: bool) -> Self {
         let core = Core::new(&[]);
-        Self::new(Arc::new(core), None, &[], |_, _| true).unwrap()
+        Self::new(Arc::new(core), None, &[], |_, _| true, force_shared_queue).unwrap()
     }
 }
 

@@ -21,7 +21,7 @@ struct SurfaceExtractionTest {
 
 impl SurfaceExtractionTest {
     pub fn new() -> Self {
-        let gfx = Arc::new(Base::headless());
+        let gfx = Arc::new(Base::headless(false));
         let extract = SurfaceExtraction::new(&gfx);
         let scratch = surface_extraction::ScratchBuffer::new(&gfx, &extract, 1, DIMENSION as u32);
 
@@ -105,7 +105,7 @@ impl SurfaceExtractionTest {
 
             device
                 .queue_submit(
-                    self.gfx.queue,
+                    self.gfx.graphics_queue,
                     &[vk::SubmitInfo::default().command_buffers(&[self.cmd])],
                     vk::Fence::null(),
                 )
