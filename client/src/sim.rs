@@ -13,7 +13,7 @@ use common::{
     collision_math::Ray,
     graph::{Graph, NodeId},
     graph_ray_casting,
-    math::{MDirection, MIsometry, MPoint},
+    math::{MDirection, MIsometry, MPoint, MVector},
     node::VoxelData,
     proto::{
         self, BlockUpdate, Character, CharacterInput, CharacterState, Command, Component,
@@ -565,6 +565,39 @@ impl Sim {
             &(up.as_ref() * (self.cfg.character.character_radius - 1e-3)),
         );
         pos
+    }
+
+    /// Returns the approximate location of the origin relative to the current view. To avoid numerical
+    /// overflow, the resulting vector is scaled and does not meet the constraints of `MPoint`, so this function
+    /// is not suitable for finding the distance to the origin. For efficiency, this function can approximate
+    /// the origin as the ancestor that is `max_steps` steps away from the current node, since increasing
+    /// `max_steps` rapidly converges towards the origin.
+    pub fn view_relative_origin(&self, max_steps: u32) -> MVector<f32> {
+        let mut current_node = self.view().node;
+        let mut path_to_ancestor = Vec::new();
+
+        for _ in 0..max_steps {
+            let Some(side) = self.graph.primary_parent_side(current_node) else {
+                // Reached the root
+                break;
+            };
+            path_to_ancestor.push(side);
+            current_node = self.graph.neighbor(current_node, side).unwrap();
+        }
+
+        let mut approximate_origin = MVector::origin();
+
+        // We want to get the center of the ancestor node in the coordinate system of the view's node. To do
+        // that, we start in the coordinate's system of the ancestor node (making the initial result [0,0,0,1]),
+        // followed by walking along the graph to the view's node to switch coordinate systems until we're in the view's
+        // node's coordinate system. Note that this is the opposite order of how these sides were discovered, so we need
+        // to iterate through these sides in reverse order.
+        for side in path_to_ancestor.into_iter().rev() {
+            approximate_origin = side.reflection() * approximate_origin;
+            approximate_origin /= approximate_origin.w; // Making the w-coordinate 1 will prevent overflow.
+        }
+
+        self.view().local.inverse() * approximate_origin
     }
 
     /// Destroy all aspects of an entity

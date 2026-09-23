@@ -246,6 +246,9 @@ impl Window {
                 KeyCode::F1 if state == ElementState::Pressed => {
                     self.gui_state.toggle_gui();
                 }
+                KeyCode::Home if state == ElementState::Pressed => {
+                    self.gui_state.toggle_show_home_waypoint();
+                }
                 KeyCode::Escape => {
                     let _ = self.window.set_cursor_grab(CursorGrabMode::None);
                     self.window.set_cursor_visible(true);
@@ -358,7 +361,7 @@ impl Window {
                 ));
             self.yak.start();
             if let Some(sim) = self.sim.as_ref() {
-                self.gui_state.run(sim);
+                self.gui_state.run(sim, frustum);
             }
             self.yak.finish();
             // Render the frame
