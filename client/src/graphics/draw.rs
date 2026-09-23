@@ -299,7 +299,7 @@ impl Draw {
 
             let draw_started = Instant::now();
             let view = sim.as_ref().map_or_else(Position::origin, |sim| sim.view());
-            let projection = frustum.projection(1.0e-4);
+            let projection = frustum.projection();
             let view_projection = projection.matrix() * na::Matrix4::from(view.local.inverse());
 
             let device = &*self.gfx.device;

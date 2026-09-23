@@ -25,9 +25,10 @@ impl Frustum {
     ///
     /// This projection is applied to Beltrami-Klein vertices, which fall within a ball of radius 1
     /// around the viewpoint, so a far plane of 1.0 gives us ideal distribution of depth precision.
-    pub fn projection(&self, znear: f32) -> na::Projective3<f32> {
+    pub fn projection(&self) -> na::Projective3<f32> {
         // Based on http://dev.theomader.com/depth-precision/ (broken link) + OpenVR docs
         // Additional context at https://developer.nvidia.com/content/depth-precision-visualized
+        let znear = 1.0e-4;
         let zfar = 1.0;
         let left = self.left.tan();
         let right = self.right.tan();
