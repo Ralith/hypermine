@@ -169,7 +169,7 @@ impl Sim {
             &self.graph,
             &view_position,
             &Ray::new(MPoint::w(), -MDirection::z()),
-            self.cfg.character.block_reach,
+            self.cfg.character.block_reach.tanh(),
         );
         if let Ok(ray_casting_result) = ray_casting_result {
             ray_casting_result
