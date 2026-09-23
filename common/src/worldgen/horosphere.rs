@@ -425,7 +425,6 @@ impl NodeBoundedRegion {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::math::MPoint;
     use approx::assert_abs_diff_eq;
 
     #[test]
@@ -440,7 +439,7 @@ mod test {
 
         // First, find an arbitrary horosphere in the direction of a vertex.
         let example_vertex = Vertex::A;
-        let example_vertex_pos = example_vertex.dual_to_node() * MPoint::origin();
+        let example_vertex_pos = example_vertex.dual_to_node().pos();
         let mut horosphere_pos = MVector::from(example_vertex_pos);
         horosphere_pos.w = horosphere_pos.xyz().norm();
 

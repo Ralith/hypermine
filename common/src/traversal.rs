@@ -6,7 +6,7 @@ use crate::{
     collision_math::Ray,
     dodeca::{self, Side, Vertex},
     graph::{Graph, NodeId},
-    math::{MIsometry, MPoint},
+    math::MIsometry,
     node::ChunkId,
     proto::Position,
 };
@@ -23,12 +23,12 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
 
     pending.push_back((start.node, MIsometry::identity()));
     visited.insert(start.node);
-    let start_p = start.local * MPoint::origin();
+    let start_p = start.local.pos();
 
     while let Some((node, current_transform)) = pending.pop_front() {
         for side in Side::iter() {
             let neighbor_transform = current_transform * side.reflection();
-            let neighbor_p = neighbor_transform * MPoint::origin();
+            let neighbor_p = neighbor_transform.pos();
             if -start_p.mip(&neighbor_p) > max_node_center_distance.cosh() {
                 continue;
             }
@@ -63,7 +63,7 @@ pub fn nearby_nodes(
     // hundreds of transformations being composed.
     let mut pending = VecDeque::<PendingNode>::new();
     let mut visited = FxHashSet::<NodeId>::default();
-    let start_p = start.local * MPoint::origin();
+    let start_p = start.local.pos();
 
     pending.push_back(PendingNode {
         id: start.node,
@@ -72,7 +72,7 @@ pub fn nearby_nodes(
     visited.insert(start.node);
 
     while let Some(current) = pending.pop_front() {
-        let current_p = current.transform * MPoint::origin();
+        let current_p = current.transform.pos();
         if -start_p.mip(&current_p) > max_node_center_distance.cosh() {
             continue;
         }
@@ -117,8 +117,7 @@ impl<'a> RayTraverser<'a> {
         let mut closest_vertex = Vertex::A;
         let mut closest_vertex_cosh_distance = f32::INFINITY;
         for vertex in Vertex::iter() {
-            let vertex_cosh_distance =
-                (vertex.node_to_dual() * position.local * MPoint::origin()).w;
+            let vertex_cosh_distance = (vertex.node_to_dual() * position.local.pos()).w;
             if vertex_cosh_distance < closest_vertex_cosh_distance {
                 closest_vertex = vertex;
                 closest_vertex_cosh_distance = vertex_cosh_distance;

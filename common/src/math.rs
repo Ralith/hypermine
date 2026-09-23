@@ -587,6 +587,13 @@ impl<N: RealField + Copy> MIsometry<N> {
         self.0.row(i)
     }
 
+    /// Returns the position of this transformation, as in, where it transforms the origin. Note that
+    /// this is the last column of the underlying transformation matrix.
+    #[inline]
+    pub fn pos(&self) -> MPoint<N> {
+        MPoint(MVector(self.0.column(3).into()))
+    }
+
     /// Creates an identity matrix.
     #[inline]
     pub fn identity() -> Self {

@@ -523,7 +523,7 @@ mod data {
                 // the midpoint of these two extremes allows one to find the bounding sphere.
                 // Note that this also means that the bounding sphere radius is half the dodeca's
                 // bounding sphere radius.
-                (vertex.dual_to_node_f64() * MPoint::origin()).midpoint(&MPoint::origin())
+                vertex.dual_to_node_f64().pos().midpoint(&MPoint::origin())
             })
         });
 
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn radius() {
-        let corner = *Vertex::A.dual_to_node_f64() * MPoint::origin();
+        let corner = Vertex::A.dual_to_node_f64().pos();
         assert_abs_diff_eq!(
             BOUNDING_SPHERE_RADIUS_F64,
             corner.distance(&MPoint::origin()),
@@ -681,7 +681,7 @@ mod tests {
 
     #[test]
     fn chunk_bounding_sphere() {
-        let corner = *Vertex::A.dual_to_node_f64() * MPoint::origin();
+        let corner = Vertex::A.dual_to_node_f64().pos();
         let bounding_sphere_center = Vertex::A.chunk_bounding_sphere_center_f64();
         assert_abs_diff_eq!(
             CHUNK_BOUNDING_SPHERE_RADIUS_F64,
