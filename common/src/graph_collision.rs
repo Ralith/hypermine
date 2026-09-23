@@ -436,7 +436,7 @@ mod tests {
         }
 
         // The node coordinates of the corner of the missing node
-        let vertex_pos = Vertex::A.dual_to_node() * MPoint::origin();
+        let vertex_pos = Vertex::A.dual_to_node().pos();
 
         // Use a ray starting from the origin. The direction vector is vertex_pos with the w coordinate
         // set to 0 and normalized
