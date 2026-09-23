@@ -4,16 +4,19 @@ use fxhash::FxHashSet;
 
 use crate::{
     collision_math::Ray,
-    dodeca::{self, Side, Vertex},
+    dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     math::MIsometry,
     node::ChunkId,
     proto::Position,
 };
 
-/// Ensure all nodes exist whose bounding spheres are within `distance` of `start`
-pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
-    let max_node_center_distance = distance + dodeca::BOUNDING_SPHERE_RADIUS;
+/// Adds nodes to the graph as necessary so that all nodes within `distance` of `position` are present.
+/// This function may add additional nodes, but it is designed to not expand the graph much more than necessary.
+pub fn ensure_nearby(graph: &mut Graph, position: &Position, distance: f32) {
+    let node = position.node;
+    let point = position.local.pos();
+    let sinh_distance = distance.sinh();
 
     // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
     // minimal path to each node. This greatly helps prevent error from accumulating due to
@@ -21,15 +24,14 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
     let mut pending = VecDeque::<(NodeId, MIsometry<f32>)>::new();
     let mut visited = FxHashSet::<NodeId>::default();
 
-    pending.push_back((start.node, MIsometry::identity()));
-    visited.insert(start.node);
-    let start_p = start.local.pos();
+    pending.push_back((node, MIsometry::identity()));
+    visited.insert(node);
 
     while let Some((node, current_transform)) = pending.pop_front() {
         for side in Side::iter() {
-            let neighbor_transform = current_transform * side.reflection();
-            let neighbor_p = neighbor_transform.pos();
-            if -start_p.mip(&neighbor_p) > max_node_center_distance.cosh() {
+            let side_normal = current_transform * side.normal();
+            if point.mip(&side_normal) < -sinh_distance {
+                // We're crossing a plane into a region entirely outside the radius of interest.
                 continue;
             }
             let neighbor = graph.ensure_neighbor(node, side);
@@ -37,60 +39,51 @@ pub fn ensure_nearby(graph: &mut Graph, start: &Position, distance: f32) {
                 continue;
             }
             visited.insert(neighbor);
-            pending.push_back((neighbor, neighbor_transform));
+            pending.push_back((neighbor, current_transform * side.reflection()));
         }
     }
 }
 
-/// Compute `start.node`-relative transforms of all nodes whose bounding spheres lie within `distance` of
-/// `start`
+/// Returns all nodes in the graph within `distance` of `position`, along with their transforms
+/// relative to `position.node`, skipping nodes that have not been added to the graph. If called right after
+/// `ensure_nearby` with the same arguments, it is guaranteed not to miss any nodes.
+/// This function may return additional nodes, but it is designed to not return too many extra nodes.
+/// It is also guaranteed to include `position.node` in the list of nodes it returns.
 pub fn nearby_nodes(
     graph: &Graph,
-    start: &Position,
+    position: &Position,
     distance: f32,
 ) -> Vec<(NodeId, MIsometry<f32>)> {
-    let max_node_center_distance = distance + dodeca::BOUNDING_SPHERE_RADIUS;
-
-    struct PendingNode {
-        id: NodeId,
-        transform: MIsometry<f32>,
-    }
-
     let mut result = Vec::new();
+    let node = position.node;
+    let point = position.local.pos();
+    let sinh_distance = distance.sinh();
 
     // We do a breadth-first instead of a depth-first traversal here to ensure that we take the
     // minimal path to each node. This greatly helps prevent error from accumulating due to
     // hundreds of transformations being composed.
-    let mut pending = VecDeque::<PendingNode>::new();
+    let mut pending = VecDeque::<(NodeId, MIsometry<f32>)>::new();
     let mut visited = FxHashSet::<NodeId>::default();
-    let start_p = start.local.pos();
 
-    pending.push_back(PendingNode {
-        id: start.node,
-        transform: MIsometry::identity(),
-    });
-    visited.insert(start.node);
+    pending.push_back((node, MIsometry::identity()));
+    visited.insert(node);
 
-    while let Some(current) = pending.pop_front() {
-        let current_p = current.transform.pos();
-        if -start_p.mip(&current_p) > max_node_center_distance.cosh() {
-            continue;
-        }
-        result.push((current.id, current.transform));
-
+    while let Some((node, current_transform)) = pending.pop_front() {
+        result.push((node, current_transform));
         for side in Side::iter() {
-            let neighbor = match graph.neighbor(current.id, side) {
-                None => continue,
-                Some(x) => x,
+            let side_normal = current_transform * side.normal();
+            if point.mip(&side_normal) < -sinh_distance {
+                // We're crossing a plane into a region entirely outside the radius of interest.
+                continue;
+            }
+            let Some(neighbor) = graph.neighbor(node, side) else {
+                continue;
             };
             if visited.contains(&neighbor) {
                 continue;
             }
-            pending.push_back(PendingNode {
-                id: neighbor,
-                transform: current.transform * side.reflection(),
-            });
             visited.insert(neighbor);
+            pending.push_back((neighbor, current_transform * side.reflection()));
         }
     }
 
@@ -225,9 +218,9 @@ mod tests {
     fn traversal_functions_example() {
         let mut graph = Graph::new(1);
         ensure_nearby(&mut graph, &Position::origin(), 6.0);
-        assert_abs_diff_eq!(graph.len(), 687959, epsilon = 50);
+        assert_abs_diff_eq!(graph.len(), 617779, epsilon = 50);
 
         let nodes = nearby_nodes(&graph, &Position::origin(), 6.0);
-        assert_abs_diff_eq!(nodes.len(), 687959, epsilon = 50);
+        assert_abs_diff_eq!(nodes.len(), 617779, epsilon = 50);
     }
 }
