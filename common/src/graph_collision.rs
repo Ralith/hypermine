@@ -1,11 +1,12 @@
 use crate::{
-    chunk_collision::chunk_sphere_cast,
+    chunk_collision::{ChunkCastHit, chunk_sphere_cast},
     collision_math::Ray,
     graph::Graph,
-    math::MVector,
-    node::{Chunk, ChunkId},
+    math::{MIsometry, MVector},
+    node::{Chunk, ChunkId, VoxelData},
     proto::Position,
     traversal::RayTraverser,
+    world::Material,
 };
 
 /// Performs sphere casting (swept collision query) against the voxels in the `Graph`
@@ -13,10 +14,6 @@ use crate::{
 /// The `ray` parameter and any resulting hit normals are given in the local coordinate system of `position`.
 ///
 /// The `tanh_distance` is the hyperbolic tangent of the cast_distance, or the distance along the ray to check for hits.
-///
-/// This function may return a `Err(OutOfBounds)` if not enough chunks are generated, even if the ray never reaches an
-/// ungenerated chunk. To prevent these errors, make sure that the distance between the ray's start point and the center of
-/// the closest node with ungenerated chunks is greater than `cast_distance + collider_radius + dodeca::BOUNDING_SPHERE_RADIUS`
 pub fn sphere_cast(
     collider_radius: f32,
     graph: &Graph,
@@ -24,23 +21,19 @@ pub fn sphere_cast(
     ray: &Ray,
     mut tanh_distance: f32,
 ) -> Result<Option<GraphCastHit>, OutOfBounds> {
+    let fallback_voxel_data = VoxelData::Solid(Material::Dirt);
+
     // A collision check is assumed to be a miss until a collision is found.
     // This `hit` variable gets updated over time before being returned.
-    let mut hit: Option<GraphCastHit> = None;
+    let mut hit: Option<PossibleGraphCastHit> = None;
 
     let mut traverser = RayTraverser::new(graph, *position, ray, collider_radius);
     while let Some((chunk, transform)) = traverser.next(tanh_distance) {
-        let Some(chunk) = chunk else {
-            // Collision checking on chunk outside of graph
-            return Err(OutOfBounds);
-        };
-        let Chunk::Populated {
-            voxels: ref voxel_data,
-            ..
-        } = graph[chunk]
-        else {
-            // Collision checking on unpopulated chunk
-            return Err(OutOfBounds);
+        let (voxel_data, in_bounds) = match chunk.map(|c| &graph[c]) {
+            Some(Chunk::Populated {
+                voxels: voxel_data, ..
+            }) => (voxel_data, true),
+            _ => (&fallback_voxel_data, false),
         };
 
         // Check collision within a single chunk
@@ -53,15 +46,26 @@ pub fn sphere_cast(
         )
         .map_or(hit, |hit| {
             tanh_distance = hit.tanh_distance;
-            Some(GraphCastHit {
-                tanh_distance: hit.tanh_distance,
+            Some(PossibleGraphCastHit {
+                inner: hit,
                 chunk,
-                normal: transform.inverse() * hit.normal,
+                transform,
+                in_bounds,
             })
         });
     }
 
-    Ok(hit)
+    let Some(hit) = hit else {
+        return Ok(None);
+    };
+    if !hit.in_bounds {
+        return Err(OutOfBounds);
+    }
+    Ok(Some(GraphCastHit {
+        tanh_distance: hit.inner.tanh_distance,
+        chunk: hit.chunk.expect("in bounds"),
+        normal: hit.transform.inverse() * hit.inner.normal,
+    }))
 }
 
 #[derive(Debug)]
@@ -73,13 +77,30 @@ pub struct GraphCastHit {
     /// The tanh of the distance traveled along the ray to result in this hit.
     pub tanh_distance: f32,
 
-    /// Which chunk in the graph the hit occurred in
+    /// Which chunk in the graph the hit occurred in.
     pub chunk: ChunkId,
 
     /// Represents the normal vector of the hit surface in the original coordinate system
     /// of the sphere casting. To get the actual normal vector, project it so that it is orthogonal
     /// to the endpoint in Lorentz space.
     pub normal: MVector<f32>,
+}
+
+/// Information about a discovered intersection at the end of a ray segment. May be revised
+/// if a closer intersection is discovered.
+struct PossibleGraphCastHit {
+    /// Data returned when performing a collision query within the chunk
+    inner: ChunkCastHit,
+
+    /// Which chunk in the graph the hit occurred in, or `None` if the hit was outside the graph
+    chunk: Option<ChunkId>,
+
+    /// The accumulated transform of the initial position, relative to the chunk.
+    transform: MIsometry<f32>,
+
+    /// Whether the hit was into a generated region. If `false`, the collision result is ambiguous
+    /// because the ray went out of bounds
+    in_bounds: bool,
 }
 
 #[cfg(test)]
