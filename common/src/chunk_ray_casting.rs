@@ -6,6 +6,7 @@ use crate::{
     world::Material,
 };
 
+/// Information from a positive hit result during a ray cast
 pub struct ChunkCastHit {
     /// The tanh of the distance traveled along the ray to result in this hit.
     pub tanh_distance: f32,

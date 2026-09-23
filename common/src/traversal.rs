@@ -100,7 +100,6 @@ pub fn nearby_nodes(
 pub struct RayTraverser<'a> {
     graph: &'a Graph,
     ray: &'a Ray,
-    radius: f32,
     /// Chunks that have already been added to `iterator_queue` and shouldn't be added again
     visited_chunks: FxHashSet<ChunkId>,
     /// Chunks that should be returned by `next` in the future
@@ -137,7 +136,6 @@ impl<'a> RayTraverser<'a> {
 
         Self {
             graph,
-            radius,
             ray,
             visited_chunks,
             iterator_queue,
@@ -183,17 +181,7 @@ impl<'a> RayTraverser<'a> {
                 {
                     let side = vertex.canonical_sides()[axis];
                     let next_node_transform = side.reflection() * node_transform;
-                    // Crude check to ensure that the neighboring chunk's node can be in the path of the ray. For simplicity, this
-                    // check treats each node as a sphere and assumes the ray is pointed directly towards its center. The check is
-                    // needed because chunk generation uses this approximation, and this check is not guaranteed to pass near corners
-                    // because the AABB check can have false positives.
-                    let ray_node_distance = (next_node_transform * self.ray.position).w.acosh();
-                    let ray_length = tanh_distance.atanh();
-                    if ray_node_distance - ray_length - self.radius > dodeca::BOUNDING_SPHERE_RADIUS
-                    {
-                        // Ray cannot intersect node
-                        continue;
-                    }
+
                     // Add the new chunk to the queue.
                     if let Some(neighbor) = self.graph.neighbor(node, side) {
                         if self.visited_chunks.insert(ChunkId::new(neighbor, vertex)) {
