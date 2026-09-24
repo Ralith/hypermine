@@ -6,10 +6,12 @@ use common::{
     node::{Chunk, ChunkId},
     proto::Position,
     traversal::{ensure_nearby, nearby_nodes},
-    worldgen::ChunkParams,
+    worldgen::{ChunkParams, WorldgenConfig},
 };
 
 fn build_graph(c: &mut Criterion) {
+    let worldgen_cfg = WorldgenConfig::default();
+
     c.bench_function("build_graph 1000", |b| {
         b.iter(|| {
             let mut graph = Graph::new(12);
@@ -28,9 +30,9 @@ fn build_graph(c: &mut Criterion) {
             let mut n = NodeId::ROOT;
             for _ in 0..500 {
                 n = graph.ensure_neighbor(n, Side::A);
-                graph.ensure_node_state(n);
+                graph.ensure_node_state(n, &worldgen_cfg);
                 n = graph.ensure_neighbor(n, Side::J);
-                graph.ensure_node_state(n);
+                graph.ensure_node_state(n, &worldgen_cfg);
             }
             assert_eq!(graph.len(), 1001);
         })
@@ -45,7 +47,7 @@ fn build_graph(c: &mut Criterion) {
             for (node, _) in all_nodes {
                 for vertex in Vertex::iter() {
                     let chunk = ChunkId::new(node, vertex);
-                    let params = ChunkParams::new(&mut graph, chunk);
+                    let params = ChunkParams::new(&mut graph, chunk, &worldgen_cfg);
                     graph[chunk] = Chunk::Populated {
                         voxels: params.generate_voxels(),
                         surface: None,

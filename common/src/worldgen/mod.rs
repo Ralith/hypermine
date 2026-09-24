@@ -17,6 +17,13 @@ mod horosphere;
 mod plane;
 mod terraingen;
 
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WorldgenConfig {
+    /// Whether an assortment of random horospheres should be added to world generation. This is a temporary
+    /// option until large structures that fit with the theme of the world are introduced.
+    pub horospheres_enabled: bool,
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStateKind {
     Sky,
@@ -76,9 +83,12 @@ pub struct PartialNodeState {
 }
 
 impl PartialNodeState {
-    pub fn new(graph: &Graph, node: NodeId) -> Self {
+    pub fn new(graph: &Graph, node: NodeId, cfg: &WorldgenConfig) -> Self {
         Self {
-            candidate_horosphere: HorosphereNode::new(graph, node),
+            candidate_horosphere: cfg
+                .horospheres_enabled
+                .then(|| HorosphereNode::new(graph, node))
+                .flatten(),
         }
     }
 }
@@ -95,7 +105,7 @@ pub struct NodeState {
     horosphere: Option<HorosphereNode>,
 }
 impl NodeState {
-    pub fn new(graph: &Graph, node: NodeId) -> Self {
+    pub fn new(graph: &Graph, node: NodeId, _cfg: &WorldgenConfig) -> Self {
         let mut parents = graph
             .parents(node)
             .map(|(s, n)| ParentInfo {
@@ -221,9 +231,9 @@ pub struct ChunkParams {
 
 impl ChunkParams {
     /// Extract data necessary to generate a chunk, generating new graph nodes if necessary
-    pub fn new(graph: &mut Graph, chunk: ChunkId) -> Self {
-        graph.ensure_node_state(chunk.node);
-        let env = chunk_incident_enviro_factors(graph, chunk);
+    pub fn new(graph: &mut Graph, chunk: ChunkId, cfg: &WorldgenConfig) -> Self {
+        graph.ensure_node_state(chunk.node, cfg);
+        let env = chunk_incident_enviro_factors(graph, chunk, cfg);
         let state = graph.node_state(chunk.node);
         Self {
             dimension: graph.layout().dimension(),
@@ -580,10 +590,14 @@ struct ChunkIncidentEnviroFactors {
 /// sorted and converted to f32 for use in functions like trilerp.
 ///
 /// Returns `None` if not all incident nodes are populated.
-fn chunk_incident_enviro_factors(graph: &mut Graph, chunk: ChunkId) -> ChunkIncidentEnviroFactors {
+fn chunk_incident_enviro_factors(
+    graph: &mut Graph,
+    chunk: ChunkId,
+    cfg: &WorldgenConfig,
+) -> ChunkIncidentEnviroFactors {
     let mut i = chunk.vertex.dual_vertices().map(|(_, path)| {
         let node = path.fold(chunk.node, |node, side| graph.ensure_neighbor(node, side));
-        graph.ensure_node_state(node);
+        graph.ensure_node_state(node, cfg);
         graph.node_state(node).enviro
     });
 
@@ -737,15 +751,17 @@ mod test {
     #[test]
     fn check_chunk_incident_max_elevations() {
         let mut g = Graph::new(1);
+        let cfg = WorldgenConfig::default();
         for (i, path) in Vertex::A.dual_vertices().map(|(_, p)| p).enumerate() {
             let new_node = path.fold(NodeId::ROOT, |node, side| g.ensure_neighbor(node, side));
 
             // assigning state
-            g.ensure_node_state(new_node);
+            g.ensure_node_state(new_node, &cfg);
             g[new_node].state.as_mut().unwrap().enviro.max_elevation = i as f32 + 1.0;
         }
 
-        let enviros = chunk_incident_enviro_factors(&mut g, ChunkId::new(NodeId::ROOT, Vertex::A));
+        let enviros =
+            chunk_incident_enviro_factors(&mut g, ChunkId::new(NodeId::ROOT, Vertex::A), &cfg);
         for (i, max_elevation) in enviros.max_elevations.into_iter().enumerate() {
             println!("{i}, {max_elevation}");
             assert_abs_diff_eq!(max_elevation, (i + 1) as f32, epsilon = 1e-8);

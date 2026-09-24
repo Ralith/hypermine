@@ -114,7 +114,7 @@ mod tests {
     fn wraparound() {
         let mock_cfg = SimConfig::from_raw(&common::SimConfigRaw::default());
         let mut mock_graph = Graph::new(1);
-        mock_graph.ensure_node_state(NodeId::ROOT);
+        mock_graph.ensure_node_state(NodeId::ROOT, &mock_cfg.worldgen);
         let mock_character_input = CharacterInput {
             movement: na::Vector3::x(),
             jump: false,

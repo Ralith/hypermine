@@ -10,7 +10,7 @@ use crate::graph::{Graph, NodeId};
 use crate::proto::{BlockUpdate, Position, SerializedVoxelData};
 use crate::voxel_math::{ChunkDirection, CoordAxis, CoordSign, Coords};
 use crate::world::Material;
-use crate::worldgen::{NodeState, PartialNodeState};
+use crate::worldgen::{NodeState, PartialNodeState, WorldgenConfig};
 use crate::{Chunks, margins, peer_traverser};
 
 /// Unique identifier for a single chunk (1/20 of a dodecahedron) in the graph
@@ -35,16 +35,16 @@ impl Graph {
 
     /// Initializes the PartialNodeState for the given node if not already initialized,
     /// initializing other nodes' NodeState and PartialNodeState as necessary
-    pub fn ensure_partial_node_state(&mut self, node_id: NodeId) {
+    pub fn ensure_partial_node_state(&mut self, node_id: NodeId, cfg: &WorldgenConfig) {
         if self[node_id].partial_state.is_some() {
             return;
         }
 
         for (_, parent) in self.parents(node_id) {
-            self.ensure_node_state(parent);
+            self.ensure_node_state(parent, cfg);
         }
 
-        let partial_node_state = PartialNodeState::new(self, node_id);
+        let partial_node_state = PartialNodeState::new(self, node_id, cfg);
         self[node_id].partial_state = Some(partial_node_state);
     }
 
@@ -56,17 +56,17 @@ impl Graph {
 
     /// Initializes the NodeState for the given node if not already initialized,
     /// initializing other nodes' NodeState and PartialNodeState as necessary
-    pub fn ensure_node_state(&mut self, node_id: NodeId) {
+    pub fn ensure_node_state(&mut self, node_id: NodeId, cfg: &WorldgenConfig) {
         if self[node_id].state.is_some() {
             return;
         }
 
-        self.ensure_partial_node_state(node_id);
+        self.ensure_partial_node_state(node_id, cfg);
         for peer in peer_traverser::ensure_peer_nodes(self, node_id) {
-            self.ensure_partial_node_state(peer.node());
+            self.ensure_partial_node_state(peer.node(), cfg);
         }
 
-        let node_state = NodeState::new(self, node_id);
+        let node_state = NodeState::new(self, node_id, cfg);
         self[node_id].state = Some(node_state);
     }
 

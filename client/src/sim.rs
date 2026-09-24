@@ -88,7 +88,7 @@ impl Sim {
         local_character_id: EntityId,
     ) -> Self {
         let mut graph = Graph::new(cfg.chunk_size);
-        graph.ensure_node_state(NodeId::ROOT);
+        graph.ensure_node_state(NodeId::ROOT, &cfg.worldgen);
         Self {
             graph,
             worldgen_driver: WorldgenDriver::new(chunk_load_parallelism),
@@ -268,6 +268,7 @@ impl Sim {
             self.view(),
             self.cfg.chunk_generation_distance,
             &mut self.graph,
+            &self.cfg.worldgen,
         );
 
         let step_interval = self.cfg.step_interval;
@@ -426,7 +427,7 @@ impl Sim {
             // since otherwise, we won't be able to know where the local character is with
             // just the NodeId alone.
             let node_id = self.graph.ensure_neighbor(node.parent, node.side);
-            self.graph.ensure_node_state(node_id);
+            self.graph.ensure_node_state(node_id, &self.cfg.worldgen);
         }
         for block_update in msg.block_updates.into_iter() {
             self.worldgen_driver

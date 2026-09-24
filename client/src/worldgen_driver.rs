@@ -7,6 +7,7 @@ use common::{
     node::{Chunk, ChunkId, VoxelData},
     proto::{BlockUpdate, Position},
     traversal,
+    worldgen::WorldgenConfig,
 };
 use fxhash::FxHashMap;
 use metrics::histogram;
@@ -29,7 +30,13 @@ impl WorldgenDriver {
         }
     }
 
-    pub fn drive(&mut self, view: Position, chunk_generation_distance: f32, graph: &mut Graph) {
+    pub fn drive(
+        &mut self,
+        view: Position,
+        chunk_generation_distance: f32,
+        graph: &mut Graph,
+        cfg: &WorldgenConfig,
+    ) {
         let drive_worldgen_started = Instant::now();
 
         // Check for chunks that have finished generating
@@ -65,7 +72,7 @@ impl WorldgenDriver {
                 }
 
                 // Generate voxel data
-                let params = common::worldgen::ChunkParams::new(graph, chunk_id);
+                let params = common::worldgen::ChunkParams::new(graph, chunk_id, cfg);
                 if let Some(voxel_data) = self.preloaded_voxel_data.remove(&chunk_id) {
                     self.add_chunk_to_graph(graph, chunk_id, voxel_data);
                 } else if self.work_queue.load(ChunkDesc { node, params }) {
