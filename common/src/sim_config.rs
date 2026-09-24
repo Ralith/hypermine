@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{dodeca, math::MVector};
+use crate::{dodeca, math::MVector, worldgen::WorldgenConfig};
 
 /// Manually specified simulation config parameters
 #[derive(Serialize, Deserialize, Default)]
@@ -19,6 +19,9 @@ pub struct SimConfigRaw {
     pub input_queue_size_ms: Option<u16>,
     /// Whether gameplay-like restrictions exist, such as limited inventory
     pub gameplay_enabled: Option<bool>,
+    /// Whether an assortment of random horospheres should be added to world generation. This is a temporary
+    /// option until large structures that fit with the theme of the world are introduced.
+    pub horospheres_enabled: Option<bool>,
     /// Number of voxels along the edge of a chunk
     pub chunk_size: Option<u8>,
     /// Approximate length of the edge of a voxel in meters
@@ -55,6 +58,8 @@ pub struct SimConfig {
     pub character: CharacterConfig,
     /// Scaling factor converting meters to absolute units
     pub meters_to_absolute: f32,
+    /// Options related to world generation
+    pub worldgen: WorldgenConfig,
 }
 
 impl SimConfig {
@@ -73,6 +78,9 @@ impl SimConfig {
             chunk_size,
             character: CharacterConfig::from_raw(&x.character, meters_to_absolute),
             meters_to_absolute,
+            worldgen: WorldgenConfig {
+                horospheres_enabled: x.horospheres_enabled.unwrap_or(false),
+            },
         }
     }
 }
