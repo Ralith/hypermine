@@ -159,17 +159,24 @@ unsafe extern "system" fn messenger_callback(
         let msg = CStr::from_ptr(data.p_message).to_string_lossy();
         let queue_labels = fmt_labels(data.p_queue_labels, data.queue_label_count);
         let cmd_labels = fmt_labels(data.p_cmd_buf_labels, data.cmd_buf_label_count);
-        let objects = slice::from_raw_parts(data.p_objects, data.object_count as usize)
-            .iter()
-            .map(|obj| {
-                if obj.p_object_name.is_null() {
-                    format!("{:?} {:x}", obj.object_type, obj.object_handle)
-                } else {
-                    format!("{:?} {:x} {}", obj.object_type, obj.object_handle, msg_id)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+        let objects = if data.object_count == 0 {
+            // We need to handle a count of 0 separately because p_objects may be
+            // null, resulting in undefined behavior if used with
+            // slice::from_raw_parts.
+            String::new()
+        } else {
+            slice::from_raw_parts(data.p_objects, data.object_count as usize)
+                .iter()
+                .map(|obj| {
+                    if obj.p_object_name.is_null() {
+                        format!("{:?} {:x}", obj.object_type, obj.object_handle)
+                    } else {
+                        format!("{:?} {:x} {}", obj.object_type, obj.object_handle, msg_id)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
             error!(target: "vulkan", id = %msg_id, number = data.message_id_number, queue_labels = %queue_labels, cmd_labels = %cmd_labels, objects = %objects, "{}", msg);
         } else if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
