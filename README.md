@@ -1,6 +1,8 @@
 ## Installation
 
-See the [wiki](https://github.com/Ralith/hypermine/wiki) for instructions on how to build and run
+The quickest way to run Hypermine is to go to <https://github.com/Ralith/hypermine/releases> and download the zip file relevant for your system (under "Assets").
+
+If you would like to build from source instead, see the [docs](https://github.com/Ralith/hypermine/blob/master/docs/how_to_play.md) or the [wiki](https://github.com/Ralith/hypermine/wiki) for instructions.
 
 
 ## License
