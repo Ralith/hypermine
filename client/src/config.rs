@@ -86,7 +86,7 @@ impl Config {
             name: name.unwrap_or("player".into()),
             data_dirs,
             save: save.unwrap_or("default.save".into()),
-            field_of_view: field_of_view.unwrap_or(90.0),
+            field_of_view: field_of_view.unwrap_or(90.0).clamp(30.0, 170.0),
             chunk_load_parallelism: chunk_load_parallelism.unwrap_or(256),
             asset_load_parallelism: asset_load_parallelism.unwrap_or_else(|| {
                 std::thread::available_parallelism()
