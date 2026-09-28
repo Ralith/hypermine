@@ -18,15 +18,13 @@ pub(super) struct YendorianNode {
 }
 
 impl YendorianNode {
-    pub(super) fn new(graph: &Graph, node: NodeId, kind: NodeStateKind) -> Option<Self> {
-        if node == NodeId::ROOT {
-            // The first test has one tree, owned by the root Land node.
-            return Some(Self {
-                child_sides: side_bit(Side::A) | side_bit(Side::J),
-                branch_sides: side_bit(Side::A) | side_bit(Side::J),
-            });
-        }
-
+    pub(super) fn new(
+        graph: &Graph,
+        node: NodeId,
+        kind: NodeStateKind,
+        precipitation: f32,
+        temperature: f32,
+    ) -> Option<Self> {
         // `Graph::parents` returns every shallower neighbor and the shared side.
         // Parent states have already been finalized by `ensure_node_state`.
         let incoming_sides: Vec<_> = graph
@@ -41,7 +39,15 @@ impl YendorianNode {
             .collect();
 
         if incoming_sides.is_empty() {
-            return None;
+            // Only Land nodes may own a tree. Each node's deterministic roll
+            // scales linearly with precipitation, reaching certainty at 30.
+            if kind != NodeStateKind::Land || !tree_seed_is_selected(graph, node, precipitation) {
+                return None;
+            }
+            return Some(Self {
+                child_sides: side_bit(Side::A) | side_bit(Side::J),
+                branch_sides: side_bit(Side::A) | side_bit(Side::J),
+            });
         }
 
         let mut child_sides = 0;
@@ -57,7 +63,7 @@ impl YendorianNode {
                     for side in Side::iter() {
                         if side != parent_side
                             && !side.adjacent_to(parent_side)
-                            && branch_is_selected(graph, node, side)
+                            && branch_is_selected(graph, node, side, temperature)
                         {
                             child_sides |= side_bit(side);
                         }
@@ -96,10 +102,32 @@ impl YendorianNode {
 }
 
 /// Makes a stable, independent propagation decision for a node-side pair.
-fn branch_is_selected(graph: &Graph, node: NodeId, side: Side) -> bool {
+fn tree_seed_is_selected(graph: &Graph, node: NodeId, precipitation: f32) -> bool {
+    let probability = (precipitation * super::YENDORIAN_TREE_SPAWN_RATE).clamp(
+        super::YENDORIAN_PROBABILITY_MIN,
+        super::YENDORIAN_PROBABILITY_MAX,
+    );
+    let spice = graph.hash_of(node) as u64;
+    let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, u64::MAX));
+    rng.random::<f32>() < probability
+}
+
+fn branch_is_selected(graph: &Graph, node: NodeId, side: Side, temperature: f32) -> bool {
     let spice = graph.hash_of(node) as u64;
     let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, side as u64));
-    rng.random::<f32>() < super::YENDORIAN_BRANCH_PROBABILITY
+    rng.random::<f32>() < branch_probability(temperature)
+}
+
+fn branch_probability(temperature: f32) -> f32 {
+    let temperature_fraction = ((temperature - super::YENDORIAN_BRANCH_TEMPERATURE_MIN)
+        / (super::YENDORIAN_BRANCH_TEMPERATURE_MAX - super::YENDORIAN_BRANCH_TEMPERATURE_MIN))
+        .clamp(
+            super::YENDORIAN_PROBABILITY_MIN,
+            super::YENDORIAN_PROBABILITY_MAX,
+        );
+    super::YENDORIAN_BRANCH_PROBABILITY_MIN
+        + temperature_fraction
+            * (super::YENDORIAN_BRANCH_PROBABILITY_MAX - super::YENDORIAN_BRANCH_PROBABILITY_MIN)
 }
 
 fn side_bit(side: Side) -> u16 {

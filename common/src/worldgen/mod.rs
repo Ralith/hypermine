@@ -23,10 +23,18 @@ mod yendorian;
 
 /// Radius of Yendorian branches, in absolute hyperbolic distance units.
 const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
-/// Probability that a sky branch continues through each eligible side.
-const YENDORIAN_BRANCH_PROBABILITY: f32 = 0.5;
 /// Radius of the leaves ball at a terminal Yendorian node.
 const YENDORIAN_LEAVES_RADIUS: f32 = 0.5;
+/// Yendorian tree spawn probability per precipitation unit at Land nodes.
+const YENDORIAN_TREE_SPAWN_RATE: f32 = 0.025;
+/// Lower and upper temperature limits for the linear branch-probability ramp.
+const YENDORIAN_BRANCH_TEMPERATURE_MIN: f32 = -10.0;
+const YENDORIAN_BRANCH_TEMPERATURE_MAX: f32 = 10.0;
+/// Lower and upper values of the branch-probability ramp.
+const YENDORIAN_BRANCH_PROBABILITY_MIN: f32 = 0.0;
+const YENDORIAN_BRANCH_PROBABILITY_MAX: f32 = 1.0;
+const YENDORIAN_PROBABILITY_MIN: f32 = 0.0;
+const YENDORIAN_PROBABILITY_MAX: f32 = 1.0;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldgenConfig {
@@ -160,7 +168,7 @@ impl NodeState {
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
-        let yendorian = YendorianNode::new(graph, node, kind);
+        let yendorian = YendorianNode::new(graph, node, kind, enviro.rainfall, enviro.temperature);
 
         Self {
             kind,
@@ -294,6 +302,9 @@ impl ChunkParams {
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
 
+        self.generate_yendorian_leaves(&mut voxels);
+        self.generate_yendorian_branches(&mut voxels);
+
         self.generate_terrain(&mut voxels, &mut rng);
 
         if let Some(horosphere) = &self.horosphere {
@@ -309,9 +320,6 @@ impl ChunkParams {
         // TODO: Don't generate detailed data for solid chunks with no neighboring voids
 
         self.generate_trees(&mut voxels, &mut rng);
-
-        self.generate_yendorian_leaves(&mut voxels);
-        self.generate_yendorian_branches(&mut voxels);
 
         margins::initialize_margins(self.dimension, &mut voxels);
         voxels
@@ -377,7 +385,6 @@ impl ChunkParams {
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
         if center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS {
             // The whole chunk is above ground
-            *voxels = VoxelData::Solid(Material::Void);
             return;
         }
         if center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS && !self.is_road {
