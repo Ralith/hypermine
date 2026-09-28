@@ -3,6 +3,7 @@ use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
 use terraingen::VoronoiInfo;
+use yendorian::YendorianNode;
 
 use crate::{
     dodeca::{Side, Vertex},
@@ -16,6 +17,7 @@ use crate::{
 mod horosphere;
 mod plane;
 mod terraingen;
+mod yendorian;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldgenConfig {
@@ -103,6 +105,7 @@ pub struct NodeState {
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
     horosphere: Option<HorosphereNode>,
+    yendorian: Option<YendorianNode>,
 }
 impl NodeState {
     pub fn new(graph: &Graph, node: NodeId, _cfg: &WorldgenConfig) -> Self {
@@ -148,6 +151,7 @@ impl NodeState {
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
+        let yendorian = YendorianNode::new(graph, node, kind);
 
         Self {
             kind,
@@ -159,6 +163,7 @@ impl NodeState {
             road_state,
             enviro,
             horosphere,
+            yendorian,
         }
     }
 
@@ -223,6 +228,8 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    /// Whether this chunk belongs to a Yendorian tree
+    is_yendorian: bool,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -244,6 +251,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            is_yendorian: state.yendorian.is_some(),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -258,6 +266,10 @@ impl ChunkParams {
 
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self) -> VoxelData {
+        if self.is_yendorian {
+            return VoxelData::Solid(Material::Wood);
+        }
+
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
 

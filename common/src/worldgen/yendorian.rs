@@ -1,0 +1,94 @@
+use crate::{
+    dodeca::Side,
+    graph::{Graph, NodeId},
+};
+
+use super::NodeStateKind;
+
+/// Yendorian-tree propagation information for one node.
+///
+/// The bit at each side indicates that this node propagates its tree state to
+/// the neighbor on that side.
+#[derive(Clone, Copy)]
+pub(super) struct YendorianNode {
+    child_sides: u16,
+}
+
+impl YendorianNode {
+    pub(super) fn new(graph: &Graph, node: NodeId, kind: NodeStateKind) -> Option<Self> {
+        if node == NodeId::ROOT {
+            // The first test has one tree, owned by the root Land node.
+            return Some(Self {
+                child_sides: side_bit(Side::A) | side_bit(Side::J),
+            });
+        }
+
+        // `Graph::parents` returns every shallower neighbor and the shared side.
+        // Parent states have already been finalized by `ensure_node_state`.
+        let incoming_sides: Vec<_> = graph
+            .parents(node)
+            .filter_map(|(side, parent)| {
+                graph
+                    .node_state(parent)
+                    .yendorian
+                    .filter(|state| state.propagates_through(side))
+                    .map(|_| side)
+            })
+            .collect();
+
+        if incoming_sides.is_empty() {
+            return None;
+        }
+
+        let mut child_sides = 0;
+        match kind {
+            NodeStateKind::Sky | NodeStateKind::DeepSky => {
+                // Union the six non-adjacent-to-parent exits for every incoming
+                // tree path. This preserves all branches when paths converge.
+                for parent_side in incoming_sides {
+                    for side in Side::iter() {
+                        if side != parent_side && !side.adjacent_to(parent_side) {
+                            child_sides |= side_bit(side);
+                        }
+                    }
+                }
+            }
+            NodeStateKind::DeepLand => {
+                // The below-ground trunk continues straight through the face
+                // opposite each incoming path.
+                for parent_side in incoming_sides {
+                    child_sides |= side_bit(opposite(parent_side));
+                }
+            }
+            // Land nodes other than the root do not continue the trunk.
+            NodeStateKind::Land => {}
+        }
+
+        Some(Self { child_sides })
+    }
+
+    fn propagates_through(self, side: Side) -> bool {
+        self.child_sides & side_bit(side) != 0
+    }
+}
+
+fn side_bit(side: Side) -> u16 {
+    1 << side as usize
+}
+
+fn opposite(side: Side) -> Side {
+    let nonadjacent: Vec<_> = Side::iter()
+        .filter(|&candidate| candidate != side && !candidate.adjacent_to(side))
+        .collect();
+    let mut opposites = nonadjacent.iter().copied().filter(|&candidate| {
+        nonadjacent
+            .iter()
+            .all(|&other| candidate == other || candidate.adjacent_to(other))
+    });
+    let opposite = opposites.next().expect("side has an opposite side");
+    assert!(
+        opposites.next().is_none(),
+        "side has multiple opposite sides"
+    );
+    opposite
+}
