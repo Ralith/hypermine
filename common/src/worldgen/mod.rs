@@ -9,7 +9,7 @@ use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     margins,
-    math::{self, MVector},
+    math::{self, MPoint, MVector},
     node::{ChunkId, VoxelData},
     world::Material,
 };
@@ -25,6 +25,8 @@ mod yendorian;
 const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
 /// Probability that a sky branch continues through each eligible side.
 const YENDORIAN_BRANCH_PROBABILITY: f32 = 0.5;
+/// Radius of the leaves ball at a terminal Yendorian node.
+const YENDORIAN_LEAVES_RADIUS: f32 = 0.5;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldgenConfig {
@@ -237,6 +239,8 @@ pub struct ChunkParams {
     is_road_support: bool,
     /// Whether this chunk belongs to a Yendorian tree
     yendorian_branches: Vec<LineSegment>,
+    /// Whether the Yendorian node has no children and should generate a leaves ball
+    has_yendorian_leaves: bool,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -272,6 +276,7 @@ impl ChunkParams {
                         .collect()
                 })
                 .unwrap_or_default(),
+            has_yendorian_leaves: state.yendorian.is_some_and(YendorianNode::is_terminal),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -305,6 +310,7 @@ impl ChunkParams {
 
         self.generate_trees(&mut voxels, &mut rng);
 
+        self.generate_yendorian_leaves(&mut voxels);
         self.generate_yendorian_branches(&mut voxels);
 
         margins::initialize_margins(self.dimension, &mut voxels);
@@ -329,6 +335,25 @@ impl ChunkParams {
                 .any(|branch| branch.distance_to(&point) <= YENDORIAN_BRANCH_RADIUS)
             {
                 voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Wood;
+            }
+        }
+    }
+
+    /// Generate a spherical cluster of leaves at the center of a terminal node.
+    fn generate_yendorian_leaves(&self, voxels: &mut VoxelData) {
+        if !self.has_yendorian_leaves {
+            return;
+        }
+
+        let center = MPoint::origin();
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let chunk_coords = voxel_center(self.dimension, coords);
+            let point = MVector::from(self.chunk.chunk_to_node() * chunk_coords.push(1.0))
+                .normalized_point();
+
+            if point.distance(&center) <= YENDORIAN_LEAVES_RADIUS {
+                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Leaves;
             }
         }
     }

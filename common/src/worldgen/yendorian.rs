@@ -89,6 +89,10 @@ impl YendorianNode {
     pub(super) fn branch_sides(self) -> impl Iterator<Item = Side> {
         Side::iter().filter(move |&side| self.branch_sides & side_bit(side) != 0)
     }
+
+    pub(super) fn is_terminal(self) -> bool {
+        self.child_sides == 0
+    }
 }
 
 /// Makes a stable, independent propagation decision for a node-side pair.
