@@ -23,6 +23,8 @@ mod yendorian;
 
 /// Radius of Yendorian branches, in absolute hyperbolic distance units.
 const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
+/// Probability that a sky branch continues through each eligible side.
+const YENDORIAN_BRANCH_PROBABILITY: f32 = 0.5;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldgenConfig {

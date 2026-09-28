@@ -2,6 +2,8 @@ use crate::{
     dodeca::Side,
     graph::{Graph, NodeId},
 };
+use rand::{RngExt, SeedableRng};
+use rand_pcg::Pcg64Mcg;
 
 use super::NodeStateKind;
 
@@ -53,7 +55,10 @@ impl YendorianNode {
                 // tree path. This preserves all branches when paths converge.
                 for parent_side in incoming_sides {
                     for side in Side::iter() {
-                        if side != parent_side && !side.adjacent_to(parent_side) {
+                        if side != parent_side
+                            && !side.adjacent_to(parent_side)
+                            && branch_is_selected(graph, node, side)
+                        {
                             child_sides |= side_bit(side);
                         }
                     }
@@ -84,6 +89,13 @@ impl YendorianNode {
     pub(super) fn branch_sides(self) -> impl Iterator<Item = Side> {
         Side::iter().filter(move |&side| self.branch_sides & side_bit(side) != 0)
     }
+}
+
+/// Makes a stable, independent propagation decision for a node-side pair.
+fn branch_is_selected(graph: &Graph, node: NodeId, side: Side) -> bool {
+    let spice = graph.hash_of(node) as u64;
+    let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, side as u64));
+    rng.random::<f32>() < super::YENDORIAN_BRANCH_PROBABILITY
 }
 
 fn side_bit(side: Side) -> u16 {
