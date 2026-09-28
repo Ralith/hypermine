@@ -12,6 +12,7 @@ use super::NodeStateKind;
 #[derive(Clone, Copy)]
 pub(super) struct YendorianNode {
     child_sides: u16,
+    branch_sides: u16,
 }
 
 impl YendorianNode {
@@ -20,6 +21,7 @@ impl YendorianNode {
             // The first test has one tree, owned by the root Land node.
             return Some(Self {
                 child_sides: side_bit(Side::A) | side_bit(Side::J),
+                branch_sides: side_bit(Side::A) | side_bit(Side::J),
             });
         }
 
@@ -41,6 +43,10 @@ impl YendorianNode {
         }
 
         let mut child_sides = 0;
+        let mut branch_sides = incoming_sides
+            .iter()
+            .copied()
+            .fold(0, |mask, side| mask | side_bit(side));
         match kind {
             NodeStateKind::Sky | NodeStateKind::DeepSky => {
                 // Union the six non-adjacent-to-parent exits for every incoming
@@ -64,11 +70,19 @@ impl YendorianNode {
             NodeStateKind::Land => {}
         }
 
-        Some(Self { child_sides })
+        branch_sides |= child_sides;
+        Some(Self {
+            child_sides,
+            branch_sides,
+        })
     }
 
     fn propagates_through(self, side: Side) -> bool {
         self.child_sides & side_bit(side) != 0
+    }
+
+    pub(super) fn branch_sides(self) -> impl Iterator<Item = Side> {
+        Side::iter().filter(move |&side| self.branch_sides & side_bit(side) != 0)
     }
 }
 

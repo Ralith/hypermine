@@ -13,11 +13,16 @@ use crate::{
     node::{ChunkId, VoxelData},
     world::Material,
 };
+use line::LineSegment;
 
 mod horosphere;
+mod line;
 mod plane;
 mod terraingen;
 mod yendorian;
+
+/// Radius of Yendorian branches, in absolute hyperbolic distance units.
+const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldgenConfig {
@@ -229,7 +234,7 @@ pub struct ChunkParams {
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
     /// Whether this chunk belongs to a Yendorian tree
-    is_yendorian: bool,
+    yendorian_branches: Vec<LineSegment>,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -251,7 +256,20 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            is_yendorian: state.yendorian.is_some(),
+            yendorian_branches: state
+                .yendorian
+                .map(|yendorian| {
+                    yendorian
+                        .branch_sides()
+                        .map(|side| {
+                            let center = MVector::origin().normalized_point();
+                            let neighbor_center = side.reflection() * center;
+                            let edge_center = center.midpoint(&neighbor_center);
+                            LineSegment::new(center, edge_center)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -266,10 +284,6 @@ impl ChunkParams {
 
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self) -> VoxelData {
-        if self.is_yendorian {
-            return VoxelData::Solid(Material::Wood);
-        }
-
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
 
@@ -289,8 +303,32 @@ impl ChunkParams {
 
         self.generate_trees(&mut voxels, &mut rng);
 
+        self.generate_yendorian_branches(&mut voxels);
+
         margins::initialize_margins(self.dimension, &mut voxels);
         voxels
+    }
+
+    /// Rasterize wood around the Yendorian branches passing through this node.
+    fn generate_yendorian_branches(&self, voxels: &mut VoxelData) {
+        if self.yendorian_branches.is_empty() {
+            return;
+        }
+
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let center = voxel_center(self.dimension, coords);
+            let point =
+                MVector::from(self.chunk.chunk_to_node() * center.push(1.0)).normalized_point();
+
+            if self
+                .yendorian_branches
+                .iter()
+                .any(|branch| branch.distance_to(&point) <= YENDORIAN_BRANCH_RADIUS)
+            {
+                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Wood;
+            }
+        }
     }
 
     /// Performs all terrain generation that can be done one voxel at a time and with
