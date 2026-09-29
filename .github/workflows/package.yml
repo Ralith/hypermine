@@ -8,18 +8,14 @@ jobs:
   package-windows:
     name: Windows
     runs-on: windows-latest
-    env:
-      VULKAN_VERSION: "1.4.363.0"
-      VULKAN_SDK: "C:/VulkanSDK/1.4.363.0"
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
       - name: Install Vulkan SDK
-        run: |
-          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/VulkanSDK-${{ env.VULKAN_VERSION }}-Installer.exe" -OutFile vulkan.exe
-          ./vulkan.exe --accept-licenses --default-answer --confirm-command install
-
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.363.0
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Server
