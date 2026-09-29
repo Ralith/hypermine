@@ -350,7 +350,7 @@ impl Window {
             let extent = swapchain.state.extent;
             let aspect_ratio = extent.width as f32 / extent.height as f32;
             let frame = &swapchain.state.frames[frame_id as usize];
-            let frustum = Frustum::from_vfov(f32::consts::FRAC_PI_4 * 1.2, aspect_ratio);
+            let frustum = Frustum::from_vfov(self.config.field_of_view.to_radians() / 2.0, aspect_ratio);
             // Render the GUI
             self.yak
                 .set_surface_size([extent.width as f32, extent.height as f32].into());
