@@ -7,6 +7,9 @@ use rand_pcg::Pcg64Mcg;
 
 use super::NodeStateKind;
 
+/// Value mixed into each node's hash to seed Yendorian generation. Chosen randomly.
+const YENDORIAN_SEED: u64 = 13334231312061724180;
+
 /// Yendorian-tree propagation information for one node.
 ///
 /// The bit at each side indicates that this node propagates its tree state to
@@ -26,6 +29,8 @@ impl YendorianNode {
         temperature: f32,
         is_deep_underground: bool,
     ) -> Option<Self> {
+        let spice = graph.hash_of(node) as u64;
+        let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, YENDORIAN_SEED));
         let parent_sides: Vec<_> = graph.parents(node).map(|(side, _)| side).collect();
 
         // `Graph::parents` returns every shallower neighbor and the shared side.
@@ -49,7 +54,7 @@ impl YendorianNode {
         if is_seed && !is_underground_sky {
             // Only Land nodes may own a tree. Each node's deterministic roll
             // scales linearly with precipitation.
-            if kind != NodeStateKind::Land || !tree_seed_is_selected(graph, node, precipitation) {
+            if kind != NodeStateKind::Land || !tree_seed_is_selected(&mut rng, precipitation) {
                 return None;
             }
         }
@@ -67,7 +72,7 @@ impl YendorianNode {
                 if parent_sides
                     .iter()
                     .all(|&parent_side| side != parent_side && !side.adjacent_to(parent_side))
-                    && side_is_selected(graph, node, side, probability)
+                    && side_is_selected(&mut rng, probability)
                 {
                     child_sides |= side_bit(side);
                 }
@@ -83,7 +88,7 @@ impl YendorianNode {
                         for side in Side::iter() {
                             if side != parent_side
                                 && !side.adjacent_to(parent_side)
-                                && branch_is_selected(graph, node, side, temperature)
+                                && branch_is_selected(&mut rng, temperature)
                             {
                                 child_sides |= side_bit(side);
                             }
@@ -128,14 +133,9 @@ impl YendorianNode {
     }
 }
 
-/// Makes a stable, independent propagation decision for a node-side pair.
-fn tree_seed_is_selected(graph: &Graph, node: NodeId, precipitation: f32) -> bool {
-    probability_is_selected(
-        graph,
-        node,
-        u64::MAX,
-        tree_generation_probability(precipitation),
-    )
+/// Makes a deterministic tree-seed decision using this node's RNG.
+fn tree_seed_is_selected(rng: &mut Pcg64Mcg, precipitation: f32) -> bool {
+    rng.random::<f32>() < tree_generation_probability(precipitation)
 }
 
 fn tree_generation_probability(precipitation: f32) -> f32 {
@@ -145,17 +145,11 @@ fn tree_generation_probability(precipitation: f32) -> f32 {
     )
 }
 
-fn branch_is_selected(graph: &Graph, node: NodeId, side: Side, temperature: f32) -> bool {
-    side_is_selected(graph, node, side, branch_probability(temperature))
+fn branch_is_selected(rng: &mut Pcg64Mcg, temperature: f32) -> bool {
+    side_is_selected(rng, branch_probability(temperature))
 }
 
-fn side_is_selected(graph: &Graph, node: NodeId, side: Side, probability: f32) -> bool {
-    probability_is_selected(graph, node, side as u64, probability)
-}
-
-fn probability_is_selected(graph: &Graph, node: NodeId, salt: u64, probability: f32) -> bool {
-    let spice = graph.hash_of(node) as u64;
-    let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, salt));
+fn side_is_selected(rng: &mut Pcg64Mcg, probability: f32) -> bool {
     rng.random::<f32>() < probability
 }
 
