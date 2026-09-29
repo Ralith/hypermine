@@ -23,6 +23,8 @@ mod yendorian;
 
 /// Radius of Yendorian branches, in absolute hyperbolic distance units.
 const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
+/// Node-center depth required to switch Yendorian propagation into underground mode.
+const YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * YENDORIAN_BRANCH_RADIUS;
 /// Radius of the leaves ball at a terminal Yendorian node.
 const YENDORIAN_LEAVES_RADIUS: f32 = 0.5;
 /// Yendorian tree spawn probability per precipitation unit at Land nodes.
@@ -163,20 +165,31 @@ impl NodeState {
         let road_state = parents[0].map_or(NodeStateRoad::ROOT, |p| {
             p.node_state.road_state.child(p.side)
         });
+        let surface = match kind {
+            Land => Plane::from(Side::A),
+            Sky => -Plane::from(Side::A),
+            _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
+        };
+        let estimated_terrain_depth =
+            enviro.max_elevation / TERRAIN_SMOOTHNESS - surface.distance_to(&MPoint::origin());
+        let is_deep_underground = estimated_terrain_depth > YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD;
 
         let horosphere = graph
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
-        let yendorian = YendorianNode::new(graph, node, kind, enviro.rainfall, enviro.temperature);
+        let yendorian = YendorianNode::new(
+            graph,
+            node,
+            kind,
+            enviro.rainfall,
+            enviro.temperature,
+            is_deep_underground,
+        );
 
         Self {
             kind,
-            surface: match kind {
-                Land => Plane::from(Side::A),
-                Sky => -Plane::from(Side::A),
-                _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
-            },
+            surface,
             road_state,
             enviro,
             horosphere,

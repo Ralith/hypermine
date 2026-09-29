@@ -24,7 +24,10 @@ impl YendorianNode {
         kind: NodeStateKind,
         precipitation: f32,
         temperature: f32,
+        is_deep_underground: bool,
     ) -> Option<Self> {
+        let parent_sides: Vec<_> = graph.parents(node).map(|(side, _)| side).collect();
+
         // `Graph::parents` returns every shallower neighbor and the shared side.
         // Parent states have already been finalized by `ensure_node_state`.
         let incoming_sides: Vec<_> = graph
@@ -38,16 +41,17 @@ impl YendorianNode {
             })
             .collect();
 
-        if incoming_sides.is_empty() {
+        let is_seed = incoming_sides.is_empty();
+        let is_sky = matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky);
+        // Any underground Sky node can independently seed trees through its
+        // eligible exits, whether or not it inherited Yendorian state.
+        let is_underground_sky = is_deep_underground && is_sky;
+        if is_seed && !is_underground_sky {
             // Only Land nodes may own a tree. Each node's deterministic roll
-            // scales linearly with precipitation, reaching certainty at 30.
+            // scales linearly with precipitation.
             if kind != NodeStateKind::Land || !tree_seed_is_selected(graph, node, precipitation) {
                 return None;
             }
-            return Some(Self {
-                child_sides: side_bit(Side::A) | side_bit(Side::J),
-                branch_sides: side_bit(Side::A) | side_bit(Side::J),
-            });
         }
 
         let mut child_sides = 0;
@@ -55,30 +59,53 @@ impl YendorianNode {
             .iter()
             .copied()
             .fold(0, |mask, side| mask | side_bit(side));
-        match kind {
-            NodeStateKind::Sky | NodeStateKind::DeepSky => {
-                // Union the six non-adjacent-to-parent exits for every incoming
-                // tree path. This preserves all branches when paths converge.
-                for parent_side in incoming_sides {
-                    for side in Side::iter() {
-                        if side != parent_side
-                            && !side.adjacent_to(parent_side)
-                            && branch_is_selected(graph, node, side, temperature)
-                        {
-                            child_sides |= side_bit(side);
+        if is_deep_underground && (!is_seed || is_underground_sky) {
+            // Underground nodes may descend only through sides that are neither
+            // equal nor adjacent to any graph parent face.
+            let probability = tree_generation_probability(precipitation);
+            for side in Side::iter() {
+                if parent_sides
+                    .iter()
+                    .all(|&parent_side| side != parent_side && !side.adjacent_to(parent_side))
+                    && side_is_selected(graph, node, side, probability)
+                {
+                    child_sides |= side_bit(side);
+                }
+            }
+        } else if is_seed {
+            child_sides = side_bit(Side::A) | side_bit(Side::J);
+        } else {
+            match kind {
+                NodeStateKind::Sky | NodeStateKind::DeepSky => {
+                    // Union the six non-adjacent-to-parent exits for every incoming
+                    // tree path. This preserves all branches when paths converge.
+                    for parent_side in incoming_sides {
+                        for side in Side::iter() {
+                            if side != parent_side
+                                && !side.adjacent_to(parent_side)
+                                && branch_is_selected(graph, node, side, temperature)
+                            {
+                                child_sides |= side_bit(side);
+                            }
                         }
                     }
                 }
-            }
-            NodeStateKind::DeepLand => {
-                // The below-ground trunk continues straight through the face
-                // opposite each incoming path.
-                for parent_side in incoming_sides {
-                    child_sides |= side_bit(opposite(parent_side));
+                NodeStateKind::DeepLand => {
+                    // The below-ground trunk continues straight through the face
+                    // opposite each incoming path.
+                    for parent_side in incoming_sides {
+                        child_sides |= side_bit(opposite(parent_side));
+                    }
                 }
+                // Land nodes other than the seed do not continue the trunk.
+                NodeStateKind::Land => {}
             }
-            // Land nodes other than the root do not continue the trunk.
-            NodeStateKind::Land => {}
+        }
+
+        // A newly seeded underground Sky tree exists only if at least one
+        // independently rolled exit was selected.
+        if is_seed && child_sides == 0 {
+            return None;
         }
 
         branch_sides |= child_sides;
@@ -103,19 +130,33 @@ impl YendorianNode {
 
 /// Makes a stable, independent propagation decision for a node-side pair.
 fn tree_seed_is_selected(graph: &Graph, node: NodeId, precipitation: f32) -> bool {
-    let probability = (precipitation * super::YENDORIAN_TREE_SPAWN_RATE).clamp(
+    probability_is_selected(
+        graph,
+        node,
+        u64::MAX,
+        tree_generation_probability(precipitation),
+    )
+}
+
+fn tree_generation_probability(precipitation: f32) -> f32 {
+    (precipitation * super::YENDORIAN_TREE_SPAWN_RATE).clamp(
         super::YENDORIAN_PROBABILITY_MIN,
         super::YENDORIAN_PROBABILITY_MAX,
-    );
-    let spice = graph.hash_of(node) as u64;
-    let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, u64::MAX));
-    rng.random::<f32>() < probability
+    )
 }
 
 fn branch_is_selected(graph: &Graph, node: NodeId, side: Side, temperature: f32) -> bool {
+    side_is_selected(graph, node, side, branch_probability(temperature))
+}
+
+fn side_is_selected(graph: &Graph, node: NodeId, side: Side, probability: f32) -> bool {
+    probability_is_selected(graph, node, side as u64, probability)
+}
+
+fn probability_is_selected(graph: &Graph, node: NodeId, salt: u64, probability: f32) -> bool {
     let spice = graph.hash_of(node) as u64;
-    let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, side as u64));
-    rng.random::<f32>() < branch_probability(temperature)
+    let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, salt));
+    rng.random::<f32>() < probability
 }
 
 fn branch_probability(temperature: f32) -> f32 {
