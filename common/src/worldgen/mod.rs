@@ -3,7 +3,10 @@ use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
 use terraingen::VoronoiInfo;
-use yendorian::YendorianNode;
+use yendorian::{
+    YENDORIAN_BRANCH_RADIUS, YENDORIAN_LEAVES_RADIUS, YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD,
+    YendorianNode,
+};
 
 use crate::{
     dodeca::{Side, Vertex},
@@ -20,23 +23,6 @@ mod line;
 mod plane;
 mod terraingen;
 mod yendorian;
-
-/// Radius of Yendorian branches, in absolute hyperbolic distance units.
-const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
-/// Node-center depth required to switch Yendorian propagation into underground mode.
-const YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * YENDORIAN_BRANCH_RADIUS;
-/// Radius of the leaves ball at a terminal Yendorian node.
-const YENDORIAN_LEAVES_RADIUS: f32 = 0.5;
-/// Yendorian tree spawn probability per precipitation unit at Land nodes.
-const YENDORIAN_TREE_SPAWN_RATE: f32 = 0.025;
-/// Lower and upper temperature limits for the linear branch-probability ramp.
-const YENDORIAN_BRANCH_TEMPERATURE_MIN: f32 = -10.0;
-const YENDORIAN_BRANCH_TEMPERATURE_MAX: f32 = 10.0;
-/// Lower and upper values of the branch-probability ramp.
-const YENDORIAN_BRANCH_PROBABILITY_MIN: f32 = 0.0;
-const YENDORIAN_BRANCH_PROBABILITY_MAX: f32 = 1.0;
-const YENDORIAN_PROBABILITY_MIN: f32 = 0.0;
-const YENDORIAN_PROBABILITY_MAX: f32 = 1.0;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldgenConfig {

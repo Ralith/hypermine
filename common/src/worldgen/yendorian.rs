@@ -7,6 +7,17 @@ use rand_pcg::Pcg64Mcg;
 
 use super::NodeStateKind;
 
+/// Radius of Yendorian branches, in absolute hyperbolic distance units.
+pub(super) const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
+/// Radius of the leaves ball at a terminal Yendorian node.
+pub(super) const YENDORIAN_LEAVES_RADIUS: f32 = 0.5;
+/// Node-center depth required to switch Yendorian propagation into underground mode.
+pub(super) const YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * YENDORIAN_BRANCH_RADIUS;
+/// Yendorian tree spawn probability per precipitation unit at Land nodes.
+const YENDORIAN_TREE_SPAWN_RATE: f32 = 0.025;
+/// Lower and upper temperature limits for the linear branch-probability ramp.
+const YENDORIAN_BRANCH_TEMPERATURE_MIN: f32 = -10.0;
+const YENDORIAN_BRANCH_TEMPERATURE_MAX: f32 = 10.0;
 /// Value mixed into each node's hash to seed Yendorian generation. Chosen randomly.
 const YENDORIAN_SEED: u64 = 13334231312061724180;
 
@@ -139,10 +150,7 @@ fn tree_seed_is_selected(rng: &mut Pcg64Mcg, precipitation: f32) -> bool {
 }
 
 fn tree_generation_probability(precipitation: f32) -> f32 {
-    (precipitation * super::YENDORIAN_TREE_SPAWN_RATE).clamp(
-        super::YENDORIAN_PROBABILITY_MIN,
-        super::YENDORIAN_PROBABILITY_MAX,
-    )
+    (precipitation * YENDORIAN_TREE_SPAWN_RATE).clamp(0.0, 1.0)
 }
 
 fn branch_is_selected(rng: &mut Pcg64Mcg, temperature: f32) -> bool {
@@ -154,15 +162,10 @@ fn side_is_selected(rng: &mut Pcg64Mcg, probability: f32) -> bool {
 }
 
 fn branch_probability(temperature: f32) -> f32 {
-    let temperature_fraction = ((temperature - super::YENDORIAN_BRANCH_TEMPERATURE_MIN)
-        / (super::YENDORIAN_BRANCH_TEMPERATURE_MAX - super::YENDORIAN_BRANCH_TEMPERATURE_MIN))
-        .clamp(
-            super::YENDORIAN_PROBABILITY_MIN,
-            super::YENDORIAN_PROBABILITY_MAX,
-        );
-    super::YENDORIAN_BRANCH_PROBABILITY_MIN
-        + temperature_fraction
-            * (super::YENDORIAN_BRANCH_PROBABILITY_MAX - super::YENDORIAN_BRANCH_PROBABILITY_MIN)
+    let temperature_fraction = ((temperature - YENDORIAN_BRANCH_TEMPERATURE_MIN)
+        / (YENDORIAN_BRANCH_TEMPERATURE_MAX - YENDORIAN_BRANCH_TEMPERATURE_MIN))
+        .clamp(0.0, 1.0);
+    temperature_fraction
 }
 
 fn side_bit(side: Side) -> u16 {
