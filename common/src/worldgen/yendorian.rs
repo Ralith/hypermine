@@ -75,9 +75,10 @@ impl YendorianNode {
             .iter()
             .copied()
             .fold(0, |mask, side| mask | side_bit(side));
-        if is_deep_underground && (!is_seed || is_underground_sky) {
+        if is_deep_underground && is_sky {
             // Underground nodes may descend only through sides that are neither
-            // equal nor adjacent to any graph parent face.
+            // equal nor adjacent to any graph parent face. Underground Sky
+            // nodes make this decision independently of incoming tree state.
             let probability = tree_generation_probability(precipitation);
             for side in Side::iter() {
                 if parent_sides
@@ -118,8 +119,7 @@ impl YendorianNode {
             }
         }
 
-        // A newly seeded underground Sky tree exists only if at least one
-        // independently rolled exit was selected.
+        // A newly seeded tree exists only if at least one exit was selected.
         if is_seed && child_sides == 0 {
             return None;
         }
