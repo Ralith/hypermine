@@ -8,11 +8,11 @@ use rand_pcg::Pcg64Mcg;
 use super::NodeStateKind;
 
 /// Branch radius, in absolute hyperbolic distance units.
-pub(super) const BRANCH_RADIUS: f32 = 0.2;
+pub const BRANCH_RADIUS: f32 = 0.2;
 /// Radius of the leaves ball at a terminal node.
-pub(super) const LEAVES_RADIUS: f32 = 0.5;
+pub const LEAVES_RADIUS: f32 = 0.5;
 /// Node-center depth required to switch propagation into underground mode.
-pub(super) const UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * BRANCH_RADIUS;
+pub const UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * BRANCH_RADIUS;
 /// Tree spawn probability per precipitation unit at Land nodes.
 const SPAWN_RATE: f32 = 0.025;
 /// Lower and upper temperature limits for the linear branch-probability ramp.
@@ -26,13 +26,13 @@ const SEED: u64 = 13334231312061724180;
 /// The bit at each side indicates that this node propagates its tree state to
 /// the neighbor on that side.
 #[derive(Clone, Copy)]
-pub(super) struct MegatreeNode {
+pub struct MegatreeNode {
     child_sides: u16,
     branch_sides: u16,
 }
 
 impl MegatreeNode {
-    pub(super) fn new(
+    pub fn new(
         graph: &Graph,
         node: NodeId,
         kind: NodeStateKind,
@@ -65,7 +65,9 @@ impl MegatreeNode {
         if is_seed && !is_underground_sky {
             // Only Land nodes may own a tree. Each node's deterministic roll
             // scales linearly with precipitation.
-            if kind != NodeStateKind::Land || !tree_seed_is_selected(&mut rng, precipitation) {
+            if kind != NodeStateKind::Land
+                || rng.random::<f32>() >= tree_generation_probability(precipitation)
+            {
                 return None;
             }
         }
@@ -74,7 +76,7 @@ impl MegatreeNode {
         let mut branch_sides = incoming_sides
             .iter()
             .copied()
-            .fold(0, |mask, side| mask | side_bit(side));
+            .fold(0, |mask, side| mask | (1 << side as usize));
         if is_deep_underground && is_sky {
             // Underground nodes may descend only through sides that are neither
             // equal nor adjacent to any graph parent face. Underground Sky
@@ -84,13 +86,13 @@ impl MegatreeNode {
                 if parent_sides
                     .iter()
                     .all(|&parent_side| side != parent_side && !side.adjacent_to(parent_side))
-                    && side_is_selected(&mut rng, probability)
+                    && rng.random::<f32>() < probability
                 {
-                    child_sides |= side_bit(side);
+                    child_sides |= 1 << side as usize;
                 }
             }
         } else if is_seed {
-            child_sides = side_bit(Side::A) | side_bit(Side::J);
+            child_sides = (1 << Side::A as usize) | (1 << Side::J as usize);
         } else {
             match kind {
                 NodeStateKind::Sky | NodeStateKind::DeepSky => {
@@ -100,9 +102,9 @@ impl MegatreeNode {
                         for side in Side::iter() {
                             if side != parent_side
                                 && !side.adjacent_to(parent_side)
-                                && branch_is_selected(&mut rng, temperature)
+                                && rng.random::<f32>() < branch_probability(temperature)
                             {
-                                child_sides |= side_bit(side);
+                                child_sides |= 1 << side as usize;
                             }
                         }
                     }
@@ -111,7 +113,7 @@ impl MegatreeNode {
                     // The below-ground trunk continues straight through the face
                     // opposite each incoming path.
                     for parent_side in incoming_sides {
-                        child_sides |= side_bit(opposite(parent_side));
+                        child_sides |= 1 << opposite(parent_side) as usize;
                     }
                 }
                 // Land nodes other than the seed do not continue the trunk.
@@ -132,43 +134,25 @@ impl MegatreeNode {
     }
 
     fn propagates_through(self, side: Side) -> bool {
-        self.child_sides & side_bit(side) != 0
+        self.child_sides & (1 << side as usize) != 0
     }
 
-    pub(super) fn branch_sides(self) -> impl Iterator<Item = Side> {
-        Side::iter().filter(move |&side| self.branch_sides & side_bit(side) != 0)
+    pub fn branch_sides(self) -> impl Iterator<Item = Side> {
+        Side::iter().filter(move |&side| self.branch_sides & (1 << side as usize) != 0)
     }
 
-    pub(super) fn is_terminal(self) -> bool {
+    pub fn is_terminal(self) -> bool {
         self.child_sides == 0
     }
-}
-
-/// Makes a deterministic tree-seed decision using this node's RNG.
-fn tree_seed_is_selected(rng: &mut Pcg64Mcg, precipitation: f32) -> bool {
-    rng.random::<f32>() < tree_generation_probability(precipitation)
 }
 
 fn tree_generation_probability(precipitation: f32) -> f32 {
     (precipitation * SPAWN_RATE).clamp(0.0, 1.0)
 }
 
-fn branch_is_selected(rng: &mut Pcg64Mcg, temperature: f32) -> bool {
-    side_is_selected(rng, branch_probability(temperature))
-}
-
-fn side_is_selected(rng: &mut Pcg64Mcg, probability: f32) -> bool {
-    rng.random::<f32>() < probability
-}
-
 fn branch_probability(temperature: f32) -> f32 {
-    ((temperature - BRANCH_TEMPERATURE_MIN)
-        / (BRANCH_TEMPERATURE_MAX - BRANCH_TEMPERATURE_MIN))
+    ((temperature - BRANCH_TEMPERATURE_MIN) / (BRANCH_TEMPERATURE_MAX - BRANCH_TEMPERATURE_MIN))
         .clamp(0.0, 1.0)
-}
-
-fn side_bit(side: Side) -> u16 {
-    1 << side as usize
 }
 
 fn opposite(side: Side) -> Side {

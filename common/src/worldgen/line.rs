@@ -2,18 +2,18 @@ use crate::math::MPoint;
 
 /// A finite geodesic segment in hyperbolic space.
 #[derive(Clone, Copy)]
-pub(super) struct LineSegment {
+pub struct LineSegment {
     start: MPoint<f32>,
     end: MPoint<f32>,
 }
 
 impl LineSegment {
-    pub(super) fn new(start: MPoint<f32>, end: MPoint<f32>) -> Self {
+    pub fn new(start: MPoint<f32>, end: MPoint<f32>) -> Self {
         Self { start, end }
     }
 
     /// Returns the shortest hyperbolic distance from `point` to this segment.
-    pub(super) fn distance_to(&self, point: &MPoint<f32>) -> f32 {
+    pub fn distance_to(&self, point: &MPoint<f32>) -> f32 {
         let length = self.start.distance(&self.end);
         if length == 0.0 {
             return point.distance(&self.start);
