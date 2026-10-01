@@ -162,10 +162,9 @@ fn side_is_selected(rng: &mut Pcg64Mcg, probability: f32) -> bool {
 }
 
 fn branch_probability(temperature: f32) -> f32 {
-    let temperature_fraction = ((temperature - BRANCH_TEMPERATURE_MIN)
+    ((temperature - BRANCH_TEMPERATURE_MIN)
         / (BRANCH_TEMPERATURE_MAX - BRANCH_TEMPERATURE_MIN))
-        .clamp(0.0, 1.0);
-    temperature_fraction
+        .clamp(0.0, 1.0)
 }
 
 fn side_bit(side: Side) -> u16 {
