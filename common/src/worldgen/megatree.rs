@@ -7,31 +7,31 @@ use rand_pcg::Pcg64Mcg;
 
 use super::NodeStateKind;
 
-/// Radius of Yendorian branches, in absolute hyperbolic distance units.
-pub(super) const YENDORIAN_BRANCH_RADIUS: f32 = 0.2;
-/// Radius of the leaves ball at a terminal Yendorian node.
-pub(super) const YENDORIAN_LEAVES_RADIUS: f32 = 0.5;
-/// Node-center depth required to switch Yendorian propagation into underground mode.
-pub(super) const YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * YENDORIAN_BRANCH_RADIUS;
-/// Yendorian tree spawn probability per precipitation unit at Land nodes.
-const YENDORIAN_TREE_SPAWN_RATE: f32 = 0.025;
+/// Branch radius, in absolute hyperbolic distance units.
+pub(super) const BRANCH_RADIUS: f32 = 0.2;
+/// Radius of the leaves ball at a terminal node.
+pub(super) const LEAVES_RADIUS: f32 = 0.5;
+/// Node-center depth required to switch propagation into underground mode.
+pub(super) const UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * BRANCH_RADIUS;
+/// Tree spawn probability per precipitation unit at Land nodes.
+const SPAWN_RATE: f32 = 0.025;
 /// Lower and upper temperature limits for the linear branch-probability ramp.
-const YENDORIAN_BRANCH_TEMPERATURE_MIN: f32 = -10.0;
-const YENDORIAN_BRANCH_TEMPERATURE_MAX: f32 = 10.0;
-/// Value mixed into each node's hash to seed Yendorian generation. Chosen randomly.
-const YENDORIAN_SEED: u64 = 13334231312061724180;
+const BRANCH_TEMPERATURE_MIN: f32 = -10.0;
+const BRANCH_TEMPERATURE_MAX: f32 = 10.0;
+/// Value mixed into each node's hash to seed generation. Chosen randomly.
+const SEED: u64 = 13334231312061724180;
 
-/// Yendorian-tree propagation information for one node.
+/// Megatree propagation information for one node.
 ///
 /// The bit at each side indicates that this node propagates its tree state to
 /// the neighbor on that side.
 #[derive(Clone, Copy)]
-pub(super) struct YendorianNode {
+pub(super) struct MegatreeNode {
     child_sides: u16,
     branch_sides: u16,
 }
 
-impl YendorianNode {
+impl MegatreeNode {
     pub(super) fn new(
         graph: &Graph,
         node: NodeId,
@@ -41,7 +41,7 @@ impl YendorianNode {
         is_deep_underground: bool,
     ) -> Option<Self> {
         let spice = graph.hash_of(node) as u64;
-        let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, YENDORIAN_SEED));
+        let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, SEED));
         let parent_sides: Vec<_> = graph.parents(node).map(|(side, _)| side).collect();
 
         // `Graph::parents` returns every shallower neighbor and the shared side.
@@ -51,7 +51,7 @@ impl YendorianNode {
             .filter_map(|(side, parent)| {
                 graph
                     .node_state(parent)
-                    .yendorian
+                    .megatree
                     .filter(|state| state.propagates_through(side))
                     .map(|_| side)
             })
@@ -60,7 +60,7 @@ impl YendorianNode {
         let is_seed = incoming_sides.is_empty();
         let is_sky = matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky);
         // Any underground Sky node can independently seed trees through its
-        // eligible exits, whether or not it inherited Yendorian state.
+        // eligible exits, whether or not it inherited Megatree state.
         let is_underground_sky = is_deep_underground && is_sky;
         if is_seed && !is_underground_sky {
             // Only Land nodes may own a tree. Each node's deterministic roll
@@ -150,7 +150,7 @@ fn tree_seed_is_selected(rng: &mut Pcg64Mcg, precipitation: f32) -> bool {
 }
 
 fn tree_generation_probability(precipitation: f32) -> f32 {
-    (precipitation * YENDORIAN_TREE_SPAWN_RATE).clamp(0.0, 1.0)
+    (precipitation * SPAWN_RATE).clamp(0.0, 1.0)
 }
 
 fn branch_is_selected(rng: &mut Pcg64Mcg, temperature: f32) -> bool {
@@ -162,8 +162,8 @@ fn side_is_selected(rng: &mut Pcg64Mcg, probability: f32) -> bool {
 }
 
 fn branch_probability(temperature: f32) -> f32 {
-    let temperature_fraction = ((temperature - YENDORIAN_BRANCH_TEMPERATURE_MIN)
-        / (YENDORIAN_BRANCH_TEMPERATURE_MAX - YENDORIAN_BRANCH_TEMPERATURE_MIN))
+    let temperature_fraction = ((temperature - BRANCH_TEMPERATURE_MIN)
+        / (BRANCH_TEMPERATURE_MAX - BRANCH_TEMPERATURE_MIN))
         .clamp(0.0, 1.0);
     temperature_fraction
 }

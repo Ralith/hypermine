@@ -1,12 +1,9 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
+use megatree::{BRANCH_RADIUS, LEAVES_RADIUS, MegatreeNode, UNDERGROUND_DEPTH_THRESHOLD};
 use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
 use terraingen::VoronoiInfo;
-use yendorian::{
-    YENDORIAN_BRANCH_RADIUS, YENDORIAN_LEAVES_RADIUS, YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD,
-    YendorianNode,
-};
 
 use crate::{
     dodeca::{Side, Vertex},
@@ -20,9 +17,9 @@ use line::LineSegment;
 
 mod horosphere;
 mod line;
+mod megatree;
 mod plane;
 mod terraingen;
-mod yendorian;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorldgenConfig {
@@ -110,7 +107,7 @@ pub struct NodeState {
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
     horosphere: Option<HorosphereNode>,
-    yendorian: Option<YendorianNode>,
+    megatree: Option<MegatreeNode>,
 }
 impl NodeState {
     pub fn new(graph: &Graph, node: NodeId, _cfg: &WorldgenConfig) -> Self {
@@ -158,13 +155,13 @@ impl NodeState {
         };
         let estimated_terrain_depth =
             enviro.max_elevation / TERRAIN_SMOOTHNESS - surface.distance_to(&MPoint::origin());
-        let is_deep_underground = estimated_terrain_depth > YENDORIAN_UNDERGROUND_DEPTH_THRESHOLD;
+        let is_deep_underground = estimated_terrain_depth > UNDERGROUND_DEPTH_THRESHOLD;
 
         let horosphere = graph
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
-        let yendorian = YendorianNode::new(
+        let megatree = MegatreeNode::new(
             graph,
             node,
             kind,
@@ -179,7 +176,7 @@ impl NodeState {
             road_state,
             enviro,
             horosphere,
-            yendorian,
+            megatree,
         }
     }
 
@@ -244,10 +241,10 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
-    /// Whether this chunk belongs to a Yendorian tree
-    yendorian_branches: Vec<LineSegment>,
-    /// Whether the Yendorian node has no children and should generate a leaves ball
-    has_yendorian_leaves: bool,
+    /// Whether this chunk contains part of a Megatree
+    megatree_branches: Vec<LineSegment>,
+    /// Whether the Megatree node has no children and should generate a leaves ball
+    has_megatree_leaves: bool,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -269,10 +266,10 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            yendorian_branches: state
-                .yendorian
-                .map(|yendorian| {
-                    yendorian
+            megatree_branches: state
+                .megatree
+                .map(|megatree| {
+                    megatree
                         .branch_sides()
                         .map(|side| {
                             let center = MVector::origin().normalized_point();
@@ -283,7 +280,7 @@ impl ChunkParams {
                         .collect()
                 })
                 .unwrap_or_default(),
-            has_yendorian_leaves: state.yendorian.is_some_and(YendorianNode::is_terminal),
+            has_megatree_leaves: state.megatree.is_some_and(MegatreeNode::is_terminal),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -301,8 +298,8 @@ impl ChunkParams {
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
 
-        self.generate_yendorian_leaves(&mut voxels);
-        self.generate_yendorian_branches(&mut voxels);
+        self.generate_megatree_leaves(&mut voxels);
+        self.generate_megatree_branches(&mut voxels);
 
         self.generate_terrain(&mut voxels, &mut rng);
 
@@ -324,9 +321,9 @@ impl ChunkParams {
         voxels
     }
 
-    /// Rasterize wood around the Yendorian branches passing through this node.
-    fn generate_yendorian_branches(&self, voxels: &mut VoxelData) {
-        if self.yendorian_branches.is_empty() {
+    /// Rasterize wood around the Megatree branches passing through this node.
+    fn generate_megatree_branches(&self, voxels: &mut VoxelData) {
+        if self.megatree_branches.is_empty() {
             return;
         }
 
@@ -337,9 +334,9 @@ impl ChunkParams {
                 MVector::from(self.chunk.chunk_to_node() * center.push(1.0)).normalized_point();
 
             if self
-                .yendorian_branches
+                .megatree_branches
                 .iter()
-                .any(|branch| branch.distance_to(&point) <= YENDORIAN_BRANCH_RADIUS)
+                .any(|branch| branch.distance_to(&point) <= BRANCH_RADIUS)
             {
                 voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Wood;
             }
@@ -347,8 +344,8 @@ impl ChunkParams {
     }
 
     /// Generate a spherical cluster of leaves at the center of a terminal node.
-    fn generate_yendorian_leaves(&self, voxels: &mut VoxelData) {
-        if !self.has_yendorian_leaves {
+    fn generate_megatree_leaves(&self, voxels: &mut VoxelData) {
+        if !self.has_megatree_leaves {
             return;
         }
 
@@ -359,7 +356,7 @@ impl ChunkParams {
             let point = MVector::from(self.chunk.chunk_to_node() * chunk_coords.push(1.0))
                 .normalized_point();
 
-            if point.distance(&center) <= YENDORIAN_LEAVES_RADIUS {
+            if point.distance(&center) <= LEAVES_RADIUS {
                 voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Leaves;
             }
         }
