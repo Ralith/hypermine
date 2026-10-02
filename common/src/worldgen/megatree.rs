@@ -12,7 +12,7 @@ pub const BRANCH_RADIUS: f32 = 0.2;
 /// Radius of the leaves ball at a terminal node.
 pub const LEAVES_RADIUS: f32 = 0.5;
 /// Node-center depth required to switch propagation into underground mode.
-const UNDERGROUND_DEPTH_THRESHOLD: f32 = 0.75;
+pub(super) const UNDERGROUND_DEPTH_THRESHOLD: f32 = 0.75;
 /// Estimated clearance above terrain required for a trunk to start branching.
 const BRANCHING_HEIGHT: f32 = 0.75;
 /// Tree spawn probability per precipitation unit at Land nodes.
@@ -22,6 +22,11 @@ const BRANCH_TEMPERATURE_MIN: f32 = -10.0;
 const BRANCH_TEMPERATURE_MAX: f32 = 10.0;
 /// Value mixed into each node's hash to seed generation. Chosen randomly.
 const SEED: u64 = 13334231312061724180;
+
+pub(super) struct GroundDirections<'a> {
+    pub ground_side: Side,
+    pub groundward_sides: &'a [Side],
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Growth {
@@ -60,7 +65,7 @@ impl MegatreeNode {
         precipitation: f32,
         temperature: f32,
         estimated_height: f32,
-        ground_side: Side,
+        ground: GroundDirections<'_>,
     ) -> Option<Self> {
         let spice = graph.hash_of(node) as u64;
         let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, SEED));
@@ -103,16 +108,11 @@ impl MegatreeNode {
                 .fold(0, |mask, &(side, _)| mask | (1 << side as usize)),
         };
         if is_underground_sky {
-            // Underground nodes may descend only through sides that are neither
-            // equal nor adjacent to any graph parent face. Underground Sky
-            // nodes make this decision independently of incoming tree state.
+            // Underground Sky nodes independently roll for each exit toward
+            // the ground plane, regardless of incoming tree state.
             let probability = tree_generation_probability(precipitation);
-            for side in Side::iter() {
-                if parent_sides
-                    .iter()
-                    .all(|&parent_side| side != parent_side && !side.adjacent_to(parent_side))
-                    && rng.random::<f32>() < probability
-                {
+            for &side in ground.groundward_sides {
+                if rng.random::<f32>() < probability {
                     result.propagate(side, Growth::Trunk);
                 }
             }
@@ -121,8 +121,8 @@ impl MegatreeNode {
                 let side = parent_sides[rng.random_range(0..parent_sides.len())];
                 result.propagate(opposite(side), Growth::Trunk);
             } else {
-                result.propagate(ground_side, Growth::Trunk);
-                result.propagate(opposite(ground_side), Growth::Trunk);
+                result.propagate(ground.ground_side, Growth::Trunk);
+                result.propagate(opposite(ground.ground_side), Growth::Trunk);
             }
         }
         if !is_underground_sky {
@@ -233,7 +233,19 @@ mod tests {
         parent.propagate(Side::B, growth);
         graph[NodeId::ROOT].state.as_mut().unwrap().megatree = Some(parent);
         let child = graph.ensure_neighbor(NodeId::ROOT, Side::B);
-        MegatreeNode::new(&graph, child, kind, 0.0, 10.0, height, Side::A).unwrap()
+        MegatreeNode::new(
+            &graph,
+            child,
+            kind,
+            0.0,
+            10.0,
+            height,
+            GroundDirections {
+                ground_side: Side::A,
+                groundward_sides: &[Side::B],
+            },
+        )
+        .unwrap()
     }
 
     #[test]
@@ -282,7 +294,10 @@ mod tests {
                     0.0,
                     10.0,
                     0.0,
-                    Side::A,
+                    GroundDirections {
+                        ground_side: Side::A,
+                        groundward_sides: &[],
+                    },
                 )
                 .unwrap()
             };
@@ -337,15 +352,51 @@ mod tests {
         let child = graph.ensure_neighbor(NodeId::ROOT, Side::B);
         for kind in [NodeStateKind::Sky, NodeStateKind::DeepSky] {
             for height in [-0.75, -0.5, -0.3, -0.001] {
-                let tree =
-                    MegatreeNode::new(&graph, child, kind, 100.0, 10.0, height, Side::A).unwrap();
+                let tree = MegatreeNode::new(
+                    &graph,
+                    child,
+                    kind,
+                    100.0,
+                    10.0,
+                    height,
+                    GroundDirections {
+                        ground_side: Side::A,
+                        groundward_sides: &[Side::B],
+                    },
+                )
+                .unwrap();
                 assert_eq!(tree.child_sides.count_ones(), 1);
                 assert_eq!(tree.branching_sides, 0);
             }
-            assert!(MegatreeNode::new(&graph, child, kind, 100.0, 10.0, 0.751, Side::A).is_none());
-            let tree =
-                MegatreeNode::new(&graph, child, kind, 100.0, 10.0, -0.751, Side::A).unwrap();
-            assert_eq!(tree.child_sides.count_ones(), 6);
+            assert!(
+                MegatreeNode::new(
+                    &graph,
+                    child,
+                    kind,
+                    100.0,
+                    10.0,
+                    0.751,
+                    GroundDirections {
+                        ground_side: Side::A,
+                        groundward_sides: &[Side::B],
+                    },
+                )
+                .is_none()
+            );
+            let tree = MegatreeNode::new(
+                &graph,
+                child,
+                kind,
+                100.0,
+                10.0,
+                -0.751,
+                GroundDirections {
+                    ground_side: Side::A,
+                    groundward_sides: &[Side::B],
+                },
+            )
+            .unwrap();
+            assert_eq!(tree.child_sides.count_ones(), 1);
             assert_eq!(tree.branching_sides, 0);
         }
     }
@@ -366,7 +417,19 @@ mod tests {
             for kind in [NodeStateKind::Sky, NodeStateKind::DeepSky] {
                 for height in [-0.75, -0.5, -0.001] {
                     let build = || {
-                        MegatreeNode::new(&graph, node, kind, 100.0, 10.0, height, Side::A).unwrap()
+                        MegatreeNode::new(
+                            &graph,
+                            node,
+                            kind,
+                            100.0,
+                            10.0,
+                            height,
+                            GroundDirections {
+                                ground_side: Side::A,
+                                groundward_sides: &[],
+                            },
+                        )
+                        .unwrap()
                     };
                     let tree = build();
                     assert_eq!(tree.child_sides.count_ones(), 1);
@@ -381,8 +444,19 @@ mod tests {
                 }
                 for height in [0.0, 0.001, 0.75, 0.751] {
                     assert!(
-                        MegatreeNode::new(&graph, node, kind, 100.0, 10.0, height, Side::A)
-                            .is_none()
+                        MegatreeNode::new(
+                            &graph,
+                            node,
+                            kind,
+                            100.0,
+                            10.0,
+                            height,
+                            GroundDirections {
+                                ground_side: Side::A,
+                                groundward_sides: &[],
+                            },
+                        )
+                        .is_none()
                     );
                 }
             }
@@ -399,7 +473,10 @@ mod tests {
             100.0,
             10.0,
             0.0,
-            Side::C,
+            GroundDirections {
+                ground_side: Side::C,
+                groundward_sides: &[],
+            },
         )
         .unwrap();
         assert_eq!(
