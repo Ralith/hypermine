@@ -12,7 +12,9 @@ pub const BRANCH_RADIUS: f32 = 0.2;
 /// Radius of the leaves ball at a terminal node.
 pub const LEAVES_RADIUS: f32 = 0.5;
 /// Node-center depth required to switch propagation into underground mode.
-pub const UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * BRANCH_RADIUS;
+const UNDERGROUND_DEPTH_THRESHOLD: f32 = 1.5 * BRANCH_RADIUS;
+/// Estimated clearance above terrain required for a trunk to start branching.
+const BRANCHING_HEIGHT: f32 = 0.75;
 /// Tree spawn probability per precipitation unit at Land nodes.
 const SPAWN_RATE: f32 = 0.025;
 /// Lower and upper temperature limits for the linear branch-probability ramp.
@@ -21,6 +23,22 @@ const BRANCH_TEMPERATURE_MAX: f32 = 10.0;
 /// Value mixed into each node's hash to seed generation. Chosen randomly.
 const SEED: u64 = 13334231312061724180;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Growth {
+    Trunk,
+    Branching,
+}
+
+impl Growth {
+    fn at_height(self, height: f32) -> Self {
+        if height > BRANCHING_HEIGHT {
+            Self::Branching
+        } else {
+            self
+        }
+    }
+}
+
 /// Megatree propagation information for one node.
 ///
 /// The bit at each side indicates that this node propagates its tree state to
@@ -28,6 +46,8 @@ const SEED: u64 = 13334231312061724180;
 #[derive(Clone, Copy)]
 pub struct MegatreeNode {
     child_sides: u16,
+    /// Outgoing faces carrying branching state; the other child faces carry trunks.
+    branching_sides: u16,
     branch_sides: u16,
 }
 
@@ -38,7 +58,8 @@ impl MegatreeNode {
         kind: NodeStateKind,
         precipitation: f32,
         temperature: f32,
-        is_deep_underground: bool,
+        estimated_height: f32,
+        ground_side: Side,
     ) -> Option<Self> {
         let spice = graph.hash_of(node) as u64;
         let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, SEED));
@@ -53,7 +74,7 @@ impl MegatreeNode {
                     .node_state(parent)
                     .megatree
                     .filter(|state| state.propagates_through(side))
-                    .map(|_| side)
+                    .map(|state| (side, state.growth_through(side)))
             })
             .collect();
 
@@ -61,7 +82,7 @@ impl MegatreeNode {
         let is_sky = matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky);
         // Any underground Sky node can independently seed trees through its
         // eligible exits, whether or not it inherited Megatree state.
-        let is_underground_sky = is_deep_underground && is_sky;
+        let is_underground_sky = estimated_height < -UNDERGROUND_DEPTH_THRESHOLD && is_sky;
         if is_seed && !is_underground_sky {
             // Only Land nodes may own a tree. Each node's deterministic roll
             // scales linearly with precipitation.
@@ -72,12 +93,14 @@ impl MegatreeNode {
             }
         }
 
-        let mut child_sides = 0;
-        let mut branch_sides = incoming_sides
-            .iter()
-            .copied()
-            .fold(0, |mask, side| mask | (1 << side as usize));
-        if is_deep_underground && is_sky {
+        let mut result = Self {
+            child_sides: 0,
+            branching_sides: 0,
+            branch_sides: incoming_sides
+                .iter()
+                .fold(0, |mask, &(side, _)| mask | (1 << side as usize)),
+        };
+        if is_underground_sky {
             // Underground nodes may descend only through sides that are neither
             // equal nor adjacent to any graph parent face. Underground Sky
             // nodes make this decision independently of incoming tree state.
@@ -88,49 +111,53 @@ impl MegatreeNode {
                     .all(|&parent_side| side != parent_side && !side.adjacent_to(parent_side))
                     && rng.random::<f32>() < probability
                 {
-                    child_sides |= 1 << side as usize;
+                    result.propagate(side, Growth::Trunk);
                 }
             }
         } else if is_seed {
-            child_sides = (1 << Side::A as usize) | (1 << Side::J as usize);
-        } else {
-            match kind {
-                NodeStateKind::Sky | NodeStateKind::DeepSky => {
-                    // Union the six non-adjacent-to-parent exits for every incoming
-                    // tree path. This preserves all branches when paths converge.
-                    for parent_side in incoming_sides {
-                        for side in Side::iter() {
-                            if side != parent_side
-                                && !side.adjacent_to(parent_side)
-                                && rng.random::<f32>() < branch_probability(temperature)
-                            {
-                                child_sides |= 1 << side as usize;
-                            }
+            result.propagate(ground_side, Growth::Trunk);
+            result.propagate(opposite(ground_side), Growth::Trunk);
+        }
+        for (parent_side, growth) in incoming_sides {
+            match growth.at_height(estimated_height) {
+                Growth::Trunk => result.propagate(opposite(parent_side), Growth::Trunk),
+                Growth::Branching => {
+                    for side in Side::iter() {
+                        if side != parent_side
+                            && !side.adjacent_to(parent_side)
+                            && rng.random::<f32>() < branch_probability(temperature)
+                        {
+                            result.propagate(side, Growth::Branching);
                         }
                     }
                 }
-                NodeStateKind::DeepLand => {
-                    // The below-ground trunk continues straight through the face
-                    // opposite each incoming path.
-                    for parent_side in incoming_sides {
-                        child_sides |= 1 << opposite(parent_side) as usize;
-                    }
-                }
-                // Land nodes other than the seed do not continue the trunk.
-                NodeStateKind::Land => {}
             }
         }
 
         // A newly seeded tree exists only if at least one exit was selected.
-        if is_seed && child_sides == 0 {
+        if is_seed && result.child_sides == 0 {
             return None;
         }
 
-        branch_sides |= child_sides;
-        Some(Self {
-            child_sides,
-            branch_sides,
-        })
+        Some(result)
+    }
+
+    fn propagate(&mut self, side: Side, growth: Growth) {
+        let bit = 1 << side as usize;
+        self.child_sides |= bit;
+        self.branch_sides |= bit;
+        // If paths merge onto a face, preserve any established branching state.
+        if growth == Growth::Branching {
+            self.branching_sides |= bit;
+        }
+    }
+
+    fn growth_through(self, side: Side) -> Growth {
+        if self.branching_sides & (1 << side as usize) != 0 {
+            Growth::Branching
+        } else {
+            Growth::Trunk
+        }
     }
 
     fn propagates_through(self, side: Side) -> bool {
@@ -170,4 +197,76 @@ fn opposite(side: Side) -> Side {
         "side has multiple opposite sides"
     );
     opposite
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::worldgen::WorldgenConfig;
+
+    fn inherited_tree(kind: NodeStateKind, height: f32, growth: Growth) -> MegatreeNode {
+        let mut graph = Graph::new(1);
+        graph.ensure_node_state(NodeId::ROOT, &WorldgenConfig::default());
+        let mut parent = MegatreeNode {
+            child_sides: 0,
+            branching_sides: 0,
+            branch_sides: 0,
+        };
+        parent.propagate(Side::B, growth);
+        graph[NodeId::ROOT].state.as_mut().unwrap().megatree = Some(parent);
+        let child = graph.ensure_neighbor(NodeId::ROOT, Side::B);
+        MegatreeNode::new(&graph, child, kind, 0.0, 10.0, height, Side::A).unwrap()
+    }
+
+    #[test]
+    fn trunk_continues_opposite_incoming_face_until_clear_of_ground() {
+        for kind in [
+            NodeStateKind::Land,
+            NodeStateKind::Sky,
+            NodeStateKind::DeepLand,
+            NodeStateKind::DeepSky,
+        ] {
+            for height in [0.0, 0.75] {
+                let tree = inherited_tree(kind, height, Growth::Trunk);
+                assert_eq!(tree.child_sides, 1 << opposite(Side::B) as usize);
+                assert_eq!(tree.branching_sides, 0);
+                assert!(tree.branch_sides().any(|side| side == Side::B));
+            }
+        }
+    }
+
+    #[test]
+    fn cleared_trunk_branches_and_preserves_branching_state() {
+        for (height, growth) in [(0.751, Growth::Trunk), (-1.0, Growth::Branching)] {
+            let tree = inherited_tree(NodeStateKind::DeepLand, height, growth);
+            assert_eq!(tree.child_sides.count_ones(), 6);
+            assert_eq!(tree.branching_sides, tree.child_sides);
+            assert!(!tree.propagates_through(Side::B));
+            assert!(
+                Side::iter()
+                    .filter(|s| s.adjacent_to(Side::B))
+                    .all(|s| !tree.propagates_through(s))
+            );
+        }
+    }
+
+    #[test]
+    fn land_seed_uses_supplied_ground_axis() {
+        let graph = Graph::new(1);
+        let tree = MegatreeNode::new(
+            &graph,
+            NodeId::ROOT,
+            NodeStateKind::Land,
+            100.0,
+            10.0,
+            0.0,
+            Side::C,
+        )
+        .unwrap();
+        assert_eq!(
+            tree.child_sides,
+            (1 << Side::C as usize) | (1 << opposite(Side::C) as usize)
+        );
+        assert_eq!(tree.branching_sides, 0);
+    }
 }

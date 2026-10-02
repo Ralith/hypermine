@@ -1,5 +1,5 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
-use megatree::{BRANCH_RADIUS, LEAVES_RADIUS, MegatreeNode, UNDERGROUND_DEPTH_THRESHOLD};
+use megatree::{BRANCH_RADIUS, LEAVES_RADIUS, MegatreeNode};
 use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
@@ -167,7 +167,15 @@ impl NodeState {
         };
         let estimated_terrain_depth =
             enviro.max_elevation / TERRAIN_SMOOTHNESS - surface.distance_to(&MPoint::origin());
-        let is_deep_underground = estimated_terrain_depth > UNDERGROUND_DEPTH_THRESHOLD;
+        // A new Land seed has no incoming tree face, so align its trunk with
+        // the face pointing most closely along the ground-plane normal.
+        let ground_side = Side::iter()
+            .max_by(|a, b| {
+                a.normal()
+                    .mip(surface.scaled_normal())
+                    .total_cmp(&b.normal().mip(surface.scaled_normal()))
+            })
+            .unwrap();
 
         let horosphere = graph
             .partial_node_state(node)
@@ -179,7 +187,8 @@ impl NodeState {
             kind,
             enviro.rainfall,
             enviro.temperature,
-            is_deep_underground,
+            -estimated_terrain_depth,
+            ground_side,
         );
 
         Self {
