@@ -103,6 +103,7 @@ impl PartialNodeState {
 /// itself and its "peer" nodes (See `peer_traverser`).
 pub struct NodeState {
     kind: NodeStateKind,
+    ground_depth: u32,
     surface: Plane,
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
@@ -145,6 +146,17 @@ impl NodeState {
         };
 
         let kind = parents[0].map_or(NodeStateKind::ROOT, |p| p.node_state.kind.child(p.side));
+        let ground_depth = match kind {
+            Sky | Land => 0,
+            DeepSky | DeepLand => {
+                let min_neighbor_depth = graph
+                    .parents(node)
+                    .map(|(_, neighbor)| graph.node_state(neighbor).ground_depth)
+                    .min()
+                    .expect("a non-ground node has at least one graph parent");
+                min_neighbor_depth + 1
+            }
+        };
         let road_state = parents[0].map_or(NodeStateRoad::ROOT, |p| {
             p.node_state.road_state.child(p.side)
         });
@@ -172,6 +184,7 @@ impl NodeState {
 
         Self {
             kind,
+            ground_depth,
             surface,
             road_state,
             enviro,
@@ -182,6 +195,31 @@ impl NodeState {
 
     pub fn up_direction(&self) -> MVector<f32> {
         *self.surface.scaled_normal()
+    }
+}
+
+impl Graph {
+    /// Returns the neighboring nodes with the minimum ground depth.
+    ///
+    /// `Sky` and `Land` nodes have ground depth zero. Other nodes have one plus
+    /// the minimum ground depth among their neighbors.
+    pub fn ground_parents(&mut self, node: NodeId, cfg: &WorldgenConfig) -> Vec<(Side, NodeId)> {
+        self.ensure_node_state(node, cfg);
+        if matches!(self.node_state(node).kind, Sky | Land) {
+            return Vec::new();
+        }
+        let neighbors = Side::iter()
+            .map(|side| {
+                let neighbor = self.ensure_neighbor(node, side);
+                self.ensure_node_state(neighbor, cfg);
+                (side, neighbor, self.node_state(neighbor).ground_depth)
+            })
+            .collect::<Vec<_>>();
+        let min_depth = *neighbors.iter().map(|(_, _, depth)| depth).min().unwrap();
+        neighbors
+            .into_iter()
+            .filter_map(|(side, neighbor, depth)| (depth == min_depth).then_some((side, neighbor)))
+            .collect()
     }
 }
 
@@ -767,11 +805,213 @@ fn hash(a: u64, b: u64) -> u64 {
 }
 
 #[cfg(test)]
+mod ground_depth_search;
+
+#[cfg(test)]
 mod test {
     use super::*;
     use approx::*;
+    use std::collections::{HashMap, HashSet, VecDeque};
 
     const CHUNK_SIZE: u8 = 12;
+
+    fn ground_depth_test_region(radius: u32, reverse_sides: bool) -> (Graph, Vec<NodeId>) {
+        let mut graph = Graph::new(1);
+        let mut all_nodes = vec![NodeId::ROOT];
+        let mut seen = HashSet::from([NodeId::ROOT]);
+        let mut frontier = vec![NodeId::ROOT];
+        let mut sides = Side::iter().collect::<Vec<_>>();
+        if reverse_sides {
+            sides.reverse();
+        }
+
+        for _ in 0..radius {
+            let mut next_frontier = Vec::new();
+            for node in frontier {
+                for &side in &sides {
+                    let neighbor = graph.ensure_neighbor(node, side);
+                    if seen.insert(neighbor) {
+                        all_nodes.push(neighbor);
+                        next_frontier.push(neighbor);
+                    }
+                }
+            }
+            frontier = next_frontier;
+        }
+
+        let cfg = WorldgenConfig::default();
+        for &node in &all_nodes {
+            graph.ensure_node_state(node, &cfg);
+        }
+        (graph, all_nodes)
+    }
+
+    fn bfs_ground_depths(graph: &Graph, nodes: &[NodeId]) -> HashMap<NodeId, u32> {
+        let node_set = nodes.iter().copied().collect::<HashSet<_>>();
+        let mut distances = HashMap::new();
+        let mut queue = VecDeque::new();
+        for &node in nodes {
+            if matches!(graph.node_state(node).kind, Sky | Land) {
+                distances.insert(node, 0);
+                queue.push_back(node);
+            }
+        }
+
+        while let Some(node) = queue.pop_front() {
+            let distance = distances[&node];
+            for side in Side::iter() {
+                if let Some(neighbor) = graph.neighbor(node, side)
+                    && node_set.contains(&neighbor)
+                    && !distances.contains_key(&neighbor)
+                {
+                    distances.insert(neighbor, distance + 1);
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        distances
+    }
+
+    #[test]
+    fn ground_depth_matches_face_adjacency_bfs() {
+        const REGION_RADIUS: u32 = 7;
+        const CHECK_RADIUS: u32 = 6;
+
+        let reverse_sides = false;
+        let (mut graph, nodes) = ground_depth_test_region(REGION_RADIUS, reverse_sides);
+        let cfg = WorldgenConfig::default();
+        let bfs_depths = bfs_ground_depths(&graph, &nodes);
+        let checked_nodes = nodes
+            .iter()
+            .copied()
+            .filter(|&node| graph.depth(node) <= CHECK_RADIUS)
+            .collect::<Vec<_>>();
+        assert!(nodes.len() > 100);
+        assert!(
+            checked_nodes
+                .iter()
+                .any(|&node| { matches!(graph.node_state(node).kind, DeepSky) })
+        );
+        assert!(
+            checked_nodes
+                .iter()
+                .any(|&node| { matches!(graph.node_state(node).kind, DeepLand) })
+        );
+        assert!(
+            checked_nodes
+                .iter()
+                .any(|&node| graph.parents(node).len() > 1),
+            "region should include nodes with multiple graph parents"
+        );
+        assert!(
+            checked_nodes.iter().any(|&node| {
+                graph.parents(node).any(|(side, parent)| {
+                    matches!(graph.node_state(parent).kind, Sky | Land)
+                        && !side.adjacent_to(Side::A)
+                })
+            }),
+            "region should include deep nodes entered through non-ground-facing sides"
+        );
+
+        for &node in &nodes {
+            let depth = graph.node_state(node).ground_depth;
+            let mut has_lower_neighbor = depth == 0;
+            for side in Side::iter() {
+                if let Some(neighbor) = graph.neighbor(node, side) {
+                    let neighbor_depth = graph.node_state(neighbor).ground_depth;
+                    assert!(
+                        depth.abs_diff(neighbor_depth) <= 1,
+                        "adjacent depths differ by more than one: node={node:?} depth={depth}, side={side:?}, neighbor={neighbor:?} depth={neighbor_depth}"
+                    );
+                    has_lower_neighbor |= neighbor_depth + 1 == depth;
+                }
+            }
+            assert!(
+                has_lower_neighbor,
+                "node {node:?} has depth {depth} but no known neighbor at depth d-1"
+            );
+        }
+
+        for &node in &checked_nodes {
+            let (kind, ground_depth) = {
+                let state = graph.node_state(node);
+                (state.kind, state.ground_depth)
+            };
+            let bfs_depth = bfs_depths[&node];
+            assert_eq!(
+                ground_depth,
+                bfs_depth,
+                "BFS mismatch: node={node:?}, kind={:?}, stored={}, BFS={}, graph_depth={}, parents={:?}, reverse_sides={reverse_sides}",
+                kind,
+                ground_depth,
+                bfs_depth,
+                graph.depth(node),
+                graph
+                    .parents(node)
+                    .map(|(side, parent)| (
+                        side,
+                        graph.node_state(parent).kind,
+                        graph.node_state(parent).ground_depth
+                    ))
+                    .collect::<Vec<_>>(),
+            );
+
+            if bfs_depth == 0 {
+                assert!(graph.ground_parents(node, &cfg).is_empty());
+                continue;
+            }
+
+            let mut lower_neighbors = Vec::new();
+            let mut neighbor_depths = Vec::new();
+            for side in Side::iter() {
+                let neighbor = graph.neighbor(node, side).unwrap();
+                let neighbor_depth = graph.node_state(neighbor).ground_depth;
+                assert!(
+                    ground_depth.abs_diff(neighbor_depth) <= 1,
+                    "adjacent depths differ by more than one: node={node:?} depth={}, side={side:?}, neighbor={neighbor:?} depth={neighbor_depth}",
+                    ground_depth,
+                );
+                neighbor_depths.push((side, neighbor, neighbor_depth));
+                if neighbor_depth + 1 == ground_depth {
+                    lower_neighbors.push((side, neighbor));
+                }
+            }
+            assert!(
+                !lower_neighbors.is_empty(),
+                "node {node:?} has depth {} but no neighbor at depth d-1; neighbors={neighbor_depths:?}",
+                ground_depth,
+            );
+
+            let actual = graph.ground_parents(node, &cfg);
+            assert_eq!(
+                actual, lower_neighbors,
+                "ground_parents mismatch for node={node:?}, depth={}, neighbors={neighbor_depths:?}",
+                ground_depth,
+            );
+        }
+    }
+
+    #[test]
+    fn ground_depth_does_not_depend_on_expansion_side_order() {
+        let (mut first, first_nodes) = ground_depth_test_region(5, false);
+        let (mut second, second_nodes) = ground_depth_test_region(5, true);
+        let cfg = WorldgenConfig::default();
+        let second_set = second_nodes.iter().copied().collect::<HashSet<_>>();
+
+        for node in first_nodes {
+            assert!(
+                second_set.contains(&node),
+                "expansion omitted node {node:?}"
+            );
+            first.ensure_node_state(node, &cfg);
+            second.ensure_node_state(node, &cfg);
+            assert_eq!(
+                first.node_state(node).ground_depth,
+                second.node_state(node).ground_depth,
+                "ground depth depends on expansion order for {node:?}"
+            );
+        }
+    }
 
     #[test]
     fn chunk_indexing_origin() {
