@@ -358,6 +358,8 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    /// Whether terrain generation will replace the entire chunk with dirt.
+    terrain_is_all_dirt: bool,
     /// Megatree geometry to rasterize in this chunk, if any.
     megatree: Option<MegatreeChunk>,
     /// Random quantity used to seed terrain gen
@@ -372,18 +374,26 @@ impl ChunkParams {
         graph.ensure_node_state(chunk.node, cfg);
         let env = chunk_incident_enviro_factors(graph, chunk, cfg);
         let state = graph.node_state(chunk.node);
+        let is_road =
+            state.kind == Sky && ((state.road_state == East) || (state.road_state == West));
+        let terrain_is_all_dirt =
+            terrain_is_all_dirt(state.surface, chunk.vertex, &env.max_elevations, is_road);
         Self {
             dimension: graph.layout().dimension(),
             chunk: chunk.vertex,
             env,
             surface: state.surface,
-            is_road: state.kind == Sky
-                && ((state.road_state == East) || (state.road_state == West)),
+            is_road,
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            megatree: state.megatree.map(|megatree| {
-                MegatreeChunk::new(megatree, graph.layout().dimension(), chunk.vertex)
-            }),
+            terrain_is_all_dirt,
+            megatree: if terrain_is_all_dirt {
+                None
+            } else {
+                state.megatree.map(|megatree| {
+                    MegatreeChunk::new(megatree, graph.layout().dimension(), chunk.vertex)
+                })
+            },
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -429,17 +439,16 @@ impl ChunkParams {
     /// Performs all terrain generation that can be done one voxel at a time and with
     /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
+        if self.terrain_is_all_dirt {
+            *voxels = VoxelData::Solid(Material::Dirt);
+            return;
+        }
+
         // Determine whether this chunk might contain a boundary between solid and void
-        let mut me_min = self.env.max_elevations[0];
         let mut me_max = self.env.max_elevations[0];
         for &me in &self.env.max_elevations[1..] {
-            me_min = me_min.min(me);
             me_max = me_max.max(me);
         }
-        // Maximum difference between elevations at the center of a chunk and any other point in the chunk
-        // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
-        // empirically.
-        const ELEVATION_MARGIN: f32 = 0.7;
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
@@ -447,12 +456,6 @@ impl ChunkParams {
             // The whole chunk is above ground
             return;
         }
-        if center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS && !self.is_road {
-            // The whole chunk is underground
-            *voxels = VoxelData::Solid(Material::Dirt);
-            return;
-        }
-
         // Otherwise, the chunk might contain a solid/void boundary, so the full terrain generation
         // code should run.
         let normal = Normal::new(0.0, 0.03).unwrap();
@@ -677,7 +680,25 @@ impl ChunkParams {
     }
 }
 
+// Maximum difference between elevations at the center of a chunk and any other
+// point in the chunk. This is currently an empirical estimate; it must be > 0.6.
+const ELEVATION_MARGIN: f32 = 0.7;
 const TERRAIN_SMOOTHNESS: f32 = 10.0;
+
+/// Whether ordinary terrain generation can replace the chunk with solid dirt.
+fn terrain_is_all_dirt(
+    surface: Plane,
+    chunk: Vertex,
+    max_elevations: &[f32; 8],
+    is_road: bool,
+) -> bool {
+    if is_road {
+        return false;
+    }
+    let minimum_elevation = max_elevations.iter().copied().reduce(f32::min).unwrap();
+    let center_elevation = surface.distance_to_chunk(chunk, &na::Vector3::repeat(0.5));
+    center_elevation + ELEVATION_MARGIN < minimum_elevation / TERRAIN_SMOOTHNESS
+}
 
 struct NeighborData {
     coords_opposing: na::Vector3<u8>,
