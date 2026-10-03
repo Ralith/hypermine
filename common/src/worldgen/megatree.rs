@@ -123,10 +123,10 @@ impl MegatreeNode {
         } else if is_seed {
             if can_seed_trunk {
                 let side = parent_sides[rng.random_range(0..parent_sides.len())];
-                result.propagate(opposite(side), Growth::Trunk);
+                result.propagate(side.opposite(), Growth::Trunk);
             } else {
                 result.propagate(ground.ground_side, Growth::Trunk);
-                result.propagate(opposite(ground.ground_side), Growth::Trunk);
+                result.propagate(ground.ground_side.opposite(), Growth::Trunk);
             }
         }
         if !is_underground_sky {
@@ -152,7 +152,7 @@ impl MegatreeNode {
                 } else {
                     rng.random_range(0..trunk_parents.len())
                 };
-                result.propagate(opposite(trunk_parents[index]), Growth::Trunk);
+                result.propagate(trunk_parents[index].opposite(), Growth::Trunk);
             }
         }
 
@@ -271,23 +271,6 @@ fn branch_probability(temperature: f32) -> f32 {
         .clamp(0.0, 1.0)
 }
 
-fn opposite(side: Side) -> Side {
-    let nonadjacent: Vec<_> = Side::iter()
-        .filter(|&candidate| candidate != side && !candidate.adjacent_to(side))
-        .collect();
-    let mut opposites = nonadjacent.iter().copied().filter(|&candidate| {
-        nonadjacent
-            .iter()
-            .all(|&other| candidate == other || candidate.adjacent_to(other))
-    });
-    let opposite = opposites.next().expect("side has an opposite side");
-    assert!(
-        opposites.next().is_none(),
-        "side has multiple opposite sides"
-    );
-    opposite
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,7 +313,7 @@ mod tests {
             for height in [-0.75, -0.5, -0.3, 0.0, 0.75] {
                 for growth in [Growth::Trunk, Growth::Branching] {
                     let tree = inherited_tree(kind, height, growth);
-                    assert_eq!(tree.child_sides, 1 << opposite(Side::B) as usize);
+                    assert_eq!(tree.child_sides, 1 << Side::B.opposite() as usize);
                     assert_eq!(tree.branching_sides, 0);
                     assert_ne!(tree.branch_sides & (1 << Side::B as usize), 0);
                 }
@@ -378,7 +361,7 @@ mod tests {
             assert!(
                 parents
                     .iter()
-                    .any(|&(side, _)| tree.propagates_through(opposite(side)))
+                    .any(|&(side, _)| tree.propagates_through(side.opposite()))
             );
             assert!(
                 parents
@@ -409,7 +392,7 @@ mod tests {
         for height in [-1.0, 0.0, 0.751, 10.0] {
             for growth in [Growth::Trunk, Growth::Branching] {
                 let tree = inherited_tree(NodeStateKind::DeepLand, height, growth);
-                assert_eq!(tree.child_sides, 1 << opposite(Side::B) as usize);
+                assert_eq!(tree.child_sides, 1 << Side::B.opposite() as usize);
                 assert_eq!(tree.branching_sides, 0);
             }
         }
@@ -508,7 +491,7 @@ mod tests {
                     assert!(
                         parents
                             .iter()
-                            .any(|&(side, _)| tree.propagates_through(opposite(side)))
+                            .any(|&(side, _)| tree.propagates_through(side.opposite()))
                     );
                     assert_eq!(tree.branch_sides, tree.child_sides);
                     assert_eq!(tree.child_sides, build().child_sides);
@@ -552,7 +535,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             tree.child_sides,
-            (1 << Side::C as usize) | (1 << opposite(Side::C) as usize)
+            (1 << Side::C as usize) | (1 << Side::C.opposite() as usize)
         );
         assert_eq!(tree.branching_sides, 0);
     }

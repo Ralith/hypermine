@@ -64,6 +64,24 @@ impl Side {
         data::ADJACENT[self as usize][other as usize]
     }
 
+    /// Returns the side opposite `self` on the dodecahedron.
+    pub fn opposite(self) -> Self {
+        let nonadjacent = Self::iter()
+            .filter(|&candidate| candidate != self && !candidate.adjacent_to(self))
+            .collect::<Vec<_>>();
+        let mut opposites = nonadjacent.iter().copied().filter(|&candidate| {
+            nonadjacent
+                .iter()
+                .all(|&other| candidate == other || candidate.adjacent_to(other))
+        });
+        let opposite = opposites.next().expect("side has an opposite side");
+        assert!(
+            opposites.next().is_none(),
+            "side has multiple opposite sides"
+        );
+        opposite
+    }
+
     /// Outward normal vector of this side
     #[inline]
     pub fn normal(self) -> &'static MDirection<f32> {
