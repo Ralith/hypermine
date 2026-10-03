@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 
 use horosphere::{HorosphereChunk, HorosphereNode};
-use megatree::{BRANCH_RADIUS, LEAVES_RADIUS, MegatreeNode};
+use megatree::{MegatreeChunk, MegatreeNode};
 use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
@@ -16,7 +16,6 @@ use crate::{
     node::{ChunkId, VoxelData},
     world::Material,
 };
-use line::LineSegment;
 
 mod horosphere;
 mod line;
@@ -359,10 +358,8 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
-    /// Whether this chunk contains part of a Megatree
-    megatree_branches: Vec<LineSegment>,
-    /// Whether the Megatree node has no children and should generate a leaves ball
-    has_megatree_leaves: bool,
+    /// Megatree geometry to rasterize in this chunk, if any.
+    megatree: Option<MegatreeChunk>,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -384,21 +381,9 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            megatree_branches: state
-                .megatree
-                .map(|megatree| {
-                    megatree
-                        .branch_sides()
-                        .map(|side| {
-                            let center = MVector::origin().normalized_point();
-                            let neighbor_center = side.reflection() * center;
-                            let edge_center = center.midpoint(&neighbor_center);
-                            LineSegment::new(center, edge_center)
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            has_megatree_leaves: state.megatree.is_some_and(MegatreeNode::is_terminal),
+            megatree: state.megatree.map(|megatree| {
+                MegatreeChunk::new(megatree, graph.layout().dimension(), chunk.vertex)
+            }),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -416,8 +401,10 @@ impl ChunkParams {
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
 
-        self.generate_megatree_leaves(&mut voxels);
-        self.generate_megatree_branches(&mut voxels);
+        if let Some(megatree) = &self.megatree {
+            megatree.generate_leaves(&mut voxels);
+            megatree.generate_branches(&mut voxels);
+        }
 
         self.generate_terrain(&mut voxels, &mut rng);
 
@@ -437,47 +424,6 @@ impl ChunkParams {
 
         margins::initialize_margins(self.dimension, &mut voxels);
         voxels
-    }
-
-    /// Rasterize wood around the Megatree branches passing through this node.
-    fn generate_megatree_branches(&self, voxels: &mut VoxelData) {
-        if self.megatree_branches.is_empty() {
-            return;
-        }
-
-        for (x, y, z) in VoxelCoords::new(self.dimension) {
-            let coords = na::Vector3::new(x, y, z);
-            let center = voxel_center(self.dimension, coords);
-            let point =
-                MVector::from(self.chunk.chunk_to_node() * center.push(1.0)).normalized_point();
-
-            if self
-                .megatree_branches
-                .iter()
-                .any(|branch| branch.distance_to(&point) <= BRANCH_RADIUS)
-            {
-                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Wood;
-            }
-        }
-    }
-
-    /// Generate a spherical cluster of leaves at the center of a terminal node.
-    fn generate_megatree_leaves(&self, voxels: &mut VoxelData) {
-        if !self.has_megatree_leaves {
-            return;
-        }
-
-        let center = MPoint::origin();
-        for (x, y, z) in VoxelCoords::new(self.dimension) {
-            let coords = na::Vector3::new(x, y, z);
-            let chunk_coords = voxel_center(self.dimension, coords);
-            let point = MVector::from(self.chunk.chunk_to_node() * chunk_coords.push(1.0))
-                .normalized_point();
-
-            if point.distance(&center) <= LEAVES_RADIUS {
-                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Leaves;
-            }
-        }
     }
 
     /// Performs all terrain generation that can be done one voxel at a time and with

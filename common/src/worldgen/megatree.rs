@@ -1,11 +1,15 @@
 use crate::{
-    dodeca::Side,
+    dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
+    math::{MPoint, MVector},
+    node::VoxelData,
+    world::Material,
 };
 use rand::{RngExt, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 
 use super::NodeStateKind;
+use super::{VoxelCoords, index, line::LineSegment, voxel_center};
 
 /// Branch radius, in absolute hyperbolic distance units.
 pub const BRANCH_RADIUS: f32 = 0.2;
@@ -188,6 +192,73 @@ impl MegatreeNode {
 
     pub fn is_terminal(self) -> bool {
         self.child_sides == 0
+    }
+}
+
+/// Megatree geometry needed to render one chunk.
+pub(super) struct MegatreeChunk {
+    dimension: u8,
+    chunk: Vertex,
+    branches: Vec<LineSegment>,
+    has_leaves: bool,
+}
+
+impl MegatreeChunk {
+    pub(super) fn new(megatree: MegatreeNode, dimension: u8, chunk: Vertex) -> Self {
+        let branches = megatree
+            .branch_sides()
+            .map(|side| {
+                let center = MVector::origin().normalized_point();
+                let neighbor_center = side.reflection() * center;
+                let edge_center = center.midpoint(&neighbor_center);
+                LineSegment::new(center, edge_center)
+            })
+            .collect();
+        Self {
+            dimension,
+            chunk,
+            branches,
+            has_leaves: megatree.is_terminal(),
+        }
+    }
+
+    pub(super) fn generate_branches(&self, voxels: &mut VoxelData) {
+        if self.branches.is_empty() {
+            return;
+        }
+
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let center = voxel_center(self.dimension, coords);
+            let point =
+                MVector::from(self.chunk.chunk_to_node() * center.push(1.0)).normalized_point();
+
+            if self
+                .branches
+                .iter()
+                .any(|branch| branch.distance_to(&point) <= BRANCH_RADIUS)
+            {
+                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Wood;
+            }
+        }
+    }
+
+    pub(super) fn generate_leaves(&self, voxels: &mut VoxelData) {
+        if !self.has_leaves {
+            return;
+        }
+
+        let center = MPoint::origin();
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let chunk_coords = voxel_center(self.dimension, coords);
+            let point = MVector::from(self.chunk.chunk_to_node() * chunk_coords.push(1.0))
+                .normalized_point();
+
+            if point.distance(&center) <= LEAVES_RADIUS {
+                voxels.data_mut(self.dimension)[index(self.dimension, coords)] = Material::Leaves;
+            }
+        }
     }
 }
 
