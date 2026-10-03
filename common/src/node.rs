@@ -66,7 +66,13 @@ impl Graph {
             self.ensure_partial_node_state(peer.node(), cfg);
         }
 
-        let node_state = NodeState::new(self, node_id, cfg);
+        let kind = self
+            .parents(node_id)
+            .next()
+            .map_or(crate::worldgen::NodeStateKind::ROOT, |(side, parent)| {
+                self.node_state(parent).kind.child(side)
+            });
+        let node_state = NodeState::new(self, node_id, cfg, kind);
         self[node_id].state = Some(node_state);
     }
 

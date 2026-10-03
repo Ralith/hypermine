@@ -1,4 +1,8 @@
+#[cfg(test)]
+use std::collections::HashMap;
+
 use horosphere::{HorosphereChunk, HorosphereNode};
+use megatree::{MegatreeChunk, MegatreeNode};
 use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
@@ -8,12 +12,14 @@ use crate::{
     dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
     margins,
-    math::{self, MVector},
+    math::{self, MPoint, MVector},
     node::{ChunkId, VoxelData},
     world::Material,
 };
 
 mod horosphere;
+mod line;
+mod megatree;
 mod plane;
 mod terraingen;
 
@@ -25,7 +31,7 @@ pub struct WorldgenConfig {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum NodeStateKind {
+pub(crate) enum NodeStateKind {
     Sky,
     DeepSky,
     Land,
@@ -34,10 +40,10 @@ enum NodeStateKind {
 use NodeStateKind::*;
 
 impl NodeStateKind {
-    const ROOT: Self = Land;
+    pub(crate) const ROOT: Self = Land;
 
     /// What state comes after this state, from a given side?
-    fn child(self, side: Side) -> Self {
+    pub(crate) fn child(self, side: Side) -> Self {
         match (self, side) {
             (Sky, Side::A) => Land,
             (Land, Side::A) => Sky,
@@ -98,14 +104,20 @@ impl PartialNodeState {
 /// from the `NodeState` of the node's parents, along with the `PartialNodeState` of the node
 /// itself and its "peer" nodes (See `peer_traverser`).
 pub struct NodeState {
-    kind: NodeStateKind,
+    pub(crate) kind: NodeStateKind,
     surface: Plane,
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
     horosphere: Option<HorosphereNode>,
+    megatree: Option<MegatreeNode>,
 }
 impl NodeState {
-    pub fn new(graph: &Graph, node: NodeId, _cfg: &WorldgenConfig) -> Self {
+    pub(crate) fn new(
+        graph: &Graph,
+        node: NodeId,
+        _cfg: &WorldgenConfig,
+        kind: NodeStateKind,
+    ) -> Self {
         let mut parents = graph
             .parents(node)
             .map(|(s, n)| ParentInfo {
@@ -139,32 +151,155 @@ impl NodeState {
             _ => unreachable!(),
         };
 
-        let kind = parents[0].map_or(NodeStateKind::ROOT, |p| p.node_state.kind.child(p.side));
         let road_state = parents[0].map_or(NodeStateRoad::ROOT, |p| {
             p.node_state.road_state.child(p.side)
         });
-
+        let surface = match kind {
+            Land => Plane::from(Side::A),
+            Sky => -Plane::from(Side::A),
+            _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
+        };
+        let estimated_terrain_depth =
+            enviro.max_elevation / TERRAIN_SMOOTHNESS - surface.distance_to(&MPoint::origin());
+        // A new Land seed has no incoming tree face, so align its trunk with
+        // the face pointing most closely along the ground-plane normal.
+        let ground_side = Side::iter()
+            .max_by(|a, b| {
+                a.normal()
+                    .mip(surface.scaled_normal())
+                    .total_cmp(&b.normal().mip(surface.scaled_normal()))
+            })
+            .unwrap();
         let horosphere = graph
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
+        let groundward_sides = if is_underground_sky(kind, -estimated_terrain_depth) {
+            groundward_sides(&surface)
+        } else {
+            Vec::new()
+        };
+        let megatree = MegatreeNode::new(
+            graph,
+            node,
+            kind,
+            enviro.rainfall,
+            enviro.temperature,
+            -estimated_terrain_depth,
+            megatree::GroundDirections {
+                ground_side,
+                groundward_sides: &groundward_sides,
+            },
+        );
 
         Self {
             kind,
-            surface: match kind {
-                Land => Plane::from(Side::A),
-                Sky => -Plane::from(Side::A),
-                _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
-            },
+            surface,
             road_state,
             enviro,
             horosphere,
+            megatree,
         }
     }
 
     pub fn up_direction(&self) -> MVector<f32> {
         *self.surface.scaled_normal()
     }
+}
+
+fn is_underground_sky(kind: NodeStateKind, estimated_height: f32) -> bool {
+    matches!(kind, Sky | DeepSky) && estimated_height < -megatree::UNDERGROUND_DEPTH_THRESHOLD
+}
+
+/// Returns each face direction whose neighboring node center is closer to the
+/// ground plane than this node's center. This uses only the plane and does not
+/// need to materialize graph neighbors.
+fn groundward_sides(surface: &Plane) -> Vec<Side> {
+    let origin = MPoint::<f64>::origin();
+    let current = surface.distance_to_f64(&origin).abs();
+    Side::iter()
+        .filter(|side| {
+            let neighbor = *side.reflection_f64() * origin;
+            let neighbor_distance = surface.distance_to_f64(&neighbor).abs();
+            // Comparing absolute Minkowski products alone is only monotonic
+            // with absolute distance while both points remain on the same side
+            // of the plane. Use the signed, exponent-aware distance instead.
+            // Reflection matrices and plane normals originate as f32. Treat
+            // differences within this error bound as ties to preserve symmetry.
+            let tolerance = f64::from(f32::EPSILON) * 8.0 * current.max(neighbor_distance).max(1.0);
+            neighbor_distance + tolerance < current
+        })
+        .collect()
+}
+
+impl Graph {
+    /// Test oracle returning all neighbors at minimum graph-parent ground depth.
+    #[cfg(test)]
+    pub fn ground_parents(&mut self, node: NodeId, cfg: &WorldgenConfig) -> Vec<(Side, NodeId)> {
+        self.ensure_node_state(node, cfg);
+        let mut memo = HashMap::default();
+        let (kind, _) = ground_plane_info(self, node, &mut memo);
+        if matches!(kind, Sky | Land) {
+            return Vec::new();
+        }
+        let neighbors = Side::iter()
+            .map(|side| {
+                let neighbor = self.ensure_neighbor(node, side);
+                let (_, depth) = ground_plane_info(self, neighbor, &mut memo);
+                (side, neighbor, depth)
+            })
+            .collect::<Vec<_>>();
+        let min_depth = neighbors
+            .iter()
+            .map(|(_, _, depth)| depth)
+            .min()
+            .copied()
+            .unwrap();
+        neighbors
+            .into_iter()
+            .filter_map(|(side, neighbor, depth)| (depth == min_depth).then_some((side, neighbor)))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+fn ground_plane_info(
+    graph: &Graph,
+    node: NodeId,
+    memo: &mut HashMap<NodeId, (NodeStateKind, u32)>,
+) -> (NodeStateKind, u32) {
+    if let Some(info) = memo.get(&node) {
+        return *info;
+    }
+
+    let parents = graph.parents(node).collect::<Vec<_>>();
+    if parents.is_empty() {
+        let result = (NodeStateKind::ROOT, 0);
+        memo.insert(node, result);
+        return result;
+    }
+    let parent_infos = parents
+        .into_iter()
+        .map(|(side, parent)| {
+            let (kind, depth) = ground_plane_info(graph, parent, memo);
+            (side, kind, depth)
+        })
+        .collect::<Vec<_>>();
+    let kind = parent_infos[0].1.child(parent_infos[0].0);
+    let depth = match kind {
+        Sky | Land => 0,
+        DeepSky | DeepLand => {
+            parent_infos
+                .iter()
+                .map(|(_, _, depth)| depth)
+                .min()
+                .unwrap()
+                + 1
+        }
+    };
+    let result = (kind, depth);
+    memo.insert(node, result);
+    result
 }
 
 #[derive(Clone, Copy)]
@@ -223,6 +358,10 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    /// Whether terrain generation will replace the entire chunk with dirt.
+    terrain_is_all_dirt: bool,
+    /// Megatree geometry to rasterize in this chunk, if any.
+    megatree: Option<MegatreeChunk>,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -235,15 +374,26 @@ impl ChunkParams {
         graph.ensure_node_state(chunk.node, cfg);
         let env = chunk_incident_enviro_factors(graph, chunk, cfg);
         let state = graph.node_state(chunk.node);
+        let is_road =
+            state.kind == Sky && ((state.road_state == East) || (state.road_state == West));
+        let terrain_is_all_dirt =
+            terrain_is_all_dirt(state.surface, chunk.vertex, &env.max_elevations, is_road);
         Self {
             dimension: graph.layout().dimension(),
             chunk: chunk.vertex,
             env,
             surface: state.surface,
-            is_road: state.kind == Sky
-                && ((state.road_state == East) || (state.road_state == West)),
+            is_road,
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            terrain_is_all_dirt,
+            megatree: if terrain_is_all_dirt {
+                None
+            } else {
+                state.megatree.map(|megatree| {
+                    MegatreeChunk::new(megatree, graph.layout().dimension(), chunk.vertex)
+                })
+            },
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -260,6 +410,11 @@ impl ChunkParams {
     pub fn generate_voxels(&self) -> VoxelData {
         let mut voxels = VoxelData::Solid(Material::Void);
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
+
+        if let Some(megatree) = &self.megatree {
+            megatree.generate_leaves(&mut voxels);
+            megatree.generate_branches(&mut voxels);
+        }
 
         self.generate_terrain(&mut voxels, &mut rng);
 
@@ -284,31 +439,23 @@ impl ChunkParams {
     /// Performs all terrain generation that can be done one voxel at a time and with
     /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
+        if self.terrain_is_all_dirt {
+            *voxels = VoxelData::Solid(Material::Dirt);
+            return;
+        }
+
         // Determine whether this chunk might contain a boundary between solid and void
-        let mut me_min = self.env.max_elevations[0];
         let mut me_max = self.env.max_elevations[0];
         for &me in &self.env.max_elevations[1..] {
-            me_min = me_min.min(me);
             me_max = me_max.max(me);
         }
-        // Maximum difference between elevations at the center of a chunk and any other point in the chunk
-        // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
-        // empirically.
-        const ELEVATION_MARGIN: f32 = 0.7;
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
         if center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS {
             // The whole chunk is above ground
-            *voxels = VoxelData::Solid(Material::Void);
             return;
         }
-        if center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS && !self.is_road {
-            // The whole chunk is underground
-            *voxels = VoxelData::Solid(Material::Dirt);
-            return;
-        }
-
         // Otherwise, the chunk might contain a solid/void boundary, so the full terrain generation
         // code should run.
         let normal = Normal::new(0.0, 0.03).unwrap();
@@ -533,7 +680,25 @@ impl ChunkParams {
     }
 }
 
+// Maximum difference between elevations at the center of a chunk and any other
+// point in the chunk. This is currently an empirical estimate; it must be > 0.6.
+const ELEVATION_MARGIN: f32 = 0.7;
 const TERRAIN_SMOOTHNESS: f32 = 10.0;
+
+/// Whether ordinary terrain generation can replace the chunk with solid dirt.
+fn terrain_is_all_dirt(
+    surface: Plane,
+    chunk: Vertex,
+    max_elevations: &[f32; 8],
+    is_road: bool,
+) -> bool {
+    if is_road {
+        return false;
+    }
+    let minimum_elevation = max_elevations.iter().copied().reduce(f32::min).unwrap();
+    let center_elevation = surface.distance_to_chunk(chunk, &na::Vector3::repeat(0.5));
+    center_elevation + ELEVATION_MARGIN < minimum_elevation / TERRAIN_SMOOTHNESS
+}
 
 struct NeighborData {
     coords_opposing: na::Vector3<u8>,
@@ -687,11 +852,163 @@ fn hash(a: u64, b: u64) -> u64 {
 }
 
 #[cfg(test)]
+mod ground_depth_search;
+
+#[cfg(test)]
 mod test {
     use super::*;
     use approx::*;
+    use std::collections::{HashMap, HashSet};
 
     const CHUNK_SIZE: u8 = 12;
+
+    fn graph_test_region(radius: u32) -> (Graph, Vec<NodeId>) {
+        let mut graph = Graph::new(1);
+        let mut all_nodes = vec![NodeId::ROOT];
+        let mut seen = HashSet::from([NodeId::ROOT]);
+        let mut frontier = vec![NodeId::ROOT];
+        let sides = Side::iter().collect::<Vec<_>>();
+
+        for _ in 0..radius {
+            let mut next_frontier = Vec::new();
+            for node in frontier {
+                for &side in &sides {
+                    let neighbor = graph.ensure_neighbor(node, side);
+                    if seen.insert(neighbor) {
+                        all_nodes.push(neighbor);
+                        next_frontier.push(neighbor);
+                    }
+                }
+            }
+            frontier = next_frontier;
+        }
+
+        (graph, all_nodes)
+    }
+
+    fn worldgen_test_region(radius: u32) -> (Graph, Vec<NodeId>) {
+        let (mut graph, all_nodes) = graph_test_region(radius);
+        let cfg = WorldgenConfig::default();
+        for &node in &all_nodes {
+            graph.ensure_node_state(node, &cfg);
+        }
+        (graph, all_nodes)
+    }
+
+    #[test]
+    fn geometric_groundward_sides_match_ground_parent_oracle_in_local_region() {
+        let (mut graph, nodes) = worldgen_test_region(4);
+        let cfg = WorldgenConfig::default();
+        let mut mismatches = Vec::new();
+        let mut checked = 0;
+        let mut deep_sky = 0;
+        let mut deep_land = 0;
+        let mut multiple_parents = 0;
+        let mut multiple_ground_parents = 0;
+        let mut differing_ground_parent_distances = 0;
+        for node in nodes {
+            let state = graph.node_state(node);
+            if !matches!(state.kind, DeepSky | DeepLand) {
+                continue;
+            }
+            checked += 1;
+            deep_sky += usize::from(state.kind == DeepSky);
+            deep_land += usize::from(state.kind == DeepLand);
+            multiple_parents += usize::from(graph.parents(node).len() > 1);
+            let surface = state.surface;
+            let current_distance = surface.distance_to(&MPoint::origin()).abs();
+            let per_side = Side::iter()
+                .map(|side| {
+                    let neighbor = side.reflection() * MPoint::origin();
+                    (side, surface.distance_to(&neighbor).abs())
+                })
+                .collect::<Vec<_>>();
+            let expected = graph
+                .ground_parents(node, &cfg)
+                .into_iter()
+                .map(|(side, _)| side)
+                .collect::<Vec<_>>();
+            if expected.len() > 1 {
+                multiple_ground_parents += 1;
+                let parent_distances = expected
+                    .iter()
+                    .map(|side| per_side[*side as usize].1)
+                    .collect::<Vec<_>>();
+                differing_ground_parent_distances += usize::from(
+                    parent_distances
+                        .iter()
+                        .any(|distance| *distance != parent_distances[0]),
+                );
+            }
+            let actual = groundward_sides(&surface);
+            if actual != expected {
+                mismatches.push((node, surface, current_distance, per_side, expected, actual));
+            }
+        }
+        assert!(checked > 0);
+        println!(
+            "geometric/oracle comparison: checked={checked}, DeepSky={deep_sky}, DeepLand={deep_land}, multi-parent={multiple_parents}, multiple-ground-parent={multiple_ground_parents}, with-different-continuous-distances={differing_ground_parent_distances}, mismatches={}",
+            mismatches.len()
+        );
+        for (node, surface, current, per_side, expected, actual) in &mismatches {
+            println!(
+                "mismatch node={node:?} surface={surface:?} current_distance={current} per_side={per_side:?} oracle={expected:?} geometric={actual:?}"
+            );
+        }
+        assert!(mismatches.is_empty());
+        assert!(multiple_ground_parents > 0);
+    }
+
+    #[test]
+    fn groundward_sides_are_equivariant_under_fivefold_rotations() {
+        let origin = MPoint::<f64>::origin();
+        let side_a_center = *Side::A.reflection_f64() * origin;
+        let axis = na::Unit::new_normalize(na::Vector3::new(
+            side_a_center.x,
+            side_a_center.y,
+            side_a_center.z,
+        ));
+        let mut far_plane = Plane::from(Side::A);
+        for step in 0..120 {
+            let side = Side::VALUES[(step * 7 + step / 3) % Side::VALUES.len()];
+            far_plane = side * far_plane;
+        }
+
+        for plane in [Plane::from(Side::A), far_plane] {
+            let source_sides = groundward_sides(&plane);
+            for rotation_step in 1..5 {
+                let angle = std::f64::consts::TAU * f64::from(rotation_step) / 5.0;
+                let rotation =
+                    crate::math::MIsometry::from(na::UnitQuaternion::from_axis_angle(&axis, angle));
+                let mut side_map = HashMap::new();
+                for side in Side::iter() {
+                    let rotated_center = rotation * (*side.reflection_f64() * origin);
+                    let (mapped_side, distance) = Side::iter()
+                        .map(|candidate| {
+                            let center = *candidate.reflection_f64() * origin;
+                            (candidate, rotated_center.distance(&center))
+                        })
+                        .min_by(|a, b| a.1.total_cmp(&b.1))
+                        .unwrap();
+                    assert!(
+                        distance < 1.0e-6,
+                        "rotation did not map side {side:?}: {distance}, axis={axis:?}"
+                    );
+                    side_map.insert(side, mapped_side);
+                }
+                let rotation_f32 = rotation.cast::<f32>();
+                let transformed_plane = &rotation_f32 * plane;
+                let mut expected = source_sides
+                    .iter()
+                    .map(|side| side_map[side])
+                    .collect::<Vec<_>>();
+                let mut actual = groundward_sides(&transformed_plane);
+                expected.sort();
+                actual.sort();
+                assert_eq!(actual, expected, "rotation step={rotation_step}");
+            }
+        }
+    }
 
     #[test]
     fn chunk_indexing_origin() {

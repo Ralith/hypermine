@@ -83,6 +83,20 @@ impl Plane {
         }
     }
 
+    /// Distance to a point using f64 arithmetic for stable comparisons between
+    /// nearby centers when the plane is far from the origin.
+    pub(crate) fn distance_to_f64(&self, point: &MPoint<f64>) -> f64 {
+        let mip = self.scaled_normal.cast::<f64>().mip(point);
+        if self.exponent == 0.0 {
+            mip.asinh()
+        } else if mip == 0.0 {
+            0.0
+        } else {
+            let mip_2 = mip * 2.0;
+            (mip_2.abs().ln() + f64::from(self.exponent)) * mip_2.signum()
+        }
+    }
+
     /// Like `distance_to`, but using chunk coordinates for a chunk in the same node space
     pub fn distance_to_chunk(&self, chunk: Vertex, coord: &na::Vector3<f32>) -> f32 {
         let pos = (MVector::from(chunk.chunk_to_node() * coord.push(1.0))).normalized_point();
