@@ -1,13 +1,20 @@
 use crate::{
-    dodeca::Side,
+    dodeca::{Side, Vertex},
     graph::{Graph, NodeId},
-    math::MPoint,
+    math::{MPoint, MVector},
+    node::VoxelData,
+    world::Material,
 };
 use rand::{RngExt, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 
 use super::{EnviroFactors, NodeStateKind, Plane, TERRAIN_SMOOTHNESS};
+use super::{VoxelCoords, index, line::LineSegment, voxel_center};
 
+/// Branch radius, in absolute hyperbolic distance units.
+const BRANCH_RADIUS: f32 = 0.2;
+/// Radius of the leaves ball at a terminal node.
+const LEAVES_RADIUS: f32 = 0.5;
 /// Node-center depth required to switch propagation into underground mode.
 const UNDERGROUND_DEPTH_THRESHOLD: f32 = 0.75;
 /// Estimated clearance above terrain required for a trunk to start branching.
@@ -203,6 +210,14 @@ impl MegatreeNode {
     fn propagates_through(self, side: Side) -> bool {
         self.child_sides & (1 << side as usize) != 0
     }
+
+    fn branch_sides(self) -> impl Iterator<Item = Side> {
+        Side::iter().filter(move |&side| self.branch_sides & (1 << side as usize) != 0)
+    }
+
+    fn is_terminal(self) -> bool {
+        self.child_sides == 0
+    }
 }
 
 /// Descending ground-depth directions known from the already generated graph parents.
@@ -214,6 +229,66 @@ fn groundward_sides(
     graph.parents(node).filter_map(move |(side, parent)| {
         (graph.node_state(parent).ground_depth + 1 == ground_depth).then_some(side)
     })
+}
+
+/// Megatree geometry needed to render one chunk.
+pub(super) struct MegatreeChunk {
+    dimension: u8,
+    chunk: Vertex,
+    branches: Vec<LineSegment>,
+    has_leaves: bool,
+}
+
+impl MegatreeChunk {
+    pub(super) fn new(megatree: MegatreeNode, dimension: u8, chunk: Vertex) -> Self {
+        let branches = megatree
+            .branch_sides()
+            .map(|side| {
+                let center = MVector::origin().normalized_point();
+                let neighbor_center = side.reflection() * center;
+                let edge_center = center.midpoint(&neighbor_center);
+                LineSegment::new(center, edge_center)
+            })
+            .collect();
+        Self {
+            dimension,
+            chunk,
+            branches,
+            has_leaves: megatree.is_terminal(),
+        }
+    }
+
+    pub(super) fn generate(&self, voxels: &mut VoxelData) {
+        if (self.branches.is_empty() && !self.has_leaves)
+            || matches!(voxels, VoxelData::Solid(material) if *material != Material::Void)
+        {
+            return;
+        }
+
+        for (x, y, z) in VoxelCoords::new(self.dimension) {
+            let coords = na::Vector3::new(x, y, z);
+            let voxel_index = index(self.dimension, coords);
+            if voxels.get(voxel_index) != Material::Void {
+                continue;
+            }
+            let center = voxel_center(self.dimension, coords);
+            let point =
+                MVector::from(self.chunk.chunk_to_node() * center.push(1.0)).normalized_point();
+
+            let material = if self
+                .branches
+                .iter()
+                .any(|branch| branch.distance_to(&point) <= BRANCH_RADIUS)
+            {
+                Material::Wood
+            } else if self.has_leaves && point.distance(&MPoint::origin()) <= LEAVES_RADIUS {
+                Material::Leaves
+            } else {
+                continue;
+            };
+            voxels.data_mut(self.dimension)[voxel_index] = material;
+        }
+    }
 }
 
 fn tree_generation_probability(precipitation: f32) -> f32 {
@@ -561,5 +636,37 @@ mod tests {
             (1 << Side::C as usize) | (1 << Side::C.opposite() as usize)
         );
         assert_eq!(tree.branching_sides, 0);
+    }
+
+    #[test]
+    fn rendering_fills_void_but_preserves_terrain() {
+        let tree = MegatreeNode {
+            child_sides: 0,
+            branching_sides: 0,
+            branch_sides: 1 << Side::B as usize,
+        };
+        let chunk = MegatreeChunk::new(tree, 12, Vertex::A);
+        let mut reference = VoxelData::Solid(Material::Void);
+        chunk.generate(&mut reference);
+        let size = (12usize + 2).pow(3);
+        let wood = (0..size)
+            .find(|&i| reference.get(i) == Material::Wood)
+            .unwrap();
+        let leaves = (0..size)
+            .find(|&i| reference.get(i) == Material::Leaves)
+            .unwrap();
+
+        let mut solid = VoxelData::Solid(Material::Dirt);
+        chunk.generate(&mut solid);
+        assert!(matches!(solid, VoxelData::Solid(Material::Dirt)));
+
+        let mut mixed = VoxelData::Solid(Material::Void);
+        mixed.data_mut(12)[wood] = Material::Dirt;
+        mixed.data_mut(12)[leaves] = Material::Dirt;
+        chunk.generate(&mut mixed);
+        assert_eq!(mixed.get(wood), Material::Dirt);
+        assert_eq!(mixed.get(leaves), Material::Dirt);
+        assert!((0..size).any(|i| mixed.get(i) == Material::Wood));
+        assert!((0..size).any(|i| mixed.get(i) == Material::Leaves));
     }
 }
