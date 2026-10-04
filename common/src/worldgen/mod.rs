@@ -1,4 +1,5 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
+use megatree::MegatreeNode;
 use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
@@ -14,6 +15,7 @@ use crate::{
 };
 
 mod horosphere;
+mod megatree;
 mod plane;
 mod terraingen;
 
@@ -99,10 +101,12 @@ impl PartialNodeState {
 /// itself and its "peer" nodes (See `peer_traverser`).
 pub struct NodeState {
     kind: NodeStateKind,
+    ground_depth: u32,
     surface: Plane,
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
     horosphere: Option<HorosphereNode>,
+    megatree: Option<MegatreeNode>,
 }
 impl NodeState {
     pub fn new(graph: &Graph, node: NodeId, _cfg: &WorldgenConfig) -> Self {
@@ -140,25 +144,39 @@ impl NodeState {
         };
 
         let kind = parents[0].map_or(NodeStateKind::ROOT, |p| p.node_state.kind.child(p.side));
+        let ground_depth = match kind {
+            Sky | Land => 0,
+            DeepSky | DeepLand => {
+                1 + parents
+                    .iter()
+                    .flatten()
+                    .map(|p| p.node_state.ground_depth)
+                    .min()
+                    .expect("deep node has a graph parent")
+            }
+        };
         let road_state = parents[0].map_or(NodeStateRoad::ROOT, |p| {
             p.node_state.road_state.child(p.side)
         });
-
+        let surface = match kind {
+            Land => Plane::from(Side::A),
+            Sky => -Plane::from(Side::A),
+            _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
+        };
         let horosphere = graph
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
+        let megatree = MegatreeNode::new(graph, node, kind, ground_depth, &surface, enviro);
 
         Self {
             kind,
-            surface: match kind {
-                Land => Plane::from(Side::A),
-                Sky => -Plane::from(Side::A),
-                _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
-            },
+            ground_depth,
+            surface,
             road_state,
             enviro,
             horosphere,
+            megatree,
         }
     }
 
