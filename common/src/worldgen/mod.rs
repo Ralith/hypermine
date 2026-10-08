@@ -1,4 +1,5 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
+use megatree::{MegatreeChunk, MegatreeNode};
 use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
@@ -14,6 +15,8 @@ use crate::{
 };
 
 mod horosphere;
+mod line;
+mod megatree;
 mod plane;
 mod terraingen;
 
@@ -99,10 +102,12 @@ impl PartialNodeState {
 /// itself and its "peer" nodes (See `peer_traverser`).
 pub struct NodeState {
     kind: NodeStateKind,
+    ground_depth: u32,
     surface: Plane,
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
     horosphere: Option<HorosphereNode>,
+    megatree: Option<MegatreeNode>,
 }
 impl NodeState {
     pub fn new(graph: &Graph, node: NodeId, _cfg: &WorldgenConfig) -> Self {
@@ -140,25 +145,39 @@ impl NodeState {
         };
 
         let kind = parents[0].map_or(NodeStateKind::ROOT, |p| p.node_state.kind.child(p.side));
+        let ground_depth = match kind {
+            Sky | Land => 0,
+            DeepSky | DeepLand => {
+                1 + parents
+                    .iter()
+                    .flatten()
+                    .map(|p| p.node_state.ground_depth)
+                    .min()
+                    .expect("deep node has a graph parent")
+            }
+        };
         let road_state = parents[0].map_or(NodeStateRoad::ROOT, |p| {
             p.node_state.road_state.child(p.side)
         });
-
+        let surface = match kind {
+            Land => Plane::from(Side::A),
+            Sky => -Plane::from(Side::A),
+            _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
+        };
         let horosphere = graph
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
+        let megatree = MegatreeNode::new(graph, node, kind, ground_depth, &surface, enviro);
 
         Self {
             kind,
-            surface: match kind {
-                Land => Plane::from(Side::A),
-                Sky => -Plane::from(Side::A),
-                _ => parents[0].map(|p| p.side * p.node_state.surface).unwrap(),
-            },
+            ground_depth,
+            surface,
             road_state,
             enviro,
             horosphere,
+            megatree,
         }
     }
 
@@ -223,6 +242,8 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    /// Megatree geometry to rasterize in this chunk, if any.
+    megatree: Option<MegatreeChunk>,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -235,15 +256,19 @@ impl ChunkParams {
         graph.ensure_node_state(chunk.node, cfg);
         let env = chunk_incident_enviro_factors(graph, chunk, cfg);
         let state = graph.node_state(chunk.node);
+        let is_road =
+            state.kind == Sky && ((state.road_state == East) || (state.road_state == West));
         Self {
             dimension: graph.layout().dimension(),
             chunk: chunk.vertex,
             env,
             surface: state.surface,
-            is_road: state.kind == Sky
-                && ((state.road_state == East) || (state.road_state == West)),
+            is_road,
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            megatree: state.megatree.map(|megatree| {
+                MegatreeChunk::new(megatree, graph.layout().dimension(), chunk.vertex)
+            }),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -262,6 +287,10 @@ impl ChunkParams {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
 
         self.generate_terrain(&mut voxels, &mut rng);
+
+        if let Some(megatree) = &self.megatree {
+            megatree.generate(&mut voxels);
+        }
 
         if let Some(horosphere) = &self.horosphere {
             horosphere.generate(&mut voxels, self.dimension);
@@ -284,31 +313,32 @@ impl ChunkParams {
     /// Performs all terrain generation that can be done one voxel at a time and with
     /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
-        // Determine whether this chunk might contain a boundary between solid and void
-        let mut me_min = self.env.max_elevations[0];
-        let mut me_max = self.env.max_elevations[0];
-        for &me in &self.env.max_elevations[1..] {
-            me_min = me_min.min(me);
-            me_max = me_max.max(me);
-        }
-        // Maximum difference between elevations at the center of a chunk and any other point in the chunk
-        // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
-        // empirically.
-        const ELEVATION_MARGIN: f32 = 0.7;
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
-        if center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS {
-            // The whole chunk is above ground
-            *voxels = VoxelData::Solid(Material::Void);
-            return;
-        }
-        if center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS && !self.is_road {
-            // The whole chunk is underground
+        let minimum_elevation = self
+            .env
+            .max_elevations
+            .iter()
+            .copied()
+            .reduce(f32::min)
+            .unwrap();
+        if !self.is_road
+            && center_elevation + ELEVATION_MARGIN < minimum_elevation / TERRAIN_SMOOTHNESS
+        {
             *voxels = VoxelData::Solid(Material::Dirt);
             return;
         }
 
+        // Determine whether this chunk might contain a boundary between solid and void
+        let mut me_max = self.env.max_elevations[0];
+        for &me in &self.env.max_elevations[1..] {
+            me_max = me_max.max(me);
+        }
+        if center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS {
+            // The whole chunk is above ground
+            return;
+        }
         // Otherwise, the chunk might contain a solid/void boundary, so the full terrain generation
         // code should run.
         let normal = Normal::new(0.0, 0.03).unwrap();
@@ -533,6 +563,9 @@ impl ChunkParams {
     }
 }
 
+// Maximum difference between elevations at the center of a chunk and any other
+// point in the chunk. This is currently an empirical estimate; it must be > 0.6.
+const ELEVATION_MARGIN: f32 = 0.7;
 const TERRAIN_SMOOTHNESS: f32 = 10.0;
 
 struct NeighborData {
