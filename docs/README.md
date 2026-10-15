@@ -1,11 +1,8 @@
 # Current outline
 This is subject to change.
 * Introduction
-* How to play Hypermine
-    * Controls
-    * Config file
-    * The save file (with a warning that compatibility between versions of Hypermine are not guaranteed and another warning to back up save files)
-    * Setting up multiplayer
+* How to play Hypermine (See `how_to_play.md`)
+    * TODO: Setting up multiplayer
 * Background math
     * Linear algebra
         * (This can link to external resources, but readers should be guided on what parts of linear algebra are worth learning, and making these docs self-contained would be a good long-term goal. If we do use external links, we should include a date so that readers know when health of each link was last checked.)
