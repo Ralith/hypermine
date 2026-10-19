@@ -64,6 +64,11 @@ impl Side {
         data::ADJACENT[self as usize][other as usize]
     }
 
+    /// Returns the side opposite `self` on the dodecahedron.
+    pub fn opposite(self) -> Self {
+        data::OPPOSITE[self as usize]
+    }
+
     /// Outward normal vector of this side
     #[inline]
     pub fn normal(self) -> &'static MDirection<f32> {
@@ -354,6 +359,18 @@ mod data {
                 // and is robust to numerical precision limits.
                 (-0.5..0.5).contains(&side0.normal_f64().mip(side1.normal_f64()))
             })
+        })
+    });
+
+    pub static OPPOSITE: LazyLock<[Side; SIDE_COUNT]> = LazyLock::new(|| {
+        Side::VALUES.map(|side| {
+            Side::iter()
+                .min_by(|&a, &b| {
+                    side.normal_f64()
+                        .mip(a.normal_f64())
+                        .total_cmp(&side.normal_f64().mip(b.normal_f64()))
+                })
+                .expect("every side has an opposite")
         })
     });
 
@@ -660,6 +677,16 @@ mod tests {
         for side in Side::iter() {
             assert!(!side.is_facing(&MPoint::origin()));
             assert!(side.is_facing(&(*side.reflection() * MPoint::origin())));
+        }
+    }
+
+    #[test]
+    fn opposite_sides_are_involutive_and_nonadjacent() {
+        for side in Side::iter() {
+            let opposite = side.opposite();
+            assert_ne!(side, opposite);
+            assert!(!side.adjacent_to(opposite));
+            assert_eq!(opposite.opposite(), side);
         }
     }
 
