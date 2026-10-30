@@ -1,6 +1,7 @@
 use std::mem;
 
 use ash::{Device, vk};
+use color::{AlphaColor, LinearSrgb, OpaqueColor, Rgba8, Srgb};
 use lahar::{BufferRegionAlloc, DedicatedImage};
 use memoffset::offset_of;
 use vk_shader_macros::include_glsl;
@@ -412,6 +413,24 @@ impl MeshMaterial {
         ctx: &AssetLoadContext,
         mesh_material: MeshMaterialDefinition,
     ) -> Self {
+        assert!(
+            mesh_material.srgb_rgba_color_data.len()
+                == mesh_material.width as usize * mesh_material.height as usize * 4
+        );
+
+        let mut srgb_rgba_color_data_premultiplied = mesh_material.srgb_rgba_color_data;
+        for chunk in srgb_rgba_color_data_premultiplied.as_chunks_mut::<4>().0 {
+            // We need to premultiply the RGB values before they're used by the shader. We do this manually,
+            // as premultiplied SRGB has some ambiguity in its definition.
+            let (rgb, alpha) = AlphaColor::<Srgb>::from(Rgba8::from_u8_array(*chunk)).split();
+            let rgb_linear: OpaqueColor<LinearSrgb> = rgb.convert();
+            let rgb_premultiplied = (rgb_linear * alpha)
+                .with_alpha(alpha)
+                .to_rgba8()
+                .to_u8_array();
+            *chunk = rgb_premultiplied;
+        }
+
         unsafe {
             let work = ctx.begin_work();
             let finish_time = work.time().get();
@@ -421,9 +440,9 @@ impl MeshMaterial {
                 finish_time,
             );
             std::ptr::copy_nonoverlapping(
-                mesh_material.srgb_rgba_color_data.as_ptr(),
+                srgb_rgba_color_data_premultiplied.as_ptr(),
                 color_staging.pointer.as_ptr(),
-                mesh_material.srgb_rgba_color_data.len(),
+                srgb_rgba_color_data_premultiplied.len(),
             );
             let color = DedicatedImage::new(
                 ctx.device(),
