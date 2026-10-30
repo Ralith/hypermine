@@ -538,7 +538,7 @@ impl SwapchainState {
                 .unwrap();
             let extent = match surface_capabilities.current_extent.width {
                 // If Vulkan doesn't know, winit probably does. Known to apply at least to Wayland.
-                std::u32::MAX => vk::Extent2D {
+                u32::MAX => vk::Extent2D {
                     width: fallback_size.width,
                     height: fallback_size.height,
                 },
