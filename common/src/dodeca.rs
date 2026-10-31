@@ -370,7 +370,7 @@ mod data {
                         .mip(a.normal_f64())
                         .total_cmp(&side.normal_f64().mip(b.normal_f64()))
                 })
-                .expect("every side has an opposite")
+                .expect("side iterator is nonempty")
         })
     });
 
@@ -681,9 +681,9 @@ mod tests {
     }
 
     #[test]
-    // Opposite-side lookup must produce a distinct, nonadjacent side and be symmetric in both
-    // directions.
     fn opposite_sides_consistent() {
+        // Opposite-side lookup must produce a distinct, nonadjacent side and be symmetric in
+        // both directions.
         for side in Side::iter() {
             let opposite = side.opposite();
             assert_ne!(side, opposite);

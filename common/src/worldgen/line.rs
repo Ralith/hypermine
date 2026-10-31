@@ -4,45 +4,34 @@ use crate::math::{MPoint, MVector};
 #[derive(Clone, Copy)]
 pub struct LineSegment {
     start: MPoint<f32>,
-    end: MPoint<f32>,
-    tangent: MVector<f32>,
-    tanh_length: f32,
+    start_to_end: MVector<f32>,
 }
 
 impl LineSegment {
-    /// The endpoints must be separated enough to define a tangent at f32 precision.
     pub fn new(start: MPoint<f32>, end: MPoint<f32>) -> Self {
-        let cosh_length = -start.mip(&end);
-        let sinh_length_squared = (cosh_length - 1.0) * (cosh_length + 1.0);
-        assert!(
-            sinh_length_squared > f32::EPSILON,
-            "line segment is too short"
-        );
-        let sinh_length = sinh_length_squared.sqrt();
-        let tangent = (end.as_ref() + start.as_ref() * start.mip(&end)) / sinh_length;
-        let tanh_length = sinh_length / cosh_length;
+        let start_to_end = (end.as_ref() / -end.mip(&start)) - start.as_ref();
         Self {
             start,
-            end,
-            tangent,
-            tanh_length,
+            start_to_end,
         }
     }
 
     /// Returns the shortest hyperbolic distance from `point` to this segment.
     pub fn distance_to(&self, point: &MPoint<f32>) -> f32 {
-        let along_start = -point.mip(&self.start);
-        let along_tangent = point.mip(&self.tangent);
-        if along_tangent <= 0.0 {
-            point.distance(&self.start)
-        } else if along_tangent >= along_start * self.tanh_length {
-            point.distance(&self.end)
+        // Work in the plane tangent to the hyperboloid at `start` and find the vectors to
+        // `point` and the segment end.
+        let start_to_point = (point.as_ref() / -point.mip(&self.start)) - self.start.as_ref();
+        // Project onto the segment and clamp the closest point to its endpoints.
+        let progress_along_segment =
+            start_to_point.mip(&self.start_to_end) / self.start_to_end.mip(&self.start_to_end);
+        let h = if progress_along_segment.is_nan() {
+            0.0
         } else {
-            (along_start * along_start - along_tangent * along_tangent)
-                .max(1.0)
-                .sqrt()
-                .acosh()
-        }
+            progress_along_segment.clamp(0.0, 1.0)
+        };
+        let closest_point_on_segment =
+            (self.start.as_ref() + self.start_to_end * h).normalized_point();
+        (-closest_point_on_segment.mip(point)).acosh()
     }
 }
 
@@ -53,9 +42,8 @@ mod tests {
     use approx::assert_abs_diff_eq;
 
     #[test]
-    // The segment distance uses the nearer endpoint outside the segment and perpendicular
-    // projection for points whose closest point lies in its interior.
     fn segment_distance_clamps_to_endpoints_and_projects_inside() {
+        // Check endpoint clamping, interior projection, and the degenerate-segment case.
         let start = MPoint::origin();
         let along =
             |distance| MIsometry::translation_along(&na::Vector3::new(distance, 0.0, 0.0)) * start;
@@ -63,5 +51,7 @@ mod tests {
         assert_abs_diff_eq!(segment.distance_to(&along(-0.5)), 0.5, epsilon = 1e-5);
         assert_abs_diff_eq!(segment.distance_to(&along(0.5)), 0.0, epsilon = 1e-5);
         assert_abs_diff_eq!(segment.distance_to(&along(1.5)), 0.5, epsilon = 1e-5);
+        let degenerate = LineSegment::new(start, start);
+        assert_abs_diff_eq!(degenerate.distance_to(&along(0.5)), 0.5, epsilon = 1e-5);
     }
 }

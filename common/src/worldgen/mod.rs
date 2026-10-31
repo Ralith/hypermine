@@ -1,4 +1,5 @@
 use horosphere::{HorosphereChunk, HorosphereNode};
+use megatree::{MegatreeChunk, MegatreeState};
 use plane::Plane;
 use rand::{RngExt, SeedableRng, distr::Uniform};
 use rand_distr::Normal;
@@ -14,6 +15,8 @@ use crate::{
 };
 
 mod horosphere;
+mod line;
+mod megatree;
 mod plane;
 mod terraingen;
 
@@ -103,6 +106,7 @@ pub struct NodeState {
     road_state: NodeStateRoad,
     enviro: EnviroFactors,
     horosphere: Option<HorosphereNode>,
+    megatree: MegatreeState,
 }
 impl NodeState {
     pub fn new(graph: &Graph, node: NodeId, _cfg: &WorldgenConfig) -> Self {
@@ -148,6 +152,7 @@ impl NodeState {
             .partial_node_state(node)
             .candidate_horosphere
             .filter(|h| h.should_generate(graph, node));
+        let megatree = MegatreeState::new(graph, node, kind, enviro);
 
         Self {
             kind,
@@ -159,6 +164,7 @@ impl NodeState {
             road_state,
             enviro,
             horosphere,
+            megatree,
         }
     }
 
@@ -223,6 +229,8 @@ pub struct ChunkParams {
     is_road: bool,
     /// Whether this chunk contains a section of the road's supports
     is_road_support: bool,
+    /// Megatree geometry to rasterize in this chunk, if any.
+    megatree: Option<MegatreeChunk>,
     /// Random quantity used to seed terrain gen
     node_spice: u64,
     /// Horosphere to place in the chunk
@@ -244,6 +252,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
+            megatree: MegatreeChunk::new(state.megatree, graph.layout().dimension(), chunk.vertex),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
@@ -262,6 +271,10 @@ impl ChunkParams {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
 
         self.generate_terrain(&mut voxels, &mut rng);
+
+        if let Some(megatree) = &self.megatree {
+            megatree.generate(&mut voxels);
+        }
 
         if let Some(horosphere) = &self.horosphere {
             horosphere.generate(&mut voxels, self.dimension);
@@ -308,7 +321,6 @@ impl ChunkParams {
             *voxels = VoxelData::Solid(Material::Dirt);
             return;
         }
-
         // Otherwise, the chunk might contain a solid/void boundary, so the full terrain generation
         // code should run.
         let normal = Normal::new(0.0, 0.03).unwrap();
