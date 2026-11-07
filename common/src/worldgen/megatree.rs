@@ -66,15 +66,12 @@ impl MegatreeNode {
         });
 
         let is_seed = parent_side.is_none();
-        if is_seed {
-            // Trees start on Land; sky nodes only continue inherited trees.
-            if kind == NodeStateKind::Land
-                && rng.random::<f32>() < tree_generation_probability(enviro)
-            {
-                // Continue below to initialize the seed node.
-            } else {
-                return None;
-            }
+        // New trees start on Land; other nodes need an inherited tree parent.
+        let has_valid_tree_source = !is_seed
+            || (kind == NodeStateKind::Land
+                && rng.random::<f32>() < tree_generation_probability(enviro));
+        if !has_valid_tree_source {
+            return None;
         }
 
         let mut result = Self {

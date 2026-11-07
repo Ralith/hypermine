@@ -321,6 +321,7 @@ impl ChunkParams {
             *voxels = VoxelData::Solid(Material::Dirt);
             return;
         }
+
         // Otherwise, the chunk might contain a solid/void boundary, so the full terrain generation
         // code should run.
         let normal = Normal::new(0.0, 0.03).unwrap();
