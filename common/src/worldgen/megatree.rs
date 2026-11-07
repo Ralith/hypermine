@@ -15,10 +15,6 @@ use super::{VoxelCoords, index, line::LineSegment, voxel_center};
 const BRANCH_RADIUS: f32 = 0.2;
 /// Radius of the leaves ball at a terminal node.
 const LEAVES_RADIUS: f32 = 0.5;
-/// Lower temperature limit for the linear branch-probability ramp.
-const BRANCH_TEMPERATURE_MIN: f32 = -10.0;
-/// Upper temperature limit for the linear branch-probability ramp.
-const BRANCH_TEMPERATURE_MAX: f32 = 10.0;
 /// Value mixed into each node's hash to seed generation. Chosen randomly.
 const SEED: u64 = 13334231312061724180;
 
@@ -182,6 +178,9 @@ fn tree_generation_probability(enviro: EnviroFactors) -> f32 {
 }
 
 fn branch_probability(enviro: EnviroFactors) -> f32 {
+    // Use a linear ramp with lower and upper temperature limits.
+    const BRANCH_TEMPERATURE_MIN: f32 = -10.0;
+    const BRANCH_TEMPERATURE_MAX: f32 = 10.0;
     ((enviro.temperature - BRANCH_TEMPERATURE_MIN)
         / (BRANCH_TEMPERATURE_MAX - BRANCH_TEMPERATURE_MIN))
         .clamp(0.0, 1.0)
