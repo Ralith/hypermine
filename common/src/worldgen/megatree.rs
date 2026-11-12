@@ -6,6 +6,7 @@ use crate::{
     world::Material,
 };
 use rand::{RngExt, SeedableRng};
+use rand_distr::Normal;
 use rand_pcg::Pcg64Mcg;
 
 use super::{EnviroFactors, NodeStateKind};
@@ -15,6 +16,10 @@ use super::{VoxelCoords, index, line::LineSegment, voxel_center};
 const BRANCH_RADIUS: f32 = 0.2;
 /// Radius of the leaves ball at a terminal node.
 const LEAVES_RADIUS: f32 = 0.5;
+/// Initial growth budget for a newly seeded tree, in Sky propagation steps.
+const INITIAL_REMAINING_GROWTH: f32 = 2.5;
+/// Random variation in the growth budget consumed by each Sky node.
+const GROWTH_COST_STANDARD_DEVIATION: f32 = 0.3;
 /// Value mixed into each node's hash to seed generation. Chosen randomly.
 const SEED: u64 = 13334231312061724180;
 
@@ -39,6 +44,7 @@ impl MegatreeState {
 struct MegatreeNode {
     parent_side: Option<Side>,
     child_sides: u16,
+    remaining_growth: f32,
 }
 
 impl MegatreeNode {
@@ -52,14 +58,14 @@ impl MegatreeNode {
         let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, SEED));
         // `Graph::parents` returns every shallower neighbor and the shared side.
         // Parent states have already been finalized by `ensure_node_state`.
-        let parent_side = graph.parents(node).find_map(|(side, parent)| {
-            graph
-                .node_state(parent)
-                .megatree
-                .tree
-                .filter(|state| state.has_child_side(side))
-                .map(|_| side)
+        let tree_parent = graph.parents(node).find_map(|(side, parent)| {
+            graph.node_state(parent).megatree.tree.and_then(|state| {
+                state
+                    .has_child_side(side)
+                    .then_some((side, state.remaining_growth))
+            })
         });
+        let parent_side = tree_parent.map(|(side, _)| side);
 
         let is_seed = parent_side.is_none();
         // New trees start on Land; other nodes need an inherited tree parent.
@@ -70,27 +76,42 @@ impl MegatreeNode {
             return None;
         }
 
+        let remaining_growth = if is_seed {
+            INITIAL_REMAINING_GROWTH
+        } else {
+            let (_, parent_growth) = tree_parent.expect("a non-seed node has a tree parent");
+            if matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky) {
+                parent_growth - 1.0
+                    + rng.sample(Normal::new(0.0, GROWTH_COST_STANDARD_DEVIATION).unwrap())
+            } else {
+                parent_growth
+            }
+        };
+
         let mut result = Self {
             parent_side,
             child_sides: 0,
+            remaining_growth,
         };
-        if is_seed {
-            result.add_child_side(Side::A);
-            result.add_child_side(Side::A.opposite());
-        }
-        if kind != NodeStateKind::DeepLand {
-            if let Some(parent_side) = parent_side {
-                for side in Side::iter() {
-                    if side != parent_side
-                        && !side.adjacent_to(parent_side)
-                        && rng.random::<f32>() < branch_probability(enviro)
-                    {
-                        result.add_child_side(side);
+        if remaining_growth >= 0.0 {
+            if is_seed {
+                result.add_child_side(Side::A);
+                result.add_child_side(Side::A.opposite());
+            }
+            if kind != NodeStateKind::DeepLand {
+                if let Some(parent_side) = parent_side {
+                    for side in Side::iter() {
+                        if side != parent_side
+                            && !side.adjacent_to(parent_side)
+                            && rng.random::<f32>() < branch_probability(enviro)
+                        {
+                            result.add_child_side(side);
+                        }
                     }
                 }
+            } else if let Some(parent_side) = parent_side {
+                result.add_child_side(parent_side.opposite());
             }
-        } else if let Some(parent_side) = parent_side {
-            result.add_child_side(parent_side.opposite());
         }
 
         Some(result)
@@ -206,6 +227,7 @@ mod tests {
         let mut parent = MegatreeNode {
             parent_side: None,
             child_sides: 0,
+            remaining_growth: 2.5,
         };
         parent.add_child_side(Side::B);
         graph[NodeId::ROOT].state.as_mut().unwrap().megatree.tree = Some(parent);
@@ -258,6 +280,7 @@ mod tests {
         let tree = MegatreeNode {
             parent_side: Some(Side::B),
             child_sides: 0,
+            remaining_growth: 2.5,
         };
         let chunk = MegatreeChunk::from_tree(tree, 12, Vertex::A);
         let mut reference = VoxelData::Solid(Material::Void);
