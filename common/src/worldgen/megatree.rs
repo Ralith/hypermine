@@ -1,5 +1,5 @@
 use crate::{
-    dodeca::{Side, Vertex},
+    dodeca::{Side, SideSet, Vertex},
     graph::{Graph, NodeId},
     math::{MPoint, MVector},
     node::VoxelData,
@@ -43,7 +43,7 @@ impl MegatreeState {
 #[derive(Clone, Copy)]
 struct MegatreeNode {
     parent_side: Option<Side>,
-    child_sides: u16,
+    child_sides: SideSet,
     remaining_growth: f32,
 }
 
@@ -62,7 +62,8 @@ impl MegatreeNode {
             graph.parents(node).find_map(|(side, parent)| {
                 graph.node_state(parent).megatree.tree.and_then(|state| {
                     state
-                        .has_child_side(side)
+                        .child_sides
+                        .contains(side)
                         .then_some((side, state.remaining_growth))
                 })
             })
@@ -74,11 +75,7 @@ impl MegatreeNode {
             } else {
                 parent_growth
             };
-            let mut result = Self {
-                parent_side: Some(parent_side),
-                child_sides: 0,
-                remaining_growth,
-            };
+            let mut child_sides = SideSet::EMPTY;
             if remaining_growth >= 0.0 {
                 if kind != NodeStateKind::DeepLand {
                     for side in Side::iter() {
@@ -86,15 +83,19 @@ impl MegatreeNode {
                             && !side.adjacent_to(parent_side)
                             && rng.random::<f32>() < branch_probability(enviro)
                         {
-                            result.add_child_side(side);
+                            child_sides.insert(side);
                         }
                     }
                 } else {
-                    result.add_child_side(parent_side.opposite());
+                    child_sides.insert(parent_side.opposite());
                 }
             }
 
-            Some(result)
+            Some(Self {
+                parent_side: Some(parent_side),
+                child_sides,
+                remaining_growth,
+            })
         } else {
             // Seed path: new trees start on Land and grow along the ground-plane axis.
             if kind == NodeStateKind::Land
@@ -102,21 +103,13 @@ impl MegatreeNode {
             {
                 Some(Self {
                     parent_side: None,
-                    child_sides: (1 << Side::A as usize) | (1 << Side::A.opposite() as usize),
+                    child_sides: SideSet::from_iter([Side::A, Side::A.opposite()]),
                     remaining_growth: INITIAL_REMAINING_GROWTH,
                 })
             } else {
                 None
             }
         }
-    }
-
-    fn add_child_side(&mut self, side: Side) {
-        self.child_sides |= 1 << side as usize;
-    }
-
-    fn has_child_side(self, side: Side) -> bool {
-        self.child_sides & (1 << side as usize) != 0
     }
 }
 
@@ -139,9 +132,7 @@ impl MegatreeChunk {
         let branches = megatree
             .parent_side
             .into_iter()
-            .chain(
-                Side::iter().filter(move |&side| megatree.child_sides & (1 << side as usize) != 0),
-            )
+            .chain(Side::iter().filter(move |&side| megatree.child_sides.contains(side)))
             .map(|side| {
                 let center = MPoint::origin();
                 let neighbor_center = side.reflection() * center;
@@ -153,7 +144,7 @@ impl MegatreeChunk {
             dimension,
             chunk,
             branches,
-            has_leaves: megatree.child_sides == 0,
+            has_leaves: megatree.child_sides.is_empty(),
         }
     }
 
@@ -220,10 +211,10 @@ mod tests {
         graph.ensure_node_state(NodeId::ROOT, &WorldgenConfig::default());
         let mut parent = MegatreeNode {
             parent_side: None,
-            child_sides: 0,
+            child_sides: SideSet::EMPTY,
             remaining_growth: 2.5,
         };
-        parent.add_child_side(Side::B);
+        parent.child_sides.insert(Side::B);
         graph[NodeId::ROOT].state.as_mut().unwrap().megatree.tree = Some(parent);
         let child = graph.ensure_neighbor(NodeId::ROOT, Side::B);
         MegatreeNode::new(&graph, child, kind, climate(0.0, 10.0)).unwrap()
@@ -234,12 +225,12 @@ mod tests {
         // Sky branches choose every eligible side independently when the branch probability is 1.
         let tree = inherited_tree(NodeStateKind::DeepSky);
         let child_sides = tree.child_sides;
-        assert_eq!(child_sides.count_ones(), 6);
-        assert_eq!(child_sides & (1 << Side::B as usize), 0);
+        assert_eq!(child_sides.len(), 6);
+        assert!(!child_sides.contains(Side::B));
         assert!(
             Side::iter()
                 .filter(|s| s.adjacent_to(Side::B))
-                .all(|s| child_sides & (1 << s as usize) == 0)
+                .all(|s| !child_sides.contains(s))
         );
     }
 
@@ -247,7 +238,7 @@ mod tests {
     fn deep_land_always_continues_as_trunk() {
         // DeepLand always continues the trunk through the face opposite its incoming parent.
         let tree = inherited_tree(NodeStateKind::DeepLand);
-        assert_eq!(tree.child_sides, 1 << Side::B.opposite() as usize);
+        assert_eq!(tree.child_sides, SideSet::from_iter([Side::B.opposite()]));
     }
 
     #[test]
@@ -263,7 +254,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             tree.child_sides,
-            (1 << Side::A as usize) | (1 << Side::A.opposite() as usize)
+            SideSet::from_iter([Side::A, Side::A.opposite()])
         );
         assert_eq!(tree.parent_side, None);
     }
@@ -273,7 +264,7 @@ mod tests {
         // Megatree voxels preserve solid terrain and fill only void portions of mixed chunks.
         let tree = MegatreeNode {
             parent_side: Some(Side::B),
-            child_sides: 0,
+            child_sides: SideSet::EMPTY,
             remaining_growth: 2.5,
         };
         let chunk = MegatreeChunk::from_tree(tree, 12, Vertex::A);

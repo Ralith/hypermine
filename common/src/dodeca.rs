@@ -337,6 +337,87 @@ pub const BOUNDING_SPHERE_RADIUS: f32 = BOUNDING_SPHERE_RADIUS_F64 as f32;
 pub const CHUNK_BOUNDING_SPHERE_RADIUS_F64: f64 = BOUNDING_SPHERE_RADIUS_F64 * 0.5;
 pub const CHUNK_BOUNDING_SPHERE_RADIUS: f32 = CHUNK_BOUNDING_SPHERE_RADIUS_F64 as f32;
 
+/// An set of sides, represented in a compact way
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SideSet(u16);
+
+impl SideSet {
+    /// An empty set, containing no sides
+    pub const EMPTY: Self = SideSet(0);
+
+    /// The set containing all sides
+    pub const ALL_SIDES: Self = {
+        let mut result = SideSet::EMPTY;
+        let mut i = 0;
+        while i < Side::VALUES.len() {
+            result.insert(Side::VALUES[i]);
+            i += 1;
+        }
+        result
+    };
+
+    /// Inserts a side into the set
+    pub const fn insert(&mut self, side: Side) {
+        self.0 |= 1 << side as u8;
+    }
+
+    /// Removes a side from the set
+    pub const fn remove(&mut self, side: Side) {
+        self.0 &= !(1 << side as u8);
+    }
+
+    /// Returns whether the set contains the given side
+    pub const fn contains(self, side: Side) -> bool {
+        (self.0 & 1 << side as u8) != 0
+    }
+
+    /// Returns the number of sides in the set
+    pub const fn len(self) -> usize {
+        self.0.count_ones() as usize
+    }
+
+    /// Returns whether there are no sides in the set
+    pub const fn is_empty(self) -> bool {
+        self.0 == SideSet::EMPTY.0
+    }
+
+    /// Returns the set intersection of `self` and `other`
+    pub const fn intersection(self, other: SideSet) -> SideSet {
+        SideSet(self.0 & other.0)
+    }
+
+    /// Returns the set union of `self` and `other`
+    pub const fn union(self, other: SideSet) -> SideSet {
+        SideSet(self.0 | other.0)
+    }
+}
+
+impl FromIterator<Side> for SideSet {
+    fn from_iter<T: IntoIterator<Item = Side>>(iter: T) -> Self {
+        let mut result = SideSet::EMPTY;
+        for side in iter {
+            result.insert(side);
+        }
+        result
+    }
+}
+
+impl std::ops::BitOr for SideSet {
+    type Output = SideSet;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
+    }
+}
+
+impl std::ops::BitAnd for SideSet {
+    type Output = SideSet;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self.intersection(rhs)
+    }
+}
+
 mod data {
     use std::array;
     use std::sync::LazyLock;

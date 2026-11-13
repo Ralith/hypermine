@@ -4,7 +4,7 @@ use rand_distr::Poisson;
 use rand_pcg::Pcg64Mcg;
 
 use crate::{
-    dodeca::{Side, Vertex},
+    dodeca::{Side, SideSet, Vertex},
     graph::{Graph, NodeId},
     math::{MDirection, MIsometry, MPoint, MVector},
     node::VoxelData,
@@ -347,30 +347,34 @@ impl std::ops::Mul<Horosphere> for &MIsometry<f32> {
 /// Represents a region of space bounded by planes corresponding to a subset of a node's sides in that node's perspective.
 #[derive(Clone, Copy)]
 struct NodeBoundedRegion {
-    /// A bit-array with 12 elements, one for each side. A 1 means that that side is a bound, and a 0 means it is not.
-    bounded_sides: u16,
+    /// The set of sides that serve as bounds for the region.
+    bounded_sides: SideSet,
 }
 
 impl NodeBoundedRegion {
     /// Creates a region with no bounds
     #[cfg(test)]
     fn unbounded() -> Self {
-        NodeBoundedRegion { bounded_sides: 0 }
+        NodeBoundedRegion {
+            bounded_sides: SideSet::EMPTY,
+        }
     }
 
     /// Creates a region that contains the given node and all its descendents
     fn node_and_descendents(graph: &Graph, node_id: NodeId) -> Self {
-        let mut bounded_sides = 0;
-        for (parent_side, _) in graph.parents(node_id) {
-            bounded_sides |= 1 << (parent_side as u8);
+        NodeBoundedRegion {
+            bounded_sides: graph
+                .parents(node_id)
+                .map(|(parent_side, _)| parent_side)
+                .collect(),
         }
-        NodeBoundedRegion { bounded_sides }
     }
 
     /// Produces the set intersection of the `self` and `other` regions
     fn intersect(self, other: NodeBoundedRegion) -> NodeBoundedRegion {
+        // Confusingly, the *intersection* of two regions is bounded by the *union* of the bounds.
         NodeBoundedRegion {
-            bounded_sides: self.bounded_sides | other.bounded_sides,
+            bounded_sides: self.bounded_sides.union(other.bounded_sides),
         }
     }
 
@@ -384,14 +388,14 @@ impl NodeBoundedRegion {
         let mut bounded_sides = self.bounded_sides;
 
         // Don't allow backtracking
-        bounded_sides |= 1 << (neighbor_side as u8);
+        bounded_sides.insert(neighbor_side);
 
         // As we're shifting perspective to a neighboring node, most sides now refer
         // to different planes and no longer bound the region. The only exceptions to this
         // are the shared side and its neighbors.
         for side in Side::iter() {
             if !side.adjacent_to(neighbor_side) && side != neighbor_side {
-                bounded_sides &= !(1 << (side as u8));
+                bounded_sides.remove(side);
             }
         }
         NodeBoundedRegion { bounded_sides }
@@ -413,12 +417,12 @@ impl NodeBoundedRegion {
 
     /// Returns whether the given side bounds the region
     fn is_bounded_by(self, side: Side) -> bool {
-        self.bounded_sides & (1 << (side as u8)) != 0
+        self.bounded_sides.contains(side)
     }
 
     /// Adds the given side as a bound for the region
     fn add_bound(&mut self, side: Side) {
-        self.bounded_sides |= 1 << (side as u8);
+        self.bounded_sides.insert(side);
     }
 }
 
