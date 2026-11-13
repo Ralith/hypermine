@@ -49,9 +49,7 @@ pub enum Material {
 }
 
 impl Material {
-    pub const COUNT: usize = 40;
-
-    pub const VALUES: [Self; Self::COUNT] = [
+    pub const VALUES: [Self; 40] = [
         Material::Void,
         Material::Dirt,
         Material::Sand,
@@ -123,7 +121,7 @@ mod tests {
 
     #[test]
     fn u16_to_material_consistency_check() {
-        for i in 0..Material::COUNT {
+        for i in 0..Material::VALUES.len() {
             let index = u16::try_from(i).unwrap();
             let material =
                 Material::try_from(index).expect("no missing entries in try_from match statement");

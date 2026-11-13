@@ -226,7 +226,7 @@ impl Surface {
 
             let colors = loader.load(crate::graphics::PngArray {
                 path: "materials".into(),
-                size: common::world::Material::COUNT - 1,
+                size: common::world::Material::VALUES.len() - 1,
             });
 
             Self {
@@ -263,7 +263,7 @@ impl Surface {
                                     base_mip_level: 0,
                                     level_count: 1,
                                     base_array_layer: 0,
-                                    layer_count: (Material::COUNT - 1) as u32,
+                                    layer_count: (Material::VALUES.len() - 1) as u32,
                                 }),
                             None,
                         )
