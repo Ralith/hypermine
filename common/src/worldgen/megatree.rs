@@ -58,55 +58,57 @@ impl MegatreeNode {
         let mut rng = Pcg64Mcg::seed_from_u64(super::hash(spice, SEED));
         // `Graph::parents` returns every shallower neighbor and the shared side.
         // Parent states have already been finalized by `ensure_node_state`.
-        let tree_parent = graph.parents(node).find_map(|(side, parent)| {
-            graph.node_state(parent).megatree.tree.and_then(|state| {
-                state
-                    .has_child_side(side)
-                    .then_some((side, state.remaining_growth))
+        if let Some((parent_side, parent_growth)) =
+            graph.parents(node).find_map(|(side, parent)| {
+                graph.node_state(parent).megatree.tree.and_then(|state| {
+                    state
+                        .has_child_side(side)
+                        .then_some((side, state.remaining_growth))
+                })
             })
-        });
-        let Some((parent_side, parent_growth)) = tree_parent else {
-            // Seed path: new trees start on Land and grow along the ground-plane axis.
-            if kind != NodeStateKind::Land
-                || rng.random::<f32>() >= tree_generation_probability(enviro)
-            {
-                return None;
-            }
-            return Some(Self {
-                parent_side: None,
-                child_sides: (1 << Side::A as usize) | (1 << Side::A.opposite() as usize),
-                remaining_growth: INITIAL_REMAINING_GROWTH,
-            });
-        };
-
-        // Continuation path: inherit growth and select children from the parent side.
-        let remaining_growth = if matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky) {
-            parent_growth - 1.0
-                + rng.sample(Normal::new(0.0, GROWTH_COST_STANDARD_DEVIATION).unwrap())
-        } else {
-            parent_growth
-        };
-        let mut result = Self {
-            parent_side: Some(parent_side),
-            child_sides: 0,
-            remaining_growth,
-        };
-        if remaining_growth >= 0.0 {
-            if kind != NodeStateKind::DeepLand {
-                for side in Side::iter() {
-                    if side != parent_side
-                        && !side.adjacent_to(parent_side)
-                        && rng.random::<f32>() < branch_probability(enviro)
-                    {
-                        result.add_child_side(side);
-                    }
-                }
+        {
+            // Continuation path: inherit growth and select children from the parent side.
+            let remaining_growth = if matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky) {
+                parent_growth - 1.0
+                    + rng.sample(Normal::new(0.0, GROWTH_COST_STANDARD_DEVIATION).unwrap())
             } else {
-                result.add_child_side(parent_side.opposite());
+                parent_growth
+            };
+            let mut result = Self {
+                parent_side: Some(parent_side),
+                child_sides: 0,
+                remaining_growth,
+            };
+            if remaining_growth >= 0.0 {
+                if kind != NodeStateKind::DeepLand {
+                    for side in Side::iter() {
+                        if side != parent_side
+                            && !side.adjacent_to(parent_side)
+                            && rng.random::<f32>() < branch_probability(enviro)
+                        {
+                            result.add_child_side(side);
+                        }
+                    }
+                } else {
+                    result.add_child_side(parent_side.opposite());
+                }
+            }
+
+            Some(result)
+        } else {
+            // Seed path: new trees start on Land and grow along the ground-plane axis.
+            if kind == NodeStateKind::Land
+                && rng.random::<f32>() < tree_generation_probability(enviro)
+            {
+                Some(Self {
+                    parent_side: None,
+                    child_sides: (1 << Side::A as usize) | (1 << Side::A.opposite() as usize),
+                    remaining_growth: INITIAL_REMAINING_GROWTH,
+                })
+            } else {
+                None
             }
         }
-
-        Some(result)
     }
 
     fn add_child_side(&mut self, side: Side) {
