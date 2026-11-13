@@ -17,7 +17,7 @@ const BRANCH_RADIUS: f32 = 0.2;
 /// Radius of the leaves ball at a terminal node.
 const LEAVES_RADIUS: f32 = 0.5;
 /// Initial growth budget for a newly seeded tree, in Sky propagation steps.
-const INITIAL_REMAINING_GROWTH: f32 = 2.5;
+const INITIAL_REMAINING_GROWTH: f32 = 6.5;
 /// Random variation in the growth budget consumed by each Sky node.
 const GROWTH_COST_STANDARD_DEVIATION: f32 = 0.3;
 /// Value mixed into each node's hash to seed generation. Chosen randomly.
@@ -65,51 +65,43 @@ impl MegatreeNode {
                     .then_some((side, state.remaining_growth))
             })
         });
-        let parent_side = tree_parent.map(|(side, _)| side);
-
-        let is_seed = parent_side.is_none();
-        // New trees start on Land; other nodes need an inherited tree parent.
-        let has_valid_tree_source = !is_seed
-            || (kind == NodeStateKind::Land
-                && rng.random::<f32>() < tree_generation_probability(enviro));
-        if !has_valid_tree_source {
-            return None;
-        }
-
-        let remaining_growth = if is_seed {
-            INITIAL_REMAINING_GROWTH
-        } else {
-            let (_, parent_growth) = tree_parent.expect("a non-seed node has a tree parent");
-            if matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky) {
-                parent_growth - 1.0
-                    + rng.sample(Normal::new(0.0, GROWTH_COST_STANDARD_DEVIATION).unwrap())
-            } else {
-                parent_growth
+        let Some((parent_side, parent_growth)) = tree_parent else {
+            // Seed path: new trees start on Land and grow along the ground-plane axis.
+            if kind != NodeStateKind::Land
+                || rng.random::<f32>() >= tree_generation_probability(enviro)
+            {
+                return None;
             }
+            return Some(Self {
+                parent_side: None,
+                child_sides: (1 << Side::A as usize) | (1 << Side::A.opposite() as usize),
+                remaining_growth: INITIAL_REMAINING_GROWTH,
+            });
         };
 
+        // Continuation path: inherit growth and select children from the parent side.
+        let remaining_growth = if matches!(kind, NodeStateKind::Sky | NodeStateKind::DeepSky) {
+            parent_growth - 1.0
+                + rng.sample(Normal::new(0.0, GROWTH_COST_STANDARD_DEVIATION).unwrap())
+        } else {
+            parent_growth
+        };
         let mut result = Self {
-            parent_side,
+            parent_side: Some(parent_side),
             child_sides: 0,
             remaining_growth,
         };
         if remaining_growth >= 0.0 {
-            if is_seed {
-                result.add_child_side(Side::A);
-                result.add_child_side(Side::A.opposite());
-            }
             if kind != NodeStateKind::DeepLand {
-                if let Some(parent_side) = parent_side {
-                    for side in Side::iter() {
-                        if side != parent_side
-                            && !side.adjacent_to(parent_side)
-                            && rng.random::<f32>() < branch_probability(enviro)
-                        {
-                            result.add_child_side(side);
-                        }
+                for side in Side::iter() {
+                    if side != parent_side
+                        && !side.adjacent_to(parent_side)
+                        && rng.random::<f32>() < branch_probability(enviro)
+                    {
+                        result.add_child_side(side);
                     }
                 }
-            } else if let Some(parent_side) = parent_side {
+            } else {
                 result.add_child_side(parent_side.opposite());
             }
         }
