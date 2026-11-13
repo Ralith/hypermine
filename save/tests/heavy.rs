@@ -8,6 +8,7 @@ use rand::{
 };
 
 #[test]
+#[ignore = "This is a benchmark, not a test, so running it in CI is a waste of time."]
 fn write() {
     let mut rng = SmallRng::try_from_rng(&mut SysRng).unwrap();
     let file = tempfile::NamedTempFile::new().unwrap();
