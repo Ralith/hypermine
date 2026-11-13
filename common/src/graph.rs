@@ -7,7 +7,7 @@ use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dodeca::{SIDE_COUNT, Side},
+    dodeca::Side,
     math::MIsometry,
     node::{ChunkId, ChunkLayout, Node},
 };
@@ -271,7 +271,7 @@ struct NodeContainer {
     primary_parent_side: Option<Side>,
     /// Distance to root via parents
     depth: u32,
-    neighbors: [Option<NodeId>; SIDE_COUNT],
+    neighbors: [Option<NodeId>; Side::VALUES.len()],
 }
 
 impl NodeContainer {
@@ -280,7 +280,7 @@ impl NodeContainer {
             value: Node::default(),
             primary_parent_side,
             depth,
-            neighbors: [None; SIDE_COUNT],
+            neighbors: [None; Side::VALUES.len()],
         }
     }
 }
