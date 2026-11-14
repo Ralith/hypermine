@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 
+use arrayvec::ArrayVec;
 use blake3::Hasher;
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
@@ -141,6 +142,79 @@ impl Graph {
         self.nodes[&node].neighbors[side as usize].unwrap_or_else(|| self.insert_child(node, side))
     }
 
+    /// Returns a sequence of sides from `start` to `end`. Guaranteed to be one of the shortest paths.
+    pub fn path_between_nodes(&self, start: NodeId, end: NodeId) -> Vec<Side> {
+        let mut start_depth = self.nodes[&start].depth;
+        let mut end_depth = self.nodes[&end].depth;
+        let mut directions_to_start: FxHashMap<NodeId, (NodeId, Side)> = FxHashMap::default();
+        let mut directions_to_end: FxHashMap<NodeId, (NodeId, Side)> = FxHashMap::default();
+        let mut current_start_nodes: ArrayVec<NodeId, 4> = ArrayVec::new();
+        current_start_nodes.push(start);
+        let mut current_end_nodes: ArrayVec<NodeId, 4> = ArrayVec::new();
+        current_end_nodes.push(end);
+        loop {
+            if start_depth == end_depth {
+                for &node in &current_start_nodes {
+                    if current_end_nodes.contains(&node) {
+                        let mut result: Vec<Side> = Vec::new();
+                        // Find path to start
+                        let mut current_node = node;
+                        while current_node != start {
+                            let (next_node, side) = directions_to_start[&current_node];
+                            result.push(side);
+                            current_node = next_node;
+                        }
+                        result.reverse();
+                        // Find path to end
+                        let mut current_node = node;
+                        while current_node != end {
+                            let (next_node, side) = directions_to_end[&current_node];
+                            result.push(side);
+                            current_node = next_node;
+                        }
+                        return result;
+                    }
+                }
+            }
+            if start_depth >= end_depth {
+                for node in std::mem::take(&mut current_start_nodes) {
+                    for side in Side::iter() {
+                        let Some(possible_parent) = self.neighbor(node, side) else {
+                            continue;
+                        };
+                        if self.depth(possible_parent) != start_depth - 1 {
+                            continue;
+                        }
+                        directions_to_start
+                            .entry(possible_parent)
+                            .or_insert_with(|| {
+                                current_start_nodes.push(possible_parent);
+                                (node, side)
+                            });
+                    }
+                }
+                start_depth -= 1;
+            }
+            if end_depth > start_depth {
+                for node in std::mem::take(&mut current_end_nodes) {
+                    for side in Side::iter() {
+                        let Some(possible_parent) = self.neighbor(node, side) else {
+                            continue;
+                        };
+                        if self.depth(possible_parent) != end_depth - 1 {
+                            continue;
+                        }
+                        directions_to_end.entry(possible_parent).or_insert_with(|| {
+                            current_end_nodes.push(possible_parent);
+                            (node, side)
+                        });
+                    }
+                }
+                end_depth -= 1;
+            }
+        }
+    }
+
     /// Whether `node`'s neighbor along `side` is closer than it to the root
     fn is_parent_side(&self, node: NodeId, side: Side) -> bool {
         let v = &self.nodes[&node];
@@ -149,7 +223,7 @@ impl Graph {
 
     /// Inserts the child of the given node at the given side into the graph, ensuring that all
     /// its parents are created first.
-    pub fn insert_child(&mut self, node: NodeId, side: Side) -> NodeId {
+    fn insert_child(&mut self, node: NodeId, side: Side) -> NodeId {
         // To help improve readability, we use the term "subject" to refer to the not-yet-created child node, since the term
         // "child" can be ambiguous.
         let parents_of_subject = self.populate_parents_of_subject(node, side);
@@ -334,7 +408,10 @@ impl Iterator for TreeIter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{proto::Position, traversal::ensure_nearby};
+    use crate::{
+        proto::Position,
+        traversal::{self, ensure_nearby},
+    };
 
     use super::*;
     use approx::*;
@@ -435,5 +512,42 @@ mod tests {
         };
 
         assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn path_between_nodes_consistent() {
+        let mut graph = Graph::new(1);
+        traversal::ensure_nearby(&mut graph, &Position::origin(), 4.0);
+        let possible_nodes: Vec<_> = [NodeId::ROOT]
+            .into_iter()
+            .chain(graph.tree().map(|(_, n)| n))
+            .collect();
+
+        // Fuzz-testing
+        for _ in 0..1000 {
+            let start = possible_nodes[rand::random_range(0..possible_nodes.len())];
+            let end = possible_nodes[rand::random_range(0..possible_nodes.len())];
+            let path = graph.path_between_nodes(start, end);
+            let mut current = start;
+            for side in path {
+                current = graph
+                    .neighbor(current, side)
+                    .expect("Path should stay within generated nodes");
+            }
+            assert!(current == end);
+        }
+
+        // Possible edge case: start == end
+        for _ in 0..10 {
+            let start = possible_nodes[rand::random_range(0..possible_nodes.len())];
+            let path = graph.path_between_nodes(start, start);
+            assert!(path.is_empty());
+        }
+
+        // Possible edge case: Start and end at root node
+        for _ in 0..10 {
+            let path = graph.path_between_nodes(NodeId::ROOT, NodeId::ROOT);
+            assert!(path.is_empty());
+        }
     }
 }
