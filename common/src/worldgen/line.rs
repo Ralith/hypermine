@@ -31,7 +31,7 @@ impl LineSegment {
         };
         let closest_point_on_segment =
             (self.start.as_ref() + self.start_to_end * h).normalized_point();
-        (-closest_point_on_segment.mip(point)).acosh()
+        (-closest_point_on_segment.mip(point)).max(1.0).acosh()
     }
 }
 

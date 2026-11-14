@@ -387,6 +387,55 @@ mod tests {
     }
 
     #[test]
+    fn edge_diagonal_has_both_carrier_parents_before_state_generation() {
+        let mut graph = Graph::new(1);
+        let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
+        let b = graph.ensure_neighbor(NodeId::ROOT, Side::B);
+        let ab_from_a = graph.ensure_neighbor(a, Side::B);
+        let ab_from_b = graph.ensure_neighbor(b, Side::A);
+
+        assert_eq!(ab_from_a, ab_from_b);
+        assert_eq!(
+            graph.parents(ab_from_a).collect::<Vec<_>>(),
+            vec![(Side::A, b), (Side::B, a)]
+        );
+    }
+
+    #[test]
+    fn vertex_diagonal_has_all_three_carrier_parents_before_state_generation() {
+        let [a_side, b_side, c_side] = crate::dodeca::Vertex::A.canonical_sides();
+        let permutations = [
+            [a_side, b_side, c_side],
+            [a_side, c_side, b_side],
+            [b_side, a_side, c_side],
+            [b_side, c_side, a_side],
+            [c_side, a_side, b_side],
+            [c_side, b_side, a_side],
+        ];
+        let mut graph = Graph::new(1);
+        let mut targets = Vec::new();
+
+        for [first, second, third] in permutations {
+            let first_node = graph.ensure_neighbor(NodeId::ROOT, first);
+            let second_node = graph.ensure_neighbor(first_node, second);
+            targets.push(graph.ensure_neighbor(second_node, third));
+        }
+
+        let target = targets[0];
+        assert!(targets.into_iter().all(|candidate| candidate == target));
+        assert_eq!(graph.depth(target), 3);
+        let parents = graph.parents(target).collect::<Vec<_>>();
+        assert_eq!(parents.len(), 3);
+        assert!(parents.iter().all(|(_, parent)| graph.depth(*parent) == 2));
+        let a = graph.ensure_neighbor(NodeId::ROOT, a_side);
+        let b = graph.ensure_neighbor(NodeId::ROOT, b_side);
+        let ab = graph.ensure_neighbor(a, b_side);
+        let ac = graph.ensure_neighbor(a, c_side);
+        let bc = graph.ensure_neighbor(b, c_side);
+        assert_eq!(parents, vec![(a_side, bc), (b_side, ac), (c_side, ab)]);
+    }
+
+    #[test]
     fn normalize_transform() {
         let mut graph = Graph::new(1);
         let a = graph.ensure_neighbor(NodeId::ROOT, Side::A);
