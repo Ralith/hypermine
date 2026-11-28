@@ -252,7 +252,7 @@ impl ChunkParams {
                 && ((state.road_state == East) || (state.road_state == West)),
             is_road_support: ((state.kind == Land) || (state.kind == DeepLand))
                 && ((state.road_state == East) || (state.road_state == West)),
-            megatree: MegatreeChunk::new(state.megatree, graph.layout().dimension(), chunk.vertex),
+            megatree: MegatreeChunk::new(&state.megatree, graph.layout().dimension(), chunk.vertex),
             node_spice: graph.hash_of(chunk.node) as u64,
             horosphere: state
                 .horosphere
